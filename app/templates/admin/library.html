@@ -1,0 +1,62 @@
+{% extends "admin/_layout.html" %}
+{% set active = "library" %}
+{% block title %}Thư viện · Quản trị{% endblock %}
+{% block admin_content %}
+<div class="page-head">
+  <h1>Thư viện tài liệu</h1>
+  <div class="row">
+    <a class="btn btn-outline btn-small" href="/library">Xem như giáo viên</a>
+    {% for sid, source in sources.items() %}
+      <form method="post" action="/admin/library/sync/{{ sid }}" class="inline">
+        <button class="btn btn-small" {{ 'disabled' if not has_key }} title="{{ '' if has_key else 'Thiếu GOOGLE_DRIVE_API_KEY' }}">↻ Đồng bộ {{ source.name }}</button>
+      </form>
+    {% endfor %}
+  </div>
+</div>
+<p class="muted small">Tài liệu từ Google Drive (configs/drive/*.yaml). Chỉ giáo viên có gói Pro xem được tài liệu đã công khai;
+  nút tải về chỉ có ở tài liệu được đánh dấu cho phép. Hãy kiểm tra nguồn và bản quyền trước khi công khai.
+  {% if not has_key %}<span class="badge badge-warn">Chưa có GOOGLE_DRIVE_API_KEY</span>{% endif %}</p>
+
+<nav class="filter-tabs">
+  {% for key, label in STATUS_LABELS.items() %}
+    <a href="?status={{ key }}" class="{{ 'active' if status == key }}">{{ label }} ({{ counts.get(key, 0) }})</a>
+  {% endfor %}
+</nav>
+
+<form method="post" action="/admin/library/bulk" id="lib-form">
+  <input type="hidden" name="back" value="{{ back }}">
+  <div class="card">
+    <table class="table">
+      <thead><tr><th></th><th>Tài liệu</th><th>Thư mục nguồn</th><th>Loại</th><th>Tải về</th><th class="num">Dung lượng</th></tr></thead>
+      <tbody>
+      {% for d in docs %}
+        <tr>
+          <td><input type="checkbox" name="ids" value="{{ d.id }}"></td>
+          <td><strong>{{ d.title }}</strong>
+            <div class="small">{% if d.mime == "application/pdf" %}<a href="/library/{{ d.id }}/view" target="_blank" rel="noopener">xem</a> · {% endif %}<a href="{{ d.source_url }}" target="_blank" rel="noopener noreferrer">gốc trên Drive</a>
+              {% if d.import_job_id %} · <a href="/admin/ai-imports/{{ d.import_job_id }}">AI nhập đề #{{ d.import_job_id }}</a>{% endif %}</div></td>
+          <td class="small muted">{{ d.folder_path | join(" › ") }}</td>
+          <td class="small">{{ KIND_LABELS[d.kind] }}</td>
+          <td class="small">{{ "Cho phép" if d.downloadable else "Chỉ xem" }}</td>
+          <td class="num small">{{ (d.size / 1048576) | round(1) }} MB</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="muted">Không có tài liệu nào ở trạng thái này.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if docs %}
+    <div class="row bulk-bar">
+      <button class="btn btn-small" name="action" value="publish">Công khai</button>
+      <button class="btn btn-outline btn-small" name="action" value="hide">Ẩn</button>
+      <button class="btn btn-outline btn-small" name="action" value="allow_download">Cho tải về</button>
+      <button class="btn btn-outline btn-small" name="action" value="view_only">Chỉ xem</button>
+      <select name="action" onchange="this.form.requestSubmit()" style="width: auto">
+        <option value="">Đổi loại…</option>
+        {% for k in kinds %}<option value="kind:{{ k.value }}">{{ KIND_LABELS[k] }}</option>{% endfor %}
+      </select>
+    </div>
+  {% endif %}
+</form>
+{% endblock %}

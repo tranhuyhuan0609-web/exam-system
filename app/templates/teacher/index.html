@@ -4,7 +4,10 @@
 {% block content %}
 <div class="page-head">
   <h1>Bài kiểm tra của tôi</h1>
-  {% if has_pro %}<a class="btn" href="/teacher/tests/new">+ Tạo bài kiểm tra</a>{% endif %}
+  <div class="row">
+    {% if has_pro %}<a class="btn btn-outline" href="/library">📚 Thư viện tài liệu</a>{% endif %}
+    {% if has_pro %}<a class="btn" href="/teacher/tests/new">+ Tạo bài kiểm tra</a>{% endif %}
+  </div>
 </div>
 
 {% if user.role == "TEACHER" %}
@@ -19,6 +22,7 @@
         <li>Lấy câu từ ngân hàng theo mục lục, số câu từng phần và mức độ; đề ngẫu nhiên từng học sinh hoặc chung một đề</li>
         <li>Gửi link + mã truy cập; học sinh xem điểm và lời giải sau giờ đóng bài</li>
         <li>Bảng kết quả, phổ điểm, xuất Excel</li>
+        <li>Thư viện tài liệu: đề thi chính thức, đề và tài liệu học sinh giỏi, chuyên đề theo lớp</li>
       </ul>
       {% if user.pro_until %}<p class="muted">Gói Pro của bạn đã hết hạn ngày {{ user.pro_until | local_dt("%d/%m/%Y") }}.</p>{% endif %}
       {% if user.pro_requested_at %}

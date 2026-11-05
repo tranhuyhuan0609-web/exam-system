@@ -454,3 +454,48 @@ class AIUsage(Base):
     provider: Mapped[str] = mapped_column(String(30), primary_key=True)
     calls: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     items: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+# ---------------------------------------------------------------- library (books & documents, teacher Pro)
+
+
+class LibraryKind(StrEnum):
+    BOOK = "BOOK"  # sách tham khảo
+    TOPIC = "TOPIC"  # chuyên đề, tài liệu ôn tập
+    EXAM = "EXAM"  # đề thi, đề kiểm tra
+    HSG = "HSG"  # đề / tài liệu học sinh giỏi
+    OTHER = "OTHER"
+
+
+class LibraryStatus(StrEnum):
+    PENDING_REVIEW = "PENDING_REVIEW"  # imported, an admin checks the source and the rights first
+    PUBLISHED = "PUBLISHED"  # visible to teachers with Pro
+    HIDDEN = "HIDDEN"
+
+
+class LibraryDocument(Base):
+    """A file in the library: imported from a Google Drive folder (or uploaded), kept in the bronze-raw bucket."""
+
+    __tablename__ = "library_documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(500))
+    kind: Mapped[LibraryKind] = mapped_column(_enum(LibraryKind, "library_kind"), default=LibraryKind.OTHER)
+    status: Mapped[LibraryStatus] = mapped_column(
+        _enum(LibraryStatus, "library_status"), default=LibraryStatus.PENDING_REVIEW, index=True
+    )
+    # Folder names from the source root down to the file's folder, e.g. ["10. HSG DUYÊN HẢI…", "Vật lí"].
+    folder_path: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
+    source: Mapped[str] = mapped_column(String(50))  # e.g. "drive:thptqg2026", "upload"
+    source_file_id: Mapped[str | None] = mapped_column(String(200), unique=True)  # Drive file id
+    source_url: Mapped[str | None] = mapped_column(String(500))
+    checksum: Mapped[str | None] = mapped_column(String(64))  # Drive md5 / our sha256: re-download only on change
+    storage_key: Mapped[str] = mapped_column(String(300))  # in the bronze-raw bucket
+    mime: Mapped[str] = mapped_column(String(120))
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    downloadable: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    license_note: Mapped[str | None] = mapped_column(String(300))
+    import_job_id: Mapped[int | None] = mapped_column(ForeignKey("import_jobs.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
