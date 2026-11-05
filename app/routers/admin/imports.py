@@ -1,7 +1,6 @@
 """Bulk question import: upload → preview (nothing saved) → confirm (selected questions saved)."""
 
 import json
-import secrets
 from dataclasses import dataclass
 from pathlib import PurePath
 from typing import Annotated
@@ -14,7 +13,7 @@ from starlette.datastructures import FormData
 
 from app.deps import AdminUser, SessionDep
 from app.import_templates import TEXT_RULES, sample_docx, sample_text, sample_xlsx
-from app.models import Difficulty, Exam, ExamMode, ExamQuestion, Question
+from app.models import Difficulty, Exam, ExamMode, ExamQuestion, Question, QuestionType
 from app.question_import import (
     MAX_FILE_BYTES,
     MAX_QUESTIONS,
@@ -203,11 +202,10 @@ async def import_confirm(request: Request, user: AdminUser, session: SessionDep)
                 chapter_id=scope.chapter_id,
                 lesson_id=scope.lesson_id,
                 difficulty=Difficulty(parsed.difficulty) if parsed.difficulty else default_difficulty,
+                question_type=QuestionType(parsed.type),
                 content=parsed.content.strip(),
-                choices=[
-                    {"id": secrets.token_hex(4), "content": c.strip(), "is_correct": i == parsed.correct}
-                    for i, c in enumerate(parsed.choices)
-                ],
+                choices=parsed.stored_choices(),
+                accepted_answers=parsed.answers if parsed.type == QuestionType.SHORT_ANSWER else None,
                 explanation=parsed.explanation.strip() or None,
             )
         )

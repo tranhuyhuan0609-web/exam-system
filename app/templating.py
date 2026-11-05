@@ -5,6 +5,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from app.models import Difficulty
+from app.question_rules import TYPE_LABELS as _TYPE_LABELS
 
 _FLASH_KEY = "_flash"
 
@@ -20,6 +21,7 @@ def _flash_context(request: Request) -> dict:
 
 
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates", context_processors=[_flash_context])
+templates.env.globals["TYPE_LABELS"] = {t.value: label for t, label in _TYPE_LABELS.items()}
 templates.env.globals["DIFFICULTY_LABELS"] = {
     Difficulty.RECOGNITION: "Nhận biết",
     Difficulty.UNDERSTANDING: "Thông hiểu",

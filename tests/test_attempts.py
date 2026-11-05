@@ -102,7 +102,8 @@ def test_paper_api_never_leaks_answers_or_explanations(student, exam_id):
     data = r.json()
     assert [q["number"] for q in data["questions"]] == [1, 2, 3]
     assert data["questions"][0]["choices"] == [{"id": "q1a", "content": "Đúng"}, {"id": "q1b", "content": "Sai"}]
-    assert set(data["questions"][0]) == {"id", "number", "content", "choices", "image_url"}
+    assert set(data["questions"][0]) == {"id", "number", "type", "content", "choices", "image_url"}
+    assert "accepted_answers" not in raw
     assert 590 < data["remaining_seconds"] <= 600
     assert data["status"] == "IN_PROGRESS"
 

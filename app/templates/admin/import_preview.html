@@ -38,15 +38,26 @@
       <div class="q-meta">
         <label class="check"><input type="checkbox" name="selected" value="{{ loop.index0 }}"
           {% if not q.ok %}disabled{% elif not q.duplicate %}checked{% endif %}> <strong>{{ q.label }}</strong></label>
+        <span class="badge type-badge">{{ TYPE_LABELS[q.type] }}</span>
         {% set level = q.difficulty or settings.default_difficulty %}
         <span class="badge diff-{{ level | lower }}">{{ DIFFICULTY_LABELS[level] }}{{ "" if q.difficulty else " (mặc định)" }}</span>
         {% if q.duplicate %}<span class="badge badge-warn">Trùng</span>{% endif %}
       </div>
       {% if q.errors %}<ul class="q-errors">{% for e in q.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
       <div class="q-content math">{{ q.content }}</div>
-      <ol class="q-choices" type="A">
-        {% for c in q.choices %}<li class="math {% if loop.index0 == q.correct %}correct{% endif %}">{{ c }}</li>{% endfor %}
-      </ol>
+      {% if q.type == "TRUE_FALSE" %}
+        <ol class="q-choices" type="a">
+          {% for c in q.choices %}{% set t = q.truths[loop.index0] if loop.index0 < q.truths | length else none %}
+            <li class="math">{{ c }} <span class="tf-truth {{ 't' if t else 'f' }}">— {{ "?" if t is none else ("Đúng" if t else "Sai") }}</span></li>
+          {% endfor %}
+        </ol>
+      {% elif q.type == "SHORT_ANSWER" %}
+        <p class="small"><strong>Đáp án:</strong> {{ q.answers | join(" hoặc ") or "—" }}</p>
+      {% else %}
+        <ol class="q-choices" type="A">
+          {% for c in q.choices %}<li class="math {% if loop.index0 == q.correct %}correct{% endif %}">{{ c }}</li>{% endfor %}
+        </ol>
+      {% endif %}
       {% if q.explanation %}<details class="small mt"><summary>Lời giải</summary><div class="q-content math">{{ q.explanation }}</div></details>{% endif %}
     </div>
   {% endfor %}

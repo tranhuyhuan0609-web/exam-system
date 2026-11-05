@@ -1,6 +1,5 @@
 """AI import: upload an exam file → background worker → review drafts → publish to the question bank."""
 
-import copy
 import secrets
 import shutil
 from pathlib import Path, PurePath
@@ -11,12 +10,12 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, s
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
 
+from app import question_rules as rules
 from app.ai.normalize import SUPPORTED_EXTENSIONS
-from app.ai.pipeline import FLAG_LABELS, job_dirs, page_path
+from app.ai.pipeline import FLAG_LABELS, job_dirs, normalize_draft, page_path
 from app.config import get_settings
 from app.deps import AdminUser, SessionDep
-from app.models import Difficulty, Exam, ExamMode, ExamQuestion, ImportJob, JobStatus, Question
-from app.question_import import ParsedQuestion, validate
+from app.models import Difficulty, Exam, ExamMode, ExamQuestion, ImportJob, JobStatus, Question, QuestionType
 from app.routers.admin.common import clean_text, get_or_404, redirect
 from app.scope import load_subject_tree, resolve_scope, scope_of, scope_options, scope_paths
 from app.templating import flash, templates
@@ -24,12 +23,7 @@ from app.templating import flash, templates
 router = APIRouter()
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
-TYPE_LABELS = {
-    "MULTIPLE_CHOICE": "Trắc nghiệm",
-    "TRUE_FALSE": "Đúng/Sai",
-    "SHORT_ANSWER": "Trả lời ngắn",
-    "ESSAY": "Tự luận",
-}
+TYPE_LABELS = {**{t.value: label for t, label in rules.TYPE_LABELS.items()}, "ESSAY": "Tự luận"}
 
 
 def _data_dir() -> Path:
@@ -40,15 +34,20 @@ def _publishable(draft: dict) -> list[str]:
     """Errors preventing a draft from becoming a bank question (empty list = OK)."""
     if draft.get("question_id"):
         return ["Đã đưa vào ngân hàng."]
-    if draft.get("type") != "MULTIPLE_CHOICE":
+    if draft.get("type") not in QuestionType.__members__:
         return [FLAG_LABELS["unsupported_type"]]
-    parsed = ParsedQuestion(
-        label=f"Câu {draft.get('number')}",
-        content=draft.get("content", ""),
-        choices=list(draft.get("choices", [])),
-        correct=draft.get("correct"),
+    return rules.validate(
+        draft["type"],
+        draft.get("content", ""),
+        list(draft.get("choices", [])),
+        draft.get("correct"),
+        list(draft.get("truths") or []),
+        list(draft.get("answers") or []),
     )
-    return validate(parsed)
+
+
+def _drafts(job: ImportJob) -> list[dict]:
+    return [normalize_draft(d) for d in (job.drafts or [])]
 
 
 async def _job_or_404(session, job_id: int) -> ImportJob:
@@ -134,7 +133,7 @@ async def job_detail(request: Request, user: AdminUser, session: SessionDep, job
             "problems": _publishable(d),
             "flag_texts": [FLAG_LABELS.get(f, f) for f in d.get("flags", [])],
         }
-        for i, d in enumerate(job.drafts or [])
+        for i, d in enumerate(_drafts(job))
     ]
     return templates.TemplateResponse(
         request,
@@ -182,21 +181,25 @@ async def job_page(session: SessionDep, job_id: int, page: int):
 @router.post("/ai-imports/{job_id}/drafts/{index}")
 async def update_draft(request: Request, session: SessionDep, job_id: int, index: int):
     job = await _job_or_404(session, job_id)
-    drafts = copy.deepcopy(job.drafts or [])
+    drafts = _drafts(job)
     if not 0 <= index < len(drafts) or drafts[index].get("question_id"):
         flash(request, "Không sửa được câu này.", "error")
         return redirect(f"/admin/ai-imports/{job_id}")
     form = await request.form()
     draft = drafts[index]
+    if form.get("type") in TYPE_LABELS:
+        draft["type"] = str(form.get("type"))
     draft["content"] = str(form.get("content", "")).strip()
     draft["choices"] = [str(c).strip() for c in form.getlist("choice_content")]
     correct = str(form.get("correct", ""))
     draft["correct"] = int(correct) if correct.isdigit() and int(correct) < len(draft["choices"]) else None
+    draft["truths"] = [{"1": True, "0": False}.get(str(v)) for v in form.getlist("choice_truth")]
+    draft["answers"] = rules.split_accepted(str(form.get("accepted_answers", "")))
+    if draft["type"] == QuestionType.SHORT_ANSWER:
+        draft["choices"] = []
     draft["explanation"] = str(form.get("explanation", "")).strip()
     if (difficulty := str(form.get("difficulty", ""))) in Difficulty.__members__:
         draft["difficulty"] = difficulty
-    if form.get("type") in TYPE_LABELS:
-        draft["type"] = str(form.get("type"))
     if form.get("remove_figure") == "on":
         draft["figure"] = None
     draft["flags"] = [f for f in draft.get("flags", []) if f not in ("no_match", "no_solution")]  # reviewed by a human
@@ -213,7 +216,7 @@ async def publish(request: Request, user: AdminUser, session: SessionDep, job_id
     job = await _job_or_404(session, job_id)
     form = await request.form()
     selected = sorted({int(v) for v in form.getlist("selected") if str(v).isdigit()})
-    drafts = copy.deepcopy(job.drafts or [])
+    drafts = _drafts(job)
     created: list[Question] = []
     created_at_index: list[int] = []
     for index in selected:
@@ -225,11 +228,10 @@ async def publish(request: Request, user: AdminUser, session: SessionDep, job_id
             chapter_id=job.chapter_id,
             lesson_id=job.lesson_id,
             difficulty=Difficulty(d.get("difficulty") or job.default_difficulty.value),
+            question_type=QuestionType(d["type"]),
             content=d["content"],
-            choices=[
-                {"id": secrets.token_hex(4), "content": c, "is_correct": i == d["correct"]}
-                for i, c in enumerate(d["choices"])
-            ],
+            choices=rules.build_choices(d["type"], d["choices"], d.get("correct"), d.get("truths")),
+            accepted_answers=d["answers"] if d["type"] == QuestionType.SHORT_ANSWER else None,
             explanation=d.get("explanation") or None,
             image_path=d.get("figure"),
         )

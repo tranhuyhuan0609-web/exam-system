@@ -25,6 +25,7 @@
   let locked = false;
   let submitting = false;
   let questionCount = 0;
+  const questionsById = {};
 
   // ------------------------------------------------------------------ server clock
 
@@ -77,7 +78,7 @@
     els.timer.textContent = "00:00";
     els.timeUp.hidden = false;
     root.classList.add("locked");
-    root.querySelectorAll("input[type=radio]").forEach((input) => (input.disabled = true));
+    root.querySelectorAll("#questions input").forEach((input) => (input.disabled = true));
     submitAnswers();
   }
 
@@ -118,16 +119,117 @@
   }
 
   els.submit.addEventListener("click", () => {
-    const left = questionCount - Object.keys(answers).length;
+    const left = Object.keys(questionsById).filter((id) => answerState(id) !== "answered").length;
     const message = left > 0 ? `Bạn còn ${left} câu chưa chọn đáp án. Vẫn nộp bài?` : "Nộp bài và xem kết quả?";
     if (confirm(message)) submitAnswers();
   });
+
+
+  // ------------------------------------------------------------------ answer widgets (one per question type)
+
+  const TYPE_LABELS = { MULTIPLE_CHOICE: "Trắc nghiệm", TRUE_FALSE: "Đúng/Sai", SHORT_ANSWER: "Trả lời ngắn" };
+
+  function renderChoices(q, saved) {
+    const list = document.createElement("div");
+    list.className = "choice-list";
+    q.choices.forEach((c, i) => {
+      const label = document.createElement("label");
+      label.className = "choice";
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "q-" + q.id;
+      input.value = c.id;
+      input.checked = saved && saved[q.id] === c.id;
+      input.addEventListener("change", () => setAnswer(q.id, c.id));
+      const letter = document.createElement("span");
+      letter.className = "choice-letter";
+      letter.textContent = String.fromCharCode(65 + i);
+      const text = document.createElement("span");
+      text.className = "choice-text";
+      text.textContent = c.content;
+      label.append(input, letter, text);
+      list.append(label);
+    });
+    return list;
+  }
+
+  // Phần II: each statement is marked true or false independently; partial credit is given.
+  function renderTrueFalse(q, saved) {
+    const table = document.createElement("table");
+    table.className = "tf-table";
+    const head = table.createTHead().insertRow();
+    ["", "Ý", "Đúng", "Sai"].forEach((t) => {
+      const th = document.createElement("th");
+      th.textContent = t;
+      head.append(th);
+    });
+    const body = table.createTBody();
+    const current = (saved && saved[q.id]) || {};
+    q.choices.forEach((c, i) => {
+      const row = body.insertRow();
+      const letter = row.insertCell();
+      letter.className = "choice-letter";
+      letter.textContent = String.fromCharCode(97 + i) + ")";
+      const text = row.insertCell();
+      text.className = "choice-text";
+      text.textContent = c.content;
+      [true, false].forEach((value) => {
+        const cell = row.insertCell();
+        cell.className = "tf-opt";
+        const label = document.createElement("label");
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = `q-${q.id}-${c.id}`;
+        input.checked = current[c.id] === value;
+        input.addEventListener("change", () => {
+          const next = Object.assign({}, answers[q.id] || {});
+          next[c.id] = value;
+          setAnswer(q.id, next);
+        });
+        label.append(input, value ? "Đúng" : "Sai");
+        cell.append(label);
+      });
+    });
+    return table;
+  }
+
+  // Phần III: a short numeric answer.
+  function renderShortAnswer(q, saved) {
+    const wrap = document.createElement("div");
+    wrap.className = "short-input";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.inputMode = "decimal";
+    input.maxLength = 20;
+    input.autocomplete = "off";
+    input.placeholder = "Nhập đáp số";
+    input.value = (saved && saved[q.id]) || "";
+    input.addEventListener("input", () => setAnswer(q.id, input.value.trim() || null));
+    const hint = document.createElement("span");
+    hint.className = "hint";
+    hint.textContent = "Chỉ ghi số, dùng dấu phẩy cho số thập phân (VD: 1,25).";
+    wrap.append(input, hint);
+    return wrap;
+  }
+
+  // "answered" = fully answered, "partial" = some statements of a true/false question left.
+  function answerState(questionId) {
+    const value = answers[questionId];
+    if (value === undefined || value === null || value === "") return "";
+    const q = questionsById[questionId];
+    if (q && q.type === "TRUE_FALSE") {
+      const marked = Object.keys(value).length;
+      return marked >= q.choices.length ? "answered" : marked ? "partial" : "";
+    }
+    return "answered";
+  }
 
   // ------------------------------------------------------------------ rendering
 
   function renderPaper(data) {
     els.total.textContent = data.questions.length;
     questionCount = data.questions.length;
+    data.questions.forEach((q) => (questionsById[q.id] = q));
     const cards = data.questions.map((q) => {
       const card = document.createElement("section");
       card.className = "card question-card";
@@ -142,26 +244,15 @@
       content.className = "q-content";
       content.textContent = q.content;
 
-      const list = document.createElement("div");
-      list.className = "choice-list";
-      q.choices.forEach((c, i) => {
-        const label = document.createElement("label");
-        label.className = "choice";
-        const input = document.createElement("input");
-        input.type = "radio";
-        input.name = "q-" + q.id;
-        input.value = c.id;
-        input.checked = data.answers && data.answers[q.id] === c.id;
-        input.addEventListener("change", () => choose(q.id, c.id));
-        const letter = document.createElement("span");
-        letter.className = "choice-letter";
-        letter.textContent = String.fromCharCode(65 + i);
-        const text = document.createElement("span");
-        text.className = "choice-text";
-        text.textContent = c.content;
-        label.append(input, letter, text);
-        list.append(label);
-      });
+      const answerBox =
+        q.type === "TRUE_FALSE" ? renderTrueFalse(q, data.answers) :
+        q.type === "SHORT_ANSWER" ? renderShortAnswer(q, data.answers) :
+        renderChoices(q, data.answers);
+
+      const badge = document.createElement("span");
+      badge.className = "badge type-badge";
+      badge.textContent = TYPE_LABELS[q.type] || "";
+      head.append(" ", badge);
 
       const parts = [head, content];
       if (q.image_url) {
@@ -171,7 +262,7 @@
         img.alt = "Hình vẽ câu " + q.number;
         parts.push(img);
       }
-      card.append(...parts, list);
+      card.append(...parts, answerBox);
       return card;
     });
     els.questions.replaceChildren(...cards);
@@ -193,18 +284,20 @@
     else window.addEventListener("load", () => window.renderMath && window.renderMath(els.questions));
   }
 
-  function choose(questionId, choiceId) {
+  function setAnswer(questionId, value) {
     if (locked) return;
-    answers[questionId] = choiceId;
+    if (value === null) delete answers[questionId];
+    else answers[questionId] = value;
     refreshProgress();
   }
 
   function refreshProgress() {
     let count = 0;
     els.palette.querySelectorAll("button").forEach((btn) => {
-      const done = Boolean(answers[btn.dataset.questionId]);
-      btn.classList.toggle("answered", done);
-      if (done) count++;
+      const state = answerState(btn.dataset.questionId);
+      btn.classList.toggle("answered", state === "answered");
+      btn.classList.toggle("partial", state === "partial");
+      if (state === "answered") count++;
     });
     els.answered.textContent = count;
   }

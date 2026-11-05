@@ -91,12 +91,19 @@
 
           <div class="q-content math">{{ d.content }}</div>
           {% if d.figure %}<img class="q-figure" src="/media/{{ d.figure }}" alt="Hình câu {{ d.number }}">{% endif %}
-          {% if d.choices %}
+          {% if d.type == "TRUE_FALSE" %}
+            <ol class="q-choices" type="a">
+              {% for c in d.choices %}{% set t = d.truths[loop.index0] if loop.index0 < d.truths | length else none %}
+                <li class="math">{{ c }} <span class="tf-truth {{ 't' if t else 'f' }}">— {{ "?" if t is none else ("Đúng" if t else "Sai") }}</span></li>
+              {% endfor %}
+            </ol>
+          {% elif d.type == "SHORT_ANSWER" %}
+            <p><strong>Đáp án:</strong> {{ d.answers | join(" hoặc ") or "—" }}{% if d.final_value %} <span class="muted small">(AI tính: <span class="math">{{ d.final_value }}</span>)</span>{% endif %}</p>
+          {% elif d.choices %}
             <ol class="q-choices" type="A">
               {% for c in d.choices %}<li class="math {% if loop.index0 == d.correct %}correct{% endif %}">{{ c }}</li>{% endfor %}
             </ol>
           {% endif %}
-          {% if d.short_answer %}<p><strong>Đáp số:</strong> <span class="math">{{ d.short_answer }}</span></p>{% endif %}
           {% if d.explanation %}
             <details class="explanation"><summary>Lời giải AI{% if d.final_value %} · kết quả: <span class="math">{{ d.final_value }}</span>{% endif %}</summary>
               <div class="q-content math">{{ d.explanation }}</div>
@@ -116,13 +123,28 @@
                 </label>
               </div>
               <label>Nội dung <textarea name="content" rows="4">{{ d.content }}</textarea></label>
-              {% for c in d.choices %}
-                <div class="choice-row">
-                  <label class="choice-correct"><input type="radio" name="correct" value="{{ loop.index0 }}" {% if loop.index0 == d.correct %}checked{% endif %}>
-                    <span class="choice-letter">{{ letters[loop.index0] }}</span></label>
-                  <textarea name="choice_content" rows="1">{{ c }}</textarea>
-                </div>
-              {% endfor %}
+              {% if d.type == "SHORT_ANSWER" %}
+                <label>Đáp án <span class="muted small">(nhiều đáp án ngăn cách bằng ;)</span>
+                  <input name="accepted_answers" value="{{ d.answers | join('; ') }}" maxlength="100"></label>
+              {% else %}
+                {% for c in d.choices %}
+                  <div class="choice-row">
+                    {% if d.type == "TRUE_FALSE" %}
+                      {% set t = d.truths[loop.index0] if loop.index0 < d.truths | length else none %}
+                      <span class="choice-letter">{{ "abcdef"[loop.index0] }})</span>
+                      <textarea name="choice_content" rows="1">{{ c }}</textarea>
+                      <select name="choice_truth"><option value="">Đ/S?</option>
+                        <option value="1" {% if t == true %}selected{% endif %}>Đúng</option>
+                        <option value="0" {% if t == false %}selected{% endif %}>Sai</option></select>
+                    {% else %}
+                      <label class="choice-correct"><input type="radio" name="correct" value="{{ loop.index0 }}" {% if loop.index0 == d.correct %}checked{% endif %}>
+                        <span class="choice-letter">{{ letters[loop.index0] }}</span></label>
+                      <textarea name="choice_content" rows="1">{{ c }}</textarea>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+                <p class="hint">Đổi dạng câu thì lưu một lần rồi mở lại để nhập đáp án theo dạng mới.</p>
+              {% endif %}
               <label>Lời giải <textarea name="explanation" rows="6">{{ d.explanation }}</textarea></label>
               {% if d.figure %}<label class="check"><input type="checkbox" name="remove_figure"> Bỏ hình vẽ (nếu AI cắt sai)</label>{% endif %}
               <button class="btn btn-small mt">Lưu thay đổi</button>

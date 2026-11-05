@@ -34,6 +34,12 @@ class Difficulty(StrEnum):
     APPLICATION = "APPLICATION"  # Vận dụng
 
 
+class QuestionType(StrEnum):
+    MULTIPLE_CHOICE = "MULTIPLE_CHOICE"  # Phần I: one correct option
+    TRUE_FALSE = "TRUE_FALSE"  # Phần II: four statements, each true or false
+    SHORT_ANSWER = "SHORT_ANSWER"  # Phần III: type a short (numeric) answer
+
+
 class ExamMode(StrEnum):
     PRACTICE = "PRACTICE"  # self-paced, start any time
     SCHEDULED = "SCHEDULED"  # fixed time window (phase 3)
@@ -129,11 +135,19 @@ class Question(TimestampMixin, UpdatedAtMixin, Base):
     chapter_id: Mapped[int | None] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), index=True)
     lesson_id: Mapped[int | None] = mapped_column(ForeignKey("lessons.id", ondelete="SET NULL"), index=True)
     difficulty: Mapped[Difficulty] = mapped_column(_enum(Difficulty, "difficulty"))
+    question_type: Mapped[QuestionType] = mapped_column(
+        _enum(QuestionType, "question_type"),
+        default=QuestionType.MULTIPLE_CHOICE,
+        server_default=QuestionType.MULTIPLE_CHOICE.value,
+    )
     # Question text; may contain LaTeX ($...$ / $$...$$) rendered client-side.
     content: Mapped[str] = mapped_column(Text)
     # [{"id": "c1", "content": "...", "is_correct": true}, ...]
     # Choices keep stable ids so answers survive shuffling; is_correct must never be sent to students.
+    # For TRUE_FALSE, each entry is a statement and is_correct means "this statement is true".
     choices: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    # SHORT_ANSWER only: accepted answers, compared after normalisation ("1.50" == "1,5").
+    accepted_answers: Mapped[list[str] | None] = mapped_column(JSONB)
     explanation: Mapped[str | None] = mapped_column(Text)
     # Figure (graph, circuit...) relative to <data_dir>/media, served publicly under /media/.
     image_path: Mapped[str | None] = mapped_column(String(300))

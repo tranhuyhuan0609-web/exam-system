@@ -11,5 +11,7 @@ select = ["E", "F", "I", "UP", "B"]
 testpaths = ["tests"]
 
 [tool.ruff.lint.per-file-ignores]
-# Long Vietnamese prompt strings.
+# Long Vietnamese prompt / sample strings.
 "app/ai/provider.py" = ["E501"]
+"app/ai/schemas.py" = ["E501"]
+"app/import_templates.py" = ["E501"]

@@ -8,7 +8,13 @@ from typing import Any
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AttemptStatus, Exam, ExamAttempt, ExamQuestion, Question, User
+from app.models import AttemptStatus, Exam, ExamAttempt, ExamQuestion, Question, QuestionType, User
+from app.question_rules import (
+    SHORT_ANSWER_MAX_LEN,
+    max_points,
+    short_answer_matches,
+    true_false_points,
+)
 
 
 class AttemptError(Exception):
@@ -32,11 +38,13 @@ def build_snapshot(questions: list[Question]) -> dict[str, Any]:
         "questions": [
             {
                 "id": q.id,
+                "type": q.question_type.value,
                 "difficulty": q.difficulty.value,
                 "content": q.content,
                 "choices": [
                     {"id": c["id"], "content": c["content"], "is_correct": bool(c["is_correct"])} for c in q.choices
                 ],
+                "accepted_answers": list(q.accepted_answers or []),
                 "explanation": q.explanation,
                 "image_url": f"/media/{q.image_path}" if q.image_path else None,
             }
@@ -45,12 +53,17 @@ def build_snapshot(questions: list[Question]) -> dict[str, Any]:
     }
 
 
+def _type(q: dict[str, Any]) -> str:
+    return q.get("type") or QuestionType.MULTIPLE_CHOICE.value  # snapshots taken before question types existed
+
+
 def public_questions(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
-    """Whitelist the fields a student may see. Never add is_correct / explanation here."""
+    """Whitelist the fields a student may see. Never add is_correct / accepted_answers / explanation here."""
     return [
         {
             "id": q["id"],
             "number": number,
+            "type": _type(q),
             "content": q["content"],
             "choices": [{"id": c["id"], "content": c["content"]} for c in q["choices"]],
             "image_url": q.get("image_url"),
@@ -133,37 +146,71 @@ MAX_SCORE = Decimal(10)
 
 @dataclass(frozen=True)
 class Grade:
-    correct_count: int
+    correct_count: int  # questions answered fully correctly
     total: int
-    score: Decimal
+    score: Decimal  # on a 10-point scale
+    points: Decimal  # THPT points earned
+    max_points: Decimal
 
 
-def clean_answers(snapshot: dict[str, Any], answers: Any) -> dict[str, str]:
-    """Keep only {question_id: choice_id} pairs that exist in this paper."""
+def clean_answers(snapshot: dict[str, Any], answers: Any) -> dict[str, Any]:
+    """Keep only well-formed answers to questions in this paper.
+
+    MULTIPLE_CHOICE {qid: choice_id} · TRUE_FALSE {qid: {statement_id: bool}} · SHORT_ANSWER {qid: "text"}
+    """
     if not isinstance(answers, dict):
         return {}
-    valid = {str(q["id"]): {c["id"] for c in q["choices"]} for q in snapshot["questions"]}
-    cleaned = {}
-    for key, choice in answers.items():
-        qid = str(key)
-        if qid in valid and choice in valid[qid]:
-            cleaned[qid] = choice
+    by_id = {str(q["id"]): q for q in snapshot["questions"]}
+    cleaned: dict[str, Any] = {}
+    for key, value in answers.items():
+        q = by_id.get(str(key))
+        if q is None:
+            continue
+        kind = _type(q)
+        ids = {c["id"] for c in q["choices"]}
+        if kind == QuestionType.TRUE_FALSE:
+            if isinstance(value, dict):
+                picked = {sid: v for sid, v in value.items() if sid in ids and isinstance(v, bool)}
+                if picked:
+                    cleaned[str(key)] = picked
+        elif kind == QuestionType.SHORT_ANSWER:
+            if isinstance(value, str) and value.strip():
+                cleaned[str(key)] = value.strip()[:SHORT_ANSWER_MAX_LEN]
+        elif isinstance(value, str) and value in ids:
+            cleaned[str(key)] = value
     return cleaned
 
 
-def grade(snapshot: dict[str, Any], answers: dict[str, str]) -> Grade:
+def question_result(q: dict[str, Any], answer: Any) -> tuple[Decimal, str]:
+    """(points earned, status) where status is correct | partial | wrong | unanswered."""
+    kind = _type(q)
+    if answer is None:
+        return Decimal(0), "unanswered"
+    if kind == QuestionType.TRUE_FALSE:
+        right = sum(1 for c in q["choices"] if c["id"] in answer and answer[c["id"]] == c["is_correct"])
+        points = true_false_points(right, len(q["choices"]))
+        status = "correct" if right == len(q["choices"]) else ("partial" if right else "wrong")
+        return points, status
+    if kind == QuestionType.SHORT_ANSWER:
+        ok = short_answer_matches(answer, q.get("accepted_answers") or [])
+        return (max_points(kind) if ok else Decimal(0)), ("correct" if ok else "wrong")
+    ok = any(c["id"] == answer and c["is_correct"] for c in q["choices"])
+    return (max_points(kind) if ok else Decimal(0)), ("correct" if ok else "wrong")
+
+
+def grade(snapshot: dict[str, Any], answers: dict[str, Any]) -> Grade:
     questions = snapshot["questions"]
-    correct = sum(
-        1
-        for q in questions
-        if (chosen := answers.get(str(q["id"]))) and any(c["id"] == chosen and c["is_correct"] for c in q["choices"])
-    )
-    total = len(questions)
-    score = (MAX_SCORE * correct / total).quantize(Decimal("0.01"), ROUND_HALF_UP) if total else Decimal(0)
-    return Grade(correct, total, score)
+    earned, possible, correct = Decimal(0), Decimal(0), 0
+    for q in questions:
+        points, status = question_result(q, answers.get(str(q["id"])))
+        earned += points
+        possible += max_points(_type(q))
+        correct += status == "correct"
+    score = (MAX_SCORE * earned / possible).quantize(Decimal("0.01"), ROUND_HALF_UP) if possible else Decimal(0)
+    return Grade(correct, len(questions), score, earned, possible)
 
 
-def _finish(attempt: ExamAttempt, answers: dict[str, str], submitted_at: datetime) -> None:
+def _finish(attempt: ExamAttempt, answers: dict[str, Any], submitted_at: datetime) -> None:
     result = grade(attempt.paper_snapshot, answers)
     attempt.answers = answers
     attempt.status = AttemptStatus.SUBMITTED
@@ -229,18 +276,23 @@ def review(attempt: ExamAttempt) -> list[dict[str, Any]]:
     """Per-question breakdown for the result page (answers and explanations are shown after submit)."""
     rows = []
     for number, q in enumerate(attempt.paper_snapshot["questions"], start=1):
-        chosen = attempt.answers.get(str(q["id"]))
-        correct_id = next((c["id"] for c in q["choices"] if c["is_correct"]), None)
+        answer = attempt.answers.get(str(q["id"]))
+        points, status = question_result(q, answer)
+        kind = _type(q)
         rows.append(
             {
                 "number": number,
+                "type": kind,
                 "content": q["content"],
                 "choices": q["choices"],
                 "explanation": q.get("explanation"),
                 "image_url": q.get("image_url"),
-                "chosen": chosen,
-                "correct_id": correct_id,
-                "status": "unanswered" if chosen is None else ("correct" if chosen == correct_id else "wrong"),
+                "accepted_answers": q.get("accepted_answers") or [],
+                "answer": answer,  # choice id, {statement id: bool} or text depending on type
+                "correct_id": next((c["id"] for c in q["choices"] if c["is_correct"]), None),
+                "status": status,
+                "points": points,
+                "max_points": max_points(kind),
             }
         )
     return rows

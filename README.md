@@ -59,7 +59,7 @@ Học sinh vào bất cứ lúc nào, chọn bài (VD: Vật lí 11 – Chương
 - [x] Cắt hình vẽ (đồ thị, mạch điện) theo bounding box, gắn vào câu hỏi
 - [x] Màn hình duyệt nháp: ảnh đề gốc bên trái, câu hỏi + lời giải AI bên phải → “Đưa vào ngân hàng đề”
 
-- [ ] Dạng câu Đúng/Sai và Trả lời ngắn (định dạng THPT 2025) cho làm bài và chấm điểm
+- [x] Dạng câu Đúng/Sai và Trả lời ngắn (định dạng THPT 2025): soạn, nhập file, AI, làm bài, chấm điểm theo thang THPT
 
 ### Giai đoạn 2 — Trải nghiệm thực tế & Ngân hàng đề động (Tuần 4–6)
 - [ ] Auto-save 2 tầng: IndexedDB mỗi lần chọn + đồng bộ debounce lên server mỗi 5–10s

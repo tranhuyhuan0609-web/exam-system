@@ -144,10 +144,10 @@ def test_create_question_derives_chapter_and_subject_from_lesson(admin_client, d
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
-        ({"correct": None}, "đúng 1 đáp án đúng"),
+        ({"correct": None}, "Chưa có đáp án đúng"),
         ({"choices": ("Chỉ một",)}, "từ 2 đến 6 lựa chọn"),
-        ({"choices": ("A", " ", "C")}, "không được để trống"),
-        ({"content": "   "}, "Nội dung câu hỏi không được để trống"),
+        ({"choices": ("A", " ", "C")}, "Có lựa chọn bị trống"),
+        ({"content": "   "}, "Thiếu nội dung câu hỏi"),
         ({"scope": "l:999999"}, "Vui lòng chọn môn"),
     ],
 )
