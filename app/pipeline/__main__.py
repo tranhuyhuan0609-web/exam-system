@@ -13,6 +13,7 @@ python -m app.pipeline recheck READY --no-semantic   # publish without the cosin
 python -m app.pipeline renormalize           # rule-based formula conversion for AI-queued items
 python -m app.pipeline adopt-series "Vật lí 11" "Kết nối tri thức"
 python -m app.pipeline drive-sync thptqg2026 [--max-files 50]   # Google Drive folder -> library
+python -m app.pipeline library-split [--id 12]                 # cut stored bundles into one exam each
 """
 
 import argparse
@@ -90,11 +91,37 @@ async def _drive_sync(source_id: str, max_files: int | None) -> None:
     drive, store = DriveClient(settings.google_drive_api_key), MongoRawStore()
     try:
         async with SessionLocal() as session:
-            stats = await sync_drive(session, source, drive, get_bronze_storage(), store, get_storage(), max_files)
+            stats = await sync_drive(
+                session, source, drive, get_bronze_storage(), store, get_storage(), max_files, settings.soffice_path
+            )
     finally:
         await drive.close()
         await store.close()
     print("Drive sync:", stats)
+
+
+async def _library_split(document_id: int | None) -> None:
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.infrastructure.storage import get_bronze_storage
+    from app.models import LibraryDocument
+    from app.pipeline.use_cases.library_split import split_stored
+
+    settings = get_settings()
+    async with SessionLocal() as session:
+        stmt = select(LibraryDocument.id).where(LibraryDocument.parent_id.is_(None))
+        if document_id is not None:
+            stmt = stmt.where(LibraryDocument.id == document_id)
+        ids = (await session.scalars(stmt.order_by(LibraryDocument.id))).all()
+        total = 0
+        for doc_id in ids:
+            doc = await session.get(LibraryDocument, doc_id)
+            parts = await split_stored(session, doc, get_bronze_storage(), settings.soffice_path)
+            if parts:
+                print(f"#{doc_id} {doc.title}: {parts} exams")
+            total += parts
+    print(f"Library split: {len(ids)} documents checked, {total} exams cut out")
 
 
 async def _adopt(root: str, series: str) -> None:
@@ -154,6 +181,8 @@ def main(argv: list[str] | None = None) -> None:
     drive = sub.add_parser("drive-sync")
     drive.add_argument("source_id")
     drive.add_argument("--max-files", type=int)
+    split = sub.add_parser("library-split")
+    split.add_argument("--id", type=int, default=None)
     adopt = sub.add_parser("adopt-series")
     adopt.add_argument("root")
     adopt.add_argument("series")
@@ -201,6 +230,8 @@ def main(argv: list[str] | None = None) -> None:
         asyncio.run(_embed())
     elif args.command == "drive-sync":
         asyncio.run(_drive_sync(args.source_id, args.max_files))
+    elif args.command == "library-split":
+        asyncio.run(_library_split(args.id))
     elif args.command == "renormalize":
         asyncio.run(_renormalize())
     elif args.command == "adopt-series":

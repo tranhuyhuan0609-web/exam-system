@@ -32,7 +32,7 @@
       {% for d in docs %}
         <tr>
           <td><input type="checkbox" name="ids" value="{{ d.id }}"></td>
-          <td><strong>{{ d.title }}</strong>
+          <td><strong>{{ d.title }}</strong>{% if d.parent_id %} <span class="badge">trang {{ d.page_from }}–{{ d.page_to }}</span>{% endif %}
             <div class="small">{% if d.mime == "application/pdf" %}<a href="/library/{{ d.id }}/view" target="_blank" rel="noopener">xem</a> · {% endif %}<a href="{{ d.source_url }}" target="_blank" rel="noopener noreferrer">gốc trên Drive</a>
               {% if d.import_job_id %} · <a href="/admin/ai-imports/{{ d.import_job_id }}">AI nhập đề #{{ d.import_job_id }}</a>{% endif %}</div></td>
           <td class="small muted">{{ d.folder_path | join(" › ") }}</td>
@@ -52,6 +52,7 @@
       <button class="btn btn-outline btn-small" name="action" value="hide">Ẩn</button>
       <button class="btn btn-outline btn-small" name="action" value="allow_download">Cho tải về</button>
       <button class="btn btn-outline btn-small" name="action" value="view_only">Chỉ xem</button>
+      <button class="btn btn-outline btn-small" name="action" value="split" title="Tìm “Đề số…”, “Mã đề…” và cắt mỗi đề thành một tài liệu">✂ Tách đề</button>
       <select name="action" onchange="this.form.requestSubmit()" style="width: auto">
         <option value="">Đổi loại…</option>
         {% for k in kinds %}<option value="kind:{{ k.value }}">{{ KIND_LABELS[k] }}</option>{% endfor %}

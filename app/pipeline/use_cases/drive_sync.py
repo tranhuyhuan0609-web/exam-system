@@ -6,7 +6,8 @@ may download them, and which files to also turn into questions (AI import, Gemin
 
     Drive -> bronze-raw bucket + MongoDB raw_documents (Bronze) -> library_documents (+ import_jobs)
 
-Files are fetched again only when their Drive checksum changes.
+Files are fetched again only when their Drive checksum changes. A file bundling many exams is also cut into
+one document per exam (use_cases/library_split.py).
 """
 
 import hashlib
@@ -22,10 +23,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.storage import Storage
-from app.models import Difficulty, ImportJob, JobStatus, LibraryDocument, LibraryKind, LibraryStatus
+from app.models import Category, Difficulty, ImportJob, JobStatus, LibraryDocument, LibraryKind, LibraryStatus
 from app.pipeline.adapters.drive import Drive, DriveBlocked, DriveError
 from app.pipeline.domain.models import RawDocument, doc_id
 from app.pipeline.ports import RawStore
+from app.pipeline.use_cases.library_split import split_document
 from app.pipeline.use_cases.toc import ensure_path
 
 log = logging.getLogger(__name__)
@@ -97,8 +99,9 @@ async def sync_drive(
     store: RawStore,
     storage: Storage,
     max_files: int | None = None,
+    soffice: str = "soffice",
 ) -> dict[str, int]:
-    stats = {"new": 0, "updated": 0, "unchanged": 0, "skipped": 0, "failed": 0, "import_jobs": 0}
+    stats = {"new": 0, "updated": 0, "unchanged": 0, "skipped": 0, "failed": 0, "import_jobs": 0, "split_parts": 0}
     budget = max_files or source.max_files
     rules = {_key(rule.folder): rule for rule in source.include}
     for top in await drive.children(source.folder_id):
@@ -156,23 +159,40 @@ async def sync_drive(
             stats["updated" if existing else "new"] += 1
             where = unicodedata.normalize("NFC", " / ".join([*path, file.name]))
             target = next((t for t in rule.targets if re.search(t.match, where, re.I)), None)
+            if target:
+                doc.category_id = (await ensure_path(session, target.category)).id
+            await session.flush()
+            # A bundle of many exams becomes one document (and one AI import) per exam.
+            parts = await split_document(session, doc, data, bronze, soffice)
+            stats["split_parts"] += len(parts)
             if target and ext in IMPORTABLE and doc.import_job_id is None:
-                category = await ensure_path(session, target.category)
-                doc.category_id = category.id
-                raw_key = f"raw/drive-{file.id}{ext}"
-                await storage.put(raw_key, data, mime)
-                job = ImportJob(
-                    original_filename=file.name[:300],
-                    stored_path=raw_key,
-                    status=JobStatus.QUEUED,
-                    stage=f"Thư viện: {source.name}",
-                    root_id=category.root_id,
-                    category_id=category.id,
-                    default_difficulty=Difficulty.UNDERSTANDING,
-                )
-                session.add(job)
-                await session.flush()
-                doc.import_job_id = job.id
-                stats["import_jobs"] += 1
+                stage = f"Thư viện: {source.name}"
+                pieces = [(f"{doc.title} – {c.title}.pdf", c, part, ".pdf") for c, part in parts]
+                for name, holder, payload, suffix in pieces or [(file.name, doc, data, ext)]:
+                    job = await queue_import(session, storage, name, payload, suffix, holder.category_id, stage)
+                    holder.import_job_id = job.id
+                    doc.import_job_id = doc.import_job_id or job.id
+                    stats["import_jobs"] += 1
             await session.commit()
     return stats
+
+
+async def queue_import(
+    session: AsyncSession, storage, name: str, data: bytes, ext: str, category_id: int, stage: str
+) -> ImportJob:
+    """Hand a file to the AI exam import (the worker turns it into questions under this category)."""
+    category = await session.get(Category, category_id)
+    raw_key = f"raw/library-{hashlib.sha256(data).hexdigest()[:24]}{ext}"
+    await storage.put(raw_key, data, "application/pdf" if ext == ".pdf" else "application/octet-stream")
+    job = ImportJob(
+        original_filename=name[:300],
+        stored_path=raw_key,
+        status=JobStatus.QUEUED,
+        stage=stage,
+        root_id=category.root_id,
+        category_id=category.id,
+        default_difficulty=Difficulty.UNDERSTANDING,
+    )
+    session.add(job)
+    await session.flush()
+    return job
