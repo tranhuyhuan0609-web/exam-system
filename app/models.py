@@ -26,6 +26,7 @@ from app.db import Base
 class UserRole(StrEnum):
     ADMIN = "ADMIN"
     STUDENT = "STUDENT"
+    TEACHER = "TEACHER"  # creates private scheduled tests while their Pro plan is active
 
 
 class Difficulty(StrEnum):
@@ -62,6 +63,7 @@ class ExamMode(StrEnum):
 class ExamVisibility(StrEnum):
     PUBLIC = "PUBLIC"  # listed on the site once published
     PERSONAL = "PERSONAL"  # a quiz a student built for themself; only its owner (created_by) sees it
+    PRIVATE = "PRIVATE"  # a teacher's test: never listed, students join with the link + access code
 
 
 class JobStatus(StrEnum):
@@ -107,8 +109,16 @@ class User(TimestampMixin, Base):
     full_name: Mapped[str] = mapped_column(String(200))
     role: Mapped[UserRole] = mapped_column(_enum(UserRole, "user_role"), default=UserRole.STUDENT)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # Teacher Pro plan: active while pro_until is in the future (set by an admin).
+    pro_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pro_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (CheckConstraint("email = lower(email)", name="ck_users_email_lowercase"),)
+
+    def has_pro(self, now: datetime) -> bool:
+        return self.role == UserRole.ADMIN or (
+            self.role == UserRole.TEACHER and self.pro_until is not None and self.pro_until > now
+        )
 
 
 class Category(TimestampMixin, Base):
@@ -206,6 +216,9 @@ class Exam(TimestampMixin, UpdatedAtMixin, Base):
         index=True,
     )
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    # PRIVATE tests: the link carries access_token; students also type access_code.
+    access_token: Mapped[str | None] = mapped_column(String(32), unique=True)
+    access_code: Mapped[str | None] = mapped_column(String(12))
 
     __table_args__ = (
         CheckConstraint("duration_seconds > 0", name="ck_exams_duration_positive"),
@@ -219,6 +232,16 @@ class ExamQuestion(Base):
     exam_id: Mapped[int] = mapped_column(ForeignKey("exams.id", ondelete="CASCADE"), primary_key=True)
     question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="RESTRICT"), primary_key=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ExamEnrollment(Base):
+    """A student who opened a private test's link and entered its code."""
+
+    __tablename__ = "exam_enrollments"
+
+    exam_id: Mapped[int] = mapped_column(ForeignKey("exams.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class ExamAttempt(Base):

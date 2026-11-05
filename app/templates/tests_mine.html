@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Bài kiểm tra · Exam System{% endblock %}
+{% block content %}
+<h1>Bài kiểm tra</h1>
+<p class="muted">Các bài kiểm tra giáo viên giao mà bạn đã vào bằng mã. Muốn vào bài mới, hãy mở link giáo viên gửi.</p>
+{% for t in tests %}
+  {% set st = status_of(t) %}
+  {% set a = attempts.get(t.id) %}
+  <div class="card practice-row">
+    <div>
+      <h3><a href="/k/{{ t.access_token }}">{{ t.title }}</a></h3>
+      <div class="exam-facts small">
+        <span>🟢 {{ t.available_from | local_dt }}</span><span>🔴 {{ t.available_until | local_dt }}</span><span>⏱ {{ t.duration_seconds // 60 }} phút</span>
+      </div>
+      <span class="badge {{ {'OPEN': 'badge-ok', 'UPCOMING': 'badge-warn'}.get(st, '') }}">{{ STATUS_LABELS[st] }}</span>
+      {% if a and a.status == "SUBMITTED" %}
+        <span class="badge">Đã nộp{% if st == "CLOSED" and a.score is not none %} · {{ "%g" % a.score }}đ{% endif %}</span>
+      {% elif a %}<span class="badge badge-warn">Đang làm</span>
+      {% elif st == "CLOSED" %}<span class="badge">Không làm</span>{% endif %}
+    </div>
+    <div class="practice-actions">
+      {% if a and a.status == "SUBMITTED" and st == "CLOSED" %}
+        <a class="btn btn-small" href="/attempts/{{ a.id }}/result">Xem kết quả</a>
+      {% elif st != "CLOSED" %}
+        <a class="btn btn-small" href="/k/{{ t.access_token }}">{{ "Tiếp tục" if a else "Vào bài" }}</a>
+      {% endif %}
+    </div>
+  </div>
+{% else %}
+  <div class="card muted">Bạn chưa vào bài kiểm tra nào. Mở link giáo viên gửi rồi nhập mã truy cập.</div>
+{% endfor %}
+{% endblock %}

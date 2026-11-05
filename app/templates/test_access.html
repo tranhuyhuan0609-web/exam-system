@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}{{ exam.title }} · Bài kiểm tra{% endblock %}
+{% block content %}
+<div class="card narrow access-card">
+  <div class="muted small">Bài kiểm tra{% if teacher %} của giáo viên <strong>{{ teacher.full_name }}</strong>{% endif %}</div>
+  <h1>{{ exam.title }}</h1>
+  <div class="exam-facts">
+    <span>📝 {{ question_count }} câu</span>
+    <span>⏱ {{ exam.duration_seconds // 60 }} phút</span>
+    <span>🔁 1 lượt</span>
+  </div>
+  <p class="small">🟢 Mở: <strong>{{ exam.available_from | local_dt }}</strong> · 🔴 Đóng: <strong>{{ exam.available_until | local_dt }}</strong></p>
+
+  {% if is_owner %}
+    <div class="flash flash-info">Bạn là người tạo bài này. <a href="/teacher/tests/{{ exam.id }}">Xem kết quả →</a></div>
+  {% elif not joined %}
+    {% if status == "CLOSED" %}
+      <p class="alert">Bài kiểm tra đã đóng.</p>
+    {% else %}
+      <form method="post" action="/k/{{ exam.access_token }}/join" class="code-form">
+        <label>Nhập mã truy cập giáo viên gửi
+          <input name="code" required maxlength="12" autocomplete="off" autocapitalize="characters" class="code-input" autofocus placeholder="6 ký tự">
+        </label>
+        <button class="btn">Vào bài</button>
+      </form>
+    {% endif %}
+  {% elif running %}
+    <a class="btn" href="/attempts/{{ running.id }}">▶ Tiếp tục làm bài</a>
+  {% elif attempt %}
+    <p><span class="badge badge-ok">Bạn đã nộp bài lúc {{ attempt.submitted_at | local_dt }}</span></p>
+    <a class="btn btn-outline" href="/attempts/{{ attempt.id }}/result">{{ "Xem kết quả và lời giải" if status == "CLOSED" else "Xem trạng thái bài" }}</a>
+  {% elif status == "UPCOMING" %}
+    <div class="countdown" id="countdown" data-seconds="{{ seconds_to_open | int }}">
+      <div class="muted">Bài mở sau</div>
+      <div class="countdown-value" id="countdown-value">--:--</div>
+    </div>
+    <p class="hint">Trang tự mở nút “Bắt đầu” khi đến giờ. Đồng hồ làm bài bắt đầu chạy khi bạn bấm.</p>
+    <form method="post" action="/k/{{ exam.access_token }}/start" id="start-form" hidden>
+      <button class="btn">▶ Bắt đầu làm bài</button>
+    </form>
+    <script>
+      (() => {
+        const box = document.getElementById("countdown");
+        const value = document.getElementById("countdown-value");
+        const end = Date.now() + Number(box.dataset.seconds) * 1000;
+        const pad = (n) => String(n).padStart(2, "0");
+        function tick() {
+          const left = Math.max(0, Math.round((end - Date.now()) / 1000));
+          const d = Math.floor(left / 86400), h = Math.floor(left % 86400 / 3600), m = Math.floor(left % 3600 / 60), s = left % 60;
+          value.textContent = (d ? `${d} ngày ` : "") + `${pad(h)}:${pad(m)}:${pad(s)}`;
+          if (!left) { box.hidden = true; document.getElementById("start-form").hidden = false; return; }
+          setTimeout(tick, 1000);
+        }
+        tick();
+      })();
+    </script>
+  {% elif status == "OPEN" %}
+    <form method="post" action="/k/{{ exam.access_token }}/start">
+      <button class="btn">▶ Bắt đầu làm bài</button>
+    </form>
+    <p class="hint">Đồng hồ chạy ngay khi bạn bấm và không dừng khi đóng trang. Bài bị thu lúc {{ exam.available_until | local_dt("%H:%M") }} dù còn thời gian.</p>
+  {% else %}
+    <p class="alert">Bài kiểm tra đã đóng — bạn không làm bài này.</p>
+  {% endif %}
+</div>
+{% endblock %}

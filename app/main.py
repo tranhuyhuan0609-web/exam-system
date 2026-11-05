@@ -13,7 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.config import get_settings
 from app.db import SessionLocal
 from app.deps import LoginRequired, SessionDep, get_current_user
-from app.routers import admin, auth, student
+from app.routers import admin, auth, student, teacher
 from app.templating import templates
 
 settings = get_settings()
@@ -35,6 +35,7 @@ if settings.storage_backend == "local":
     app.mount("/media/figures", StaticFiles(directory=_figures), name="figures")
 
 app.include_router(student.router)
+app.include_router(teacher.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
 

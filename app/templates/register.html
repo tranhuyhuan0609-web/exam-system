@@ -2,9 +2,15 @@
 {% block title %}Đăng ký · Exam System{% endblock %}
 {% block content %}
 <div class="card narrow">
-  <h1>Tạo tài khoản học sinh</h1>
+  <h1>Tạo tài khoản</h1>
   {% if error %}<div class="alert">{{ error }}</div>{% endif %}
   <form method="post" action="/register">
+    <fieldset class="account-type">
+      <legend>Bạn là</legend>
+      <label class="check"><input type="radio" name="account_type" value="STUDENT" {{ 'checked' if form.account_type != 'TEACHER' }}> Học sinh</label>
+      <label class="check"><input type="radio" name="account_type" value="TEACHER" {{ 'checked' if form.account_type == 'TEACHER' }}> Giáo viên
+        <span class="muted small">(tạo bài kiểm tra riêng cho lớp — cần gói Pro)</span></label>
+    </fieldset>
     <label>Họ và tên
       <input name="full_name" value="{{ form.full_name or '' }}" required maxlength="200" autofocus autocomplete="name">
     </label>

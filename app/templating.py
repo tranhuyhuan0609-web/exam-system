@@ -13,7 +13,9 @@ _FLASH_KEY = "_flash"
 
 def flash(request: Request, message: str, kind: str = "success") -> None:
     """Queue a one-time message shown on the next rendered page (kind: success | error)."""
-    request.session.setdefault(_FLASH_KEY, []).append([kind, message])
+    # Assign a new list: mutating the stored one in place is not seen as a change, so the cookie would
+    # not be rewritten and a second queued message would be lost.
+    request.session[_FLASH_KEY] = [*request.session.get(_FLASH_KEY, []), [kind, message]]
 
 
 def _flash_context(request: Request) -> dict:
@@ -52,5 +54,7 @@ def _duration(seconds: int) -> str:
 
 
 templates.env.filters["local_dt"] = _local_dt
+templates.env.filters["local_input"] = lambda v: _local_dt(v, "%Y-%m-%dT%H:%M")  # <input type=datetime-local>
+templates.env.globals["ROLE_LABELS"] = {"ADMIN": "Admin", "TEACHER": "Giáo viên", "STUDENT": "Học sinh"}
 templates.env.globals["media_url"] = media_url
 templates.env.filters["duration"] = _duration

@@ -15,7 +15,7 @@ router = APIRouter()
 
 
 def _home_for(user: User) -> str:
-    return "/admin" if user.role == UserRole.ADMIN else "/"
+    return {UserRole.ADMIN: "/admin", UserRole.TEACHER: "/teacher"}.get(user.role, "/")
 
 
 def _log_in(request: Request, user: User) -> None:
@@ -67,8 +67,10 @@ async def register(
     email: Annotated[str, Form()],
     password: Annotated[str, Form()],
     password_confirm: Annotated[str, Form()],
+    account_type: Annotated[str, Form()] = "STUDENT",
 ):
-    form = {"full_name": full_name, "email": email}
+    role = UserRole.TEACHER if account_type == "TEACHER" else UserRole.STUDENT
+    form = {"full_name": full_name, "email": email, "account_type": role.value}
 
     def fail(message: str):
         return templates.TemplateResponse(
@@ -93,7 +95,7 @@ async def register(
     if await session.scalar(select(User.id).where(User.email == email)):
         return fail("Email này đã được đăng ký.")
 
-    user = User(email=email, full_name=full_name, password_hash=hash_password(password), role=UserRole.STUDENT)
+    user = User(email=email, full_name=full_name, password_hash=hash_password(password), role=role)
     session.add(user)
     try:
         await session.commit()
@@ -102,7 +104,7 @@ async def register(
         return fail("Email này đã được đăng ký.")
 
     _log_in(request, user)
-    return RedirectResponse("/", status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(_home_for(user), status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/logout")
