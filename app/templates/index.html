@@ -2,14 +2,7 @@
 {% block content %}
 {% if user %}
   <h1>Xin chào, {{ user.full_name }} 👋</h1>
-  <p class="muted">Bạn đang đăng nhập bằng <strong>{{ user.email }}</strong>.</p>
-  <div class="card">
-    <h2>Đề luyện tập</h2>
-    <p class="muted">Danh sách đề theo chương/bài sẽ xuất hiện ở đây (Phần 3).</p>
-  </div>
-  {% if user.role == "ADMIN" %}
-    <p><a class="btn" href="/admin">Vào trang quản trị →</a></p>
-  {% endif %}
+  <p class="muted">Chọn một đề để luyện tập. Mỗi lần bấm “Bắt đầu” sẽ tính giờ riêng cho bạn.</p>
 {% else %}
   <section class="hero">
     <h1>Tự luyện thi trắc nghiệm theo chương, theo bài</h1>
@@ -19,5 +12,33 @@
       <a class="btn btn-outline" href="/login">Đăng nhập</a>
     </p>
   </section>
+{% endif %}
+
+{% for subject, exams in groups %}
+  <h2 class="subject-title">{{ subject.name }}</h2>
+  <div class="exam-grid">
+    {% for exam in exams %}
+      <a class="card exam-card" href="/exams/{{ exam.id }}">
+        <div class="muted small">{{ scope_paths.get(scope_of(exam).key, '') }}</div>
+        <h3>{{ exam.title }}</h3>
+        <div class="exam-facts small">
+          <span>📝 {{ question_counts.get(exam.id, 0) }} câu</span>
+          <span>⏱ {{ exam.duration_seconds | duration }}</span>
+          <span>🔁 {{ exam.max_attempts ~ " lượt" if exam.max_attempts else "Không giới hạn" }}</span>
+        </div>
+        {% if active.get(exam.id) %}
+          <span class="badge badge-warn">Đang làm dở</span>
+        {% elif my_attempts.get(exam.id) %}
+          <span class="badge">Đã làm {{ my_attempts[exam.id] }} lần</span>
+        {% endif %}
+      </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="card muted">Chưa có đề luyện tập nào được công khai.</div>
+{% endfor %}
+
+{% if user and user.role == "ADMIN" %}
+  <p class="mt"><a class="btn btn-outline" href="/admin">Vào trang quản trị →</a></p>
 {% endif %}
 {% endblock %}

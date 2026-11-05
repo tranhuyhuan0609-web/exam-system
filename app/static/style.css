@@ -151,3 +151,34 @@ pre.sample { background: #f8fafc; border: 1px solid var(--border); border-radius
 .question.has-error { border-color: #fca5a5; background: #fffafa; }
 .q-errors { color: var(--danger); margin: 4px 0 8px; padding-left: 20px; font-size: .9rem; }
 .confirm-bar { position: sticky; top: 0; z-index: 5; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; box-shadow: 0 2px 8px rgba(0,0,0,.05); }
+
+/* ---------- Part 3: student ---------- */
+.subject-title { margin: 28px 0 12px; }
+.exam-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.exam-card { color: var(--text); display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.exam-card:hover { text-decoration: none; border-color: var(--primary); }
+.exam-card h3 { margin: 0; }
+.exam-facts { display: flex; gap: 12px; flex-wrap: wrap; color: var(--muted); }
+.exam-card .badge { align-self: flex-start; }
+.exam-intro h1 { margin-top: 4px; }
+
+.attempt-bar { position: sticky; top: 0; z-index: 10; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 20px; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+.timer { font-variant-numeric: tabular-nums; font-size: 1.6rem; font-weight: 700; padding: 4px 14px; border-radius: 8px; background: #eff6ff; color: var(--primary); min-width: 110px; text-align: center; }
+.timer.warn { background: #fef3c7; color: #92400e; }
+.timer.danger { background: var(--danger-bg); color: var(--danger); animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: .6; } }
+.progress-text { color: var(--muted); }
+
+.question-card { scroll-margin-top: 90px; }
+.q-number { font-weight: 700; color: var(--primary); margin-bottom: 6px; }
+.choice-list { display: grid; gap: 8px; margin-top: 12px; }
+.choice { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-weight: 400; margin: 0; }
+.choice:hover { border-color: var(--primary); background: #f8fbff; }
+.choice:has(input:checked) { border-color: var(--primary); background: #eff6ff; }
+.choice input { width: auto; margin: 3px 0 0; }
+.choice-text { white-space: pre-wrap; }
+.locked .choice { cursor: not-allowed; opacity: .75; }
+
+.palette { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.palette button { padding: 8px 0; border: 1px solid var(--border); background: #fff; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.palette button.answered { background: #16a34a; border-color: #16a34a; color: #fff; }

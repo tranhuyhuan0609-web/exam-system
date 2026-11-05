@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import Request
@@ -24,3 +25,19 @@ templates.env.globals["DIFFICULTY_LABELS"] = {
     Difficulty.UNDERSTANDING: "Thông hiểu",
     Difficulty.APPLICATION: "Vận dụng",
 }
+
+# Vietnam has no DST, so a fixed UTC+7 offset is exact.
+DISPLAY_TZ = timezone(timedelta(hours=7))
+
+
+def _local_dt(value: datetime | None, fmt: str = "%H:%M %d/%m/%Y") -> str:
+    return value.astimezone(DISPLAY_TZ).strftime(fmt) if value else ""
+
+
+def _duration(seconds: int) -> str:
+    minutes, secs = divmod(int(seconds), 60)
+    return f"{minutes} phút" + (f" {secs} giây" if secs else "")
+
+
+templates.env.filters["local_dt"] = _local_dt
+templates.env.filters["duration"] = _duration

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ exam.title }} · Exam System{% endblock %}
+{% block content %}
+<p class="muted"><a href="/">← Danh sách đề</a></p>
+
+<div class="card exam-intro">
+  <div class="muted small">{{ scope_path }}</div>
+  <h1>{{ exam.title }}
+    {% if not exam.is_published %}<span class="badge">Nháp (chỉ admin thấy)</span>{% endif %}
+  </h1>
+  {% if exam.description %}<p>{{ exam.description }}</p>{% endif %}
+
+  <div class="stats">
+    <div class="stat"><div class="stat-num">{{ question_count }}</div><div class="muted">Câu hỏi</div></div>
+    <div class="stat"><div class="stat-num">{{ exam.duration_seconds // 60 }}</div><div class="muted">Phút</div></div>
+    <div class="stat"><div class="stat-num">{{ attempts | length }}<span class="muted small"> / {{ exam.max_attempts or "∞" }}</span></div><div class="muted">Lượt đã làm</div></div>
+  </div>
+
+  {% if not user %}
+    <a class="btn" href="/login?next=/exams/{{ exam.id }}">Đăng nhập để làm bài</a>
+  {% elif current %}
+    <form method="post" action="/exams/{{ exam.id }}/start">
+      <button class="btn">Tiếp tục làm bài (còn {{ (current_remaining // 60) | int }} phút)</button>
+    </form>
+  {% elif limit_reached %}
+    <button class="btn" disabled>Đã hết lượt làm bài</button>
+  {% else %}
+    <form method="post" action="/exams/{{ exam.id }}/start">
+      <button class="btn">▶ Bắt đầu làm bài</button>
+    </form>
+    <p class="hint mt">Đồng hồ {{ exam.duration_seconds | duration }} bắt đầu chạy ngay khi bạn bấm và không dừng lại khi đóng trang.</p>
+  {% endif %}
+</div>
+
+{% if attempts %}
+<div class="card">
+  <h2>Lịch sử làm bài</h2>
+  <table class="table">
+    <thead><tr><th>Lần</th><th>Bắt đầu</th><th>Trạng thái</th><th class="num">Điểm</th></tr></thead>
+    <tbody>
+    {% for a in attempts %}
+      <tr>
+        <td>#{{ a.attempt_no }}</td>
+        <td>{{ a.started_at | local_dt }}</td>
+        <td>
+          {% if a.status == "SUBMITTED" %}<span class="badge badge-ok">Đã nộp</span>
+          {% elif a.expires_at > now %}<a href="/attempts/{{ a.id }}" class="badge badge-warn">Đang làm</a>
+          {% else %}<span class="badge">Hết giờ, chờ chấm</span>{% endif %}
+        </td>
+        <td class="num">{{ a.score if a.score is not none else "—" }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}
