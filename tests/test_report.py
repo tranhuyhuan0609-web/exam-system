@@ -69,12 +69,13 @@ def test_flags_are_autosaved_restored_and_kept_after_submit(started, db):
     assert db(lambda s: s.get(ExamAttempt, attempt_id)).flags == [str(q4)]
 
 
-def test_report_shows_overview_difficulty_topics_and_hidden_solutions(started, db):
+def test_dashboard_then_solutions_page(started, db):
     client, attempt_id, (q1, q2, q3, q4) = started
     # Lesson questions right, chapter-only questions: one wrong, one blank. Flag question 3.
     answers = {str(q1): "1a", str(q2): "2a", str(q3): "3b"}
     client.post(f"/api/attempts/{attempt_id}/submit", json={"answers": answers, "flags": [str(q3)]})
     db(lambda s: s.execute(update(ExamAttempt).values(submitted_at=ExamAttempt.started_at + timedelta(seconds=200))))
+
     page = client.get(f"/attempts/{attempt_id}/result").text
     # Overview: rank for 5.0 / 10, time vs allowed, pace.
     assert "rank-average" in page and ">Trung bình<" in page
@@ -85,12 +86,16 @@ def test_report_shows_overview_difficulty_topics_and_hidden_solutions(started, d
     # Topic mastery: the chapter-only questions are the weak topic.
     weak = page.split("weak-note", 1)[1].split("</p>", 1)[0]
     assert "Hổng kiến thức" in weak and "Chương 2" in weak and "Định luật Boyle" not in weak
-    assert 'data-tip="Định luật Boyle: đúng 2/2 câu (100%)"' in page
-    # Review: filters, flags, and solutions/answer key hidden behind the button.
-    assert 'data-filter="wrong">Câu sai (1)' in page and 'data-filter="unanswered">Bỏ trống (1)' in page
-    assert "🚩 Phân vân (1)" in page and "🚩 Em phân vân" in page
-    assert page.count("📖 Xem lời giải chi tiết") == 4 and page.count("← Quay lại") == 4
-    assert 'class="choice-tag ok reveal-only">Đáp án đúng' in page
+    # The dashboard shows no question details, only the answer sheet linking to the solutions page.
+    assert "Đáp án đúng" not in page and "question-card" not in page
+    assert f'href="/attempts/{attempt_id}/solutions#r-3"' in page and "📖 Xem lời giải chi tiết" in page
+
+    solutions = client.get(f"/attempts/{attempt_id}/solutions").text
+    assert f'href="/attempts/{attempt_id}/result"' in solutions and "← Quay lại báo cáo" in solutions
+    assert 'data-filter="wrong">Câu sai (1)' in solutions and 'data-filter="unanswered">Bỏ trống (1)' in solutions
+    assert "🚩 Phân vân (1)" in solutions and "🚩 Em phân vân" in solutions
+    assert solutions.count("question-card review-") == 4
+    assert "reveal-only" not in solutions and "Đáp án đúng" in solutions  # everything visible here
 
 
 def test_question_times_are_saved_and_power_the_slowest_filter(started, db):
@@ -105,7 +110,7 @@ def test_question_times_are_saved_and_power_the_slowest_filter(started, db):
     client.post(f"/api/attempts/{attempt_id}/submit", json={"answers": {}, "times": times})
     attempt = db(lambda s: s.get(ExamAttempt, attempt_id))
     assert attempt.question_times[str(q4)] == 630  # 10 minutes + 30 s grace
-    page = client.get(f"/attempts/{attempt_id}/result").text
+    page = client.get(f"/attempts/{attempt_id}/solutions").text
     assert "🐢 Làm chậm nhất (1)" in page  # slowest quarter of 4 questions
     assert "⏱ 2 phút 10 giây" in page and "⏱ 12 giây" in page
 

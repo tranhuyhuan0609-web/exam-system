@@ -56,8 +56,11 @@ def test_submit_grades_and_result_page_shows_answers_and_explanations(student, d
     page = student.get(data["result_url"])
     assert page.status_code == 200
     assert "3.33" in page.text
-    assert "LOI_GIAI_BI_MAT_2" in page.text  # explanations are revealed only after submitting
-    assert "Đáp án đúng" in page.text
+    # The dashboard shows no answers; the solutions page (opened from it) does.
+    assert "LOI_GIAI_BI_MAT_2" not in page.text and f"/attempts/{attempt_id}/solutions" in page.text
+    solutions = student.get(f"/attempts/{attempt_id}/solutions")
+    assert "LOI_GIAI_BI_MAT_2" in solutions.text  # explanations are revealed only after submitting
+    assert "Đáp án đúng" in solutions.text
 
     # The taking page now redirects to the result.
     r = student.get(f"/attempts/{attempt_id}", follow_redirects=False)

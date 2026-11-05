@@ -183,13 +183,13 @@ async def attempt_page(request: Request, user: LoggedInUser, session: SessionDep
     )
 
 
-@router.get("/attempts/{attempt_id}/result")
-async def attempt_result(request: Request, user: LoggedInUser, session: SessionDep, attempt_id: int):
+async def _result_context(session, user: User, attempt_id: int) -> dict[str, Any] | None:
+    """Data shared by the report dashboard and the solutions page; None while the attempt is running."""
     attempt = await _own_attempt(session, attempt_id, user)
     await finalize_expired(session, user.id, attempt.exam_id)
     await session.refresh(attempt)
     if attempt.status != AttemptStatus.SUBMITTED:  # still running: answers must stay hidden
-        return redirect(f"/attempts/{attempt_id}")
+        return None
     exam = await session.get(Exam, attempt.exam_id)
     used = await session.scalar(
         select(func.count())
@@ -203,26 +203,37 @@ async def attempt_result(request: Request, user: LoggedInUser, session: SessionD
         row["flagged"] = str(q["id"]) in flagged
         row["seconds"] = times.get(str(q["id"]))
     report = await build_report(session, attempt, rows)
-    return templates.TemplateResponse(
-        request,
-        "result.html",
-        {
-            "user": user,
-            "attempt": attempt,
-            "exam": exam,
-            "rows": rows,
-            "report": report,
-            "slowest": set(report.slowest),
-            "flagged_count": len(flagged),
-            "unanswered": sum(r["status"] == "unanswered" for r in rows),
-            "time_spent": int((attempt.submitted_at - attempt.started_at).total_seconds()),
-            "grading_pending": attempt.grading_status == GradingStatus.PENDING_AI,
-            "grading_failed": attempt.grading_status == GradingStatus.FAILED,
-            "chosen_parts": (attempt.paper_snapshot or {}).get("parts"),
-            "can_retry": exam.is_published and (exam.max_attempts is None or used < exam.max_attempts),
-        },
-        headers=NO_STORE,
-    )
+    return {
+        "user": user,
+        "attempt": attempt,
+        "exam": exam,
+        "rows": rows,
+        "report": report,
+        "slowest": set(report.slowest),
+        "flagged_count": len(flagged),
+        "grading_pending": attempt.grading_status == GradingStatus.PENDING_AI,
+        "grading_failed": attempt.grading_status == GradingStatus.FAILED,
+        "chosen_parts": (attempt.paper_snapshot or {}).get("parts"),
+        "can_retry": exam.is_published and (exam.max_attempts is None or used < exam.max_attempts),
+    }
+
+
+@router.get("/attempts/{attempt_id}/result")
+async def attempt_result(request: Request, user: LoggedInUser, session: SessionDep, attempt_id: int):
+    """Report dashboard shown right after submitting."""
+    context = await _result_context(session, user, attempt_id)
+    if context is None:
+        return redirect(f"/attempts/{attempt_id}")
+    return templates.TemplateResponse(request, "result.html", context, headers=NO_STORE)
+
+
+@router.get("/attempts/{attempt_id}/solutions")
+async def attempt_solutions(request: Request, user: LoggedInUser, session: SessionDep, attempt_id: int):
+    """Detailed solutions, opened from the dashboard: answers, answer keys and worked solutions."""
+    context = await _result_context(session, user, attempt_id)
+    if context is None:
+        return redirect(f"/attempts/{attempt_id}")
+    return templates.TemplateResponse(request, "solutions.html", context, headers=NO_STORE)
 
 
 @router.get("/api/attempts/{attempt_id}/paper")
