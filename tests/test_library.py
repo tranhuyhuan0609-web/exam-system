@@ -155,3 +155,17 @@ def test_admin_reviews_and_restricts_downloads(admin_client, make_user, db, libr
     assert teacher.get(f"/library/{doc_id}/view").status_code == 200
     assert teacher.get(f"/library/{library['Đề Toán mã 101']}/download").status_code == 403
     assert "Tải về" not in teacher.get("/library", params={"folder": f"{EXAMS}/Môn Toán"}).text
+
+
+def test_drive_sync_stops_when_google_blocks_automated_downloads(db):
+    from app.pipeline.adapters.drive import DriveBlocked
+
+    class BlockedDrive(FakeDrive):
+        async def download(self, file):
+            self.downloads.append(file.id)
+            raise DriveBlocked("sorry")
+
+    drive = BlockedDrive()
+    stats, _ = _sync(db, drive)
+    assert stats["blocked"] == 1 and len(drive.downloads) == 1  # no hammering after the first refusal
+    assert db(lambda s: s.scalar(select(func.count()).select_from(LibraryDocument))) == 0

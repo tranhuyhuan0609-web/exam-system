@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.storage import Storage
 from app.models import Difficulty, ImportJob, JobStatus, LibraryDocument, LibraryKind, LibraryStatus
-from app.pipeline.adapters.drive import Drive, DriveError
+from app.pipeline.adapters.drive import Drive, DriveBlocked, DriveError
 from app.pipeline.domain.models import RawDocument, doc_id
 from app.pipeline.ports import RawStore
 from app.pipeline.use_cases.toc import ensure_path
@@ -119,6 +119,10 @@ async def sync_drive(
             budget -= 1
             try:
                 data, mime = await drive.download(file)
+            except DriveBlocked as exc:  # Google asks automated traffic to stop: stop; the next run resumes
+                log.warning("Drive sync paused: %s", exc)
+                stats["blocked"] = 1
+                return stats
             except (DriveError, OSError) as exc:
                 log.warning("Drive file %s failed: %s", file.name, exc)
                 stats["failed"] += 1

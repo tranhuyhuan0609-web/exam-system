@@ -13,6 +13,16 @@ EXPORTS = {  # Google-native files are exported
     "application/vnd.google-apps.presentation": "application/pdf",
 }
 MAX_BYTES = 60 * 1024 * 1024
+RATE_LIMITED = {"userRateLimitExceeded", "rateLimitExceeded"}  # not downloadQuotaExceeded: daily, per file
+
+
+def _reason(response: httpx.Response) -> str:
+    if response.status_code < 400:
+        return ""
+    try:
+        return response.json()["error"]["errors"][0]["reason"]
+    except (ValueError, KeyError, IndexError, TypeError):
+        return " ".join(response.text[:120].split())
 
 
 @dataclass
@@ -32,6 +42,10 @@ class DriveError(Exception):
     pass
 
 
+class DriveBlocked(DriveError):
+    """Google's "Sorry…" page: this IP sent too many requests. Stop and try again hours later."""
+
+
 class Drive(Protocol):
     async def children(self, folder_id: str) -> list[DriveFile]: ...
 
@@ -39,19 +53,32 @@ class Drive(Protocol):
 
 
 class DriveClient:
-    def __init__(self, api_key: str, delay: float = 0.3, timeout: float = 120):
+    def __init__(self, api_key: str, delay: float = 1.0, timeout: float = 120):
         if not api_key:
             raise DriveError("Chưa cấu hình GOOGLE_DRIVE_API_KEY (Google Cloud → APIs & Services → Credentials).")
         self._key, self._delay = api_key, delay
-        self._client = httpx.AsyncClient(timeout=timeout, follow_redirects=True)
+        # Key in a header, never in the URL: request URLs end up in logs.
+        self._client = httpx.AsyncClient(timeout=timeout, follow_redirects=True, headers={"x-goog-api-key": api_key})
 
     async def _get(self, url: str, params: dict) -> httpx.Response:
-        await asyncio.sleep(self._delay)  # gentle with a shared folder
-        response = await self._client.get(url, params={**params, "key": self._key})
-        if response.status_code in (403, 404):
-            raise DriveError(
-                f"Drive từ chối ({response.status_code}): thư mục / file không công khai hoặc API chưa bật."
-            )
+        for attempt in range(5):
+            await asyncio.sleep(self._delay)  # gentle with a shared folder
+            try:
+                response = await self._client.get(url, params=params)
+            except httpx.TransportError as error:  # dropped connection on a long download: try again
+                if attempt == 4:
+                    raise DriveError(f"Mạng lỗi khi tải từ Drive: {error!r}") from error
+                await asyncio.sleep(2**attempt * 3)
+                continue
+            reason = _reason(response)
+            if response.status_code == 429 or reason in RATE_LIMITED:
+                await asyncio.sleep(2**attempt * 5)  # Drive throttles bursts of downloads: back off and retry
+                continue
+            break
+        if response.status_code in (403, 429) and "<title>Sorry" in response.text[:400]:
+            raise DriveBlocked("Google tạm chặn tải tự động từ IP này; chạy lại sau vài giờ.")
+        if response.status_code in (403, 404, 429):
+            raise DriveError(f"Drive từ chối ({response.status_code} {reason}): file không công khai hoặc bị giới hạn.")
         response.raise_for_status()
         return response
 
