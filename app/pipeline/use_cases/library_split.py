@@ -1,7 +1,8 @@
 """Cut a library document that bundles many exams into one document per exam (see domain/exam_split.py).
 
 The parts are PDFs stored next to the original, listed in a folder named after it, and inherit its status,
-kind and download rights (an admin can still change each part). Word files are converted to PDF first.
+kind and download rights (an admin can still change each part). Word files are converted to PDF first;
+scanned pages are read with Tesseract OCR (header and footer only) when TESSDATA_DIR is set.
 """
 
 import asyncio
@@ -16,6 +17,7 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.normalize import NormalizeError, docx_to_pdf
+from app.config import get_settings
 from app.models import LibraryDocument
 from app.pipeline.domain.exam_split import Segment, find_exams
 
@@ -24,9 +26,29 @@ PDF = "application/pdf"
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
-def page_texts(pdf: bytes) -> list[str]:
+SCANNED = 30  # a page with fewer characters of text is a scan: read its header and footer with OCR
+HEAD, FOOT = 0.35, 0.08  # parts of the page height where the exam code and the page number are printed
+
+
+def _ocr(page: pymupdf.Page, clip: pymupdf.Rect, tessdata: str) -> str:
+    pixmap = page.get_pixmap(dpi=120, clip=clip)  # RGB: Tesseract reads nothing from a grey pixmap here
+    with pymupdf.open("pdf", pixmap.pdfocr_tobytes(language="vie", tessdata=tessdata)) as scanned:
+        return scanned[0].get_text("text")
+
+
+def page_texts(pdf: bytes, tessdata: str = "") -> list[str]:
+    """The text of every page; scanned pages are read with Tesseract (top and bottom only) when configured."""
+    texts = []
     with pymupdf.open(stream=pdf, filetype="pdf") as document:
-        return [page.get_text("text") for page in document]
+        for page in document:
+            text = page.get_text("text")
+            if tessdata and len(text.strip()) < SCANNED:
+                r = page.rect
+                head = _ocr(page, pymupdf.Rect(r.x0, r.y0, r.x1, r.y0 + r.height * HEAD), tessdata)
+                foot = _ocr(page, pymupdf.Rect(r.x0, r.y1 - r.height * FOOT, r.x1, r.y1), tessdata)
+                text = head + "\n" + foot
+            texts.append(text)
+    return texts
 
 
 def cut(pdf: bytes, segment: Segment) -> bytes:
@@ -58,7 +80,7 @@ async def split_document(
     if pdf is None:
         return []
     try:
-        segments = find_exams(await asyncio.to_thread(page_texts, pdf))
+        segments = find_exams(await asyncio.to_thread(page_texts, pdf, get_settings().tessdata_dir))
     except (RuntimeError, ValueError) as exc:  # damaged or encrypted PDF
         log.warning("Cannot read %s: %s", doc.title, exc)
         return []

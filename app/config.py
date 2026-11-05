@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     gemini_models: str = "gemini-3.5-flash,gemini-3.8-flash,gemini-3.6-flash"
     # LibreOffice binary used to turn .docx (MathType, Word shapes) into PDF.
     soffice_path: str = "soffice"
+    tessdata_dir: str = ""  # Tesseract language data (vie): enables OCR of scanned library PDFs
 
     # Question crawler (app/pipeline): Kafka carries raw pages, MongoDB keeps them (Bronze).
     kafka_bootstrap: str = "localhost:9092"

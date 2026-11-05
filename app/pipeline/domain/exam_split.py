@@ -15,11 +15,13 @@ from dataclasses import dataclass
 
 HEAD_LINES = 25  # markers are looked for near the top of the page only
 _SOLUTION = re.compile(r"đáp\s*án|hướng\s*dẫn\s*(?:giải|chấm)|lời\s*giải|giải\s*chi\s*tiết", re.IGNORECASE)
+# OCR of scans mixes up tone marks ("đềthị", "để", "sổ"): the patterns accept the usual confusions.
+_DE = r"đ[ềểếệễe]"
 _NUMBERED = re.compile(  # "đề số 5" anywhere, "Đề 5" only at the start of a line; never "mã đề 105"
-    r"(?<!mã\s)(?<!mã)\bđề\s*(?:thi\s*)?(?:thử\s*)?số\s*(?P<num>\d{1,3})\b|^\W*đề\s*(?P<bare>\d{1,3})\b",
+    rf"(?<!mã\s)(?<!mã)\b{_DE}\s*(?:th[iịí]\s*)?(?:thử\s*)?s[ốổố]\s*(?P<num>\d{{1,3}})\b|^\W*{_DE}\s*(?P<bare>\d{{1,3}})\b",
     re.IGNORECASE,
 )
-_CODE = re.compile(r"\bmã\s*đề(?:\s*thi)?\s*(?:số\s*)?[:.]?\s*(?P<num>\d{3,4})\b", re.IGNORECASE)
+_CODE = re.compile(rf"\bm[ãaạ]\s*{_DE}(?:\s*th[iịí])?\s*(?:s[ốổ]\s*)?[:.]?\s*(?P<num>\d{{3,4}})\b", re.IGNORECASE)
 _FIRST_PAGE = re.compile(r"\btrang\s*:?\s*0?1\s*(?:/\s*\d+|\.|$|\s*[-–])", re.IGNORECASE)
 
 

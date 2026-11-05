@@ -1,11 +1,13 @@
 """Cutting a bundle of exams (one PDF, many "Đề số…" / "Mã đề…") into one library document per exam."""
 
 import asyncio
+from pathlib import Path
 
 import pymupdf
 import pytest
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.infrastructure.storage import get_bronze_storage, get_storage
 from app.models import ImportJob, LibraryDocument, LibraryStatus
 from app.pipeline.adapters.drive import FOLDER, DriveFile
@@ -114,3 +116,24 @@ def test_admin_splits_a_stored_document_again(admin_client, db):
         "Đề số 1",
         "Đề số 2",
     ]
+
+
+def _scanned(texts: list[str]) -> bytes:
+    """Pages that are only pictures of text, like a scanned paper."""
+    with pymupdf.open() as text_pdf, pymupdf.open() as scan:
+        for text in texts:
+            page = text_pdf.new_page()
+            page.insert_htmlbox(pymupdf.Rect(60, 60, 540, 300), f"<p style='font-size:20px'>{text}</p>")
+            picture = page.get_pixmap(dpi=110)
+            scan.new_page(width=page.rect.width, height=page.rect.height).insert_image(page.rect, pixmap=picture)
+        return scan.tobytes()
+
+
+TESSDATA = get_settings().tessdata_dir
+
+
+@pytest.mark.skipif(not (TESSDATA and Path(TESSDATA, "vie.traineddata").exists()), reason="no Tesseract vie data")
+def test_scanned_papers_are_read_with_ocr():
+    pdf = _scanned(["KỲ THI TỐT NGHIỆP<br>Mã đề thi 101", "Câu 30", "KỲ THI TỐT NGHIỆP<br>Mã đề thi 102"])
+    assert find_exams(page_texts(pdf)) == []  # without OCR the pages carry no text at all
+    assert find_exams(page_texts(pdf, TESSDATA)) == [Segment("Mã đề 101", 0, 1), Segment("Mã đề 102", 2, 2)]
