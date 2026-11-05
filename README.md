@@ -110,6 +110,15 @@ Học sinh vào bất cứ lúc nào, chọn bài (VD: Vật lí 11 – Chương
 - [x] Lưu cấu trúc đề của lượt thi vào `paper_snapshot` (JSONB) để F5 không bị xáo lại
 - [x] Worker tự thu bài mỗi phút: bài quá hạn `expires_at` → `SUBMITTED`, chấm theo đáp án đã auto-save
 
+### Thu thập đề (data pipeline Medallion)
+- [x] Scrapy, một spider chung theo cấu hình `configs/sites/<site>.yaml` (vietjack, loigiaihay — Vật lí 11), tôn trọng robots.txt, 3 s/trang, bỏ qua trang đã tải trong `refresh_days`
+- [x] **Bronze**: HTML gốc trong MongoDB (`raw_documents`), file PDF/Word/ảnh gốc trong bucket `bronze-raw`; chỉ ID tài liệu đi qua Kafka `raw.exam.ingestion`; lỗi vào `raw.exam.ingestion.dlq` → MongoDB `dlq_events` (có `replay-dlq`)
+- [x] **Silver**: parser từng site (trắc nghiệm, đúng/sai, trả lời ngắn), MathML → LaTeX bằng code, tải mọi `<img>` về storage của mình, Gemini Flash chuẩn hoá công thức còn dạng chữ/ảnh và viết lời giải khi nguồn không có (chỉ gọi khi cần, theo lô)
+- [x] Chống trùng: SHA-256 (`content_hash`), rồi embedding Gemini + pgvector (HNSW, cosine ≥ 0.92) chỉ để chọn ứng viên — xác nhận trùng khi đề gần như giống hệt và cùng đáp án (đề Vật lí cùng chủ đề có cosine 0.92–0.97 dù khác đáp án)
+- [x] **Gold**: tự gắn chương/bài theo luật trong YAML ("bài N" → mục "Bài N: …"), đẩy vào `questions` (`source_type = CRAWLER`, có `source_url`); trang chưa gắn được vào hàng đợi admin
+- [x] Admin **Thu thập**: nguồn, lượt chạy, chạy ngay, hàng đợi duyệt, gán trang nguồn vào mục lục, duyệt / bỏ theo lô
+- [ ] Playwright cho nguồn render bằng JS / kho PDF (cấu hình `renderer: playwright` đã có chỗ)
+
 ### Giai đoạn 3 — Thi theo ca cố định & Chịu tải cao (Tuần 7–9)
 - [ ] Chế độ `SCHEDULED`: `available_from` / `available_until`, `max_attempts = 1`, hạn nộp `LEAST(NOW() + duration, available_until)`
 - [ ] Redis: cache đề trước giờ G, auto-save ghi vào Redis Hash

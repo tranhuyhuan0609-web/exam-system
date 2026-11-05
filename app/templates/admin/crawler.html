@@ -1,0 +1,71 @@
+{% extends "admin/_layout.html" %}
+{% set active = "crawler" %}
+{% block title %}Thu thập đề · Quản trị{% endblock %}
+{% block admin_content %}
+<div class="page-head">
+  <h1>Thu thập đề</h1>
+  <div class="row">
+    <a class="btn btn-outline btn-small" href="/admin/crawler/items">Hàng đợi duyệt</a>
+    <form method="post" action="/admin/crawler/sync" class="inline"><button class="btn btn-outline btn-small">↻ Nạp lại cấu hình YAML</button></form>
+  </div>
+</div>
+<p class="muted small">Luồng: Scrapy → <strong>Bronze</strong> (HTML gốc trong MongoDB, file gốc trong bucket <code>bronze-raw</code>)
+  → Kafka <code>raw.exam.ingestion</code> → <strong>Silver</strong> (bóc câu, lưu lại ảnh, Gemini chuẩn hoá LaTeX / viết lời giải,
+  lọc trùng SHA-256 + pgvector, gắn chương/bài) → <strong>Gold</strong> (ngân hàng câu hỏi).
+  {% if dead_letters is none %}<span class="badge badge-warn">MongoDB chưa chạy</span>{% elif dead_letters %}<span class="badge badge-warn">{{ dead_letters }} lỗi trong DLQ</span>{% endif %}</p>
+
+<div class="card">
+  <table class="table">
+    <thead><tr><th>Nguồn</th><th>Lịch</th><th>Câu thu được</th><th>Lần chạy cuối</th><th>Chạy ngay</th></tr></thead>
+    <tbody>
+    {% for s in sites %}
+      {% set c = counts.get(s.site_id, {}) %}
+      <tr>
+        <td><strong>{{ s.name }}</strong> {% if not s.enabled %}<span class="badge">Tắt</span>{% endif %}
+          <div class="muted small">{{ s.config.base_url }} · parser {{ s.config.parser }} · {{ s.config.rate_limit.delay_sec }}s/trang</div></td>
+        <td class="small">{{ s.config.schedule_times | join(", ") or "thủ công" }}</td>
+        <td class="small">
+          {% for key in ["PUBLISHED", "NEEDS_REVIEW", "PENDING_AI", "DUPLICATE", "SIMILAR", "READY", "REJECTED"] if c.get(key) %}
+            <a href="/admin/crawler/items?status={{ key }}&site={{ s.site_id }}" class="badge {{ {'PUBLISHED': 'badge-ok', 'NEEDS_REVIEW': 'badge-warn'}.get(key, '') }}">{{ STATUS_LABELS[key] }}: {{ c[key] }}</a>
+          {% else %}<span class="muted">Chưa có</span>{% endfor %}
+        </td>
+        <td class="small">{{ s.last_run_at | local_dt if s.last_run_at else "—" }}</td>
+        <td>
+          <form method="post" action="/admin/crawler/{{ s.site_id }}/run" class="row inline-form">
+            <input type="number" name="max_pages" min="1" max="2000" placeholder="{{ s.config.max_pages }} trang" style="width: 110px">
+            <label class="check small"><input type="checkbox" name="force" value="1"> tải lại cả trang đã có</label>
+            <button class="btn btn-small">▶ Chạy</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="muted">Chưa có nguồn nào. Bấm “Nạp lại cấu hình YAML” (configs/sites/*.yaml).</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h3 class="mt">Các lượt chạy gần đây</h3>
+<div class="card">
+  <table class="table">
+    <thead><tr><th>#</th><th>Nguồn</th><th>Trạng thái</th><th class="num">Tải</th><th class="num">Bỏ qua</th><th class="num">Lỗi</th><th class="num">Gửi Kafka</th><th>Bắt đầu</th><th>Kết thúc</th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+      <tr>
+        <td>{{ r.id }}</td><td>{{ r.site_id }} <span class="muted small">({{ r.trigger }})</span></td>
+        <td><span class="badge {{ {'DONE': 'badge-ok', 'RUNNING': 'badge-warn', 'QUEUED': 'badge-warn'}.get(r.status, '') }}">{{ r.status }}</span>
+          {% if r.error %}<div class="small muted" title="{{ r.error }}">{{ r.error[:80] }}</div>{% endif %}</td>
+        <td class="num">{{ r.pages_fetched }}</td><td class="num">{{ r.pages_skipped }}</td><td class="num">{{ r.pages_failed }}</td>
+        <td class="num">{{ r.docs_published }}</td>
+        <td class="small">{{ r.started_at | local_dt if r.started_at else "chờ scheduler" }}</td>
+        <td class="small">{{ r.finished_at | local_dt if r.finished_at else "" }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="muted">Chưa có lượt chạy nào.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="hint mt">Cần chạy các tiến trình: <code>python -m app.pipeline scheduler</code>, <code>silver</code>, <code>dlq</code>
+  (hoặc <code>docker compose up -d crawler-scheduler crawler-silver crawler-dlq</code>).</p>
+{% endblock %}

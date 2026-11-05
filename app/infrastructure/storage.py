@@ -184,6 +184,22 @@ def get_storage() -> Storage:
     return LocalStorage(Path(settings.data_dir) / "media")
 
 
+@lru_cache
+def get_bronze_storage() -> Storage:
+    """Bronze layer of the crawler: original PDF / Word / image files, never served (bucket bronze-raw)."""
+    settings = get_settings()
+    if settings.storage_backend == "s3":
+        return S3Storage(
+            endpoint=settings.s3_endpoint,
+            access_key=settings.s3_access_key,
+            secret_key=settings.s3_secret_key,
+            bucket=settings.s3_bronze_bucket,
+            secure=settings.s3_secure,
+            public_url=settings.s3_public_url,
+        )
+    return LocalStorage(Path(settings.data_dir) / "bronze")
+
+
 def media_url(key: str | None) -> str | None:
     """Public URL of a figure key (None stays None); used by templates and the paper API."""
     return get_storage().public_url(key) if key else None

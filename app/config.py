@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     s3_access_key: str = "rustfsadmin"
     s3_secret_key: str = "rustfsadmin"
     s3_bucket: str = "exam-media"
+    s3_bronze_bucket: str = "bronze-raw"  # crawler originals (PDF / Word / images), private
     s3_secure: bool = False
     # Base URL browsers use to fetch public figures, e.g. https://media.example.com
     s3_public_url: str = "http://localhost:9000"
@@ -31,6 +32,16 @@ class Settings(BaseSettings):
     gemini_models: str = "gemini-3.5-flash,gemini-3.8-flash,gemini-3.6-flash"
     # LibreOffice binary used to turn .docx (MathType, Word shapes) into PDF.
     soffice_path: str = "soffice"
+
+    # Question crawler (app/pipeline): Kafka carries raw pages, MongoDB keeps them (Bronze).
+    kafka_bootstrap: str = "localhost:9092"
+    kafka_topic_prefix: str = "exam"
+    mongo_url: str = "mongodb://localhost:27017"
+    mongo_db: str = "exam_bronze"
+    crawler_configs_dir: str = "configs/sites"
+    crawler_user_agent: str = "ExamSystemCrawler/0.1"
+    gemini_embedding_model: str = "gemini-embedding-001"
+    semantic_duplicate_threshold: float = 0.92  # cosine similarity at which a crawled question is a duplicate
 
     @property
     def gemini_model_list(self) -> list[str]:
