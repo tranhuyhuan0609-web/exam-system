@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 
 from app.attempts import (
+    AttemptClosed,
     AttemptError,
     active_attempt,
     db_now,
@@ -13,6 +14,7 @@ from app.attempts import (
     public_questions,
     remaining_seconds,
     review,
+    save_answers,
     start_or_resume,
     submit,
 )
@@ -255,6 +257,31 @@ async def submit_attempt(
             "correct_count": attempt.correct_count,
             "total_questions": attempt.total_questions,
             "result_url": f"/attempts/{attempt_id}/result",
+        },
+        headers=NO_STORE,
+    )
+
+
+@router.patch("/api/attempts/{attempt_id}/answers")
+async def autosave_answers(
+    user: ApiUser, session: SessionDep, attempt_id: int, changes: Annotated[dict[str, Any], Body(embed=True)]
+):
+    """Auto-save. JSON body {"changes": {question_id: value | null}}; only the changed questions are sent."""
+    await _own_attempt(session, attempt_id, user)
+    try:
+        attempt, now = await save_answers(session, attempt_id, changes)
+    except AttemptClosed as exc:
+        return JSONResponse(
+            {"status": exc.status, "result_url": f"/attempts/{attempt_id}/result"},
+            status_code=status.HTTP_409_CONFLICT,
+            headers=NO_STORE,
+        )
+    return JSONResponse(
+        {
+            "status": attempt.status.value,
+            "saved": len(attempt.answers),
+            "remaining_seconds": remaining_seconds(attempt, now),
+            "saved_at": now.isoformat(),
         },
         headers=NO_STORE,
     )

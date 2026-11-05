@@ -17,6 +17,7 @@
     timeUp: document.getElementById("time-up"),
     error: document.getElementById("load-error"),
     submit: document.getElementById("submit-btn"),
+    saveStatus: document.getElementById("save-status"),
   };
 
   const RESYNC_MS = 30_000;
@@ -82,6 +83,118 @@
     submitAnswers();
   }
 
+
+  // ------------------------------------------------------------------ auto-save (2 layers)
+  //
+  // Layer 1: every change is written to IndexedDB immediately, so a crash, F5 or power cut loses nothing.
+  // Layer 2: changed questions are sent to the server in the background (debounced), one request at a time.
+  // On load, the server copy is the base and unsynced local changes are re-applied on top.
+
+  const SYNC_DEBOUNCE_MS = 2000;
+  const SYNC_MAX_WAIT_MS = 10000;
+  const pending = {}; // { questionId: value | null } changed since the last successful sync
+  let syncTimer = null;
+  let firstPendingAt = null;
+  let syncing = false;
+  let retryDelay = 2000;
+
+  const local = (() => {
+    let dbPromise = null;
+    function open() {
+      if (!("indexedDB" in window)) return Promise.resolve(null);
+      dbPromise = dbPromise || new Promise((resolve) => {
+        const req = indexedDB.open("exam-autosave", 1);
+        req.onupgradeneeded = () => req.result.createObjectStore("attempts");
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null); // private mode etc.: fall back to server-only saving
+      });
+      return dbPromise;
+    }
+    async function tx(mode, fn) {
+      const db = await open();
+      if (!db) return undefined;
+      return new Promise((resolve) => {
+        const store = db.transaction("attempts", mode).objectStore("attempts");
+        const req = fn(store);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(undefined);
+      });
+    }
+    return {
+      load: () => tx("readonly", (s) => s.get(attemptId)),
+      save: () => tx("readwrite", (s) => s.put({ answers, pending, updatedAt: Date.now() }, attemptId)),
+      clear: () => tx("readwrite", (s) => s.delete(attemptId)),
+    };
+  })();
+
+  function setSaveStatus(state, text) {
+    els.saveStatus.dataset.state = state;
+    els.saveStatus.textContent = text;
+  }
+
+  function scheduleSync() {
+    if (firstPendingAt === null) firstPendingAt = Date.now();
+    clearTimeout(syncTimer);
+    const wait = Math.max(0, Math.min(SYNC_DEBOUNCE_MS, firstPendingAt + SYNC_MAX_WAIT_MS - Date.now()));
+    syncTimer = setTimeout(() => syncNow(), wait);
+  }
+
+  async function syncNow(keepalive = false) {
+    if (syncing || submitting || !Object.keys(pending).length) return;
+    syncing = true;
+    syncTimer = null;
+    const batch = Object.assign({}, pending);
+    setSaveStatus("saving", "Đang lưu…");
+    try {
+      const res = await fetch(`/api/attempts/${attemptId}/answers`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ changes: batch }),
+        cache: "no-store",
+        keepalive,
+      });
+      if (res.status === 409) { // submitted elsewhere or time is up: the server has the final word
+        const data = await res.json();
+        submitting = true;
+        await local.clear();
+        window.location.href = data.result_url;
+        return;
+      }
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      for (const [qid, value] of Object.entries(batch)) {
+        if (JSON.stringify(pending[qid]) === JSON.stringify(value)) delete pending[qid]; // unchanged since sent
+      }
+      firstPendingAt = null;
+      retryDelay = 2000;
+      local.save();
+      const time = new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      setSaveStatus("saved", "✓ Đã lưu lúc " + time);
+      if (typeof data.remaining_seconds === "number") deadline = performance.now() + data.remaining_seconds * 1000;
+    } catch (err) {
+      setSaveStatus("offline", "⚠ Mất kết nối, đáp án vẫn được giữ trên máy và sẽ tự lưu lại");
+      clearTimeout(syncTimer);
+      syncTimer = setTimeout(() => syncNow(), retryDelay);
+      retryDelay = Math.min(retryDelay * 2, 30000);
+    } finally {
+      syncing = false;
+      if (Object.keys(pending).length && !syncTimer) scheduleSync();
+    }
+  }
+
+  function recordChange(questionId, value) {
+    pending[questionId] = value;
+    local.save();
+    scheduleSync();
+  }
+
+  window.addEventListener("online", () => syncNow());
+  // Leaving the page (closing the tab, switching apps on a phone): flush what is left.
+  window.addEventListener("pagehide", () => syncNow(true));
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") syncNow(true);
+  });
+
   // ------------------------------------------------------------------ submit
 
   async function submitAnswers() {
@@ -104,6 +217,7 @@
         }
         if (!res.ok) throw new Error("HTTP " + res.status);
         const data = await res.json();
+        await local.clear();
         window.location.href = data.result_url;
         return;
       } catch (err) {
@@ -288,6 +402,7 @@
     if (locked) return;
     if (value === null) delete answers[questionId];
     else answers[questionId] = value;
+    recordChange(questionId, value);
     refreshProgress();
   }
 
@@ -309,7 +424,21 @@
       const sentAt = performance.now();
       const data = await fetchJson(`/api/attempts/${attemptId}/paper`);
       setDeadline(data.remaining_seconds, sentAt, performance.now());
+      // Session recovery: start from what the server saved, then re-apply changes that never reached it.
+      const saved = await local.load();
+      const restored = Object.assign({}, data.answers || {});
+      if (saved && saved.pending) {
+        for (const [qid, value] of Object.entries(saved.pending)) {
+          if (value === null) delete restored[qid];
+          else restored[qid] = value;
+          pending[qid] = value;
+        }
+      }
+      data.answers = restored;
       renderPaper(data);
+      const count = Object.keys(restored).length;
+      if (count) setSaveStatus("saved", `↺ Đã khôi phục ${count} câu đã làm`);
+      if (Object.keys(pending).length) scheduleSync();
       if (data.status !== "IN_PROGRESS" || data.remaining_seconds <= 0) lock();
     } catch (err) {
       if (err.message === "unauthenticated") return;
@@ -324,9 +453,9 @@
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") resync();
     });
-    // Answers are only sent on submit until phase 2 auto-save, so warn before leaving.
+    // Answers are auto-saved; only warn if some changes have not reached the server yet.
     window.addEventListener("beforeunload", (e) => {
-      if (!locked && !submitting && Object.keys(answers).length) {
+      if (!locked && !submitting && Object.keys(pending).length) {
         e.preventDefault();
         e.returnValue = "";
       }
