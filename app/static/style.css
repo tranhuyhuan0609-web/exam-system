@@ -139,3 +139,15 @@ label.check input { width: auto; margin: 0; }
 .exam-item .pos { font-weight: 700; color: var(--muted); width: 1.6em; text-align: right; }
 .pick-item { font-weight: 400; margin: 0; cursor: pointer; }
 .pick-item input { width: auto; margin: 4px 0 0; }
+
+/* ---------- question import ---------- */
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+@media (max-width: 900px) { .grid-4 { grid-template-columns: 1fr 1fr; } }
+pre.sample { background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-size: .8rem; white-space: pre-wrap; tab-size: 4; }
+.badge-warn { background: #ffedd5; color: #9a3412; }
+.stat-num.ok { color: #16a34a; }
+.stat-num.bad { color: var(--danger); }
+.stat-num.warn { color: #ea580c; }
+.question.has-error { border-color: #fca5a5; background: #fffafa; }
+.q-errors { color: var(--danger); margin: 4px 0 8px; padding-left: 20px; font-size: .9rem; }
+.confirm-bar { position: sticky; top: 0; z-index: 5; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; box-shadow: 0 2px 8px rgba(0,0,0,.05); }

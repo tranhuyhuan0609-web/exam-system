@@ -4,7 +4,10 @@
 {% block admin_content %}
 <div class="page-head">
   <h1>Ngân hàng câu hỏi <span class="muted small">({{ total }})</span></h1>
-  <a class="btn" href="/admin/questions/new{% if filters.scope %}?scope={{ filters.scope }}{% endif %}">+ Thêm câu hỏi</a>
+  <div>
+    <a class="btn btn-outline" href="/admin/questions/import{% if filters.scope %}?scope={{ filters.scope }}{% endif %}">⬆ Nhập từ file</a>
+    <a class="btn" href="/admin/questions/new{% if filters.scope %}?scope={{ filters.scope }}{% endif %}">+ Thêm câu hỏi</a>
+  </div>
 </div>
 
 <form method="get" action="/admin/questions" class="card filters row">

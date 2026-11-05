@@ -9,7 +9,7 @@ from sqlalchemy import delete, func, select
 from starlette.datastructures import FormData
 
 from app.deps import AdminUser, SessionDep
-from app.models import Difficulty, Exam, ExamQuestion, Question
+from app.models import QUESTION_MAX_CHOICES, QUESTION_MIN_CHOICES, Difficulty, Exam, ExamQuestion, Question
 from app.routers.admin.common import get_or_404, redirect
 from app.scope import Scope, load_subject_tree, resolve_scope, scope_of, scope_options, scope_paths
 from app.templating import flash, templates
@@ -18,7 +18,7 @@ from app.text import like_pattern
 router = APIRouter()
 
 PAGE_SIZE = 20
-MIN_CHOICES, MAX_CHOICES = 2, 6
+MIN_CHOICES, MAX_CHOICES = QUESTION_MIN_CHOICES, QUESTION_MAX_CHOICES
 _CHOICE_ID = re.compile(r"^[a-z0-9]{1,16}$")
 
 

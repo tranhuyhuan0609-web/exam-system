@@ -1,0 +1,65 @@
+{% extends "admin/_layout.html" %}
+{% set active = "questions" %}
+{% block title %}Xem trước nhập câu hỏi · Quản trị{% endblock %}
+{% block admin_content %}
+<p class="muted"><a href="/admin/questions/import?scope={{ settings.scope_key }}">← Chọn file khác</a></p>
+<h1>Xem trước: {{ filename }}</h1>
+
+<div class="stats">
+  <div class="stat"><div class="stat-num">{{ questions | length }}</div><div class="muted">Câu đọc được</div></div>
+  <div class="stat"><div class="stat-num ok">{{ valid_count }}</div><div class="muted">Hợp lệ</div></div>
+  <div class="stat"><div class="stat-num {{ 'bad' if error_count }}">{{ error_count }}</div><div class="muted">Có lỗi (bỏ qua)</div></div>
+  <div class="stat"><div class="stat-num {{ 'warn' if duplicate_count }}">{{ duplicate_count }}</div><div class="muted">Trùng câu đã có</div></div>
+</div>
+
+<form method="post" action="/admin/questions/import/confirm">
+  <input type="hidden" name="scope" value="{{ settings.scope_key }}">
+  <input type="hidden" name="default_difficulty" value="{{ settings.default_difficulty }}">
+  {% if settings.create_exam %}<input type="hidden" name="create_exam" value="on">{% endif %}
+  <input type="hidden" name="exam_title" value="{{ settings.exam_title }}">
+  <input type="hidden" name="duration_minutes" value="{{ settings.duration_minutes }}">
+  {% if settings.publish %}<input type="hidden" name="publish" value="on">{% endif %}
+  <textarea name="payload" hidden>{{ payload }}</textarea>
+
+  <div class="card confirm-bar">
+    <div>
+      Lưu vào: <strong>{{ scope_path }}</strong>
+      {% if settings.create_exam %} · tạo đề <strong>“{{ settings.exam_title }}”</strong> ({{ settings.duration_minutes }} phút{{ ", công khai" if settings.publish else ", nháp" }}){% endif %}
+      <div class="muted small">Câu trùng được bỏ chọn sẵn; bạn vẫn có thể tick để nhập.</div>
+    </div>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="check-all-valid"> Chọn tất cả câu hợp lệ</label>
+      <button class="btn" {% if not valid_count %}disabled{% endif %}>Nhập <span id="selected-count">0</span> câu đã chọn</button>
+    </div>
+  </div>
+
+  {% for q in questions %}
+    <div class="card question {{ 'has-error' if not q.ok }}">
+      <div class="q-meta">
+        <label class="check"><input type="checkbox" name="selected" value="{{ loop.index0 }}"
+          {% if not q.ok %}disabled{% elif not q.duplicate %}checked{% endif %}> <strong>{{ q.label }}</strong></label>
+        {% set level = q.difficulty or settings.default_difficulty %}
+        <span class="badge diff-{{ level | lower }}">{{ DIFFICULTY_LABELS[level] }}{{ "" if q.difficulty else " (mặc định)" }}</span>
+        {% if q.duplicate %}<span class="badge badge-warn">Trùng</span>{% endif %}
+      </div>
+      {% if q.errors %}<ul class="q-errors">{% for e in q.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      <div class="q-content math">{{ q.content }}</div>
+      <ol class="q-choices" type="A">
+        {% for c in q.choices %}<li class="math {% if loop.index0 == q.correct %}correct{% endif %}">{{ c }}</li>{% endfor %}
+      </ol>
+      {% if q.explanation %}<details class="small mt"><summary>Lời giải</summary><div class="q-content math">{{ q.explanation }}</div></details>{% endif %}
+    </div>
+  {% endfor %}
+</form>
+
+<script>
+  const boxes = [...document.querySelectorAll("input[name=selected]:not(:disabled)")];
+  const counter = document.getElementById("selected-count");
+  const update = () => { counter.textContent = boxes.filter((b) => b.checked).length; };
+  document.getElementById("check-all-valid").addEventListener("change", (e) => {
+    boxes.forEach((b) => (b.checked = e.target.checked)); update();
+  });
+  boxes.forEach((b) => b.addEventListener("change", update));
+  update();
+</script>
+{% endblock %}

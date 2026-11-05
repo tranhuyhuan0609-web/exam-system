@@ -1,0 +1,66 @@
+{% extends "admin/_layout.html" %}
+{% set active = "questions" %}
+{% block title %}Nhập câu hỏi từ file · Quản trị{% endblock %}
+{% block admin_content %}
+<p class="muted"><a href="/admin/questions">← Ngân hàng câu hỏi</a></p>
+<h1>Nhập câu hỏi từ file</h1>
+{% if errors %}<div class="alert"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+
+<div class="grid-main-side">
+  <form method="post" action="/admin/questions/import/preview" enctype="multipart/form-data" class="card">
+    <label>File câu hỏi <span class="muted">({{ extensions }}, tối đa {{ max_mb }} MB, {{ max_questions }} câu)</span>
+      <input type="file" name="file" accept=".xlsx,.docx,.txt" required>
+    </label>
+    <div class="row">
+      <label class="grow">Lưu vào môn / chương / bài
+        {% with name="scope", options=scope_options, selected=settings.scope_key, blank="— Chọn —", required=True %}{% include "admin/_scope_select.html" %}{% endwith %}
+      </label>
+      <label>Mức độ mặc định
+        <select name="default_difficulty">
+          {% for d, label in DIFFICULTY_LABELS.items() %}<option value="{{ d.value }}" {% if settings.default_difficulty == d.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+    <p class="hint">Mức độ mặc định dùng cho các câu không ghi “Mức độ” trong file.</p>
+
+    <fieldset>
+      <legend><label class="check"><input type="checkbox" name="create_exam" id="create_exam" {% if settings.create_exam %}checked{% endif %}> Tạo luôn đề luyện tập từ các câu này</label></legend>
+      <div id="exam-fields">
+        <div class="row">
+          <label class="grow">Tên đề <input name="exam_title" value="{{ settings.exam_title }}" maxlength="300" placeholder="Để trống sẽ lấy theo tên file"></label>
+          <label>Thời gian (phút) <input type="number" name="duration_minutes" value="{{ settings.duration_minutes }}" min="1" max="600"></label>
+        </div>
+        <label class="check"><input type="checkbox" name="publish" {% if settings.publish %}checked{% endif %}> Công khai đề ngay sau khi nhập</label>
+      </div>
+    </fieldset>
+
+    <button class="btn">Đọc file & xem trước →</button>
+    <p class="hint mt">Chưa có gì được lưu cho tới khi bạn xác nhận ở bước xem trước.</p>
+  </form>
+
+  <aside class="card">
+    <h3>File mẫu</h3>
+    <p>
+      <a class="btn btn-outline btn-small" href="/admin/questions/import/template.xlsx">⬇ Excel (.xlsx)</a>
+      <a class="btn btn-outline btn-small" href="/admin/questions/import/template.docx">⬇ Word (.docx)</a>
+      <a class="btn btn-outline btn-small" href="/admin/questions/import/template.txt">⬇ .txt</a>
+    </p>
+    <h3>Cách soạn file Word / .txt</h3>
+    <ul class="small">{% for r in rules %}<li>{{ r }}</li>{% endfor %}</ul>
+<pre class="sample">Câu 1: Chu kì của vật có $\omega = 4\pi$ rad/s là
+A. $0{,}5$ s
+B. $2$ s
+C. $0{,}25$ s	D. $4$ s
+Đáp án: A
+Mức độ: Thông hiểu
+Lời giải: $T = 2\pi/\omega = 0{,}5$ s</pre>
+    <h3>File Excel</h3>
+    <p class="small">Dòng đầu là tiêu đề: <code>Nội dung</code> · <code>A</code>…<code>F</code> · <code>Đáp án</code> · <code>Mức độ</code> · <code>Lời giải</code>. Mỗi dòng tiếp theo là một câu.</p>
+  </aside>
+</div>
+<script>
+  const toggle = document.getElementById("create_exam"), fields = document.getElementById("exam-fields");
+  const sync = () => { fields.hidden = !toggle.checked; };
+  toggle.addEventListener("change", sync); sync();
+</script>
+{% endblock %}

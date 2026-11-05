@@ -111,6 +111,9 @@ class Lesson(TimestampMixin, Base):
     chapter: Mapped[Chapter] = relationship(back_populates="lessons")
 
 
+QUESTION_MIN_CHOICES, QUESTION_MAX_CHOICES = 2, 6
+
+
 class Question(TimestampMixin, UpdatedAtMixin, Base):
     __tablename__ = "questions"
 
