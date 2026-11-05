@@ -620,6 +620,25 @@ async def retry_ready(session: AsyncSession, deps: SilverDeps, batch: int = 20) 
     return sum(1 for i in items if i.status != CrawlItemStatus.READY)
 
 
+async def backfill_embeddings(session: AsyncSession, deps: SilverDeps, batch: int = 50) -> int:
+    """Embed questions published without one (embeddings were at quota) so later crawls dedup against them.
+    One request per call; returns how many were embedded (0 when there is nothing to do or no quota)."""
+    if deps.embedder is None:
+        return 0
+    rows = list((await session.scalars(select(Question).where(Question.embedding.is_(None)).limit(batch))).all())
+    if not rows:
+        return 0
+    try:
+        vectors = await deps.embedder.embed([_embedding_text(q) for q in rows])
+    except Exception as exc:  # noqa: BLE001
+        log.info("Embedding backfill postponed: %s", str(exc)[:120])
+        return 0
+    for q, v in zip(rows, vectors, strict=True):
+        q.embedding = v
+    await session.commit()
+    return len(rows)
+
+
 async def reprocess(session: AsyncSession, deps: SilverDeps, item: CrawledQuestion) -> None:
     """Run dedup + labelling again (after an admin fixed the category or the text)."""
     item.status = CrawlItemStatus.READY

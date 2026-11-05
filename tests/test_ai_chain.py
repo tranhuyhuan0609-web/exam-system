@@ -240,3 +240,40 @@ def test_renormalize_releases_questions_queued_before_the_rule_based_conversion(
     assert db(lambda s: renormalize_waiting(s, deps)) == {"PUBLISHED": 1}
     item = db(lambda s: s.scalar(select(CrawledQuestion)))
     assert item.content == r"Vật dao động theo $x = 4\cos(3\pi t)$ cm. Biên độ là"
+
+
+def test_idle_backfill_embeds_questions_published_without_one(db):
+    from app.models import Difficulty, Question
+    from app.pipeline.use_cases.silver import backfill_embeddings
+
+    class Counting:
+        calls = 0
+
+        async def embed(self, texts):
+            self.calls += 1
+            return [[1.0] + [0.0] * 767 for _ in texts]
+
+    async def setup(s):
+        tree = await make_tree(s, {"Toán 11": {}})
+        for n in range(3):
+            s.add(
+                Question(
+                    root_id=tree["Toán 11"].id,
+                    category_id=tree["Toán 11"].id,
+                    difficulty=Difficulty.RECOGNITION,
+                    content=f"Câu {n}",
+                    choices=[{"id": "a", "content": "x", "is_correct": True}],
+                )
+            )
+
+    db(setup)
+    embedder = Counting()
+    deps = SilverDeps(
+        store=MemoryRawStore(),
+        storage=get_storage(),
+        bronze_storage=get_bronze_storage(),
+        downloader=MemoryDownloader(),
+        embedder=embedder,
+    )
+    assert db(lambda s: backfill_embeddings(s, deps)) == 3 and embedder.calls == 1
+    assert db(lambda s: backfill_embeddings(s, deps)) == 0

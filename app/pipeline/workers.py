@@ -13,7 +13,7 @@ from app.infrastructure.storage import get_bronze_storage, get_storage
 from app.models import CrawlerSite, CrawlRun, CrawlRunStatus
 from app.pipeline.domain.models import SiteConfig
 from app.pipeline.ports import DLQ_TOPIC, RAW_TOPIC, AIUnavailable
-from app.pipeline.use_cases.silver import SilverDeps, ai_sweep, ingest_document, retry_ready
+from app.pipeline.use_cases.silver import SilverDeps, ai_sweep, backfill_embeddings, ingest_document, retry_ready
 
 log = logging.getLogger(__name__)
 VN = timezone(timedelta(hours=7))
@@ -74,6 +74,9 @@ async def run_silver(stop: asyncio.Event | None = None) -> None:
                     handled = await ai_sweep(session, deps)
                 async with SessionLocal() as session:
                     handled += await retry_ready(session, deps)
+                if not handled:  # idle: catch up on embeddings skipped while they were at quota
+                    async with SessionLocal() as session:
+                        await backfill_embeddings(session, deps)
                 pause = 1 if handled else 15
             except AIUnavailable:
                 pause = 120  # quota / overload: wait for it to recover
