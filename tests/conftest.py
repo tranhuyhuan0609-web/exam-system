@@ -10,7 +10,7 @@ os.environ["DATABASE_URL"] = os.environ.get(
 import asyncpg  # noqa: E402
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import ScalarResult, text  # noqa: E402
 from sqlalchemy.engine import make_url  # noqa: E402
 
 from app import models  # noqa: E402, F401
@@ -72,3 +72,29 @@ def make_user():
         asyncio.run(_create())
 
     return _make
+
+
+@pytest.fixture
+def db():
+    """Run an async callback with a fresh session from sync tests: db(lambda s: ...)."""
+
+    def _run(fn):
+        async def _wrapper():
+            async with SessionLocal() as session:
+                result = await fn(session)
+                if isinstance(result, ScalarResult):
+                    result = list(result.all())
+                await session.commit()
+                return result
+
+        return asyncio.run(_wrapper())
+
+    return _run
+
+
+@pytest.fixture
+def admin_client(client, make_user):
+    make_user("admin@example.com", role=UserRole.ADMIN, name="Admin")
+    r = client.post("/login", data={"email": "admin@example.com", "password": "password123"}, follow_redirects=False)
+    assert r.status_code == 303
+    return client

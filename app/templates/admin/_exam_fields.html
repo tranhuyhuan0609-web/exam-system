@@ -1,0 +1,22 @@
+{# Shared exam settings fields. Needs: form, scope_options, show_publish (bool) #}
+<label>Tên đề
+  <input name="title" value="{{ form.title }}" required maxlength="300" placeholder="VD: Luyện tập Chương 1: Dao động">
+</label>
+<label>Thuộc môn / chương / bài
+  {% with name="scope", options=scope_options, selected=form.scope_key, blank="— Chọn —", required=True %}{% include "admin/_scope_select.html" %}{% endwith %}
+</label>
+<div class="row">
+  <label>Chế độ
+    <select disabled><option>Luyện tập (PRACTICE)</option></select>
+  </label>
+  <label>Thời gian làm bài (phút)
+    <input type="number" name="duration_minutes" value="{{ form.duration_minutes }}" min="1" max="600" required>
+  </label>
+  <label>Số lần làm tối đa
+    <input type="number" name="max_attempts" value="{{ form.max_attempts }}" min="1" placeholder="Không giới hạn">
+  </label>
+</div>
+<label>Mô tả <textarea name="description" rows="2">{{ form.description }}</textarea></label>
+{% if show_publish %}
+  <label class="check"><input type="checkbox" name="is_published" {% if form.is_published %}checked{% endif %}> Công khai cho học sinh</label>
+{% endif %}

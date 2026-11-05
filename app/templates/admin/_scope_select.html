@@ -1,0 +1,8 @@
+{# Params: name, options, selected, blank (optional label for an empty choice), required (bool) #}
+<select name="{{ name }}" {% if required %}required{% endif %}>
+  {% if blank %}<option value="">{{ blank }}</option>{% endif %}
+  {% for o in options %}
+    <option value="{{ o.key }}" {% if o.key == selected %}selected{% endif %}
+            {% if o.key.startswith('s:') %}class="opt-subject"{% endif %}>{{ o.label }}</option>
+  {% endfor %}
+</select>

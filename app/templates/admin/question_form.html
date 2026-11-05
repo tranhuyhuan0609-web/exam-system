@@ -1,0 +1,132 @@
+{% extends "admin/_layout.html" %}
+{% set active = "questions" %}
+{% block title %}{{ "Sửa câu hỏi #%d" % question.id if question else "Thêm câu hỏi" }} · Quản trị{% endblock %}
+
+{% macro choice_row(index, choice) %}
+  <div class="choice-row">
+    <label class="choice-correct" title="Đáp án đúng">
+      <input type="radio" name="correct" value="{{ index }}" {% if choice.is_correct %}checked{% endif %} required>
+      <span class="choice-letter">{{ "ABCDEF"[index] if index is number else "" }}</span>
+    </label>
+    <input type="hidden" name="choice_id" value="{{ choice.id }}">
+    <textarea name="choice_content" rows="1" required placeholder="Nội dung lựa chọn">{{ choice.content }}</textarea>
+    <button type="button" class="icon-btn danger remove-choice" title="Xoá lựa chọn">✕</button>
+  </div>
+{% endmacro %}
+
+{% block admin_content %}
+<p class="muted"><a href="/admin/questions">← Ngân hàng câu hỏi</a></p>
+<h1>{{ "Sửa câu hỏi #%d" % question.id if question else "Thêm câu hỏi" }}</h1>
+
+{% if errors %}<div class="alert"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+{% if used_in %}
+  <div class="flash flash-info">Câu này đang nằm trong {{ used_in | length }} đề:
+    {% for e in used_in %}<a href="/admin/exams/{{ e.id }}">{{ e.title }}</a>{{ ", " if not loop.last }}{% endfor %}.
+    Các lượt làm bài cũ vẫn giữ nguyên nội dung lúc làm.</div>
+{% endif %}
+
+<div class="grid-main-side">
+  <form method="post" action="{{ '/admin/questions/%d' % question.id if question else '/admin/questions' }}" class="card" id="qform">
+    <div class="row">
+      <label class="grow">Thuộc môn / chương / bài
+        {% with name="scope", options=scope_options, selected=form.scope_key, blank="— Chọn —", required=True %}{% include "admin/_scope_select.html" %}{% endwith %}
+      </label>
+      <label>Mức độ
+        <select name="difficulty" required>
+          {% for d, label in DIFFICULTY_LABELS.items() %}<option value="{{ d.value }}" {% if form.difficulty == d.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <label>Nội dung câu hỏi
+      <textarea name="content" id="content" rows="5" required>{{ form.content }}</textarea>
+    </label>
+    <p class="hint">Công thức viết bằng LaTeX: <code>$v = \omega A$</code> cho công thức trong dòng, <code>$$T = \dfrac{2\pi}{\omega}$$</code> cho công thức riêng một dòng.</p>
+
+    <fieldset>
+      <legend>Các lựa chọn <span class="muted small">(chọn ô tròn ở đáp án đúng)</span></legend>
+      <div id="choices">
+        {% for c in form.choices %}{{ choice_row(loop.index0, c) }}{% endfor %}
+      </div>
+      <button type="button" class="btn btn-outline btn-small" id="add-choice">+ Thêm lựa chọn</button>
+    </fieldset>
+
+    <label>Lời giải chi tiết <span class="muted">(hiện cho học sinh sau khi nộp bài)</span>
+      <textarea name="explanation" id="explanation" rows="4">{{ form.explanation }}</textarea>
+    </label>
+
+    <div class="row">
+      <button class="btn">Lưu</button>
+      {% if not question %}<button class="btn btn-outline" name="action" value="new">Lưu & thêm câu khác</button>{% endif %}
+      <a href="/admin/questions">Huỷ</a>
+    </div>
+  </form>
+
+  <aside class="card sticky" id="preview">
+    <h3>Xem trước</h3>
+    <div class="pv-content q-content"></div>
+    <ol class="pv-choices q-choices" type="A"></ol>
+    <div class="pv-expl-wrap"><strong>Lời giải:</strong> <div class="pv-expl q-content"></div></div>
+  </aside>
+</div>
+
+{% if question %}
+  <form method="post" action="/admin/questions/{{ question.id }}/delete" data-confirm="Xoá câu hỏi #{{ question.id }}?">
+    <button class="btn btn-danger btn-small">Xoá câu hỏi</button>
+  </form>
+{% endif %}
+
+<template id="choice-tpl">{{ choice_row(none, {"id": "", "content": "", "is_correct": false}) }}</template>
+
+<script>
+(() => {
+  const MAX = {{ max_choices }}, MIN = 2;
+  const form = document.getElementById("qform");
+  const box = document.getElementById("choices");
+  const addBtn = document.getElementById("add-choice");
+  const pv = document.getElementById("preview");
+
+  function rows() { return [...box.querySelectorAll(".choice-row")]; }
+
+  // Radio values must match row order, because the server reads "correct" as a row index.
+  function renumber() {
+    rows().forEach((row, i) => {
+      row.querySelector(".choice-letter").textContent = String.fromCharCode(65 + i);
+      row.querySelector("input[type=radio]").value = i;
+    });
+    addBtn.disabled = rows().length >= MAX;
+    preview();
+  }
+
+  function preview() {
+    pv.querySelector(".pv-content").textContent = document.getElementById("content").value;
+    const list = pv.querySelector(".pv-choices");
+    list.replaceChildren(...rows().map((row) => {
+      const li = document.createElement("li");
+      li.textContent = row.querySelector("textarea").value;
+      if (row.querySelector("input[type=radio]").checked) li.className = "correct";
+      return li;
+    }));
+    const expl = document.getElementById("explanation").value;
+    pv.querySelector(".pv-expl").textContent = expl;
+    pv.querySelector(".pv-expl-wrap").hidden = !expl.trim();
+    window.renderMath && renderMath(pv);
+  }
+
+  let timer;
+  form.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(preview, 200); });
+  form.addEventListener("change", preview);
+  addBtn.addEventListener("click", () => {
+    box.appendChild(document.getElementById("choice-tpl").content.cloneNode(true));
+    renumber();
+    rows().at(-1).querySelector("textarea").focus();
+  });
+  box.addEventListener("click", (e) => {
+    if (!e.target.closest(".remove-choice") || rows().length <= MIN) return;
+    e.target.closest(".choice-row").remove();
+    renumber();
+  });
+  renumber();
+})();
+</script>
+{% endblock %}

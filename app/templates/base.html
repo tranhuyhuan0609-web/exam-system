@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Exam System{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  {% block head %}{% endblock %}
 </head>
 <body>
   <header class="topbar">
@@ -20,7 +21,8 @@
       {% endif %}
     </nav>
   </header>
-  <main class="container">
+  <main class="container {% block container_class %}{% endblock %}">
+    {% for kind, message in flashes %}<div class="flash flash-{{ kind }}">{{ message }}</div>{% endfor %}
     {% block content %}{% endblock %}
   </main>
 </body>

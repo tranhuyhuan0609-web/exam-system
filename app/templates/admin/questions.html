@@ -1,0 +1,48 @@
+{% extends "admin/_layout.html" %}
+{% set active = "questions" %}
+{% block title %}Ngân hàng câu hỏi · Quản trị{% endblock %}
+{% block admin_content %}
+<div class="page-head">
+  <h1>Ngân hàng câu hỏi <span class="muted small">({{ total }})</span></h1>
+  <div>
+    <a class="btn btn-outline" href="/admin/questions/import{% if filters.scope %}?scope={{ filters.scope }}{% endif %}">⬆ Nhập từ file</a>
+    <a class="btn" href="/admin/questions/new{% if filters.scope %}?scope={{ filters.scope }}{% endif %}">+ Thêm câu hỏi</a>
+  </div>
+</div>
+
+<form method="get" action="/admin/questions" class="card filters row">
+  {% with name="scope", options=scope_options, selected=filters.scope, blank="Tất cả môn / chương / bài" %}{% include "admin/_scope_select.html" %}{% endwith %}
+  <select name="difficulty">
+    <option value="">Mọi mức độ</option>
+    {% for d, label in DIFFICULTY_LABELS.items() %}<option value="{{ d.value }}" {% if filters.difficulty == d.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+  <input name="q" value="{{ filters.q }}" placeholder="Tìm trong nội dung…">
+  <button class="btn btn-outline">Lọc</button>
+</form>
+
+{% for q in questions %}
+  <div class="card question">
+    <div class="q-meta">
+      <span class="muted">#{{ q.id }}</span>
+      <span class="badge diff-{{ q.difficulty | lower }}">{{ DIFFICULTY_LABELS[q.difficulty] }}</span>
+      <span class="muted small">{{ scope_paths.get(scope_of(q).key, '') }}</span>
+      <span class="grow"></span>
+      <a href="/admin/questions/{{ q.id }}/edit">Sửa</a>
+    </div>
+    <div class="q-content math">{{ q.content }}</div>
+    <ol class="q-choices" type="A">
+      {% for c in q.choices %}<li class="math {% if c.is_correct %}correct{% endif %}">{{ c.content }}</li>{% endfor %}
+    </ol>
+  </div>
+{% else %}
+  <div class="card muted">Không có câu hỏi nào khớp bộ lọc.</div>
+{% endfor %}
+
+{% if pages > 1 %}
+<nav class="pager">
+  {% if page > 1 %}<a href="{{ page_url(page - 1) }}">← Trước</a>{% endif %}
+  <span>Trang {{ page }} / {{ pages }}</span>
+  {% if page < pages %}<a href="{{ page_url(page + 1) }}">Sau →</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

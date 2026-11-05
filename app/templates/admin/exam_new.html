@@ -1,0 +1,13 @@
+{% extends "admin/_layout.html" %}
+{% set active = "exams" %}
+{% block title %}Tạo đề · Quản trị{% endblock %}
+{% block admin_content %}
+<p class="muted"><a href="/admin/exams">← Đề thi</a></p>
+<h1>Tạo đề luyện tập</h1>
+{% if errors %}<div class="alert"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+<form method="post" action="/admin/exams" class="card narrow-form">
+  {% with show_publish=False %}{% include "admin/_exam_fields.html" %}{% endwith %}
+  <p class="hint">Sau khi tạo, bạn sẽ chọn câu hỏi cho đề rồi bật “Công khai”.</p>
+  <button class="btn">Tạo đề</button>
+</form>
+{% endblock %}
