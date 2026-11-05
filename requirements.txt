@@ -21,3 +21,5 @@ parsel>=1.9
 pyyaml>=6.0
 aiokafka>=0.11
 pymongo>=4.13
+scrapy>=2.13
+pgvector>=0.3
