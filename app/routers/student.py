@@ -198,8 +198,10 @@ async def attempt_result(request: Request, user: LoggedInUser, session: SessionD
     )
     rows = review(attempt)
     flagged = set(attempt.flags or [])
+    times = attempt.question_times or {}
     for row, q in zip(rows, attempt.paper_snapshot["questions"], strict=True):
         row["flagged"] = str(q["id"]) in flagged
+        row["seconds"] = times.get(str(q["id"]))
     report = await build_report(session, attempt, rows)
     return templates.TemplateResponse(
         request,
@@ -210,6 +212,7 @@ async def attempt_result(request: Request, user: LoggedInUser, session: SessionD
             "exam": exam,
             "rows": rows,
             "report": report,
+            "slowest": set(report.slowest),
             "flagged_count": len(flagged),
             "unanswered": sum(r["status"] == "unanswered" for r in rows),
             "time_spent": int((attempt.submitted_at - attempt.started_at).total_seconds()),
@@ -240,6 +243,7 @@ async def attempt_paper(user: ApiUser, session: SessionDep, attempt_id: int):
             "questions": public_questions(attempt.paper_snapshot),
             "answers": attempt.answers,
             "flags": attempt.flags or [],
+            "times": attempt.question_times or {},
         },
         headers=NO_STORE,
     )
@@ -262,10 +266,11 @@ async def submit_attempt(
     attempt_id: int,
     answers: Annotated[dict[str, Any], Body(embed=True)],
     flags: Annotated[list[str] | None, Body(embed=True)] = None,
+    times: Annotated[dict[str, Any] | None, Body(embed=True)] = None,
 ):
     """Grade the attempt. JSON body {"answers": {question_id: ...}, "flags": [question_id]}; safe to call twice."""
     await _own_attempt(session, attempt_id, user)
-    attempt = await submit(session, attempt_id, answers, flags)
+    attempt = await submit(session, attempt_id, answers, flags, times)
     return JSONResponse(
         {
             "status": attempt.status.value,
@@ -285,11 +290,12 @@ async def autosave_answers(
     attempt_id: int,
     changes: Annotated[dict[str, Any], Body(embed=True)],
     flags: Annotated[list[str] | None, Body(embed=True)] = None,
+    times: Annotated[dict[str, Any] | None, Body(embed=True)] = None,
 ):
     """Auto-save. JSON body {"changes": {question_id: value | null}}; only the changed questions are sent."""
     await _own_attempt(session, attempt_id, user)
     try:
-        attempt, now = await save_answers(session, attempt_id, changes, flags)
+        attempt, now = await save_answers(session, attempt_id, changes, flags, times)
     except AttemptClosed as exc:
         return JSONResponse(
             {"status": exc.status, "result_url": f"/attempts/{attempt_id}/result"},

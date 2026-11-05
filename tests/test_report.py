@@ -69,23 +69,45 @@ def test_flags_are_autosaved_restored_and_kept_after_submit(started, db):
     assert db(lambda s: s.get(ExamAttempt, attempt_id)).flags == [str(q4)]
 
 
-def test_report_shows_timing_accuracy_by_difficulty_and_weak_topics(started, db):
+def test_report_shows_overview_difficulty_topics_and_hidden_solutions(started, db):
     client, attempt_id, (q1, q2, q3, q4) = started
     # Lesson questions right, chapter-only questions: one wrong, one blank. Flag question 3.
     answers = {str(q1): "1a", str(q2): "2a", str(q3): "3b"}
     client.post(f"/api/attempts/{attempt_id}/submit", json={"answers": answers, "flags": [str(q3)]})
     db(lambda s: s.execute(update(ExamAttempt).values(submitted_at=ExamAttempt.started_at + timedelta(seconds=200))))
     page = client.get(f"/attempts/{attempt_id}/result").text
-    assert "Trung bình mỗi câu" in page and "50 giây" in page  # 200 s / 4 questions
-    assert "Tỉ lệ đúng theo mức độ" in page
-    assert 'data-tip="Nhận biết: 100%' in page and 'data-tip="Vận dụng: 0%' in page
-    # The chapter-only questions form the weak topic; the lesson is fine.
-    weak = page.split("Chuyên đề cần ôn", 1)[1].split("</section>", 1)[0]
-    assert "Chương 2" in weak and "Hổng kiến thức" in weak and "0%" in weak
-    assert "Định luật Boyle" in page.split("Các chuyên đề đạt từ 50%", 1)[1]
-    # Review filter and flag markers.
-    assert 'data-filter="wrong">Sai (1)' in page and 'data-filter="unanswered">Bỏ trống (1)' in page
-    assert "🚩 Phân vân (1)" in page and "🚩 Bạn phân vân" in page
+    # Overview: rank for 5.0 / 10, time vs allowed, pace.
+    assert "rank-average" in page and ">Trung bình<" in page
+    assert "3 phút 20 giây" in page and "quy định 10 phút" in page and "50 giây" in page
+    # Difficulty breakdown by questions fully correct.
+    assert 'data-tip="Nhận biết: đúng 2/2 câu (100%)"' in page
+    assert 'data-tip="Vận dụng: đúng 0/2 câu (0%)"' in page
+    # Topic mastery: the chapter-only questions are the weak topic.
+    weak = page.split("weak-note", 1)[1].split("</p>", 1)[0]
+    assert "Hổng kiến thức" in weak and "Chương 2" in weak and "Định luật Boyle" not in weak
+    assert 'data-tip="Định luật Boyle: đúng 2/2 câu (100%)"' in page
+    # Review: filters, flags, and solutions/answer key hidden behind the button.
+    assert 'data-filter="wrong">Câu sai (1)' in page and 'data-filter="unanswered">Bỏ trống (1)' in page
+    assert "🚩 Phân vân (1)" in page and "🚩 Em phân vân" in page
+    assert page.count("📖 Xem lời giải chi tiết") == 4 and page.count("← Quay lại") == 4
+    assert 'class="choice-tag ok reveal-only">Đáp án đúng' in page
+
+
+def test_question_times_are_saved_and_power_the_slowest_filter(started, db):
+    client, attempt_id, (q1, q2, q3, q4) = started
+    client.patch(
+        f"/api/attempts/{attempt_id}/answers",
+        json={"changes": {}, "times": {str(q1): 10, str(q2): 95, "9999": 5, str(q3): -4}},
+    )
+    assert db(lambda s: s.get(ExamAttempt, attempt_id)).question_times == {str(q1): 10, str(q2): 95}
+    assert client.get(f"/api/attempts/{attempt_id}/paper").json()["times"] == {str(q1): 10, str(q2): 95}
+    times = {str(q1): 12, str(q2): 130, str(q3): 40, str(q4): 100000}  # q4 is capped at the attempt length
+    client.post(f"/api/attempts/{attempt_id}/submit", json={"answers": {}, "times": times})
+    attempt = db(lambda s: s.get(ExamAttempt, attempt_id))
+    assert attempt.question_times[str(q4)] == 630  # 10 minutes + 30 s grace
+    page = client.get(f"/attempts/{attempt_id}/result").text
+    assert "🐢 Làm chậm nhất (1)" in page  # slowest quarter of 4 questions
+    assert "⏱ 2 phút 10 giây" in page and "⏱ 12 giây" in page
 
 
 def test_report_without_weak_topics(started, db):

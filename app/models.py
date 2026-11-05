@@ -32,6 +32,7 @@ class Difficulty(StrEnum):
     RECOGNITION = "RECOGNITION"  # Nhận biết
     UNDERSTANDING = "UNDERSTANDING"  # Thông hiểu
     APPLICATION = "APPLICATION"  # Vận dụng
+    ADVANCED_APPLICATION = "ADVANCED_APPLICATION"  # Vận dụng cao
 
 
 class QuestionType(StrEnum):
@@ -255,6 +256,8 @@ class ExamAttempt(Base):
     grading_tries: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Question ids the student flagged as "unsure" (🚩), shown in the submit dialog and the review.
     flags: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
+    # Seconds the student spent on each question {"<question_id>": 73}, measured in the browser.
+    question_times: Mapped[dict[str, int]] = mapped_column(JSONB, default=dict, server_default="{}")
 
     __table_args__ = (
         UniqueConstraint("user_id", "exam_id", "attempt_no", name="uq_attempts_user_exam_no"),

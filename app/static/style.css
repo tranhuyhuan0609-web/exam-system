@@ -328,3 +328,29 @@ dialog.submit-dialog::backdrop { background: rgba(15, 23, 42, .45); }
 .jump-list button { width: 40px; height: 34px; border: 1px solid var(--border); background: #fff; border-radius: 8px; cursor: pointer; font-weight: 600; }
 .jump-list.flags button { border-color: #fb923c; background: #fff7ed; }
 .result-palette + .hint { margin-top: 12px; }
+.diff-advanced_application { background: #ede9fe; color: #4c1d95; }
+
+/* ---------- report v2: overview, mastery bars, hidden solutions ---------- */
+.rank-badge { padding: 4px 12px; border-radius: 999px; font-weight: 700; font-size: .9rem; border: 1px solid; }
+.rank-excellent { background: #ede9fe; color: #4c1d95; border-color: #c4b5fd; }
+.rank-good { background: #dcfce7; color: #14532d; border-color: #86efac; }
+.rank-fair { background: #dbeafe; color: #1e3a8a; border-color: #93c5fd; }
+.rank-average { background: #fef3c7; color: #78350f; border-color: #fcd34d; }
+.rank-weak { background: #fee2e2; color: #7f1d1d; border-color: #fca5a5; }
+.result-head h1 { margin: 0; }
+.overview-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 14px 0 10px; }
+@media (max-width: 800px) { .overview-grid { grid-template-columns: 1fr 1fr; } }
+.overview-grid .stat-num { font-size: 1.15rem; font-weight: 600; }
+.bar-row { grid-template-columns: minmax(90px, 38%) 1fr auto; }
+.bar-row.weak .bar-label { color: #a32b2b; font-weight: 600; }
+.bar-row.weak .bar-fill { background: var(--status-critical); }
+.bar-row.weak .bar-track { background: #f6d4d4; }
+.bar-value { white-space: nowrap; }
+.weak-note { background: #fdf4f4; border: 1px solid #f3c4c4; border-radius: 8px; padding: 8px 10px; margin: 8px 0; font-size: .9rem; }
+.slow-badge { background: #f1f5f9; color: #334155; }
+/* Hidden until the student clicks "Xem lời giải chi tiết" */
+.question-card:not(.revealed) .reveal-only { display: none; }
+.question-card:not(.revealed) .hide-solution { display: none; }
+.question-card.revealed .show-solution { display: none; }
+.question-card.revealed .choice.key { border-color: #16a34a; background: #f0fdf4; }
+.solution { margin-top: 14px; padding: 12px 14px; background: #f8fafc; border-radius: 8px; border-left: 3px solid var(--primary); }

@@ -1,6 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Kết quả · {{ exam.title }}{% endblock %}
 {% block head %}{% include "_katex.html" %}{% endblock %}
+
+{% macro bar(b) %}
+  <div class="bar-row {{ 'weak' if b.weak }}" tabindex="0"
+       data-tip="{{ b.label }}: đúng {{ b.correct }}/{{ b.graded }} câu ({{ b.percent }}%)">
+    <span class="bar-label">{% if b.weak %}<span class="status-critical" aria-hidden="true">⚠</span> {% endif %}{{ b.label }}</span>
+    <span class="bar-track"><span class="bar-fill" style="width: {{ b.percent }}%"></span></span>
+    <span class="bar-value">{{ b.correct }}/{{ b.graded }} · {{ b.percent }}%</span>
+  </div>
+{% endmacro %}
+
 {% block content %}
 <p class="muted"><a href="/exams/{{ exam.id }}">← {{ exam.title }}</a></p>
 
@@ -25,17 +35,24 @@
 {% elif grading_failed %}
   <div class="flash flash-error">AI chưa chấm được phần tự luận; các câu tự luận tạm tính 0 điểm.</div>
 {% endif %}
-<div class="card result-head">
+
+{# ---------------------------------------------------------------- 1. Overview #}
+<section class="card result-head" aria-label="Tổng quan">
   <div class="score-ring {{ 'good' if attempt.score >= 8 else ('ok' if attempt.score >= 5 else 'low') }}">
     <div class="score-value">{{ "%g" % attempt.score }}</div>
     <div class="muted small">/ 10 điểm{% if grading_pending %} · tạm tính{% endif %}</div>
   </div>
   <div class="grow">
-    <h1>{{ exam.title }}</h1>
-    <div class="exam-facts">
-      <span>✅ Đúng {{ attempt.correct_count }}/{{ attempt.total_questions }} câu</span>
-      {% if unanswered %}<span>⚪ Bỏ trống {{ unanswered }} câu</span>{% endif %}
-      <span>⏱ Thời gian làm: {{ time_spent | duration }}</span>
+    <div class="row"><h1>{{ exam.title }}</h1><span class="rank-badge {{ report.rank_class }}">{{ report.rank }}</span></div>
+    <div class="overview-grid">
+      <div><div class="stat-label">Thời gian làm</div>
+        <div class="stat-num">{{ report.time_spent | duration }}</div>
+        <div class="muted small">quy định {{ report.time_allowed | duration }}</div></div>
+      <div><div class="stat-label">Tốc độ trung bình</div><div class="stat-num">{{ report.seconds_per_question | duration }}<span class="muted small">/câu</span></div></div>
+      <div><div class="stat-label">Đúng · một phần</div><div class="stat-num">{{ report.counts.correct }} · {{ report.counts.partial }}</div></div>
+      <div><div class="stat-label">Sai · bỏ trống</div><div class="stat-num">{{ report.counts.wrong }} · {{ report.counts.unanswered }}</div></div>
+    </div>
+    <div class="exam-facts small">
       <span>🔁 Lần #{{ attempt.attempt_no }}</span>
       {% if chosen_parts %}<span>🧩 {% for p in chosen_parts %}{{ TYPE_LABELS[p] }}{{ " + " if not loop.last }}{% endfor %}</span>{% endif %}
       <span class="muted">Nộp lúc {{ attempt.submitted_at | local_dt }}</span>
@@ -47,85 +64,72 @@
       <a class="btn btn-outline" href="/">Chọn đề khác</a>
     </div>
   </div>
-</div>
-
-<div class="stat-row">
-  <div class="stat"><div class="stat-label">Thời gian làm</div><div class="stat-num">{{ report.time_spent | duration }}</div></div>
-  <div class="stat"><div class="stat-label">Trung bình mỗi câu</div><div class="stat-num">{{ report.seconds_per_question }} giây</div></div>
-  <div class="stat"><div class="stat-label">Đúng / một phần</div><div class="stat-num">{{ report.counts.correct }} / {{ report.counts.partial }}</div></div>
-  <div class="stat"><div class="stat-label">Sai / bỏ trống</div><div class="stat-num">{{ report.counts.wrong }} / {{ report.counts.unanswered }}</div></div>
-</div>
+</section>
 
 <div class="report-grid">
+  {# -------------------------------------------------------------- 2. Difficulty breakdown #}
   <section class="card viz-root" aria-labelledby="by-difficulty-title">
-    <h3 id="by-difficulty-title">Tỉ lệ đúng theo mức độ</h3>
-    <p class="muted small">Tính theo điểm đạt được trên điểm tối đa của các câu ở mỗi mức độ.</p>
+    <h3 id="by-difficulty-title">Ma trận độ khó</h3>
+    <p class="muted small">Số câu làm đúng hoàn toàn ở mỗi mức độ: biết em mất điểm ở câu dễ hay câu khó.</p>
     <div class="bar-chart" role="img" aria-label="Tỉ lệ đúng theo mức độ">
-      {% for b in report.by_difficulty %}
-        <div class="bar-row" tabindex="0"
-             data-tip="{{ b.label }}: {{ b.percent }}% · {{ '%g' % b.earned }}/{{ '%g' % b.possible }} điểm · {{ b.questions }} câu">
-          <span class="bar-label">{{ b.label }}</span>
-          <span class="bar-track"><span class="bar-fill" style="width: {{ b.percent }}%"></span></span>
-          <span class="bar-value">{{ b.percent }}%</span>
-        </div>
-      {% endfor %}
+      {% for b in report.by_difficulty %}{{ bar(b) }}{% endfor %}
       <div class="bar-tooltip" hidden></div>
     </div>
     <table class="sr-only">
       <caption>Tỉ lệ đúng theo mức độ</caption>
-      <tr><th>Mức độ</th><th>Tỉ lệ đúng</th><th>Điểm</th><th>Số câu</th></tr>
-      {% for b in report.by_difficulty %}<tr><td>{{ b.label }}</td><td>{{ b.percent }}%</td><td>{{ '%g' % b.earned }}/{{ '%g' % b.possible }}</td><td>{{ b.questions }}</td></tr>{% endfor %}
+      <tr><th>Mức độ</th><th>Câu đúng</th><th>Tỉ lệ</th></tr>
+      {% for b in report.by_difficulty %}<tr><td>{{ b.label }}</td><td>{{ b.correct }}/{{ b.graded }}</td><td>{{ b.percent }}%</td></tr>{% endfor %}
     </table>
   </section>
 
-  <section class="card" aria-labelledby="topics-title">
-    <h3 id="topics-title">Chuyên đề cần ôn</h3>
+  {# -------------------------------------------------------------- 3. Topic mastery #}
+  <section class="card viz-root" aria-labelledby="topics-title">
+    <h3 id="topics-title">Phân tích theo chuyên đề</h3>
     {% if report.weak_topics %}
-      <ul class="topic-list">
-        {% for t in report.weak_topics %}
-          <li class="topic weak">
-            <span class="status-critical" aria-hidden="true">⚠</span>
-            <span class="grow"><strong>{{ t.label }}</strong>
-              <span class="muted small">· câu {% for n in t.numbers %}<a href="#r-{{ n }}">{{ n }}</a>{{ ", " if not loop.last }}{% endfor %}</span></span>
-            <span class="topic-score"><span class="status-label">Hổng kiến thức</span> {{ t.percent }}%</span>
-          </li>
-        {% endfor %}
-      </ul>
+      <p class="weak-note"><span class="status-critical" aria-hidden="true">⚠</span>
+        <span class="status-label">Hổng kiến thức</span> (đúng dưới 50%):
+        {% for t in report.weak_topics %}<strong>{{ t.label }}</strong>{{ ", " if not loop.last }}{% endfor %}</p>
     {% else %}
-      <p class="ok-text">✓ Không có chuyên đề nào dưới 50%.</p>
+      <p class="ok-text small">✓ Không có chuyên đề nào dưới 50%.</p>
     {% endif %}
-    {% set strong = report.topics | rejectattr("weak") | list %}
-    {% if strong %}
-      <details class="mt"><summary class="small">Các chuyên đề đạt từ 50% ({{ strong | length }})</summary>
-        <ul class="topic-list">
-          {% for t in strong | reverse %}<li class="topic"><span class="grow">{{ t.label }}</span><span class="topic-score">{{ t.percent }}%</span></li>{% endfor %}
-        </ul>
-      </details>
-    {% endif %}
+    <div class="bar-chart" role="img" aria-label="Tỉ lệ đúng theo chuyên đề">
+      {% for t in report.topics %}{{ bar(t) }}{% endfor %}
+      <div class="bar-tooltip" hidden></div>
+    </div>
+    <table class="sr-only">
+      <caption>Tỉ lệ đúng theo chuyên đề</caption>
+      <tr><th>Chuyên đề</th><th>Câu đúng</th><th>Tỉ lệ</th><th>Câu số</th></tr>
+      {% for t in report.topics %}<tr><td>{{ t.label }}</td><td>{{ t.correct }}/{{ t.graded }}</td><td>{{ t.percent }}%</td><td>{{ t.numbers | join(", ") }}</td></tr>{% endfor %}
+    </table>
   </section>
 </div>
 
-<div class="card">
+{# ---------------------------------------------------------------- 4. Review #}
+<section class="card" aria-labelledby="review-title">
   <div class="page-head">
-    <h3>Bảng đáp án</h3>
-    <div class="review-filter" role="tablist" aria-label="Lọc câu khi xem lại">
+    <h3 id="review-title">Xem lại bài làm</h3>
+    <div class="review-filter" aria-label="Lọc câu khi xem lại">
       <button type="button" class="active" data-filter="all">Tất cả ({{ rows | length }})</button>
-      <button type="button" data-filter="wrong">Sai ({{ report.counts.wrong + report.counts.partial }})</button>
+      <button type="button" data-filter="wrong">Câu sai ({{ report.counts.wrong + report.counts.partial }})</button>
       <button type="button" data-filter="unanswered">Bỏ trống ({{ report.counts.unanswered }})</button>
       {% if flagged_count %}<button type="button" data-filter="flagged">🚩 Phân vân ({{ flagged_count }})</button>{% endif %}
+      {% if report.slowest %}<button type="button" data-filter="slow">🐢 Làm chậm nhất ({{ report.slowest | length }})</button>{% endif %}
     </div>
   </div>
   <div class="palette result-palette">
-    {% for r in rows %}<a href="#r-{{ r.number }}" class="{{ r.status }} {{ 'flagged' if r.flagged }}" data-status="{{ r.status }}" data-flagged="{{ 1 if r.flagged else 0 }}">{{ r.number }}</a>{% endfor %}
+    {% for r in rows %}<a href="#r-{{ r.number }}" class="{{ r.status }} {{ 'flagged' if r.flagged }}" data-status="{{ r.status }}"
+       data-flagged="{{ 1 if r.flagged else 0 }}" data-slow="{{ 1 if r.number in slowest else 0 }}">{{ r.number }}</a>{% endfor %}
   </div>
-  <p class="hint mt"><span class="dot correct"></span> Đúng · <span class="dot partial"></span> Đúng một phần · <span class="dot wrong"></span> Sai · <span class="dot unanswered"></span> Bỏ trống · <span class="dot pending"></span> Đang chấm</p>
+  <p class="hint"><span class="dot correct"></span> Đúng · <span class="dot partial"></span> Đúng một phần · <span class="dot wrong"></span> Sai · <span class="dot unanswered"></span> Bỏ trống · <span class="dot pending"></span> Đang chấm.
+    Đáp án đúng và lời giải chỉ hiện khi em bấm “Xem lời giải chi tiết”.</p>
   <p class="hint">Điểm theo cấu trúc THPT: trắc nghiệm 0,25 · đúng/sai 0,1 – 0,25 – 0,5 – 1 (đúng 1–4 ý) · trả lời ngắn 0,25; tự luận theo điểm từng câu (AI chấm); quy về thang 10.</p>
-</div>
+</section>
 
 {% for r in rows %}
-  <section class="card question-card review-{{ r.status }}" id="r-{{ r.number }}" data-status="{{ r.status }}" data-flagged="{{ 1 if r.flagged else 0 }}">
+  {% set solution = r.explanation or (r.essay.solution if r.essay else none) %}
+  <section class="card question-card review-{{ r.status }}" id="r-{{ r.number }}" data-status="{{ r.status }}"
+           data-flagged="{{ 1 if r.flagged else 0 }}" data-slow="{{ 1 if r.number in slowest else 0 }}">
     <div class="q-number">Câu {{ r.number }}
-      {% if r.flagged %}<span class="badge badge-warn">🚩 Bạn phân vân</span>{% endif %}
       <span class="badge type-badge">{{ TYPE_LABELS[r.type] }}</span>
       {% if r.status == "correct" %}<span class="badge badge-ok">Đúng</span>
       {% elif r.status == "partial" %}<span class="badge badge-warn">Đúng một phần</span>
@@ -133,6 +137,9 @@
       {% elif r.status == "pending" %}<span class="badge badge-warn">⏳ Đang chấm</span>
       {% else %}<span class="badge">Chưa trả lời</span>{% endif %}
       <span class="muted small">{{ "%g" % r.points }}/{{ "%g" % r.max_points }} điểm</span>
+      {% if r.flagged %}<span class="badge badge-warn">🚩 Em phân vân</span>{% endif %}
+      {% if r.seconds %}<span class="muted small">⏱ {{ r.seconds | duration }}</span>{% endif %}
+      {% if r.number in slowest %}<span class="badge slow-badge">🐢 Chậm</span>{% endif %}
     </div>
     <div class="q-content">{{ r.content }}</div>
     {% if r.image_url %}<img class="q-figure" src="{{ r.image_url }}" alt="Hình vẽ câu {{ r.number }}">{% endif %}
@@ -142,13 +149,13 @@
         <div class="essay-answer"><div class="muted small">Bài làm của em</div>
           <div class="q-content">{{ r.answer or "— (bỏ trống)" }}</div></div>
         {% if r.essay %}
-          <div class="essay-feedback"><div class="muted small">🤖 Nhận xét của AI · {{ "%g" % r.points }}/{{ "%g" % r.max_points }} điểm</div>
+          <div class="essay-feedback reveal-only"><div class="muted small">🤖 Nhận xét của AI · {{ "%g" % r.points }}/{{ "%g" % r.max_points }} điểm</div>
             <div class="q-content">{{ r.essay.feedback }}</div></div>
         {% endif %}
       </div>
     {% elif r.type == "TRUE_FALSE" %}
       <table class="tf-table review">
-        <thead><tr><th></th><th>Ý</th><th>Bạn chọn</th><th>Đáp án</th></tr></thead>
+        <thead><tr><th></th><th>Ý</th><th>Em chọn</th><th class="reveal-only">Đáp án</th></tr></thead>
         <tbody>
         {% for c in r.choices %}
           {% set picked = r.answer.get(c.id) if r.answer else none %}
@@ -156,7 +163,7 @@
             <td class="choice-letter">{{ "abcdef"[loop.index0] }})</td>
             <td class="choice-text">{{ c.content }}</td>
             <td>{{ "—" if picked is none else ("Đúng" if picked else "Sai") }}</td>
-            <td><strong>{{ "Đúng" if c.is_correct else "Sai" }}</strong></td>
+            <td class="reveal-only"><strong>{{ "Đúng" if c.is_correct else "Sai" }}</strong></td>
           </tr>
         {% endfor %}
         </tbody>
@@ -164,40 +171,58 @@
     {% elif r.type == "SHORT_ANSWER" %}
       <div class="short-review">
         <div class="choice review {{ 'is-correct' if r.status == 'correct' else ('is-wrong' if r.answer else '') }}">
-          <span class="muted">Bạn trả lời:</span> <strong>{{ r.answer or "—" }}</strong>
+          <span class="muted">Em trả lời:</span> <strong>{{ r.answer or "—" }}</strong>
         </div>
-        <div class="choice review is-correct"><span class="muted">Đáp án:</span> <strong>{{ r.accepted_answers | join(" hoặc ") }}</strong></div>
+        <div class="choice review is-correct reveal-only"><span class="muted">Đáp án:</span> <strong>{{ r.accepted_answers | join(" hoặc ") }}</strong></div>
       </div>
     {% else %}
       <div class="choice-list">
         {% for c in r.choices %}
-          <div class="choice review {% if c.id == r.correct_id %}is-correct{% endif %} {% if c.id == r.answer and c.id != r.correct_id %}is-wrong{% endif %}">
+          {% set chosen = c.id == r.answer %}
+          <div class="choice review {{ 'key' if c.id == r.correct_id }} {{ ('is-correct' if c.id == r.correct_id else 'is-wrong') if chosen }}">
             <span class="choice-letter">{{ "ABCDEF"[loop.index0] }}</span>
             <span class="choice-text">{{ c.content }}</span>
-            {% if c.id == r.answer %}<span class="choice-tag">Bạn chọn</span>{% endif %}
-            {% if c.id == r.correct_id %}<span class="choice-tag ok">Đáp án đúng</span>{% endif %}
+            {% if chosen %}<span class="choice-tag">Em chọn</span>{% endif %}
+            {% if c.id == r.correct_id and not chosen %}<span class="choice-tag ok reveal-only">Đáp án đúng</span>{% endif %}
           </div>
         {% endfor %}
       </div>
     {% endif %}
 
-    {% set solution = r.explanation or (r.essay.solution if r.essay else none) %}
     {% if solution %}
-      <details class="explanation" {% if r.status != "correct" %}open{% endif %}>
-        <summary>Lời giải chi tiết{% if not r.explanation %} (AI){% endif %}</summary>
+      <div class="solution reveal-only">
+        <div class="muted small">📖 Lời giải chi tiết{% if not r.explanation %} (AI){% endif %}</div>
         <div class="q-content">{{ solution }}</div>
-      </details>
+      </div>
     {% endif %}
+    <div class="row mt reveal-actions">
+      <button type="button" class="btn btn-outline btn-small show-solution">📖 Xem lời giải chi tiết</button>
+      <button type="button" class="btn btn-outline btn-small hide-solution">← Quay lại</button>
+    </div>
   </section>
 {% endfor %}
+
 <script>
   (() => {
-    // Review filter: All / Wrong (incl. partly right) / Blank / Flagged.
+    // Solutions stay hidden until the student asks; "Quay lại" folds them and returns to the question.
+    document.querySelectorAll("section.question-card").forEach((card) => {
+      card.querySelector(".show-solution").addEventListener("click", () => {
+        card.classList.add("revealed");
+        if (window.renderMath) window.renderMath(card);
+      });
+      card.querySelector(".hide-solution").addEventListener("click", () => {
+        card.classList.remove("revealed");
+        card.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+
+    // Review filter: All / Wrong (incl. partly right) / Blank / Flagged / Slowest.
     const match = {
       all: () => true,
       wrong: (el) => el.dataset.status === "wrong" || el.dataset.status === "partial",
       unanswered: (el) => el.dataset.status === "unanswered",
       flagged: (el) => el.dataset.flagged === "1",
+      slow: (el) => el.dataset.slow === "1",
     };
     const buttons = document.querySelectorAll(".review-filter button");
     buttons.forEach((btn) => btn.addEventListener("click", () => {

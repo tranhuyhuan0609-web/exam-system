@@ -33,6 +33,7 @@ templates.env.globals["DIFFICULTY_LABELS"] = {
     Difficulty.RECOGNITION: "Nhận biết",
     Difficulty.UNDERSTANDING: "Thông hiểu",
     Difficulty.APPLICATION: "Vận dụng",
+    Difficulty.ADVANCED_APPLICATION: "Vận dụng cao",
 }
 
 # Vietnam has no DST, so a fixed UTC+7 offset is exact.

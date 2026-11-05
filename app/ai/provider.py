@@ -92,7 +92,8 @@ Với mỗi câu:
 và chọn lựa chọn gần nhất.
 4. Câu TRUE_FALSE: xét từng ý a, b, c, d (có tính toán nếu cần), ghi kết luận vào statement_truths theo đúng thứ tự.
    Câu SHORT_ANSWER: ghi CHỈ con số vào short_answer (không đơn vị, dấu phẩy thập phân, làm tròn như đề yêu cầu), correct_label = null; final_value ghi kèm đơn vị.
-5. Đánh giá mức độ: RECOGNITION (nhớ công thức/khái niệm), UNDERSTANDING (áp dụng 1 bước), APPLICATION (nhiều bước, suy luận).
+5. Đánh giá mức độ: RECOGNITION (nhớ công thức/khái niệm), UNDERSTANDING (áp dụng 1 bước), APPLICATION (nhiều bước, suy luận), \
+ADVANCED_APPLICATION (vận dụng cao: kết hợp nhiều kiến thức, biến đổi phức tạp, tình huống mới).
 Công thức trong lời giải viết LaTeX trong $...$; công thức quan trọng có thể đặt riêng dòng bằng $$...$$."""
 
 
