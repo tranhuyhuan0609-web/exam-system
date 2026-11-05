@@ -4,7 +4,8 @@ A draft is a plain dict stored in ImportJob.drafts and edited during review:
 
     {
         "number": 5, "page": 1, "type": "MULTIPLE_CHOICE",
-        "content": "...", "choices": ["...", "..."], "correct": 2,         # index into choices, or None
+        "content": "...", "choices": ["...", "..."], "correct": 2,         # MULTIPLE_CHOICE: index, or None
+        "truths": [True, False, ...], "answers": ["30"],                    # TRUE_FALSE / SHORT_ANSWER
         "short_answer": None, "final_value": "25 N", "explanation": "...",
         "difficulty": "APPLICATION", "figure": "figures/12-ab12cd.png",  # relative to <data_dir>/media
         "flags": ["no_match"], "question_id": None,                         # set once published
@@ -21,6 +22,7 @@ from typing import Any
 from app.ai.normalize import crop_figure, thumbnail_bytes, to_page_images
 from app.ai.provider import AIProvider, FigureImage, PageImage
 from app.ai.schemas import ExtractedQuestion, Solution
+from app.question_rules import extract_number
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +30,7 @@ EXTRACT_CHUNK_PAGES = 3  # pages per vision call (+1 following page as context f
 SOLVE_BATCH = 6  # questions per solving call
 
 FLAG_LABELS = {
-    "unsupported_type": "Dạng câu này (đúng/sai, trả lời ngắn, tự luận) chưa dùng được trong đề trắc nghiệm.",
+    "unsupported_type": "Câu tự luận chưa dùng được trong đề (chỉ hỗ trợ trắc nghiệm, đúng/sai, trả lời ngắn).",
     "no_match": "Kết quả AI tính ra không khớp lựa chọn nào — hãy kiểm tra lại đáp án.",
     "no_solution": "AI chưa giải được câu này — hãy tự chọn đáp án và viết lời giải.",
     "figure_failed": "Câu có hình vẽ nhưng cắt hình không thành công.",
@@ -77,16 +79,26 @@ def _chunks(pages: list[Path]) -> list[list[PageImage]]:
 def _draft(q: ExtractedQuestion, solution: Solution | None, figure: str | None, figure_failed: bool, default: str):
     choices = [clean_choice(c.content) for c in q.choices]
     flags: list[str] = []
-    correct = None
-    if q.type != "MULTIPLE_CHOICE":
+    correct, truths, answers = None, [], []
+    if q.type == "ESSAY":
         flags.append("unsupported_type")
     if solution is None:
         flags.append("no_solution")
+    elif q.type == "TRUE_FALSE":
+        truths = list(solution.statement_truths or [])
+        if len(truths) != len(choices):
+            flags.append("no_solution")
+            truths = []
+    elif q.type == "SHORT_ANSWER":
+        number = extract_number(solution.short_answer or "") or extract_number(solution.final_value or "")
+        answers = [number] if number else []
+        if not answers:
+            flags.append("no_solution")
     else:
         if solution.correct_label is not None:
             index = "ABCDEF".index(solution.correct_label)
             correct = index if index < len(choices) else None
-        if q.type == "MULTIPLE_CHOICE" and (not solution.matches_an_option or correct is None):
+        if not solution.matches_an_option or correct is None:
             flags.append("no_match")
     if figure_failed:
         flags.append("figure_failed")
@@ -97,6 +109,8 @@ def _draft(q: ExtractedQuestion, solution: Solution | None, figure: str | None, 
         "content": q.content.strip(),
         "choices": choices,
         "correct": correct,
+        "truths": truths,
+        "answers": answers,
         "short_answer": solution.short_answer if solution else None,
         "final_value": solution.final_value if solution else None,
         "explanation": solution.step_by_step_solution.strip() if solution else "",
@@ -105,6 +119,18 @@ def _draft(q: ExtractedQuestion, solution: Solution | None, figure: str | None, 
         "flags": flags,
         "question_id": None,
     }
+
+
+def normalize_draft(draft: dict[str, Any]) -> dict[str, Any]:
+    """Fill fields added after a draft was stored (drafts from older versions of the pipeline)."""
+    d = dict(draft)
+    d.setdefault("truths", [])
+    if not d.get("answers"):
+        number = extract_number(d.get("short_answer") or "") or extract_number(d.get("final_value") or "")
+        d["answers"] = [number] if d.get("type") == "SHORT_ANSWER" and number else []
+    if d.get("type") in ("TRUE_FALSE", "SHORT_ANSWER"):
+        d["flags"] = [f for f in d.get("flags", []) if f != "unsupported_type"]
+    return d
 
 
 async def run_pipeline(

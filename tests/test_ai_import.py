@@ -119,8 +119,8 @@ def test_pipeline_builds_drafts_with_figures_flags_and_answers(tmp_path):
     assert first["figure"].startswith("figures/7-1-")
     assert (tmp_path / "media" / first["figure"]).is_file()
     assert second["flags"] == ["no_match"]
-    assert third["type"] == "SHORT_ANSWER" and "unsupported_type" in third["flags"]
-    assert third["short_answer"] == "30 m"
+    assert third["type"] == "SHORT_ANSWER" and third["flags"] == []
+    assert third["answers"] == ["30"]  # unit stripped from the model's "30 m"
     # The solver sees the cropped figure of Câu 1.
     ((_, figures),) = provider.solve_calls
     assert [f.question_number for f in figures] == [1]
@@ -204,7 +204,7 @@ def test_upload_process_review_and_publish(admin_client, db, chapter_scope):
     draft = db(lambda s: s.get(ImportJob, job_id)).drafts[1]
     assert (draft["content"], draft["correct"], draft["flags"], draft["edited"]) == ("Câu hỏi 2 đã sửa", 1, [], True)
 
-    # Publish all three: the short-answer one is skipped (not supported yet).
+    # Publish all three, including the short-answer question.
     r = admin_client.post(
         f"/admin/ai-imports/{job_id}/publish",
         data={"selected": ["0", "1", "2"], "create_exam": "on", "exam_title": "Buổi 12", "duration_minutes": "20"},
@@ -212,17 +212,22 @@ def test_upload_process_review_and_publish(admin_client, db, chapter_scope):
     )
     assert r.status_code == 303
     questions = db(lambda s: s.scalars(select(Question).order_by(Question.id)))
-    assert [q.content for q in questions] == ["Câu hỏi 1: tính $p_1$", "Câu hỏi 2 đã sửa"]
+    assert [q.content for q in questions] == ["Câu hỏi 1: tính $p_1$", "Câu hỏi 2 đã sửa", "Câu hỏi 3: tính $p_3$"]
     assert questions[0].image_path.startswith("figures/") and questions[1].image_path is None
     assert [c["is_correct"] for c in questions[1].choices] == [False, True, False, False]
+    assert (questions[2].question_type.value, questions[2].accepted_answers, questions[2].choices) == (
+        "SHORT_ANSWER",
+        ["30"],
+        [],
+    )
     exam = db(lambda s: s.scalar(select(Exam)))
     assert (exam.title, exam.duration_seconds, exam.is_published) == ("Buổi 12", 1200, False)
-    assert len(db(lambda s: s.scalars(select(ExamQuestion)))) == 2
+    assert len(db(lambda s: s.scalars(select(ExamQuestion)))) == 3
 
     # Figures are public under /media; publishing twice does not duplicate questions.
     assert admin_client.get(f"/media/{questions[0].image_path}").status_code == 200
-    admin_client.post(f"/admin/ai-imports/{job_id}/publish", data={"selected": ["0", "1"]})
-    assert len(db(lambda s: s.scalars(select(Question.id)))) == 2
+    admin_client.post(f"/admin/ai-imports/{job_id}/publish", data={"selected": ["0", "1", "2"]})
+    assert len(db(lambda s: s.scalars(select(Question.id)))) == 3
 
 
 def test_word_file_without_libreoffice_fails_with_a_clear_message(admin_client, db, chapter_scope, monkeypatch):

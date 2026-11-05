@@ -28,6 +28,7 @@
           <div class="grow">
             <div class="q-meta">
               <span class="muted">#{{ q.id }}</span>
+              <span class="badge type-badge">{{ TYPE_LABELS[q.question_type] }}</span>
               <span class="badge diff-{{ q.difficulty | lower }}">{{ DIFFICULTY_LABELS[q.difficulty] }}</span>
               <a class="small" href="/admin/questions/{{ q.id }}/edit">Sửa câu</a>
             </div>

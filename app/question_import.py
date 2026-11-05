@@ -4,14 +4,22 @@ Text format (.docx / .txt), one block per question:
 
     Câu 1: Question text, may span lines and contain $LaTeX$
     A. first choice
-    *B. correct choice          <- either mark with "*" ...
+    *B. correct choice          <- trắc nghiệm: mark with "*" ...
     C. third choice    D. fourth choice   <- several choices per line if separated by a tab or 2+ spaces
     Đáp án: B                   <- ... or give an answer line
     Mức độ: Thông hiểu          (optional, otherwise the default chosen on upload)
     Lời giải: explanation, may span lines until the next "Câu"
 
+    Câu 2: ...                  <- đúng/sai: four statements with lower-case labels
+    a) statement   b) statement   c) ...   d) ...
+    Đáp án: Đ S Đ S
+
+    Câu 3: ...                  <- trả lời ngắn: no options, just the answer
+    Đáp án: 30
+
 Excel format: first sheet, header row with columns
-    Nội dung | A | B | C | D | E | F | Đáp án | Mức độ | Lời giải
+    Dạng | Nội dung | A | B | C | D | E | F | Đáp án | Mức độ | Lời giải
+("Dạng" is optional: Trắc nghiệm / Đúng sai / Trả lời ngắn; it is guessed from the row when missing.)
 """
 
 import io
@@ -20,7 +28,8 @@ import unicodedata
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from app.models import QUESTION_MAX_CHOICES, QUESTION_MIN_CHOICES, Difficulty
+from app import question_rules as rules
+from app.models import QUESTION_MAX_CHOICES, Difficulty, QuestionType
 
 MAX_FILE_BYTES = 5 * 1024 * 1024
 MAX_QUESTIONS = 500
@@ -41,6 +50,20 @@ DIFFICULTY_ALIASES = {
     **{d.value.lower(): d for d in Difficulty},
 }
 
+TYPE_ALIASES = {
+    "trắc nghiệm": QuestionType.MULTIPLE_CHOICE,
+    "tn": QuestionType.MULTIPLE_CHOICE,
+    "nhiều lựa chọn": QuestionType.MULTIPLE_CHOICE,
+    "đúng sai": QuestionType.TRUE_FALSE,
+    "đúng/sai": QuestionType.TRUE_FALSE,
+    "đ/s": QuestionType.TRUE_FALSE,
+    "ds": QuestionType.TRUE_FALSE,
+    "trả lời ngắn": QuestionType.SHORT_ANSWER,
+    "tln": QuestionType.SHORT_ANSWER,
+    "điền số": QuestionType.SHORT_ANSWER,
+    **{t.value.lower(): t for t in QuestionType},
+}
+
 
 class ImportFileError(Exception):
     """The file as a whole cannot be read; the message is shown to the admin."""
@@ -49,9 +72,12 @@ class ImportFileError(Exception):
 @dataclass
 class ParsedQuestion:
     label: str  # "Câu 3" or "Dòng 5", used in error messages
+    type: str = QuestionType.MULTIPLE_CHOICE.value
     content: str = ""
-    choices: list[str] = field(default_factory=list)
-    correct: int | None = None
+    choices: list[str] = field(default_factory=list)  # options, or statements for TRUE_FALSE
+    correct: int | None = None  # MULTIPLE_CHOICE
+    truths: list[bool | None] = field(default_factory=list)  # TRUE_FALSE
+    answers: list[str] = field(default_factory=list)  # SHORT_ANSWER
     difficulty: str | None = None  # Difficulty value, or None to use the upload default
     explanation: str = ""
     errors: list[str] = field(default_factory=list)
@@ -66,14 +92,22 @@ class ParsedQuestion:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ParsedQuestion":
+        kind = data.get("type")
+        truths = data.get("truths") if isinstance(data.get("truths"), list) else []
         return cls(
             label=str(data.get("label", "")),
+            type=kind if kind in QuestionType.__members__ else QuestionType.MULTIPLE_CHOICE.value,
             content=str(data.get("content", "")),
             choices=[str(c) for c in data.get("choices", [])],
             correct=data["correct"] if isinstance(data.get("correct"), int) else None,
+            truths=[t if isinstance(t, bool) else None for t in truths],
+            answers=[str(a) for a in data.get("answers", []) if str(a).strip()],
             difficulty=data.get("difficulty") if data.get("difficulty") in Difficulty.__members__ else None,
             explanation=str(data.get("explanation", "")),
         )
+
+    def stored_choices(self) -> list[dict[str, Any]]:
+        return rules.build_choices(self.type, self.choices, self.correct, self.truths)
 
 
 def _nfc(text: str) -> str:
@@ -81,34 +115,48 @@ def _nfc(text: str) -> str:
     return unicodedata.normalize("NFC", text).replace(" ", " ")
 
 
+def _key(text: str) -> str:
+    return re.sub(r"\s+", " ", _nfc(text).strip().lower())
+
+
 def parse_difficulty(text: str) -> Difficulty | None:
-    return DIFFICULTY_ALIASES.get(re.sub(r"\s+", " ", _nfc(text).strip().lower()))
+    return DIFFICULTY_ALIASES.get(_key(text))
+
+
+def parse_type(text: str) -> QuestionType | None:
+    return TYPE_ALIASES.get(_key(text).replace(" / ", "/"))
 
 
 def validate(q: ParsedQuestion) -> list[str]:
-    errors = []
-    if not q.content.strip():
-        errors.append("Thiếu nội dung câu hỏi.")
-    if not QUESTION_MIN_CHOICES <= len(q.choices) <= QUESTION_MAX_CHOICES:
-        errors.append(f"Cần từ {QUESTION_MIN_CHOICES} đến {QUESTION_MAX_CHOICES} lựa chọn (đang có {len(q.choices)}).")
-    if any(not c.strip() for c in q.choices):
-        errors.append("Có lựa chọn bị trống.")
-    if q.correct is None:
-        errors.append("Chưa có đáp án đúng (thêm dòng “Đáp án: B” hoặc đánh dấu * trước lựa chọn đúng).")
-    elif not 0 <= q.correct < len(q.choices):
-        errors.append(f"Đáp án {LETTERS[q.correct] if q.correct < len(LETTERS) else '?'} không có trong các lựa chọn.")
-    return errors
+    return rules.validate(q.type, q.content, q.choices, q.correct, q.truths, q.answers)
+
+
+def apply_answer(q: ParsedQuestion, raw: str) -> None:
+    """Interpret an answer cell / line according to the question type."""
+    raw = raw.strip()
+    if not raw:
+        return
+    if q.type == QuestionType.TRUE_FALSE:
+        q.truths = rules.parse_truths(raw)
+    elif q.type == QuestionType.SHORT_ANSWER:
+        q.answers = rules.split_accepted(raw)
+    else:
+        letter = raw.upper().strip(" .()")
+        if len(letter) == 1 and letter in LETTERS:
+            q.correct = LETTERS.index(letter)
+        else:
+            q.errors.append(f"Đáp án “{raw}” không hợp lệ (ghi một chữ cái A–{LETTERS[-1]}).")
 
 
 # ---------------------------------------------------------------- text (.txt / .docx)
 
 _Q_START = re.compile(r"^\s*(?:câu|cau|question)\s*(\d+)\s*[:.)\-–]?\s*(.*)$", re.IGNORECASE)
+# Upper-case "A." / "A)" = option; lower-case "a)" / "a." = true/false statement.
 _CHOICE = re.compile(r"^\s*(\*?)\s*([A-Fa-f])\s*[.)]\s*(.*)$", re.DOTALL)
 # Further choices on the same line must be separated by a tab or at least two spaces.
-_INLINE_SPLIT = re.compile(r"(?:\t+|\s{2,})(?=\*?\s*[A-F]\s*[.)]\s)")
-_ANSWER = re.compile(
-    r"^\s*(?:đáp\s*án(?:\s*đúng)?|đa|answer)\s*[:.\-–]?\s*\(?\s*([A-Fa-f])\s*\)?\s*\.?\s*$", re.IGNORECASE
-)
+_INLINE_SPLIT = re.compile(r"(?:\t+|\s{2,})(?=\*?\s*[A-Fa-f]\s*[.)]\s)")
+_ANSWER = re.compile(r"^\s*(?:đáp\s*án(?:\s*đúng)?|đa|answer)\s*[:.\-–]\s*(.+?)\s*$", re.IGNORECASE)
+_ANSWER_NO_COLON = re.compile(r"^\s*(?:đáp\s*án(?:\s*đúng)?|đa)\s+([A-Fa-f])\s*\.?\s*$", re.IGNORECASE)
 _LEVEL = re.compile(r"^\s*(?:mức\s*độ|level|difficulty)\s*[:.\-–]\s*(.+?)\s*$", re.IGNORECASE)
 _EXPLANATION = re.compile(
     r"^\s*(?:lời\s*giải(?:\s*chi\s*tiết)?|hướng\s*dẫn(?:\s*giải)?|giải\s*thích|giải|explanation)\s*[:.\-–]\s*(.*)$",
@@ -124,12 +172,14 @@ class _Block:
     explanation: list[str] = field(default_factory=list)
     section: str = "content"  # content | choices | explanation | meta
     star: int | None = None
-    answer: int | None = None
+    answer: str | None = None
+    lower_labels: int = 0
 
     def add_choice(self, star: str, letter: str, text: str) -> None:
-        index = LETTERS.find(letter.upper())
-        if index != len(self.choices):
-            self.q.errors.append(f"Lựa chọn {letter.upper()} không đúng thứ tự A, B, C…")
+        if LETTERS.find(letter.upper()) != len(self.choices):
+            self.q.errors.append(f"Lựa chọn {letter} không đúng thứ tự A, B, C… / a, b, c…")
+        if letter.islower():
+            self.lower_labels += 1
         if star:
             self.star = len(self.choices)
         self.choices.append([text.strip()])
@@ -140,9 +190,17 @@ class _Block:
         q.content = "\n".join(self.content).strip()
         q.choices = ["\n".join(lines).strip() for lines in self.choices]
         q.explanation = "\n".join(self.explanation).strip()
-        if self.star is not None and self.answer is not None and self.star != self.answer:
-            q.errors.append("Đáp án đánh dấu * khác với dòng “Đáp án”.")
-        q.correct = self.answer if self.answer is not None else self.star
+        if not q.choices:
+            q.type = QuestionType.SHORT_ANSWER.value
+        elif self.lower_labels and self.lower_labels == len(q.choices):
+            q.type = QuestionType.TRUE_FALSE.value
+        if self.answer is not None:
+            apply_answer(q, self.answer)
+        if q.type == QuestionType.MULTIPLE_CHOICE:
+            if self.star is not None and q.correct is not None and self.star != q.correct:
+                q.errors.append("Đáp án đánh dấu * khác với dòng “Đáp án”.")
+            if q.correct is None:
+                q.correct = self.star
         return q
 
 
@@ -161,8 +219,8 @@ def parse_text(text: str) -> list[ParsedQuestion]:
         if current is None:  # title / instructions before the first question
             continue
 
-        if m := _ANSWER.match(line):
-            current.answer = LETTERS.find(m.group(1).upper())
+        if m := (_ANSWER.match(line) or _ANSWER_NO_COLON.match(line)):
+            current.answer = m.group(1)
             current.section = "meta"
             continue
         if m := _LEVEL.match(line):
@@ -242,6 +300,7 @@ def _decode(data: bytes) -> str:
 # ---------------------------------------------------------------- Excel
 
 _HEADERS = {
+    "type": {"dạng", "loại", "dạng câu", "loại câu", "type"},
     "content": {"nội dung", "câu hỏi", "nội dung câu hỏi", "đề bài", "content", "question"},
     "answer": {"đáp án", "đáp án đúng", "answer", "correct"},
     "level": {"mức độ", "level", "difficulty"},
@@ -253,6 +312,7 @@ for _letter in LETTERS:
         f"đáp án {_letter.lower()}",
         f"phương án {_letter.lower()}",
         f"lựa chọn {_letter.lower()}",
+        f"ý {_letter.lower()}",
     }
 
 
@@ -262,6 +322,18 @@ def _cell(value: Any) -> str:
     if isinstance(value, float) and value.is_integer():
         value = int(value)
     return _nfc(str(value)).strip()
+
+
+def _guess_type(choices: list[str], answer: str) -> QuestionType:
+    if not choices:
+        return QuestionType.SHORT_ANSWER
+    compact = answer.upper().strip(" .()")
+    if len(compact) == 1 and compact in LETTERS:
+        return QuestionType.MULTIPLE_CHOICE
+    truths = rules.parse_truths(answer)
+    if truths and len(truths) == len(choices) and all(t is not None for t in truths):
+        return QuestionType.TRUE_FALSE
+    return QuestionType.MULTIPLE_CHOICE
 
 
 def parse_xlsx(data: bytes) -> list[ParsedQuestion]:
@@ -276,7 +348,7 @@ def parse_xlsx(data: bytes) -> list[ParsedQuestion]:
         header = next(rows, None) or ()
         columns: dict[str, int] = {}
         for index, name in enumerate(header):
-            key = re.sub(r"\s+", " ", _cell(name).lower())
+            key = _key(_cell(name))
             for field_name, aliases in _HEADERS.items():
                 if key in aliases and field_name not in columns:
                     columns[field_name] = index
@@ -297,13 +369,15 @@ def parse_xlsx(data: bytes) -> list[ParsedQuestion]:
             choices = [get(row, letter) for letter in LETTERS]
             while choices and not choices[-1]:
                 choices.pop()
-            q.choices = choices
-            answer = get(row, "answer").upper().strip(" .()")
-            if answer:
-                if len(answer) == 1 and answer in LETTERS:
-                    q.correct = LETTERS.index(answer)
-                else:
-                    q.errors.append(f"Đáp án “{answer}” không hợp lệ (ghi một chữ cái A–{LETTERS[-1]}).")
+            answer = get(row, "answer")
+            type_text = get(row, "type")
+            kind = parse_type(type_text) if type_text else _guess_type(choices, answer)
+            if kind is None:
+                q.errors.append(f"Dạng câu “{type_text}” không hợp lệ (Trắc nghiệm / Đúng sai / Trả lời ngắn).")
+                kind = _guess_type(choices, answer)
+            q.type = kind.value
+            q.choices = [] if kind == QuestionType.SHORT_ANSWER else choices
+            apply_answer(q, answer)
             if level_text := get(row, "level"):
                 level = parse_difficulty(level_text)
                 if level is None:

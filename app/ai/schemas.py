@@ -49,9 +49,17 @@ class Solution(BaseModel):
         "Viết công thức, thay số, tính kết quả TRƯỚC khi chốt đáp án."
     )
     final_value: str = Field(description="Kết quả cuối cùng tính được, kèm đơn vị")
-    matches_an_option: bool = Field(description="True nếu kết quả khớp đúng một lựa chọn của đề")
-    correct_label: ChoiceLabel | None = Field(description="Nhãn lựa chọn đúng; null nếu câu không có lựa chọn")
-    short_answer: str | None = Field(description="Đáp án ngắn cho câu SHORT_ANSWER; null nếu không áp dụng")
+    matches_an_option: bool = Field(
+        description="MULTIPLE_CHOICE: True nếu kết quả khớp đúng một lựa chọn. Dạng khác: True nếu chắc chắn."
+    )
+    correct_label: ChoiceLabel | None = Field(description="MULTIPLE_CHOICE: nhãn lựa chọn đúng; dạng khác: null")
+    statement_truths: list[bool] | None = Field(
+        default=None,
+        description="TRUE_FALSE: Đúng (true) / Sai (false) cho từng ý a, b, c, d theo thứ tự; dạng khác: null",
+    )
+    short_answer: str | None = Field(
+        description="SHORT_ANSWER: CHỈ con số đáp án, dấu phẩy thập phân, không kèm đơn vị (VD: 30 hoặc 1,25); dạng khác: null"
+    )
     difficulty: DifficultyName = Field(
         description="RECOGNITION = Nhận biết, UNDERSTANDING = Thông hiểu, APPLICATION = Vận dụng"
     )

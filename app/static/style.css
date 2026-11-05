@@ -227,3 +227,30 @@ pre.sample { background: #f8fafc; border: 1px solid var(--border); border-radius
 .flag { background: #fff7ed; color: #9a3412; border-radius: 6px; padding: 6px 10px; margin: 6px 0; font-size: .9rem; }
 .edit-draft { margin-top: 10px; }
 .edit-draft summary { cursor: pointer; color: var(--primary); }
+
+/* ---------- Part 6: question types ---------- */
+.type-badge { background: #ede9fe; color: #5b21b6; }
+.result-palette .partial, .dot.partial { background: #f59e0b; }
+.palette button.partial { background: #fde68a; border-color: #f59e0b; }
+.tf-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.tf-table th, .tf-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.tf-table th { font-size: .8rem; color: var(--muted); font-weight: 600; }
+.tf-table td.tf-opt { width: 72px; text-align: center; }
+.tf-table label { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; font-size: .75rem; color: var(--muted); margin: 0; cursor: pointer; }
+.tf-table input { width: auto; margin: 0; }
+.tf-table tr.is-correct td { background: #f0fdf4; }
+.tf-table tr.is-wrong td { background: #fef2f2; }
+.short-input { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+.short-input input { max-width: 220px; font-size: 1.1rem; font-variant-numeric: tabular-nums; margin: 0; }
+.short-review { display: grid; gap: 8px; margin-top: 12px; }
+.type-switch { display: flex; gap: 18px; padding: 10px 14px; margin-bottom: 14px; background: #f5f3ff; border-radius: 10px; flex-wrap: wrap; }
+.type-switch label { margin: 0; }
+#qform:not([data-type="MULTIPLE_CHOICE"]) .only-mc,
+#qform:not([data-type="TRUE_FALSE"]) .only-tf,
+#qform:not([data-type="SHORT_ANSWER"]) .only-sa,
+#qform[data-type="SHORT_ANSWER"] .not-sa { display: none; }
+.choice-row select { width: auto; margin: 0; }
+.choice-row .choice-letter { margin-top: 8px; }
+.tf-truth { font-weight: 600; margin-left: 6px; }
+.tf-truth.t { color: #166534; }
+.tf-truth.f { color: var(--danger); }

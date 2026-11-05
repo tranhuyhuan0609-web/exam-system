@@ -1,5 +1,3 @@
-import re
-import secrets
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlencode
@@ -8,8 +6,9 @@ from fastapi import APIRouter, Request, status
 from sqlalchemy import delete, func, select
 from starlette.datastructures import FormData
 
+from app import question_rules as rules
 from app.deps import AdminUser, SessionDep
-from app.models import QUESTION_MAX_CHOICES, QUESTION_MIN_CHOICES, Difficulty, Exam, ExamQuestion, Question
+from app.models import QUESTION_MAX_CHOICES, Difficulty, Exam, ExamQuestion, Question, QuestionType
 from app.routers.admin.common import get_or_404, redirect
 from app.scope import Scope, load_subject_tree, resolve_scope, scope_of, scope_options, scope_paths
 from app.templating import flash, templates
@@ -18,8 +17,7 @@ from app.text import like_pattern
 router = APIRouter()
 
 PAGE_SIZE = 20
-MIN_CHOICES, MAX_CHOICES = QUESTION_MIN_CHOICES, QUESTION_MAX_CHOICES
-_CHOICE_ID = re.compile(r"^[a-z0-9]{1,16}$")
+MAX_CHOICES = QUESTION_MAX_CHOICES
 
 
 def _blank_choices(n: int = 4) -> list[dict[str, Any]]:
@@ -29,60 +27,74 @@ def _blank_choices(n: int = 4) -> list[dict[str, Any]]:
 @dataclass
 class QuestionForm:
     scope_key: str = ""
+    question_type: str = QuestionType.MULTIPLE_CHOICE.value
     difficulty: str = Difficulty.RECOGNITION.value
     content: str = ""
     explanation: str = ""
     choices: list[dict[str, Any]] = field(default_factory=_blank_choices)
+    accepted_answers: str = ""  # "30; 30,0"
 
     @classmethod
     def from_question(cls, q: Question) -> "QuestionForm":
-        return cls(scope_of(q).key, q.difficulty.value, q.content, q.explanation or "", [dict(c) for c in q.choices])
+        return cls(
+            scope_key=scope_of(q).key,
+            question_type=q.question_type.value,
+            difficulty=q.difficulty.value,
+            content=q.content,
+            explanation=q.explanation or "",
+            choices=[dict(c) for c in q.choices] or _blank_choices(),
+            accepted_answers="; ".join(q.accepted_answers or []),
+        )
+
+
+def _truth(value: Any) -> bool | None:
+    return {"1": True, "0": False}.get(str(value))
 
 
 async def _parse(session, form: FormData) -> tuple[QuestionForm, Scope | None, list[str]]:
+    question_type = str(form.get("question_type", QuestionType.MULTIPLE_CHOICE.value))
+    if question_type not in QuestionType.__members__:
+        question_type = QuestionType.MULTIPLE_CHOICE.value
     data = QuestionForm(
         scope_key=str(form.get("scope", "")),
+        question_type=question_type,
         difficulty=str(form.get("difficulty", "")),
         content=str(form.get("content", "")).strip(),
         explanation=str(form.get("explanation", "")).strip(),
-        choices=[],
+        accepted_answers=str(form.get("accepted_answers", "")).strip(),
     )
     errors: list[str] = []
-
     scope = await resolve_scope(session, data.scope_key)
     if scope is None:
         errors.append("Vui lòng chọn môn / chương / bài cho câu hỏi.")
     if data.difficulty not in Difficulty.__members__:
         errors.append("Mức độ không hợp lệ.")
-    if not data.content:
-        errors.append("Nội dung câu hỏi không được để trống.")
 
+    contents = [str(v).strip() for v in form.getlist("choice_content")]
     ids = [str(v) for v in form.getlist("choice_id")]
-    correct = str(form.get("correct", ""))
-    seen: set[str] = set()
-    for i, raw in enumerate(form.getlist("choice_content")):
-        # Keep existing ids so stored answers stay valid; mint new ones for added rows.
-        choice_id = ids[i] if i < len(ids) else ""
-        if not _CHOICE_ID.match(choice_id) or choice_id in seen:
-            choice_id = secrets.token_hex(4)
-        seen.add(choice_id)
-        data.choices.append({"id": choice_id, "content": str(raw).strip(), "is_correct": correct == str(i)})
+    correct_raw = str(form.get("correct", ""))
+    correct = int(correct_raw) if correct_raw.isdigit() else None
+    truths = [_truth(v) for v in form.getlist("choice_truth")]
+    accepted = rules.split_accepted(data.accepted_answers)
+    if question_type == QuestionType.SHORT_ANSWER:
+        contents, ids = [], []
 
-    if not MIN_CHOICES <= len(data.choices) <= MAX_CHOICES:
-        errors.append(f"Câu hỏi cần từ {MIN_CHOICES} đến {MAX_CHOICES} lựa chọn.")
-    if any(not c["content"] for c in data.choices):
-        errors.append("Nội dung các lựa chọn không được để trống.")
-    if sum(c["is_correct"] for c in data.choices) != 1:
-        errors.append("Hãy đánh dấu đúng 1 đáp án đúng.")
+    errors += rules.validate(question_type, data.content, contents, correct, truths, accepted)
+    # Keep existing ids so stored answers stay valid; new rows get fresh ids.
+    data.choices = rules.build_choices(question_type, contents, correct, truths, ids)
     return data, scope, errors
 
 
 def _apply(question: Question, data: QuestionForm, scope: Scope) -> None:
     question.subject_id, question.chapter_id, question.lesson_id = scope.subject_id, scope.chapter_id, scope.lesson_id
+    question.question_type = QuestionType(data.question_type)
     question.difficulty = Difficulty(data.difficulty)
     question.content = data.content
     question.explanation = data.explanation or None
     question.choices = data.choices
+    question.accepted_answers = (
+        rules.split_accepted(data.accepted_answers) if data.question_type == QuestionType.SHORT_ANSWER else None
+    )
 
 
 async def _exams_using(session, question_id: int) -> list[Exam]:
@@ -114,10 +126,13 @@ async def list_questions(
     session: SessionDep,
     scope: str = "",
     difficulty: str = "",
+    qtype: str = "",
     q: str = "",
     page: int = 1,
 ):
     conditions = []
+    if qtype in QuestionType.__members__:
+        conditions.append(Question.question_type == QuestionType(qtype))
     if selected := await resolve_scope(session, scope):
         conditions += selected.conditions(Question)
     if difficulty in Difficulty.__members__:
@@ -139,7 +154,7 @@ async def list_questions(
     ).all()
 
     subjects = await load_subject_tree(session)
-    filters = {"scope": scope, "difficulty": difficulty, "q": q}
+    filters = {"scope": scope, "difficulty": difficulty, "qtype": qtype, "q": q}
     return templates.TemplateResponse(
         request,
         "admin/questions.html",

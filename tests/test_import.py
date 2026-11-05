@@ -75,12 +75,15 @@ def test_parse_file_rejects_unsupported_or_empty_files():
 def test_sample_files_import_cleanly(filename, make):
     questions = parse_file(filename, make())
     assert len(questions) == len(SAMPLE_QUESTIONS)
+    assert [q.type for q in questions] == ["MULTIPLE_CHOICE", "MULTIPLE_CHOICE", "TRUE_FALSE", "SHORT_ANSWER"]
     for parsed, sample in zip(questions, SAMPLE_QUESTIONS, strict=True):
         assert parsed.errors == []
         assert parsed.content == sample["content"]
         assert parsed.choices == sample["choices"]
-        assert "ABCD"[parsed.correct] == sample["answer"]
         assert parsed.explanation == sample["explanation"]
+    assert "ABCD"[questions[0].correct] == "A"
+    assert questions[2].truths == [True, False, True, False]
+    assert questions[3].answers == ["50"]
 
 
 def test_docx_reads_choices_inside_tables():
@@ -156,7 +159,7 @@ def test_import_preview_saves_nothing_and_confirm_creates_questions_and_exam(adm
     r = confirm_from_preview(
         admin_client,
         preview.text,
-        selected=[0, 1, 2],
+        selected=[0, 1, 2, 3],
         scope=f"c:{chapter_id}",
         create_exam="on",
         exam_title="de",
@@ -164,14 +167,23 @@ def test_import_preview_saves_nothing_and_confirm_creates_questions_and_exam(adm
     )
     assert r.status_code == 303
     questions = db(lambda s: s.scalars(select(Question).order_by(Question.id)))
-    assert len(questions) == 3
+    assert len(questions) == 4
     assert all((q.subject_id, q.chapter_id, q.lesson_id) == (subject_id, chapter_id, None) for q in questions)
     assert [q.difficulty for q in questions] == [
         Difficulty.UNDERSTANDING,
         Difficulty.RECOGNITION,
+        Difficulty.UNDERSTANDING,
         Difficulty.APPLICATION,
     ]
-    assert all(len({c["id"] for c in q.choices}) == 4 for q in questions)
+    assert [q.question_type.value for q in questions] == [
+        "MULTIPLE_CHOICE",
+        "MULTIPLE_CHOICE",
+        "TRUE_FALSE",
+        "SHORT_ANSWER",
+    ]
+    assert [c["is_correct"] for c in questions[2].choices] == [True, False, True, False]
+    assert questions[3].choices == [] and questions[3].accepted_answers == ["50"]
+    assert all(len({c["id"] for c in q.choices}) == 4 for q in questions[:3])
 
     exam = db(lambda s: s.scalar(select(Exam)))
     assert (exam.title, exam.duration_seconds, exam.is_published) == ("de", 1200, False)
@@ -184,11 +196,11 @@ def test_import_flags_duplicates_and_rejects_tampered_payload(admin_client, db, 
     _, chapter_id = lesson_scope
     scope = f"c:{chapter_id}"
     first = upload(admin_client, scope, sample_text().encode())
-    confirm_from_preview(admin_client, first.text, selected=[0, 1, 2], scope=scope)
+    confirm_from_preview(admin_client, first.text, selected=[0, 1, 2, 3], scope=scope)
 
     again = upload(admin_client, scope, sample_text().encode())
     assert "Trùng" in again.text
-    assert again.text.count('name="selected" value=') == 3
+    assert again.text.count('name="selected" value=') == 4
     assert "checked" not in again.text.split('name="selected"')[1].split(">")[0]
 
     # A payload edited in the browser is re-validated: an invalid question is skipped.
@@ -198,7 +210,7 @@ def test_import_flags_duplicates_and_rejects_tampered_payload(admin_client, db, 
         data={"scope": scope, "default_difficulty": "RECOGNITION", "payload": bad, "selected": ["0"]},
     )
     assert "Không có câu hợp lệ" in r.text
-    assert len(db(lambda s: s.scalars(select(Question.id)))) == 3
+    assert len(db(lambda s: s.scalars(select(Question.id)))) == 4
 
 
 def test_import_form_errors(admin_client, lesson_scope):

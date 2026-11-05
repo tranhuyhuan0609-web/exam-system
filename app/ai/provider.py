@@ -65,7 +65,8 @@ Với mỗi câu:
 2. Dùng công cụ chạy code Python để tính mọi phép tính số (không tính nhẩm), rồi ghi kết quả vào lời giải.
 3. So sánh kết quả với các lựa chọn rồi mới chốt correct_label. Nếu không khớp lựa chọn nào, đặt matches_an_option = false \
 và chọn lựa chọn gần nhất.
-4. Câu SHORT_ANSWER: ghi đáp số vào short_answer (kèm đơn vị), correct_label = null.
+4. Câu TRUE_FALSE: xét từng ý a, b, c, d (có tính toán nếu cần), ghi kết luận vào statement_truths theo đúng thứ tự.
+   Câu SHORT_ANSWER: ghi CHỈ con số vào short_answer (không đơn vị, dấu phẩy thập phân, làm tròn như đề yêu cầu), correct_label = null; final_value ghi kèm đơn vị.
 5. Đánh giá mức độ: RECOGNITION (nhớ công thức/khái niệm), UNDERSTANDING (áp dụng 1 bước), APPLICATION (nhiều bước, suy luận).
 Công thức trong lời giải viết LaTeX trong $...$; công thức quan trọng có thể đặt riêng dòng bằng $$...$$."""
 
