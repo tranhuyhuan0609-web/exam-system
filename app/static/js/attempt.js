@@ -241,7 +241,38 @@
 
   // ------------------------------------------------------------------ answer widgets (one per question type)
 
-  const TYPE_LABELS = { MULTIPLE_CHOICE: "Trắc nghiệm", TRUE_FALSE: "Đúng/Sai", SHORT_ANSWER: "Trả lời ngắn" };
+  const TYPE_LABELS = {
+    MULTIPLE_CHOICE: "Trắc nghiệm",
+    TRUE_FALSE: "Đúng/Sai",
+    SHORT_ANSWER: "Trả lời ngắn",
+    ESSAY: "Tự luận",
+  };
+
+  // Tự luận: a worked answer, graded by AI after submitting. LaTeX between $...$ is previewed live.
+  function renderEssay(q, saved) {
+    const wrap = document.createElement("div");
+    const input = document.createElement("textarea");
+    input.className = "essay-input";
+    input.maxLength = 5000;
+    input.placeholder = "Trình bày lời giải: tóm tắt, công thức, thay số, kết quả. Công thức viết trong $...$, VD: $v = \\omega A$";
+    input.value = (saved && saved[q.id]) || "";
+    const preview = document.createElement("div");
+    preview.className = "essay-preview q-content";
+    let timer;
+    function showPreview() {
+      preview.textContent = input.value;
+      preview.hidden = !input.value.includes("$");
+      if (!preview.hidden && window.renderMath) window.renderMath(preview);
+    }
+    input.addEventListener("input", () => {
+      setAnswer(q.id, input.value.trim() ? input.value : null);
+      clearTimeout(timer);
+      timer = setTimeout(showPreview, 300);
+    });
+    showPreview();
+    wrap.append(input, preview);
+    return wrap;
+  }
 
   function renderChoices(q, saved) {
     const list = document.createElement("div");
@@ -361,6 +392,7 @@
       const answerBox =
         q.type === "TRUE_FALSE" ? renderTrueFalse(q, data.answers) :
         q.type === "SHORT_ANSWER" ? renderShortAnswer(q, data.answers) :
+        q.type === "ESSAY" ? renderEssay(q, data.answers) :
         renderChoices(q, data.answers);
 
       const badge = document.createElement("span");

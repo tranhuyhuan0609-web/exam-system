@@ -248,7 +248,10 @@ pre.sample { background: #f8fafc; border: 1px solid var(--border); border-radius
 #qform:not([data-type="MULTIPLE_CHOICE"]) .only-mc,
 #qform:not([data-type="TRUE_FALSE"]) .only-tf,
 #qform:not([data-type="SHORT_ANSWER"]) .only-sa,
-#qform[data-type="SHORT_ANSWER"] .not-sa { display: none; }
+#qform:not([data-type="ESSAY"]) .only-essay,
+#qform[data-type="SHORT_ANSWER"] .has-choices,
+#qform[data-type="ESSAY"] .has-choices { display: none; }
+.ai-solve-row { margin: 4px 0 10px; }
 .choice-row select { width: auto; margin: 0; }
 .choice-row .choice-letter { margin-top: 8px; }
 .tf-truth { font-weight: 600; margin-left: 6px; }
@@ -262,3 +265,26 @@ pre.sample { background: #f8fafc; border: 1px solid var(--border); border-radius
 .save-status[data-state="saving"] { color: var(--primary); }
 .save-status[data-state="offline"] { color: #c2410c; font-weight: 600; }
 .matrix-table select, .matrix-table input { margin: 0; width: 100%; } .matrix-table .count-input { width: 80px; } .matrix-table td { vertical-align: middle; }
+
+/* ---------- Part 10: compact palettes, fixed side panel ---------- */
+.palette { display: flex; flex-wrap: wrap; gap: 6px; }
+.palette button, .result-palette a { width: 40px; height: 36px; padding: 0; display: inline-flex; align-items: center;
+  justify-content: center; border-radius: 8px; font-size: .9rem; font-weight: 600; }
+.result-palette { max-width: 100%; }
+/* The question palette and submit button stay in view while scrolling through the questions. */
+.attempt-side { position: sticky; top: 96px; align-self: start; max-height: calc(100vh - 112px); overflow-y: auto; }
+.attempt-side h3 { margin-top: 0; }
+@media (max-width: 900px) {
+  .attempt-side { position: fixed; left: 0; right: 0; bottom: 0; top: auto; max-height: 40vh; margin: 0;
+    border-radius: 12px 12px 0 0; box-shadow: 0 -4px 16px rgba(0,0,0,.08); z-index: 20; }
+  #questions { padding-bottom: 45vh; }
+}
+.parts-picker { margin: 12px 0; }
+.parts-picker label.check { margin: 6px 0; }
+.preset-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.result-palette .pending, .dot.pending { background: #a78bfa; }
+.essay-review { display: grid; gap: 10px; margin-top: 12px; }
+.essay-answer, .essay-feedback { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; }
+.essay-feedback { background: #f5f3ff; border-color: #ddd6fe; }
+.essay-input { width: 100%; min-height: 160px; margin-top: 12px; font: inherit; line-height: 1.5; }
+.essay-preview { margin-top: 8px; padding: 8px 12px; border: 1px dashed var(--border); border-radius: 8px; min-height: 2em; }

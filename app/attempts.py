@@ -1,5 +1,6 @@
 """Exam attempt lifecycle: start / resume, paper snapshot, student-safe paper view, submit and grading."""
 
+import math
 import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -9,10 +10,18 @@ from typing import Any
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.paper import PaperError, questions_for_attempt, shuffled_choices
+from app.application.paper import (
+    PART_ORDER,
+    PaperError,
+    available_parts,
+    question_count,
+    questions_for_attempt,
+    shuffled_choices,
+)
 from app.infrastructure.storage import media_url
-from app.models import AttemptStatus, Exam, ExamAttempt, Question, QuestionType, User
+from app.models import AttemptStatus, Exam, ExamAttempt, GradingStatus, Question, QuestionType, User
 from app.question_rules import (
+    ESSAY_ANSWER_MAX_LEN,
     SHORT_ANSWER_MAX_LEN,
     max_points,
     short_answer_matches,
@@ -36,11 +45,15 @@ def remaining_seconds(attempt: ExamAttempt, now: datetime) -> float:
 
 
 def build_snapshot(
-    questions: list[Question], shuffle_choices: bool = False, rng: random.Random | None = None
+    questions: list[Question],
+    shuffle_choices: bool = False,
+    rng: random.Random | None = None,
+    parts: list[str] | None = None,
 ) -> dict[str, Any]:
     """Frozen copy of the paper as this attempt shows it (question and option order, answers), server-side only."""
     rng = rng or random.SystemRandom()
     return {
+        "parts": parts,  # question types the student chose to practise (None = the whole exam)
         "questions": [
             {
                 "id": q.id,
@@ -52,11 +65,12 @@ def build_snapshot(
                     for c in shuffled_choices(q, shuffle_choices, rng)
                 ],
                 "accepted_answers": list(q.accepted_answers or []),
+                "points": str(max_points(q.question_type, q.points)),
                 "explanation": q.explanation,
                 "image_url": media_url(q.image_path),
             }
             for q in questions
-        ]
+        ],
     }
 
 
@@ -93,7 +107,8 @@ async def active_attempt(session: AsyncSession, user_id: int, exam_id: int, now:
     )
 
 
-async def start_or_resume(session: AsyncSession, user: User, exam: Exam) -> ExamAttempt:
+async def start_or_resume(session: AsyncSession, user: User, exam: Exam, parts: list[str] | None = None) -> ExamAttempt:
+    """Start a new attempt (or resume the running one). `parts` restricts the paper to some question types."""
     # Serialise concurrent starts by the same student for the same exam (double clicks, two tabs).
     await session.execute(
         text("SELECT pg_advisory_xact_lock(:user_id, :exam_id)"), {"user_id": user.id, "exam_id": exam.id}
@@ -115,10 +130,24 @@ async def start_or_resume(session: AsyncSession, user: User, exam: Exam) -> Exam
     if exam.max_attempts is not None and used >= exam.max_attempts:
         raise AttemptError(f"Bạn đã dùng hết {exam.max_attempts} lượt làm đề này.")
 
+    available = await available_parts(session, exam)
+    if parts is not None:
+        if not exam.allow_custom_parts:
+            parts = None
+        else:
+            parts = [p for p in PART_ORDER if p in parts and p in available]
+            if not parts:
+                raise AttemptError("Hãy chọn ít nhất một phần để làm.")
+            if set(parts) >= set(available):
+                parts = None  # everything chosen: same as the full exam
     try:
-        questions = await questions_for_attempt(session, exam, user.id)
+        questions = await questions_for_attempt(session, exam, user.id, parts=parts)
     except PaperError as exc:
         raise AttemptError(str(exc)) from exc
+    duration = exam.duration_seconds
+    if parts is not None:  # fewer questions, proportionally less time (whole minutes, at least 1)
+        full = await question_count(session, exam)
+        duration = max(60, math.ceil(exam.duration_seconds * len(questions) / max(full, 1) / 60) * 60)
 
     attempt = ExamAttempt(
         user_id=user.id,
@@ -126,9 +155,9 @@ async def start_or_resume(session: AsyncSession, user: User, exam: Exam) -> Exam
         attempt_no=last_no + 1,
         status=AttemptStatus.IN_PROGRESS,
         started_at=now,
-        expires_at=now + timedelta(seconds=exam.duration_seconds),
+        expires_at=now + timedelta(seconds=duration),
         answers={},
-        paper_snapshot=build_snapshot(questions, exam.shuffle_choices),
+        paper_snapshot=build_snapshot(questions, exam.shuffle_choices, parts=parts),
         total_questions=len(questions),
     )
     session.add(attempt)
@@ -150,6 +179,7 @@ class Grade:
     score: Decimal  # on a 10-point scale
     points: Decimal  # THPT points earned
     max_points: Decimal
+    pending_essays: int = 0  # answered essays not graded yet (they count as 0 for now)
 
 
 def clean_answers(snapshot: dict[str, Any], answers: Any) -> dict[str, Any]:
@@ -175,16 +205,28 @@ def clean_answers(snapshot: dict[str, Any], answers: Any) -> dict[str, Any]:
         elif kind == QuestionType.SHORT_ANSWER:
             if isinstance(value, str) and value.strip():
                 cleaned[str(key)] = value.strip()[:SHORT_ANSWER_MAX_LEN]
+        elif kind == QuestionType.ESSAY:
+            if isinstance(value, str) and value.strip():
+                cleaned[str(key)] = value.strip()[:ESSAY_ANSWER_MAX_LEN]
         elif isinstance(value, str) and value in ids:
             cleaned[str(key)] = value
     return cleaned
 
 
-def question_result(q: dict[str, Any], answer: Any) -> tuple[Decimal, str]:
-    """(points earned, status) where status is correct | partial | wrong | unanswered."""
+def _max(q: dict[str, Any]) -> Decimal:
+    return max_points(_type(q), q.get("points"))
+
+
+def question_result(q: dict[str, Any], answer: Any, essay_grade: dict | None = None) -> tuple[Decimal, str]:
+    """(points earned, status) where status is correct | partial | wrong | unanswered | pending (essay)."""
     kind = _type(q)
     if answer is None:
         return Decimal(0), "unanswered"
+    if kind == QuestionType.ESSAY:
+        if not essay_grade:
+            return Decimal(0), "pending"
+        points = min(_max(q), max(Decimal(0), Decimal(str(essay_grade.get("points", 0)))))
+        return points, "correct" if points >= _max(q) else ("partial" if points > 0 else "wrong")
     if kind == QuestionType.TRUE_FALSE:
         right = sum(1 for c in q["choices"] if c["id"] in answer and answer[c["id"]] == c["is_correct"])
         points = true_false_points(right, len(q["choices"]))
@@ -197,26 +239,37 @@ def question_result(q: dict[str, Any], answer: Any) -> tuple[Decimal, str]:
     return (max_points(kind) if ok else Decimal(0)), ("correct" if ok else "wrong")
 
 
-def grade(snapshot: dict[str, Any], answers: dict[str, Any]) -> Grade:
+def grade(snapshot: dict[str, Any], answers: dict[str, Any], essay_grades: dict | None = None) -> Grade:
     questions = snapshot["questions"]
-    earned, possible, correct = Decimal(0), Decimal(0), 0
+    essay_grades = essay_grades or {}
+    earned, possible, correct, pending = Decimal(0), Decimal(0), 0, 0
     for q in questions:
-        points, status = question_result(q, answers.get(str(q["id"])))
+        points, status = question_result(q, answers.get(str(q["id"])), essay_grades.get(str(q["id"])))
         earned += points
-        possible += max_points(_type(q))
+        possible += _max(q)
         correct += status == "correct"
+        pending += status == "pending"
     score = (MAX_SCORE * earned / possible).quantize(Decimal("0.01"), ROUND_HALF_UP) if possible else Decimal(0)
-    return Grade(correct, len(questions), score, earned, possible)
+    return Grade(correct, len(questions), score, earned, possible, pending)
 
 
-def _finish(attempt: ExamAttempt, answers: dict[str, Any], submitted_at: datetime) -> None:
-    result = grade(attempt.paper_snapshot, answers)
-    attempt.answers = answers
-    attempt.status = AttemptStatus.SUBMITTED
-    attempt.submitted_at = submitted_at
+def apply_grade(attempt: ExamAttempt) -> Grade:
+    """(Re)compute the score from the answers and any AI essay grades."""
+    result = grade(attempt.paper_snapshot, attempt.answers or {}, attempt.essay_grades)
     attempt.correct_count = result.correct_count
     attempt.total_questions = result.total
     attempt.score = result.score
+    return result
+
+
+def _finish(attempt: ExamAttempt, answers: dict[str, Any], submitted_at: datetime) -> None:
+    attempt.answers = answers
+    attempt.status = AttemptStatus.SUBMITTED
+    attempt.submitted_at = submitted_at
+    attempt.essay_grades = {}
+    result = apply_grade(attempt)
+    # Essays are graded by the AI worker; the score is provisional until then.
+    attempt.grading_status = GradingStatus.PENDING_AI if result.pending_essays else GradingStatus.COMPLETE
 
 
 async def submit(session: AsyncSession, attempt_id: int, answers: Any) -> ExamAttempt:
@@ -320,7 +373,8 @@ def review(attempt: ExamAttempt) -> list[dict[str, Any]]:
     rows = []
     for number, q in enumerate(attempt.paper_snapshot["questions"], start=1):
         answer = attempt.answers.get(str(q["id"]))
-        points, status = question_result(q, answer)
+        essay = (attempt.essay_grades or {}).get(str(q["id"]))
+        points, status = question_result(q, answer, essay)
         kind = _type(q)
         rows.append(
             {
@@ -335,7 +389,8 @@ def review(attempt: ExamAttempt) -> list[dict[str, Any]]:
                 "correct_id": next((c["id"] for c in q["choices"] if c["is_correct"]), None),
                 "status": status,
                 "points": points,
-                "max_points": max_points(kind),
+                "max_points": _max(q),
+                "essay": essay,  # {"points", "feedback", "solution"} once the AI has graded it
             }
         )
     return rows

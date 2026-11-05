@@ -34,7 +34,7 @@ from app.templating import flash, templates
 router = APIRouter()
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
-TYPE_LABELS = {**{t.value: label for t, label in rules.TYPE_LABELS.items()}, "ESSAY": "Tự luận"}
+TYPE_LABELS = {t.value: label for t, label in rules.TYPE_LABELS.items()}
 
 
 def _publishable(draft: dict) -> list[str]:

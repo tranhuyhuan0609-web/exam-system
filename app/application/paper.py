@@ -19,7 +19,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Difficulty, Exam, ExamAttempt, ExamQuestion, Question, QuestionSource, QuestionType
 from app.scope import Scope, resolve_scope, scope_of
 
-SECTION_ORDER = {QuestionType.MULTIPLE_CHOICE: 0, QuestionType.TRUE_FALSE: 1, QuestionType.SHORT_ANSWER: 2}
+SECTION_ORDER = {
+    QuestionType.MULTIPLE_CHOICE: 0,
+    QuestionType.TRUE_FALSE: 1,
+    QuestionType.SHORT_ANSWER: 2,
+    QuestionType.ESSAY: 3,
+}
+PART_ORDER = [t.value for t in sorted(SECTION_ORDER, key=SECTION_ORDER.get)]
 MAX_RULES = 30
 MAX_RULE_COUNT = 200
 
@@ -73,13 +79,17 @@ async def _rule_scope(session: AsyncSession, exam: Exam, rule: MatrixRule) -> Sc
     return scope
 
 
-async def rule_candidates(session: AsyncSession, exam: Exam, rule: MatrixRule) -> list[int]:
+async def rule_candidates(
+    session: AsyncSession, exam: Exam, rule: MatrixRule, parts: list[str] | None = None
+) -> list[int]:
     scope = await _rule_scope(session, exam, rule)
     conditions = [Question.is_verified, Question.subject_id == exam.subject_id, *scope.conditions(Question)]
     if rule.difficulty:
         conditions.append(Question.difficulty == Difficulty(rule.difficulty))
     if rule.question_type:
         conditions.append(Question.question_type == QuestionType(rule.question_type))
+    elif parts is not None:  # "any type" rule, restricted to the parts the student chose
+        conditions.append(Question.question_type.in_([QuestionType(p) for p in parts]))
     return list((await session.scalars(select(Question.id).where(*conditions).order_by(Question.id))).all())
 
 
@@ -104,7 +114,11 @@ async def _seen_question_ids(session: AsyncSession, exam_id: int, user_id: int) 
 
 
 async def draw_matrix(
-    session: AsyncSession, exam: Exam, rng: random.Random, seen: set[int] | None = None
+    session: AsyncSession,
+    exam: Exam,
+    rng: random.Random,
+    seen: set[int] | None = None,
+    parts: list[str] | None = None,
 ) -> list[Question]:
     rules = parse_matrix(exam.matrix)
     if errors := validate_rules(rules):
@@ -112,8 +126,10 @@ async def draw_matrix(
     seen = seen or set()
     picked: list[int] = []
     for number, rule in enumerate(rules, start=1):
+        if parts is not None and rule.question_type and rule.question_type not in parts:
+            continue  # the student left this part out
         taken = set(picked)
-        ids = [qid for qid in await rule_candidates(session, exam, rule) if qid not in taken]
+        ids = [qid for qid in await rule_candidates(session, exam, rule, parts) if qid not in taken]
         fresh = [qid for qid in ids if qid not in seen]
         old = [qid for qid in ids if qid in seen]
         rng.shuffle(fresh)
@@ -157,16 +173,23 @@ def arrange(questions: list[Question], shuffle: bool, rng: random.Random) -> lis
 
 
 async def questions_for_attempt(
-    session: AsyncSession, exam: Exam, user_id: int, rng: random.Random | None = None
+    session: AsyncSession,
+    exam: Exam,
+    user_id: int,
+    rng: random.Random | None = None,
+    parts: list[str] | None = None,
 ) -> list[Question]:
+    """Questions of a new attempt; `parts` (question types) limits the paper when the student chose so."""
     rng = rng or random.SystemRandom()
     if exam.question_source == QuestionSource.MATRIX:
         seen = await _seen_question_ids(session, exam.id, user_id)
-        questions = await draw_matrix(session, exam, rng, seen)
+        questions = await draw_matrix(session, exam, rng, seen, parts)
     else:
         questions = await fixed_questions(session, exam)
+        if parts is not None:
+            questions = [q for q in questions if q.question_type.value in parts]
     if not questions:
-        raise PaperError("Đề này chưa có câu hỏi.")
+        raise PaperError("Đề này chưa có câu hỏi." if parts is None else "Các phần bạn chọn chưa có câu hỏi.")
     if exam.question_source == QuestionSource.FIXED and not exam.shuffle_questions:
         return questions  # exactly the order the admin arranged
     return arrange(questions, exam.shuffle_questions, rng)
@@ -185,3 +208,24 @@ async def question_count(session: AsyncSession, exam: Exam) -> int:
     if exam.question_source == QuestionSource.MATRIX:
         return sum(rule.count for rule in parse_matrix(exam.matrix))
     return len(await fixed_questions(session, exam))
+
+
+async def available_parts(session: AsyncSession, exam: Exam) -> dict[str, int]:
+    """Question types the exam contains, with how many questions of each a full paper has (THPT order).
+
+    Matrix rules without a type count under every type they could draw ("ANY" key)."""
+    counts: dict[str, int] = {}
+    if exam.question_source == QuestionSource.MATRIX:
+        for rule in parse_matrix(exam.matrix):
+            key = rule.question_type or "ANY"
+            counts[key] = counts.get(key, 0) + rule.count
+        if "ANY" in counts:  # an untyped rule may draw any type present in its scope
+            for qtype in PART_ORDER:
+                counts.setdefault(qtype, 0)
+    else:
+        for q in await fixed_questions(session, exam):
+            counts[q.question_type.value] = counts.get(q.question_type.value, 0) + 1
+    ordered = {t: counts[t] for t in PART_ORDER if t in counts}
+    if "ANY" in counts:
+        ordered["ANY"] = counts["ANY"]
+    return ordered

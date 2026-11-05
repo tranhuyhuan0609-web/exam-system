@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Body, HTTPException, Request, status
 from sqlalchemy import delete, func, select
 from starlette.datastructures import FormData
 
@@ -34,6 +34,7 @@ class QuestionForm:
     explanation: str = ""
     choices: list[dict[str, Any]] = field(default_factory=_blank_choices)
     accepted_answers: str = ""  # "30; 30,0"
+    points: str = ""  # essay points, blank = default
 
     @classmethod
     def from_question(cls, q: Question) -> "QuestionForm":
@@ -45,6 +46,7 @@ class QuestionForm:
             explanation=q.explanation or "",
             choices=[dict(c) for c in q.choices] or _blank_choices(),
             accepted_answers="; ".join(q.accepted_answers or []),
+            points="" if q.points is None else f"{q.points:g}",
         )
 
 
@@ -63,6 +65,7 @@ async def _parse(session, form: FormData) -> tuple[QuestionForm, Scope | None, l
         content=str(form.get("content", "")).strip(),
         explanation=str(form.get("explanation", "")).strip(),
         accepted_answers=str(form.get("accepted_answers", "")).strip(),
+        points=str(form.get("points", "")).strip(),
     )
     errors: list[str] = []
     scope = await resolve_scope(session, data.scope_key)
@@ -77,8 +80,10 @@ async def _parse(session, form: FormData) -> tuple[QuestionForm, Scope | None, l
     correct = int(correct_raw) if correct_raw.isdigit() else None
     truths = [_truth(v) for v in form.getlist("choice_truth")]
     accepted = rules.split_accepted(data.accepted_answers)
-    if question_type == QuestionType.SHORT_ANSWER:
+    if question_type in (QuestionType.SHORT_ANSWER, QuestionType.ESSAY):
         contents, ids = [], []
+    if question_type == QuestionType.ESSAY and (problem := rules.parse_essay_points(data.points)[1]):
+        errors.append(problem)
 
     errors += rules.validate(question_type, data.content, contents, correct, truths, accepted)
     # Keep existing ids so stored answers stay valid; new rows get fresh ids.
@@ -97,6 +102,7 @@ def _apply(question: Question, data: QuestionForm, scope: Scope) -> None:
         rules.split_accepted(data.accepted_answers) if data.question_type == QuestionType.SHORT_ANSWER else None
     )
     question.content_hash = hash_of_choices(data.question_type, data.content, data.choices)
+    question.points = rules.parse_essay_points(data.points)[0] if data.question_type == QuestionType.ESSAY else None
 
 
 async def _exams_using(session, question_id: int) -> list[Exam]:
@@ -199,13 +205,13 @@ async def create_question(request: Request, user: AdminUser, session: SessionDep
     return redirect("/admin/questions?" + urlencode({"scope": scope.key}))
 
 
-@router.get("/questions/{question_id}/edit")
+@router.get("/questions/{question_id:int}/edit")
 async def edit_question(request: Request, user: AdminUser, session: SessionDep, question_id: int):
     question = await get_or_404(session, Question, question_id)
     return await _render_form(request, session, user, QuestionForm.from_question(question), question)
 
 
-@router.post("/questions/{question_id}")
+@router.post("/questions/{question_id:int}")
 async def update_question(request: Request, user: AdminUser, session: SessionDep, question_id: int):
     question = await get_or_404(session, Question, question_id)
     form = await request.form()
@@ -222,7 +228,7 @@ async def update_question(request: Request, user: AdminUser, session: SessionDep
     return redirect("/admin/questions?" + urlencode({"scope": scope.key}))
 
 
-@router.post("/questions/{question_id}/delete")
+@router.post("/questions/{question_id:int}/delete")
 async def delete_question(request: Request, session: SessionDep, question_id: int):
     await get_or_404(session, Question, question_id)
     if used_in := await _exams_using(session, question_id):
@@ -235,10 +241,53 @@ async def delete_question(request: Request, session: SessionDep, question_id: in
     return redirect("/admin/questions")
 
 
-@router.post("/questions/{question_id}/verify")
+@router.post("/questions/{question_id:int}/verify")
 async def verify_question(request: Request, session: SessionDep, question_id: int):
     question = await get_or_404(session, Question, question_id)
     question.is_verified = True
     await session.commit()
     flash(request, f"Đã duyệt câu #{question_id}; câu này giờ dùng được trong đề thi.")
     return redirect("/admin/questions?verified=no")
+
+
+@router.post("/questions/ai-solve")
+async def ai_solve(payload: Annotated[dict[str, Any], Body()]):
+    """Ask Gemini to solve one question from the form (any type, including essays)."""
+    from app.ai.provider import AIError, GeminiProvider
+    from app.ai.schemas import ExtractedChoice, ExtractedQuestion
+    from app.config import get_settings
+
+    qtype = payload.get("type") if payload.get("type") in QuestionType.__members__ else "MULTIPLE_CHOICE"
+    content = str(payload.get("content") or "").strip()
+    raw_choices = [str(c).strip() for c in payload.get("choices") or [] if str(c).strip()]
+    if not content:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Hãy nhập nội dung câu hỏi trước.")
+    if qtype in (QuestionType.SHORT_ANSWER, QuestionType.ESSAY):
+        raw_choices = []
+    question = ExtractedQuestion(
+        number=1,
+        page=1,
+        type=qtype,
+        content=content,
+        choices=[ExtractedChoice(label="ABCDEF"[i], content=c) for i, c in enumerate(raw_choices[:6])],
+    )
+    settings = get_settings()
+    try:
+        provider = GeminiProvider(settings.gemini_api_key, settings.gemini_model_list)
+        solutions = await provider.solve([question], [])
+    except AIError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+    if not solutions:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "AI không trả về lời giải.")
+    sol = solutions[0]
+    correct = "ABCDEF".index(sol.correct_label) if sol.correct_label and qtype == "MULTIPLE_CHOICE" else None
+    return {
+        "explanation": sol.step_by_step_solution.strip(),
+        "final_value": sol.final_value,
+        "correct": correct if correct is not None and correct < len(raw_choices) else None,
+        "truths": sol.statement_truths if qtype == "TRUE_FALSE" else None,
+        "short_answer": rules.extract_number(sol.short_answer or sol.final_value or "")
+        if qtype == "SHORT_ANSWER"
+        else None,
+        "difficulty": sol.difficulty,
+    }

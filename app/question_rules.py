@@ -5,6 +5,7 @@ Three question types, following the 2025 Vietnamese THPT exam format:
     MULTIPLE_CHOICE  choices = [{id, content, is_correct}], exactly one correct
     TRUE_FALSE       choices = 4 statements [{id, content, is_correct}], is_correct = the statement is true
     SHORT_ANSWER     no choices; accepted_answers = ["30", "-1,5"] (numbers or very short text)
+    ESSAY            no choices; explanation = model solution; graded by AI (points, default 1)
 """
 
 import re
@@ -16,20 +17,26 @@ from app.models import QUESTION_MAX_CHOICES, QUESTION_MIN_CHOICES, QuestionType
 
 TRUE_FALSE_STATEMENTS = 4
 SHORT_ANSWER_MAX_LEN = 20
+ESSAY_ANSWER_MAX_LEN = 5000
 
 TYPE_LABELS = {
     QuestionType.MULTIPLE_CHOICE: "Trắc nghiệm",
     QuestionType.TRUE_FALSE: "Đúng/Sai",
     QuestionType.SHORT_ANSWER: "Trả lời ngắn",
+    QuestionType.ESSAY: "Tự luận",
 }
 
 # THPT 2025 weights (physics). Scores are normalised to a 10-point scale, so only the ratios matter.
 MULTIPLE_CHOICE_POINTS = Decimal("0.25")
 SHORT_ANSWER_POINTS = Decimal("0.25")
 TRUE_FALSE_POINTS = {0: Decimal("0"), 1: Decimal("0.1"), 2: Decimal("0.25"), 3: Decimal("0.5"), 4: Decimal("1")}
+ESSAY_POINTS = Decimal("1")
+MAX_ESSAY_POINTS = Decimal("10")
 
 
-def max_points(question_type: str) -> Decimal:
+def max_points(question_type: str, points: Decimal | str | None = None) -> Decimal:
+    if question_type == QuestionType.ESSAY:
+        return Decimal(str(points)) if points not in (None, "") else ESSAY_POINTS
     if question_type == QuestionType.TRUE_FALSE:
         return TRUE_FALSE_POINTS[TRUE_FALSE_STATEMENTS]
     if question_type == QuestionType.SHORT_ANSWER:
@@ -115,6 +122,8 @@ def validate(
         truths = truths or []
         if len(truths) != len(choices) or any(t is None for t in truths):
             errors.append("Hãy đánh dấu Đúng hoặc Sai cho từng ý (VD: “Đáp án: Đ S Đ S”).")
+    elif question_type == QuestionType.ESSAY:
+        pass  # only the text is required; the model solution (explanation) is optional
     elif question_type == QuestionType.SHORT_ANSWER:
         accepted = [a for a in (accepted or []) if a.strip()]
         if not accepted:
@@ -134,7 +143,7 @@ def build_choices(
     ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Stored JSONB choices. Existing ids are kept so recorded answers stay valid after edits."""
-    if question_type == QuestionType.SHORT_ANSWER:
+    if question_type in (QuestionType.SHORT_ANSWER, QuestionType.ESSAY):
         return []
     ids = ids or []
     out, seen = [], set()
@@ -171,3 +180,17 @@ def parse_truths(text: str) -> list[bool | None]:
         else:
             out.append(None)
     return out
+
+
+def parse_essay_points(raw: str | None) -> tuple[Decimal | None, str | None]:
+    """Admin input for essay points: blank = default. Returns (points, error)."""
+    text = (raw or "").strip().replace(",", ".")
+    if not text:
+        return None, None
+    try:
+        value = Decimal(text)
+    except ArithmeticError:
+        return None, "Điểm câu tự luận phải là một số."
+    if not Decimal("0.25") <= value <= MAX_ESSAY_POINTS:
+        return None, f"Điểm câu tự luận phải từ 0,25 đến {MAX_ESSAY_POINTS}."
+    return value.quantize(Decimal("0.01")), None
