@@ -1,5 +1,6 @@
 """Exam attempt lifecycle: start / resume, paper snapshot, student-safe paper view, submit and grading."""
 
+import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -8,8 +9,9 @@ from typing import Any
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.application.paper import PaperError, questions_for_attempt, shuffled_choices
 from app.infrastructure.storage import media_url
-from app.models import AttemptStatus, Exam, ExamAttempt, ExamQuestion, Question, QuestionType, User
+from app.models import AttemptStatus, Exam, ExamAttempt, Question, QuestionType, User
 from app.question_rules import (
     SHORT_ANSWER_MAX_LEN,
     max_points,
@@ -33,8 +35,11 @@ def remaining_seconds(attempt: ExamAttempt, now: datetime) -> float:
     return max(0.0, (attempt.expires_at - now).total_seconds())
 
 
-def build_snapshot(questions: list[Question]) -> dict[str, Any]:
-    """Frozen copy of the paper, including answers, kept server-side only."""
+def build_snapshot(
+    questions: list[Question], shuffle_choices: bool = False, rng: random.Random | None = None
+) -> dict[str, Any]:
+    """Frozen copy of the paper as this attempt shows it (question and option order, answers), server-side only."""
+    rng = rng or random.SystemRandom()
     return {
         "questions": [
             {
@@ -43,7 +48,8 @@ def build_snapshot(questions: list[Question]) -> dict[str, Any]:
                 "difficulty": q.difficulty.value,
                 "content": q.content,
                 "choices": [
-                    {"id": c["id"], "content": c["content"], "is_correct": bool(c["is_correct"])} for c in q.choices
+                    {"id": c["id"], "content": c["content"], "is_correct": bool(c["is_correct"])}
+                    for c in shuffled_choices(q, shuffle_choices, rng)
                 ],
                 "accepted_answers": list(q.accepted_answers or []),
                 "explanation": q.explanation,
@@ -109,18 +115,10 @@ async def start_or_resume(session: AsyncSession, user: User, exam: Exam) -> Exam
     if exam.max_attempts is not None and used >= exam.max_attempts:
         raise AttemptError(f"Bạn đã dùng hết {exam.max_attempts} lượt làm đề này.")
 
-    questions = list(
-        (
-            await session.scalars(
-                select(Question)
-                .join(ExamQuestion, ExamQuestion.question_id == Question.id)
-                .where(ExamQuestion.exam_id == exam.id)
-                .order_by(ExamQuestion.position, Question.id)
-            )
-        ).all()
-    )
-    if not questions:
-        raise AttemptError("Đề này chưa có câu hỏi.")
+    try:
+        questions = await questions_for_attempt(session, exam, user.id)
+    except PaperError as exc:
+        raise AttemptError(str(exc)) from exc
 
     attempt = ExamAttempt(
         user_id=user.id,
@@ -130,7 +128,7 @@ async def start_or_resume(session: AsyncSession, user: User, exam: Exam) -> Exam
         started_at=now,
         expires_at=now + timedelta(seconds=exam.duration_seconds),
         answers={},
-        paper_snapshot=build_snapshot(questions),
+        paper_snapshot=build_snapshot(questions, exam.shuffle_choices),
         total_questions=len(questions),
     )
     session.add(attempt)

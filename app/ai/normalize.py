@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from app.ai.schemas import BoundingBox
+from app.ai.figures import PageGeometry, page_geometry
 
 PDF_EXTENSIONS = (".pdf",)
 WORD_EXTENSIONS = (".docx", ".doc")
@@ -23,7 +23,6 @@ SUPPORTED_EXTENSIONS = PDF_EXTENSIONS + WORD_EXTENSIONS + IMAGE_EXTENSIONS
 RENDER_DPI = 300  # sharp subscripts and figure crops; ~2480×3508 px for A4 (AI gets a 1600 px copy)
 MAX_IMAGE_SIDE = 2400
 MAX_PAGES = 30
-FIGURE_PADDING = 0.012  # extra margin around model-reported figure boxes (fraction of the page)
 
 
 class NormalizeError(Exception):
@@ -61,7 +60,8 @@ async def docx_to_pdf(source: Path, soffice: str) -> Path:
     return pdf
 
 
-def pdf_to_pages(pdf: Path, out_dir: Path, dpi: int = RENDER_DPI) -> list[Path]:
+def pdf_to_pages(pdf: Path, out_dir: Path, dpi: int = RENDER_DPI) -> tuple[list[Path], list[PageGeometry]]:
+    """Render every page; also return each page's vector graphics/words for exact figure cropping."""
     import pymupdf
 
     try:
@@ -73,12 +73,13 @@ def pdf_to_pages(pdf: Path, out_dir: Path, dpi: int = RENDER_DPI) -> list[Path]:
             raise NormalizeError("File PDF có mật khẩu.")
         if doc.page_count > MAX_PAGES:
             raise NormalizeError(f"File có {doc.page_count} trang, vượt giới hạn {MAX_PAGES} trang mỗi lần.")
-        paths = []
+        paths, geometries = [], []
         for index, page in enumerate(doc, start=1):
             path = out_dir / f"page-{index:03d}.png"
             page.get_pixmap(dpi=dpi).save(path)
             paths.append(path)
-    return paths
+            geometries.append(page_geometry(page))
+    return paths, geometries
 
 
 def image_to_page(source: Path, out_dir: Path) -> list[Path]:
@@ -93,7 +94,8 @@ def image_to_page(source: Path, out_dir: Path) -> list[Path]:
     return [path]
 
 
-async def to_page_images(source: Path, out_dir: Path, soffice: str) -> list[Path]:
+async def to_page_images(source: Path, out_dir: Path, soffice: str) -> tuple[list[Path], list[PageGeometry | None]]:
+    """Page PNGs plus per-page geometry (None for photos, which have no vector information)."""
     out_dir.mkdir(parents=True, exist_ok=True)
     suffix = source.suffix.lower()
     if suffix in WORD_EXTENSIONS:
@@ -105,24 +107,9 @@ async def to_page_images(source: Path, out_dir: Path, soffice: str) -> list[Path
     if suffix in PDF_EXTENSIONS:
         return await asyncio.to_thread(pdf_to_pages, source, out_dir)
     if suffix in IMAGE_EXTENSIONS:
-        return await asyncio.to_thread(image_to_page, source, out_dir)
+        pages = await asyncio.to_thread(image_to_page, source, out_dir)
+        return pages, [None] * len(pages)
     raise NormalizeError("Định dạng không hỗ trợ. Hãy tải lên PDF, Word (.docx) hoặc ảnh (PNG/JPG).")
-
-
-def crop_figure(page_png: Path, box: BoundingBox, target: Path) -> bool:
-    """Cut a model-reported 0–1000 box out of the page. Returns False for degenerate boxes."""
-    with Image.open(page_png) as img:
-        width, height = img.size
-        pad_x, pad_y = int(width * FIGURE_PADDING), int(height * FIGURE_PADDING)
-        left = max(0, min(box.xmin, box.xmax) * width // 1000 - pad_x)
-        right = min(width, max(box.xmin, box.xmax) * width // 1000 + pad_x)
-        top = max(0, min(box.ymin, box.ymax) * height // 1000 - pad_y)
-        bottom = min(height, max(box.ymin, box.ymax) * height // 1000 + pad_y)
-        if right - left < 20 or bottom - top < 20:
-            return False
-        target.parent.mkdir(parents=True, exist_ok=True)
-        img.crop((left, top, right, bottom)).save(target, optimize=True)
-    return True
 
 
 def png_bytes(path: Path) -> bytes:

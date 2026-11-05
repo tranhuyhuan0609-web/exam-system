@@ -47,6 +47,11 @@ class SourceType(StrEnum):
     CRAWLER = "CRAWLER"  # collected from the web (phase 4)
 
 
+class QuestionSource(StrEnum):
+    FIXED = "FIXED"  # the questions listed in exam_questions, in order
+    MATRIX = "MATRIX"  # drawn at random per attempt from the bank following Exam.matrix
+
+
 class ExamMode(StrEnum):
     PRACTICE = "PRACTICE"  # self-paced, start any time
     SCHEDULED = "SCHEDULED"  # fixed time window (phase 3)
@@ -182,6 +187,16 @@ class Exam(TimestampMixin, UpdatedAtMixin, Base):
     available_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     available_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    question_source: Mapped[QuestionSource] = mapped_column(
+        _enum(QuestionSource, "question_source"),
+        default=QuestionSource.FIXED,
+        server_default=QuestionSource.FIXED.value,
+    )
+    # MATRIX rules (see app/application/paper.py):
+    # [{"scope": "c:3", "difficulty": "RECOGNITION" | null, "type": "MULTIPLE_CHOICE" | null, "count": 10}]
+    matrix: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
+    shuffle_questions: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    shuffle_choices: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
     __table_args__ = (

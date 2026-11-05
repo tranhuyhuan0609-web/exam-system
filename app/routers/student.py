@@ -5,6 +5,7 @@ from fastapi import APIRouter, Body, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 
+from app.application.paper import question_count
 from app.attempts import (
     AttemptClosed,
     AttemptError,
@@ -19,7 +20,7 @@ from app.attempts import (
     submit,
 )
 from app.deps import ApiUser, CurrentUser, LoggedInUser, SessionDep
-from app.models import AttemptStatus, Exam, ExamAttempt, ExamMode, ExamQuestion, User, UserRole
+from app.models import AttemptStatus, Exam, ExamAttempt, ExamMode, User, UserRole
 from app.routers.admin.common import redirect
 from app.scope import load_subject_tree, scope_of, scope_paths
 from app.templating import flash, templates
@@ -67,9 +68,7 @@ async def home(request: Request, user: CurrentUser, session: SessionDep):
     exams = (
         await session.scalars(select(Exam).where(Exam.exam_mode == ExamMode.PRACTICE, published).order_by(Exam.id))
     ).all()
-    counts = dict(
-        (await session.execute(select(ExamQuestion.exam_id, func.count()).group_by(ExamQuestion.exam_id))).all()
-    )
+    counts = {exam.id: await question_count(session, exam) for exam in exams}
     mine: dict[int, int] = {}
     active: dict[int, int] = {}
     best: dict[int, Any] = {}
@@ -123,9 +122,7 @@ async def home(request: Request, user: CurrentUser, session: SessionDep):
 @router.get("/exams/{exam_id}")
 async def exam_page(request: Request, user: CurrentUser, session: SessionDep, exam_id: int):
     exam = await _get_visible_exam(session, exam_id, user)
-    question_count = await session.scalar(
-        select(func.count()).select_from(ExamQuestion).where(ExamQuestion.exam_id == exam_id)
-    )
+    total_questions = await question_count(session, exam)
     attempts, current, now = [], None, None
     if user:
         now = await db_now(session)
@@ -145,7 +142,7 @@ async def exam_page(request: Request, user: CurrentUser, session: SessionDep, ex
         {
             "user": user,
             "exam": exam,
-            "question_count": question_count,
+            "question_count": total_questions,
             "attempts": attempts,
             "current": current,
             "current_remaining": remaining_seconds(current, now) if current else 0,

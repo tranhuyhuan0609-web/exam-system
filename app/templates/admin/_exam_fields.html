@@ -17,6 +17,17 @@
   </label>
 </div>
 <label>Mô tả <textarea name="description" rows="2">{{ form.description }}</textarea></label>
+<fieldset>
+  <legend>Câu hỏi của đề</legend>
+  <label class="check"><input type="radio" name="question_source" value="FIXED" {% if form.question_source != "MATRIX" %}checked{% endif %}>
+    Cố định: tự chọn từng câu, mọi lượt làm cùng một bộ câu</label>
+  <label class="check"><input type="radio" name="question_source" value="MATRIX" {% if form.question_source == "MATRIX" %}checked{% endif %}>
+    Ma trận: mỗi lượt làm bốc ngẫu nhiên từ ngân hàng theo số câu từng mức độ</label>
+  <label class="check"><input type="checkbox" name="shuffle_questions" {% if form.shuffle_questions %}checked{% endif %}>
+    Đảo thứ tự câu (trong từng phần I, II, III)</label>
+  <label class="check"><input type="checkbox" name="shuffle_choices" {% if form.shuffle_choices %}checked{% endif %}>
+    Đảo vị trí đáp án A, B, C, D (câu trắc nghiệm)</label>
+</fieldset>
 {% if show_publish %}
   <label class="check"><input type="checkbox" name="is_published" {% if form.is_published %}checked{% endif %}> Công khai cho học sinh</label>
 {% endif %}

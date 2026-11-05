@@ -261,3 +261,4 @@ pre.sample { background: #f8fafc; border: 1px solid var(--border); border-radius
 .save-status[data-state="saved"] { color: #16a34a; }
 .save-status[data-state="saving"] { color: var(--primary); }
 .save-status[data-state="offline"] { color: #c2410c; font-weight: 600; }
+.matrix-table select, .matrix-table input { margin: 0; width: 100%; } .matrix-table .count-input { width: 80px; } .matrix-table td { vertical-align: middle; }

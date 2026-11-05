@@ -75,8 +75,8 @@ Học sinh vào bất cứ lúc nào, chọn bài (VD: Vật lí 11 – Chương
 ### Giai đoạn 2 — Trải nghiệm thực tế & Ngân hàng đề động (Tuần 4–6)
 - [x] Auto-save 2 tầng: IndexedDB mỗi lần chọn + đồng bộ ngầm lên server (2s sau thao tác cuối, chậm nhất 10s; tự thử lại khi mất mạng)
 - [x] Khôi phục phiên `IN_PROGRESS`: các câu đã chọn (server + thay đổi chưa kịp gửi trên máy) + số giây còn lại
-- [ ] Sinh đề theo ma trận độ khó (Nhận biết / Thông hiểu / Vận dụng), đảo vị trí A/B/C/D
-- [ ] Lưu cấu trúc đề của lượt thi vào `paper_snapshot` (JSONB) để F5 không bị xáo lại
+- [x] Sinh đề theo ma trận (phạm vi × mức độ × dạng câu × số câu), ưu tiên câu chưa gặp, đảo câu trong từng phần và đảo vị trí A/B/C/D
+- [x] Lưu cấu trúc đề của lượt thi vào `paper_snapshot` (JSONB) để F5 không bị xáo lại
 - [x] Worker tự thu bài mỗi phút: bài quá hạn `expires_at` → `SUBMITTED`, chấm theo đáp án đã auto-save
 
 ### Giai đoạn 3 — Thi theo ca cố định & Chịu tải cao (Tuần 7–9)
