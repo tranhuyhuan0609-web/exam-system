@@ -46,6 +46,10 @@ from app.pipeline.use_cases.library_split import page_texts
             ],
             [("Phần 1", 0, 1), ("Đáp án mã đề 104", 2, 3), ("Đáp án mã đề 123", 4, 4)],
         ),
+        (  # a scanned official set, 2 pages per code: OCR missed 201 and 204 and misread 203 as 208 on page 6
+            ["", "", "Mã đề 202", "Mã đề 202", "Mã đề 203", "Mã đề 208", "", "", "Mã đề 205", "", "Mã đề 206", ""],
+            [(f"Mã đề {200 + k}", 2 * k - 2, 2 * k - 1) for k in range(1, 7)],
+        ),
         (["Chuyên đề hàm số\nBài 1", "Câu 3: theo đề bài, có đề 12 câu"], []),  # not a bundle
         (["ĐỀ SỐ 1\nCâu 1", "Câu 2"], []),  # a single exam: nothing to cut
         (["Câu 5. Năm 2024 có đề 2024 người", "ĐỀ THI THPT 2024\nCâu 1"], []),  # years are not exam numbers

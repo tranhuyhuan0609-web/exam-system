@@ -73,6 +73,8 @@ def find_exams(pages: list[str], min_parts: int = 2) -> list[Segment]:
             last["mark"], last["solution"] = mark, last["solution"] or page.solution
         elif last is None or mark != last["mark"]:
             parts.append({"first": index, "mark": mark, "solution": page.solution, "restarted": False})
+    if kind == "code" and (grid := _regular_grid(read, len(pages))):
+        parts = grid
     if len(parts) < min_parts:
         return []
     segments, seen = [], {}
@@ -94,3 +96,31 @@ def find_exams(pages: list[str], min_parts: int = 2) -> list[Segment]:
             label = f"{label} ({seen[label]})"
         segments.append(Segment(label, part["first"], end))
     return segments
+
+
+def _regular_grid(read: list[_Page], total: int) -> list[dict] | None:
+    """An official set prints every code on the same number of pages, codes counting up (101, 102, …).
+    OCR misses or misreads a few codes on scans; when most codes that were read agree with
+    "code = first code + page // L" for one length L, cut every L pages and fill in the codes."""
+    seen = [(i, int(p.code)) for i, p in enumerate(read) if p.code]
+    best = None
+    for length in range(2, total // 2 + 1):
+        if total % length:
+            continue
+        bases = {}
+        for index, code in seen:
+            bases.setdefault(code - index // length, set()).add(code)
+        base, codes = max(bases.items(), key=lambda item: len(item[1]))
+        exams = total // length
+        distinct = len({code for _, code in seen})
+        agrees = len(codes) >= max(3, 0.35 * exams) and len(codes) >= 0.75 * distinct  # few OCR misreads
+        if agrees and (best is None or len(codes) > best[2]):
+            best = (length, base, len(codes))
+    if best is None:
+        return None
+    length, base, _ = best
+    width = max(len(p.code) for p in read if p.code)
+    return [
+        {"first": k * length, "mark": str(base + k).zfill(width), "solution": False, "restarted": False}
+        for k in range(total // length)
+    ]
