@@ -130,6 +130,97 @@ async def repair_latex_command() -> int:
     return 0
 
 
+async def recrop_figures() -> int:
+    """Re-cut stored figures so they contain only the figure, not neighbouring question text.
+
+    For AI imports of PDFs, the old crop is located on the stored page image and snapped to the exact
+    vector graphics of the original PDF. Otherwise, text lines cut by the crop border are trimmed.
+    """
+    import io
+
+    import pymupdf
+    from PIL import Image
+
+    from app.ai.figures import SNAP_PAD_PX, cut, locate_crop, page_geometry, snap_to_graphics, trim_cut_text
+    from app.ai.pipeline import page_key
+    from app.ai.schemas import BoundingBox
+    from app.infrastructure.storage import StorageError, get_storage
+    from app.models import ImportJob, Question
+
+    storage = get_storage()
+    done: dict[str, str] = {}  # key -> how it was fixed
+
+    async def save(key: str, image: Image.Image) -> None:
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG", optimize=True)
+        await storage.put(key, buffer.getvalue(), "image/png")
+
+    async with SessionLocal() as session:
+        for job in (await session.scalars(select(ImportJob).order_by(ImportJob.id))).all():
+            geometries = None
+            if job.stored_path.lower().endswith(".pdf"):
+                try:
+                    with pymupdf.open(stream=await storage.get(job.stored_path), filetype="pdf") as doc:
+                        geometries = [page_geometry(page) for page in doc]
+                except (StorageError, RuntimeError):
+                    geometries = None
+            drafts = [dict(d) for d in job.drafts or []]
+            for d in drafts:
+                key = d.get("figure")
+                if not key or key in done:
+                    continue
+                try:
+                    page = Image.open(io.BytesIO(await storage.get(page_key(job.id, d.get("page") or 1))))
+                    crop = Image.open(io.BytesIO(await storage.get(key)))
+                except StorageError:
+                    continue
+                stored = d.get("figure_bbox")
+                position = locate_crop(page, crop) if geometries and not stored else None
+                if geometries and stored:
+                    snapped = snap_to_graphics(BoundingBox(**stored), geometries[(d.get("page") or 1) - 1])
+                    if snapped and (figure := cut(page, snapped, SNAP_PAD_PX, SNAP_PAD_PX)) is not None:
+                        await save(key, figure)
+                        done[key] = f"snapped from the stored box, {crop.size} -> {figure.size}"
+                        continue
+                if position:
+                    width, height = page.size
+                    x, y = position
+                    region = BoundingBox(
+                        ymin=y * 1000 // height,
+                        xmin=x * 1000 // width,
+                        ymax=(y + crop.height) * 1000 // height,
+                        xmax=(x + crop.width) * 1000 // width,
+                    )
+                    snapped = snap_to_graphics(region, geometries[(d.get("page") or 1) - 1])
+                    if snapped and (figure := cut(page, snapped, SNAP_PAD_PX, SNAP_PAD_PX)) is not None:
+                        await save(key, figure)
+                        d["figure_bbox"] = region.model_dump()
+                        done[key] = f"snapped to vector graphics, {crop.size} -> {figure.size}"
+                        continue
+                trimmed = trim_cut_text(crop.convert("RGB"))
+                if trimmed.size != crop.size:
+                    await save(key, trimmed)
+                done[key] = f"trimmed, {crop.size} -> {trimmed.size}"
+            job.drafts = drafts
+        # Figures of questions that did not come from an AI job (or whose job was deleted).
+        for key in (await session.scalars(select(Question.image_path).where(Question.image_path.is_not(None)))).all():
+            if key in done:
+                continue
+            try:
+                crop = Image.open(io.BytesIO(await storage.get(key)))
+            except StorageError:
+                continue
+            trimmed = trim_cut_text(crop.convert("RGB"))
+            if trimmed.size != crop.size:
+                await save(key, trimmed)
+            done[key] = f"trimmed, {crop.size} -> {trimmed.size}"
+        await session.commit()
+    for key, how in sorted(done.items()):
+        print(f"{key}: {how}")
+    print(f"Processed {len(done)} figure(s).")
+    return 0
+
+
 def main() -> int:
     # Windows consoles default to a legacy code page that cannot print Vietnamese.
     sys.stdout.reconfigure(encoding="utf-8")
@@ -142,6 +233,7 @@ def main() -> int:
     p_admin.add_argument("--name", default="Admin")
     p_admin.add_argument("--password", help="Prompted if omitted")
 
+    sub.add_parser("recrop-figures", help="Re-cut stored figures so they contain only the figure")
     sub.add_parser("repair-latex", help="Fix LaTeX damaged by JSON escaping in stored questions and drafts")
     sub.add_parser("migrate-files", help="Copy files from the old data/ layout into the configured storage")
     sub.add_parser("seed-demo", help="Insert demo subjects, chapters, lessons, questions and an exam")
@@ -150,6 +242,8 @@ def main() -> int:
     if args.command == "create-admin":
         password = args.password or getpass.getpass("Password: ")
         return asyncio.run(create_admin(args.email, args.name, password))
+    if args.command == "recrop-figures":
+        return asyncio.run(recrop_figures())
     if args.command == "repair-latex":
         return asyncio.run(repair_latex_command())
     if args.command == "migrate-files":

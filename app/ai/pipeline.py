@@ -20,7 +20,8 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from app.ai.normalize import crop_figure, thumbnail_bytes, to_page_images
+from app.ai.figures import crop_figure
+from app.ai.normalize import thumbnail_bytes, to_page_images
 from app.ai.provider import AIProvider, FigureImage, PageImage
 from app.ai.schemas import ExtractedQuestion, Solution
 from app.infrastructure.storage import Storage
@@ -119,6 +120,7 @@ def _draft(q: ExtractedQuestion, solution: Solution | None, figure: str | None, 
         "explanation": solution.step_by_step_solution.strip() if solution else "",
         "difficulty": solution.difficulty if solution else default,
         "figure": figure,
+        "figure_bbox": q.figure_bbox.model_dump() if q.figure_bbox else None,  # model's box, for re-cropping
         "flags": flags,
         "question_id": None,
     }
@@ -156,7 +158,7 @@ async def run_pipeline(
         await progress("Đang chuyển file thành ảnh từng trang…", 0, 1)
         source = work / ("source" + Path(source_key).suffix.lower())
         source.write_bytes(await storage.get(source_key))
-        pages = await to_page_images(source, work / "pages", soffice)
+        pages, geometries = await to_page_images(source, work / "pages", soffice)
         for number, page in enumerate(pages, start=1):
             await storage.put(page_key(job_id, number), page.read_bytes(), "image/png")
 
@@ -180,7 +182,7 @@ async def run_pipeline(
             if q.figure_bbox is None:
                 continue
             crop = work / "figures" / f"{index + 1}.png"
-            if crop_figure(pages[q.page - 1], q.figure_bbox, crop):
+            if crop_figure(pages[q.page - 1], q.figure_bbox, crop, geometries[q.page - 1]):
                 key = f"figures/{job_id}-{index + 1}-{secrets.token_hex(6)}.png"  # unguessable: figures are public
                 figure_bytes[index] = crop.read_bytes()
                 await storage.put(key, figure_bytes[index], "image/png")
