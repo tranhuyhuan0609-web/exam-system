@@ -3,9 +3,10 @@ import asyncio
 import pytest
 from sqlalchemy import select, update
 
+from app.application.categories import create_category
 from app.domain.question_hash import content_hash, hash_of_choices
 from app.infrastructure.storage import LocalStorage, StorageError, get_storage
-from app.models import Exam, ExamQuestion, Question, SourceType, Subject
+from app.models import Exam, ExamQuestion, Question, SourceType
 
 # ---------------------------------------------------------------- hashing
 
@@ -57,9 +58,7 @@ def test_only_figures_are_publicly_served(client):
 @pytest.fixture
 def subject_id(db):
     async def _make(s):
-        subject = Subject(name="Vật lí 12", slug="vat-li-12")
-        s.add(subject)
-        await s.flush()
+        subject = await create_category(s, "Vật lí 12", slug="vat-li-12")
         return subject.id
 
     return db(_make)
@@ -69,7 +68,7 @@ def test_manual_questions_get_hash_and_source(admin_client, db, subject_id):
     admin_client.post(
         "/admin/questions",
         data={
-            "scope": f"s:{subject_id}",
+            "scope": f"c:{subject_id}",
             "question_type": "MULTIPLE_CHOICE",
             "difficulty": "RECOGNITION",
             "content": "Đơn vị của lực là",
@@ -86,14 +85,15 @@ def test_manual_questions_get_hash_and_source(admin_client, db, subject_id):
 def test_unverified_questions_cannot_be_added_to_exams_until_verified(admin_client, db, subject_id):
     async def _make(s):
         q = Question(
-            subject_id=subject_id,
+            root_id=subject_id,
+            category_id=subject_id,
             difficulty="RECOGNITION",
             content="Câu thu thập từ web",
             choices=[{"id": "a", "content": "x", "is_correct": True}, {"id": "b", "content": "y", "is_correct": False}],
             source_type=SourceType.CRAWLER,
             is_verified=False,
         )
-        exam = Exam(subject_id=subject_id, title="Đề", duration_seconds=600)
+        exam = Exam(root_id=subject_id, category_id=subject_id, title="Đề", duration_seconds=600)
         s.add_all([q, exam])
         await s.flush()
         return q.id, exam.id
@@ -116,7 +116,8 @@ def test_file_import_flags_duplicates_by_hash_even_with_different_spacing(admin_
     async def _seed(s):
         s.add(
             Question(
-                subject_id=subject_id,
+                root_id=subject_id,
+                category_id=subject_id,
                 difficulty="RECOGNITION",
                 content="Đơn vị của lực là",
                 choices=[
@@ -132,7 +133,7 @@ def test_file_import_flags_duplicates_by_hash_even_with_different_spacing(admin_
     text = "Câu 1:   đơn vị  của lực là\nA. N\nB. J\nĐáp án: A\n"
     r = admin_client.post(
         "/admin/questions/import/preview",
-        data={"scope": f"s:{subject_id}", "default_difficulty": "RECOGNITION"},
+        data={"scope": f"c:{subject_id}", "default_difficulty": "RECOGNITION"},
         files={"file": ("de.txt", text.encode(), "text/plain")},
     )
     assert "Trùng" in r.text

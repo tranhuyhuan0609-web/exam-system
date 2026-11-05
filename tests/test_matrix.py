@@ -7,15 +7,14 @@ from sqlalchemy import select, update
 from app.application.paper import PaperError, arrange, draw_matrix, parse_matrix, validate_rules
 from app.db import SessionLocal
 from app.models import (
-    Chapter,
     Difficulty,
     Exam,
     ExamAttempt,
     Question,
     QuestionSource,
     QuestionType,
-    Subject,
 )
+from tests.factories import make_tree
 
 R, U, A = Difficulty.RECOGNITION, Difficulty.UNDERSTANDING, Difficulty.APPLICATION
 
@@ -25,16 +24,13 @@ def bank(db):
     """Chapter 1: 6 recognition MC, 4 understanding MC, 2 true/false, 2 short answer (+1 unverified MC)."""
 
     async def _make(s):
-        subject = Subject(name="Vật lí 11", slug="vat-li-11")
-        subject.chapters = [Chapter(name="Chương 1", position=1), Chapter(name="Chương 2", position=2)]
-        s.add(subject)
-        await s.flush()
-        c1, c2 = subject.chapters
+        t = await make_tree(s, {"Vật lí 11": {"Chương 1": {}, "Chương 2": {}}})
+        subject, c1, c2 = t["Vật lí 11"], t["Chương 1"], t["Chương 2"]
 
         def mc(n, difficulty, chapter=c1, verified=True):
             return Question(
-                subject_id=subject.id,
-                chapter_id=chapter.id,
+                root_id=subject.id,
+                category_id=chapter.id,
                 difficulty=difficulty,
                 content=f"MC {n}",
                 choices=[{"id": f"{n}{x}", "content": x, "is_correct": x == "A"} for x in "ABCD"],
@@ -46,8 +42,8 @@ def bank(db):
         questions.append(mc(50, R, chapter=c2))
         questions += [
             Question(
-                subject_id=subject.id,
-                chapter_id=c1.id,
+                root_id=subject.id,
+                category_id=c1.id,
                 difficulty=U,
                 question_type=QuestionType.TRUE_FALSE,
                 content=f"TF {i}",
@@ -57,8 +53,8 @@ def bank(db):
         ]
         questions += [
             Question(
-                subject_id=subject.id,
-                chapter_id=c1.id,
+                root_id=subject.id,
+                category_id=c1.id,
                 difficulty=A,
                 question_type=QuestionType.SHORT_ANSWER,
                 content=f"SA {i}",
@@ -69,8 +65,8 @@ def bank(db):
         ]
         s.add_all(questions)
         exam = Exam(
-            subject_id=subject.id,
-            chapter_id=c1.id,
+            root_id=subject.id,
+            category_id=c1.id,
             title="Đề ma trận",
             duration_seconds=900,
             is_published=True,
@@ -211,7 +207,7 @@ def test_admin_saves_matrix_and_publishing_requires_a_fillable_matrix(admin_clie
     # Scope from another subject is refused.
     r = admin_client.post(
         f"/admin/exams/{exam_id}/matrix",
-        data={"rule_scope": ["s:999"], "rule_difficulty": [""], "rule_type": [""], "rule_count": ["1"]},
+        data={"rule_scope": ["c:999"], "rule_difficulty": [""], "rule_type": [""], "rule_count": ["1"]},
     )
     assert "phạm vi phải thuộc môn của đề" in r.text
 

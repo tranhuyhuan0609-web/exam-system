@@ -1,0 +1,76 @@
+{% extends "admin/_layout.html" %}
+{% set active = "subjects" %}
+{% block title %}Mục lục · Quản trị{% endblock %}
+
+{% macro node_row(node, depth) %}
+  {% set t = totals.get(node.id, [0, 0]) %}
+  <li class="cat-node depth-{{ depth if depth < 4 else 4 }}" id="cat-{{ node.id }}">
+    <div class="cat-row">
+      <form method="post" action="/admin/categories/{{ node.id }}/order" class="inline">
+        <button name="direction" value="up" class="icon-btn" title="Lên">▲</button>
+        <button name="direction" value="down" class="icon-btn" title="Xuống">▼</button>
+      </form>
+      <form method="post" action="/admin/categories/{{ node.id }}" class="row grow cat-name">
+        <input name="name" value="{{ node.name }}" required maxlength="300" class="{{ 'input-title' if depth == 0 }}">
+        <button class="btn btn-outline btn-small">Lưu tên</button>
+      </form>
+      <a class="small" href="/admin/questions?scope=c:{{ node.id }}" title="Câu hỏi trong nhánh này">{{ t[0] }} câu</a>
+      <span class="small muted">· {{ t[1] }} đề</span>
+      <details class="cat-actions">
+        <summary class="icon-btn" title="Thêm thao tác">⋯</summary>
+        <div class="cat-menu card">
+          <form method="post" action="/admin/categories" class="row">
+            <input type="hidden" name="parent_id" value="{{ node.id }}">
+            <input name="name" required maxlength="300" placeholder="Tên mục con (VD: Con lắc lò xo)">
+            <button class="btn btn-small">+ Thêm mục con</button>
+          </form>
+          <form method="post" action="/admin/categories/{{ node.id }}/move" class="row mt">
+            <select name="parent_id">
+              <option value="">— Đưa lên làm môn học (gốc) —</option>
+              {% for o in options %}{% if not o.key.endswith(':' ~ node.id) %}<option value="{{ o.key[2:] }}" {% if o.key == 'c:' ~ node.parent_id %}selected{% endif %}>{{ o.label }}</option>{% endif %}{% endfor %}
+            </select>
+            <button class="btn btn-outline btn-small">Chuyển tới</button>
+          </form>
+          <div class="row mt">
+            <a class="btn btn-outline btn-small" href="/admin/questions/new?scope=c:{{ node.id }}">+ Câu hỏi</a>
+            <a class="btn btn-outline btn-small" href="/admin/exams/new?scope=c:{{ node.id }}">+ Đề thi</a>
+            <form method="post" action="/admin/categories/{{ node.id }}/delete" class="inline"
+                  data-confirm="Xoá “{{ node.name }}” cùng mọi mục con?">
+              <button class="btn btn-danger btn-small">Xoá</button>
+            </form>
+          </div>
+        </div>
+      </details>
+    </div>
+    {% if node.kids %}
+      <ul class="cat-tree">{% for kid in node.kids %}{{ node_row(kid, depth + 1) }}{% endfor %}</ul>
+    {% endif %}
+  </li>
+{% endmacro %}
+
+{% block admin_content %}
+<div class="page-head">
+  <h1>Mục lục</h1>
+  <span class="muted small">Môn học → Lớp → Chương → Chuyên đề… thêm bao nhiêu cấp cũng được.</span>
+</div>
+
+<div class="grid-main-side">
+  <div class="card">
+    {% if roots %}
+      <ul class="cat-tree cat-root">{% for root in roots %}{{ node_row(root, 0) }}{% endfor %}</ul>
+    {% else %}
+      <p class="muted">Chưa có môn học nào.</p>
+    {% endif %}
+    <p class="hint mt">Số câu / đề tính cả các mục con. Câu hỏi và đề gắn vào mục nào cũng được; lọc theo một mục sẽ lấy cả nhánh bên dưới.</p>
+  </div>
+  <aside class="card">
+    <h2>Thêm môn học</h2>
+    <form method="post" action="/admin/categories">
+      <label>Tên môn <input name="name" required maxlength="300" placeholder="VD: Vật lí"></label>
+      <label>Slug <span class="muted">(để trống sẽ tự tạo)</span><input name="slug" maxlength="180" placeholder="vat-li"></label>
+      <button class="btn">+ Thêm môn</button>
+    </form>
+    <p class="hint mt">Muốn thêm lớp, chương, chuyên đề: bấm ⋯ ở mục cha rồi chọn “Thêm mục con”.</p>
+  </aside>
+</div>
+{% endblock %}

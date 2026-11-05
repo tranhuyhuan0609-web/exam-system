@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Difficulty, Exam, ExamAttempt, ExamQuestion, Question, QuestionSource, QuestionType
-from app.scope import Scope, resolve_scope, scope_of
+from app.scope import Scope, resolve_scope, scope_by_id
 
 SECTION_ORDER = {
     QuestionType.MULTIPLE_CHOICE: 0,
@@ -73,8 +73,11 @@ def validate_rules(rules: list[MatrixRule]) -> list[str]:
 
 
 async def _rule_scope(session: AsyncSession, exam: Exam, rule: MatrixRule) -> Scope:
-    scope = await resolve_scope(session, rule.scope_key) if rule.scope_key else scope_of(exam)
-    if scope is None or scope.subject_id != exam.subject_id:
+    if rule.scope_key:
+        scope = await resolve_scope(session, rule.scope_key)
+    else:
+        scope = await scope_by_id(session, exam.category_id)
+    if scope is None or scope.root_id != exam.root_id:
         raise PaperError("Phạm vi trong ma trận không còn tồn tại hoặc không thuộc môn của đề.")
     return scope
 
@@ -83,7 +86,7 @@ async def rule_candidates(
     session: AsyncSession, exam: Exam, rule: MatrixRule, parts: list[str] | None = None
 ) -> list[int]:
     scope = await _rule_scope(session, exam, rule)
-    conditions = [Question.is_verified, Question.subject_id == exam.subject_id, *scope.conditions(Question)]
+    conditions = [Question.is_verified, Question.root_id == exam.root_id, *scope.conditions(Question)]
     if rule.difficulty:
         conditions.append(Question.difficulty == Difficulty(rule.difficulty))
     if rule.question_type:

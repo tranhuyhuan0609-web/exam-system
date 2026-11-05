@@ -1,8 +1,30 @@
 {% extends "base.html" %}
+{% block container_class %}wide{% endblock %}
+
+{% macro tree(nodes) %}
+  <ul class="toc">
+    {% for node in nodes if exam_counts.get(node.id) %}
+      {% set kids = node.kids | selectattr("id", "in", exam_counts) | list %}
+      <li>
+        {% if kids %}
+          <details {% if node.id in open_ids or (not selected and node.depth == 0) %}open{% endif %}>
+            <summary><a href="/?c={{ node.id }}" class="{{ 'current' if selected and selected.id == node.id }}">{{ node.name }}</a>
+              <span class="toc-count">{{ exam_counts[node.id] }}</span></summary>
+            {{ tree(node.kids) }}
+          </details>
+        {% else %}
+          <a href="/?c={{ node.id }}" class="leaf {{ 'current' if selected and selected.id == node.id }}">{{ node.name }}</a>
+          <span class="toc-count">{{ exam_counts[node.id] }}</span>
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+{% endmacro %}
+
 {% block content %}
 {% if user %}
   <h1>Xin chào, {{ user.full_name }} 👋</h1>
-  <p class="muted">Chọn một đề để luyện tập. Mỗi lần bấm “Bắt đầu” sẽ tính giờ riêng cho bạn.</p>
+  <p class="muted">Chọn một mục ở mục lục bên trái hoặc một đề bên dưới. Mỗi lần bấm “Bắt đầu” sẽ tính giờ riêng cho bạn.</p>
 {% else %}
   <section class="hero">
     <h1>Tự luyện thi trắc nghiệm theo chương, theo bài</h1>
@@ -14,29 +36,41 @@
   </section>
 {% endif %}
 
-{% for subject, exams in groups %}
-  <h2 class="subject-title">{{ subject.name }}</h2>
-  <div class="exam-grid">
-    {% for exam in exams %}
-      <a class="card exam-card" href="/exams/{{ exam.id }}">
-        <div class="muted small">{{ scope_paths.get(scope_of(exam).key, '') }}</div>
-        <h3>{{ exam.title }}</h3>
-        <div class="exam-facts small">
-          <span>📝 {{ question_counts.get(exam.id, 0) }} câu</span>
-          <span>⏱ {{ exam.duration_seconds | duration }}</span>
-          <span>🔁 {{ exam.max_attempts ~ " lượt" if exam.max_attempts else "Không giới hạn" }}</span>
-        </div>
-        {% if active.get(exam.id) %}
-          <span class="badge badge-warn">Đang làm dở</span>
-        {% elif my_attempts.get(exam.id) %}
-          <span class="badge">Đã làm {{ my_attempts[exam.id] }} lần{% if best.get(exam.id) is not none %} · cao nhất {{ "%g" % best[exam.id] }}đ{% endif %}</span>
-        {% endif %}
-      </a>
+<div class="home-layout">
+  <aside class="card toc-panel" aria-label="Mục lục">
+    <h3>Mục lục</h3>
+    <a href="/" class="{{ 'current' if not selected }}">Tất cả đề</a>
+    {{ tree(roots) }}
+  </aside>
+
+  <div>
+    {% with trail_link_last=False %}{% include "_breadcrumb.html" %}{% endwith %}
+    {% if selected %}<h2 class="subject-title">{{ selected.name }}</h2>{% endif %}
+    {% for subject, exams in groups %}
+      {% if not selected %}<h2 class="subject-title">{{ subject.name }}</h2>{% endif %}
+      <div class="exam-grid">
+        {% for exam in exams %}
+          <a class="card exam-card" href="/exams/{{ exam.id }}">
+            <div class="muted small">{{ scope_paths.get(scope_of(exam).key, '') }}</div>
+            <h3>{{ exam.title }}</h3>
+            <div class="exam-facts small">
+              <span>📝 {{ question_counts.get(exam.id, 0) }} câu</span>
+              <span>⏱ {{ exam.duration_seconds | duration }}</span>
+              <span>🔁 {{ exam.max_attempts ~ " lượt" if exam.max_attempts else "Không giới hạn" }}</span>
+            </div>
+            {% if active.get(exam.id) %}
+              <span class="badge badge-warn">Đang làm dở</span>
+            {% elif my_attempts.get(exam.id) %}
+              <span class="badge">Đã làm {{ my_attempts[exam.id] }} lần{% if best.get(exam.id) is not none %} · cao nhất {{ "%g" % best[exam.id] }}đ{% endif %}</span>
+            {% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="card muted">{{ "Mục này chưa có đề luyện tập nào." if selected else "Chưa có đề luyện tập nào được công khai." }}</div>
     {% endfor %}
   </div>
-{% else %}
-  <div class="card muted">Chưa có đề luyện tập nào được công khai.</div>
-{% endfor %}
+</div>
 
 {% if user and user.role == "ADMIN" %}
   <p class="mt"><a class="btn btn-outline" href="/admin">Vào trang quản trị →</a></p>

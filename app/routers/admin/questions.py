@@ -11,7 +11,7 @@ from app.deps import AdminUser, SessionDep
 from app.domain.question_hash import hash_of_choices
 from app.models import QUESTION_MAX_CHOICES, Difficulty, Exam, ExamQuestion, Question, QuestionType
 from app.routers.admin.common import get_or_404, redirect
-from app.scope import Scope, load_subject_tree, resolve_scope, scope_of, scope_options, scope_paths
+from app.scope import Scope, load_categories, resolve_scope, scope_of, scope_options, scope_paths
 from app.templating import flash, templates
 from app.text import like_pattern
 
@@ -92,7 +92,7 @@ async def _parse(session, form: FormData) -> tuple[QuestionForm, Scope | None, l
 
 
 def _apply(question: Question, data: QuestionForm, scope: Scope) -> None:
-    question.subject_id, question.chapter_id, question.lesson_id = scope.subject_id, scope.chapter_id, scope.lesson_id
+    question.root_id, question.category_id = scope.root_id, scope.category_id
     question.question_type = QuestionType(data.question_type)
     question.difficulty = Difficulty(data.difficulty)
     question.content = data.content
@@ -119,7 +119,7 @@ async def _render_form(request, session, user, data: QuestionForm, question=None
             "form": data,
             "question": question,
             "errors": errors or [],
-            "scope_options": scope_options(await load_subject_tree(session)),
+            "scope_options": scope_options(await load_categories(session)),
             "used_in": await _exams_using(session, question.id) if question else [],
             "max_choices": MAX_CHOICES,
         },
@@ -164,7 +164,7 @@ async def list_questions(
         )
     ).all()
 
-    subjects = await load_subject_tree(session)
+    subjects = await load_categories(session)
     filters = {"scope": scope, "difficulty": difficulty, "qtype": qtype, "verified": verified, "q": q}
     return templates.TemplateResponse(
         request,
@@ -216,7 +216,7 @@ async def update_question(request: Request, user: AdminUser, session: SessionDep
     question = await get_or_404(session, Question, question_id)
     form = await request.form()
     data, scope, errors = await _parse(session, form)
-    if scope and scope.subject_id != question.subject_id and await _exams_using(session, question_id):
+    if scope and scope.root_id != question.root_id and await _exams_using(session, question_id):
         errors.append("Câu hỏi đang nằm trong đề thi nên không thể chuyển sang môn khác.")
     if errors:
         return await _render_form(request, session, user, data, question, errors)

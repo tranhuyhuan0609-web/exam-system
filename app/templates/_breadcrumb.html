@@ -1,0 +1,9 @@
+{# Needs `trail`: categories from the subject down to the current one. #}
+<nav class="breadcrumb" aria-label="Mục lục">
+  <a href="/">Tất cả đề</a>
+  {% for node in trail %}
+    <span aria-hidden="true">›</span>
+    {% if loop.last and not trail_link_last %}<span aria-current="page">{{ node.name }}</span>
+    {% else %}<a href="/?c={{ node.id }}">{{ node.name }}</a>{% endif %}
+  {% endfor %}
+</nav>

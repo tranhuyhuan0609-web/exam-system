@@ -3,7 +3,8 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import func, select, update
 
-from app.models import AttemptStatus, Difficulty, Exam, ExamAttempt, ExamQuestion, Question, Subject, UserRole
+from app.application.categories import create_category
+from app.models import AttemptStatus, Difficulty, Exam, ExamAttempt, ExamQuestion, Question, UserRole
 
 
 @pytest.fixture
@@ -11,12 +12,11 @@ def exam_id(db):
     """A published 10-minute practice exam with 3 questions."""
 
     async def _make(s):
-        subject = Subject(name="Vật lí 11", slug="vat-li-11")
-        s.add(subject)
-        await s.flush()
+        subject = await create_category(s, "Vật lí 11", slug="vat-li-11")
         questions = [
             Question(
-                subject_id=subject.id,
+                root_id=subject.id,
+                category_id=subject.id,
                 difficulty=Difficulty.RECOGNITION,
                 content=f"Câu hỏi số {i} $x^{i}$",
                 choices=[
@@ -28,7 +28,9 @@ def exam_id(db):
             for i in range(1, 4)
         ]
         s.add_all(questions)
-        exam = Exam(subject_id=subject.id, title="Đề luyện tập", duration_seconds=600, is_published=True)
+        exam = Exam(
+            root_id=subject.id, category_id=subject.id, title="Đề luyện tập", duration_seconds=600, is_published=True
+        )
         s.add(exam)
         await s.flush()
         s.add_all(ExamQuestion(exam_id=exam.id, question_id=q.id, position=i) for i, q in enumerate(questions, 1))

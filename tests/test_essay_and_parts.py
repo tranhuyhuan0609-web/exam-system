@@ -7,8 +7,9 @@ from sqlalchemy import select, update
 
 from app import question_rules as rules
 from app.ai.schemas import EssayGrade, Solution
+from app.application.categories import create_category
 from app.application.essay_grading import grade_pending_essays
-from app.models import Exam, ExamAttempt, ExamQuestion, GradingStatus, Question, QuestionType, Subject
+from app.models import Category, Exam, ExamAttempt, ExamQuestion, GradingStatus, Question, QuestionType
 
 
 class FakeGrader:
@@ -32,13 +33,12 @@ def mixed_exam(db):
     """Fixed exam: 2 multiple choice, 1 true/false, 1 short answer, 1 essay (2 points). 20 minutes."""
 
     async def _make(s):
-        subject = Subject(name="Vật lí 12", slug="vat-li-12")
-        s.add(subject)
-        await s.flush()
+        subject = await create_category(s, "Vật lí 12", slug="vat-li-12")
 
         def q(kind, n, **extra):
             return Question(
-                subject_id=subject.id,
+                root_id=subject.id,
+                category_id=subject.id,
                 difficulty="UNDERSTANDING",
                 question_type=kind,
                 content=f"{kind.value} {n}",
@@ -71,7 +71,9 @@ def mixed_exam(db):
             q(QuestionType.ESSAY, 1, choices=[], points=Decimal("2"), explanation="LOI_GIAI_MAU"),
         ]
         s.add_all(questions)
-        exam = Exam(subject_id=subject.id, title="Đề đủ 4 phần", duration_seconds=1200, is_published=True)
+        exam = Exam(
+            root_id=subject.id, category_id=subject.id, title="Đề đủ 4 phần", duration_seconds=1200, is_published=True
+        )
         s.add(exam)
         await s.flush()
         s.add_all(ExamQuestion(exam_id=exam.id, question_id=x.id, position=i) for i, x in enumerate(questions, 1))
@@ -200,11 +202,11 @@ def test_unanswered_essay_needs_no_ai(student, db, mixed_exam):
 
 
 def test_admin_creates_essay_question_and_ai_solves_it(admin_client, db, monkeypatch, mixed_exam):
-    subject_id = db(lambda s: s.scalar(select(Subject.id)))
+    subject_id = db(lambda s: s.scalar(select(Category.id).where(Category.parent_id.is_(None))))
     r = admin_client.post(
         "/admin/questions",
         data={
-            "scope": f"s:{subject_id}",
+            "scope": f"c:{subject_id}",
             "question_type": "ESSAY",
             "difficulty": "APPLICATION",
             "content": "Tính độ sâu của bể nước",

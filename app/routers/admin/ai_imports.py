@@ -28,7 +28,7 @@ from app.models import (
     SourceType,
 )
 from app.routers.admin.common import clean_text, get_or_404, redirect
-from app.scope import load_subject_tree, resolve_scope, scope_of, scope_options, scope_paths
+from app.scope import load_categories, resolve_scope, scope_of, scope_options, scope_paths
 from app.templating import flash, templates
 
 router = APIRouter()
@@ -64,7 +64,7 @@ async def _job_or_404(session, job_id: int) -> ImportJob:
 @router.get("/ai-imports")
 async def list_jobs(request: Request, user: AdminUser, session: SessionDep, scope: str = ""):
     jobs = (await session.scalars(select(ImportJob).order_by(ImportJob.id.desc()).limit(50))).all()
-    subjects = await load_subject_tree(session)
+    subjects = await load_categories(session)
     return templates.TemplateResponse(
         request,
         "admin/ai_imports.html",
@@ -116,9 +116,8 @@ async def create_job(
         stored_path=relative,
         status=JobStatus.QUEUED,
         stage="Đang chờ worker xử lý…",
-        subject_id=target.subject_id,
-        chapter_id=target.chapter_id,
-        lesson_id=target.lesson_id,
+        root_id=target.root_id,
+        category_id=target.category_id,
         default_difficulty=Difficulty(default_difficulty),
     )
     session.add(job)
@@ -130,7 +129,7 @@ async def create_job(
 @router.get("/ai-imports/{job_id}")
 async def job_detail(request: Request, user: AdminUser, session: SessionDep, job_id: int):
     job = await _job_or_404(session, job_id)
-    subjects = await load_subject_tree(session)
+    subjects = await load_categories(session)
     drafts = _drafts(job)
     # Flag drafts that already exist in the bank (exact match on the normalised content hash).
     hashes = [
@@ -242,9 +241,8 @@ async def publish(request: Request, user: AdminUser, session: SessionDep, job_id
             continue
         d = drafts[index]
         question = Question(
-            subject_id=job.subject_id,
-            chapter_id=job.chapter_id,
-            lesson_id=job.lesson_id,
+            root_id=job.root_id,
+            category_id=job.category_id,
             difficulty=Difficulty(d.get("difficulty") or job.default_difficulty.value),
             question_type=QuestionType(d["type"]),
             content=d["content"],
@@ -273,9 +271,8 @@ async def publish(request: Request, user: AdminUser, session: SessionDep, job_id
         title = clean_text(str(form.get("exam_title", "")), 300) or PurePath(job.original_filename).stem[:300]
         minutes = str(form.get("duration_minutes", "")).strip()
         exam = Exam(
-            subject_id=job.subject_id,
-            chapter_id=job.chapter_id,
-            lesson_id=job.lesson_id,
+            root_id=job.root_id,
+            category_id=job.category_id,
             title=title,
             exam_mode=ExamMode.PRACTICE,
             duration_seconds=(int(minutes) if minutes.isdigit() and 1 <= int(minutes) <= 600 else 15) * 60,

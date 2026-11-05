@@ -7,8 +7,9 @@ import pytest
 from sqlalchemy import select
 
 from app.import_templates import SAMPLE_QUESTIONS, sample_docx, sample_text, sample_xlsx
-from app.models import Chapter, Difficulty, Exam, ExamQuestion, Question, Subject
+from app.models import Difficulty, Exam, ExamQuestion, Question
 from app.question_import import ImportFileError, parse_file, parse_text
+from tests.factories import make_tree
 
 # ---------------------------------------------------------------- parser
 
@@ -120,11 +121,8 @@ def test_xlsx_with_custom_headers_and_bad_answer():
 @pytest.fixture
 def lesson_scope(db):
     async def _make(s):
-        subject = Subject(name="Vật lí 11", slug="vat-li-11")
-        subject.chapters = [Chapter(name="Chương 1", position=1)]
-        s.add(subject)
-        await s.flush()
-        return subject.id, subject.chapters[0].id
+        t = await make_tree(s, {"Vật lí 11": {"Chương 1": {}}})
+        return t["Vật lí 11"].id, t["Chương 1"].id
 
     return db(_make)
 
@@ -168,7 +166,7 @@ def test_import_preview_saves_nothing_and_confirm_creates_questions_and_exam(adm
     assert r.status_code == 303
     questions = db(lambda s: s.scalars(select(Question).order_by(Question.id)))
     assert len(questions) == 4
-    assert all((q.subject_id, q.chapter_id, q.lesson_id) == (subject_id, chapter_id, None) for q in questions)
+    assert all((q.root_id, q.category_id) == (subject_id, chapter_id) for q in questions)
     assert [q.difficulty for q in questions] == [
         Difficulty.UNDERSTANDING,
         Difficulty.RECOGNITION,

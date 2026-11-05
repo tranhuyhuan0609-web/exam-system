@@ -1,10 +1,9 @@
 {% extends "base.html" %}
 {% block title %}{{ exam.title }} · Exam System{% endblock %}
 {% block content %}
-<p class="muted"><a href="/">← Danh sách đề</a></p>
+{% with trail_link_last=True %}{% include "_breadcrumb.html" %}{% endwith %}
 
 <div class="card exam-intro">
-  <div class="muted small">{{ scope_path }}</div>
   <h1>{{ exam.title }}
     {% if not exam.is_published %}<span class="badge">Nháp (chỉ admin thấy)</span>{% endif %}
   </h1>

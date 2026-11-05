@@ -10,7 +10,8 @@ from app.ai.provider import AIError, FigureImage, PageImage
 from app.ai.schemas import BoundingBox, ExtractedChoice, ExtractedQuestion, Solution
 from app.config import get_settings
 from app.infrastructure.storage import LocalStorage, get_storage
-from app.models import Chapter, Exam, ExamQuestion, ImportJob, JobStatus, Question, Subject, UserRole
+from app.models import Exam, ExamQuestion, ImportJob, JobStatus, Question, UserRole
+from tests.factories import make_tree
 
 
 def make_pdf(pages: int = 2) -> bytes:
@@ -152,11 +153,8 @@ def test_pipeline_keeps_questions_when_solving_fails(tmp_path):
 @pytest.fixture
 def chapter_scope(db):
     async def _make(s):
-        subject = Subject(name="Vật lí 10", slug="vat-li-10")
-        subject.chapters = [Chapter(name="Chương 5: Khí lí tưởng", position=1)]
-        s.add(subject)
-        await s.flush()
-        return f"c:{subject.chapters[0].id}"
+        t = await make_tree(s, {"Vật lí 10": {"Chương 5: Khí lí tưởng": {}}})
+        return f"c:{t['Chương 5: Khí lí tưởng'].id}"
 
     return db(_make)
 

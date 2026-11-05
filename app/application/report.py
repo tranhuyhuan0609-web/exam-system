@@ -14,7 +14,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Chapter, Difficulty, ExamAttempt, Lesson, Question, Subject
+from app.models import Category, Difficulty, ExamAttempt, Question
 
 WEAK_THRESHOLD = 50  # percent
 SLOWEST_MAX = 5  # the slowest quarter of the paper, at most 5 questions
@@ -75,16 +75,15 @@ def rank_for(score: Decimal | None) -> tuple[str, str]:
 
 
 async def _topic_names(session: AsyncSession, question_ids: list[int]) -> dict[int, str]:
+    """Topic of each question: the name of the most specific category it is filed under."""
     rows = (
         await session.execute(
-            select(Question.id, Lesson.name, Chapter.name, Subject.name)
-            .join(Subject, Subject.id == Question.subject_id)
-            .outerjoin(Chapter, Chapter.id == Question.chapter_id)
-            .outerjoin(Lesson, Lesson.id == Question.lesson_id)
+            select(Question.id, Category.name)
+            .join(Category, Category.id == Question.category_id)
             .where(Question.id.in_(question_ids))
         )
     ).all()
-    return {qid: lesson or chapter or subject for qid, lesson, chapter, subject in rows}
+    return dict(rows)
 
 
 async def build_report(session: AsyncSession, attempt: ExamAttempt, rows: list[dict[str, Any]]) -> Report:

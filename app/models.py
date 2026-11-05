@@ -18,7 +18,7 @@ from sqlalchemy import (
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
 
@@ -106,42 +106,28 @@ class User(TimestampMixin, Base):
     __table_args__ = (CheckConstraint("email = lower(email)", name="ck_users_email_lowercase"),)
 
 
-class Subject(TimestampMixin, Base):
-    __tablename__ = "subjects"
+class Category(TimestampMixin, Base):
+    """One node of the table of contents: a root is a subject (Vật lí), below it any number of levels
+    (Lớp 11 → Chương 1 → Con lắc lò xo...).
+
+    `path` lists the ids from the root down to this node ("/1/5/12/"), so a whole branch is selected with
+    `path LIKE '/1/5/%'` and the root id is the first element.
+    """
+
+    __tablename__ = "categories"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(200))
-    slug: Mapped[str] = mapped_column(String(200), unique=True)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"), index=True)
+    name: Mapped[str] = mapped_column(String(300))
+    slug: Mapped[str | None] = mapped_column(String(200), unique=True)  # roots only, for URLs
     description: Mapped[str | None] = mapped_column(Text)
-
-    chapters: Mapped[list["Chapter"]] = relationship(
-        back_populates="subject", order_by="Chapter.position", cascade="all, delete-orphan"
-    )
-
-
-class Chapter(TimestampMixin, Base):
-    __tablename__ = "chapters"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"), index=True)
-    name: Mapped[str] = mapped_column(String(300))
     position: Mapped[int] = mapped_column(Integer, default=0)
+    path: Mapped[str] = mapped_column(String(500), index=True, default="")
+    depth: Mapped[int] = mapped_column(Integer, default=0)  # 0 = root (subject)
 
-    subject: Mapped[Subject] = relationship(back_populates="chapters")
-    lessons: Mapped[list["Lesson"]] = relationship(
-        back_populates="chapter", order_by="Lesson.position", cascade="all, delete-orphan"
-    )
-
-
-class Lesson(TimestampMixin, Base):
-    __tablename__ = "lessons"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="CASCADE"), index=True)
-    name: Mapped[str] = mapped_column(String(300))
-    position: Mapped[int] = mapped_column(Integer, default=0)
-
-    chapter: Mapped[Chapter] = relationship(back_populates="lessons")
+    @property
+    def root_id(self) -> int:
+        return int(self.path.strip("/").split("/")[0])
 
 
 QUESTION_MIN_CHOICES, QUESTION_MAX_CHOICES = 2, 6
@@ -151,9 +137,9 @@ class Question(TimestampMixin, UpdatedAtMixin, Base):
     __tablename__ = "questions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id", ondelete="RESTRICT"), index=True)
-    chapter_id: Mapped[int | None] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), index=True)
-    lesson_id: Mapped[int | None] = mapped_column(ForeignKey("lessons.id", ondelete="SET NULL"), index=True)
+    # The subject (root category) and the most specific category the question belongs to.
+    root_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"), index=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"), index=True)
     difficulty: Mapped[Difficulty] = mapped_column(_enum(Difficulty, "difficulty"))
     question_type: Mapped[QuestionType] = mapped_column(
         _enum(QuestionType, "question_type"),
@@ -186,9 +172,8 @@ class Exam(TimestampMixin, UpdatedAtMixin, Base):
     __tablename__ = "exams"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id", ondelete="RESTRICT"), index=True)
-    chapter_id: Mapped[int | None] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"))
-    lesson_id: Mapped[int | None] = mapped_column(ForeignKey("lessons.id", ondelete="SET NULL"))
+    root_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"), index=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"), index=True)
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str | None] = mapped_column(Text)
     exam_mode: Mapped[ExamMode] = mapped_column(_enum(ExamMode, "exam_mode"), default=ExamMode.PRACTICE)
@@ -286,9 +271,8 @@ class ImportJob(Base):
     progress_total: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     page_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Where published questions go.
-    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"))
-    chapter_id: Mapped[int | None] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"))
-    lesson_id: Mapped[int | None] = mapped_column(ForeignKey("lessons.id", ondelete="SET NULL"))
+    root_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"))
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"))
     default_difficulty: Mapped[Difficulty] = mapped_column(_enum(Difficulty, "difficulty"))
     # Draft questions produced by the pipeline and edited during review (see app/ai/pipeline.py).
     drafts: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, server_default="[]")

@@ -1,7 +1,8 @@
 import pytest
 from sqlalchemy import select
 
-from app.models import Chapter, Difficulty, Exam, ExamQuestion, Lesson, Question, Subject, UserRole
+from app.models import Category, Difficulty, Exam, ExamQuestion, Question, UserRole
+from tests.factories import make_tree
 
 
 @pytest.fixture
@@ -9,20 +10,14 @@ def tree(db):
     """Two subjects; the first has two chapters, chapter 1 has two lessons."""
 
     async def _make(s):
-        physics = Subject(name="Vật lí 11", slug="vat-li-11")
-        c1 = Chapter(name="Chương 1", position=1)
-        c1.lessons = [Lesson(name="Bài 1", position=1), Lesson(name="Bài 2", position=2)]
-        physics.chapters = [c1, Chapter(name="Chương 2", position=2)]
-        math = Subject(name="Toán 11", slug="toan-11")
-        s.add_all([physics, math])
-        await s.flush()
+        t = await make_tree(s, {"Vật lí 11": {"Chương 1": {"Bài 1": {}, "Bài 2": {}}, "Chương 2": {}}, "Toán 11": {}})
         return {
-            "physics": physics.id,
-            "math": math.id,
-            "c1": c1.id,
-            "c2": physics.chapters[1].id,
-            "l1": c1.lessons[0].id,
-            "l2": c1.lessons[1].id,
+            "physics": t["Vật lí 11"].id,
+            "math": t["Toán 11"].id,
+            "c1": t["Chương 1"].id,
+            "c2": t["Chương 2"].id,
+            "l1": t["Bài 1"].id,
+            "l2": t["Bài 2"].id,
         }
 
     return db(_make)
@@ -43,12 +38,11 @@ def question_form(scope, content="Câu hỏi?", choices=("A", "B", "C", "D"), co
     return data
 
 
-def make_question(db, subject_id, chapter_id=None, lesson_id=None, difficulty=Difficulty.RECOGNITION):
+def make_question(db, root_id, category_id=None, difficulty=Difficulty.RECOGNITION):
     async def _make(s):
         q = Question(
-            subject_id=subject_id,
-            chapter_id=chapter_id,
-            lesson_id=lesson_id,
+            root_id=root_id,
+            category_id=category_id or root_id,
             difficulty=difficulty,
             content="Nội dung",
             choices=[{"id": "a", "content": "x", "is_correct": True}, {"id": "b", "content": "y", "is_correct": False}],
@@ -60,67 +54,82 @@ def make_question(db, subject_id, chapter_id=None, lesson_id=None, difficulty=Di
     return db(_make)
 
 
+def children(db, parent_id):
+    return [
+        c.name
+        for c in db(
+            lambda s: s.scalars(select(Category).where(Category.parent_id == parent_id).order_by(Category.position))
+        )
+    ]
+
+
 # ---------------------------------------------------------------- access
 
 
 def test_student_is_forbidden_everywhere_in_admin(client, make_user):
     make_user("hs@example.com", role=UserRole.STUDENT)
     client.post("/login", data={"email": "hs@example.com", "password": "password123"})
-    for path in ["/admin", "/admin/subjects", "/admin/questions", "/admin/questions/new", "/admin/exams"]:
+    for path in ["/admin", "/admin/categories", "/admin/questions", "/admin/questions/new", "/admin/exams"]:
         assert client.get(path).status_code == 403, path
-    assert client.post("/admin/subjects", data={"name": "Hack"}).status_code == 403
+    assert client.post("/admin/categories", data={"name": "Hack"}).status_code == 403
 
 
-# ---------------------------------------------------------------- subjects / chapters / lessons
+# ---------------------------------------------------------------- category tree
 
 
 def test_create_subject_generates_unique_vietnamese_slug(admin_client, db):
-    admin_client.post("/admin/subjects", data={"name": "Vật lí 11"})
-    admin_client.post("/admin/subjects", data={"name": "Vật lí 11"})
-    slugs = db(lambda s: s.scalars(select(Subject.slug).order_by(Subject.id)))
+    admin_client.post("/admin/categories", data={"name": "Vật lí 11"})
+    admin_client.post("/admin/categories", data={"name": "Vật lí 11"})
+    slugs = db(lambda s: s.scalars(select(Category.slug).order_by(Category.id)))
     assert list(slugs) == ["vat-li-11", "vat-li-11-2"]
 
 
-def test_chapters_and_lessons_can_be_added_reordered_and_renamed(admin_client, db, tree):
-    admin_client.post(f"/admin/subjects/{tree['physics']}/chapters", data={"name": "Chương 3"})
-    chapters = db(
-        lambda s: s.scalars(select(Chapter).where(Chapter.subject_id == tree["physics"]).order_by(Chapter.position))
-    )
-    names = [c.name for c in chapters]
-    assert names == ["Chương 1", "Chương 2", "Chương 3"]
+def test_any_depth_reorder_and_rename(admin_client, db, tree):
+    admin_client.post("/admin/categories", data={"name": "Chương 3", "parent_id": str(tree["physics"])})
+    assert children(db, tree["physics"]) == ["Chương 1", "Chương 2", "Chương 3"]
+    new_id = db(lambda s: s.scalar(select(Category.id).where(Category.name == "Chương 3")))
+    admin_client.post(f"/admin/categories/{new_id}/order", data={"direction": "up"})
+    admin_client.post(f"/admin/categories/{new_id}", data={"name": "Chương 2b"})
+    assert children(db, tree["physics"]) == ["Chương 1", "Chương 2b", "Chương 2"]
 
-    new_id = chapters[2].id
-    admin_client.post(f"/admin/chapters/{new_id}/move", data={"direction": "up"})
-    admin_client.post(f"/admin/chapters/{new_id}", data={"name": "Chương 2b"})
-    names = db(
-        lambda s: s.scalars(
-            select(Chapter.name).where(Chapter.subject_id == tree["physics"]).order_by(Chapter.position)
-        )
-    )
-    assert list(names) == ["Chương 1", "Chương 2b", "Chương 2"]
-
-    admin_client.post(f"/admin/chapters/{tree['c1']}/lessons", data={"name": "Bài 3"})
-    admin_client.post(f"/admin/lessons/{tree['l1']}/move", data={"direction": "down"})
-    lessons = db(
-        lambda s: s.scalars(select(Lesson.name).where(Lesson.chapter_id == tree["c1"]).order_by(Lesson.position))
-    )
-    assert list(lessons) == ["Bài 2", "Bài 1", "Bài 3"]
+    # A fourth level (topic under a lesson), and reordering lessons.
+    admin_client.post("/admin/categories", data={"name": "Con lắc lò xo", "parent_id": str(tree["l1"])})
+    topic = db(lambda s: s.scalar(select(Category).where(Category.name == "Con lắc lò xo")))
+    assert (topic.depth, topic.path) == (3, f"/{tree['physics']}/{tree['c1']}/{tree['l1']}/{topic.id}/")
+    admin_client.post(f"/admin/categories/{tree['l1']}/order", data={"direction": "down"})
+    assert children(db, tree["c1"]) == ["Bài 2", "Bài 1"]
+    assert "Con lắc lò xo" in admin_client.get("/admin/categories").text
 
 
-def test_cannot_delete_chapter_or_subject_that_has_questions(admin_client, db, tree):
-    make_question(db, tree["physics"], tree["c1"], tree["l1"])
+def test_move_branch_keeps_paths_consistent(admin_client, db, tree):
+    admin_client.post("/admin/categories", data={"name": "Con lắc", "parent_id": str(tree["l1"])})
+    admin_client.post(f"/admin/categories/{tree['l1']}/move", data={"parent_id": str(tree["c2"])})
+    lesson = db(lambda s: s.get(Category, tree["l1"]))
+    topic = db(lambda s: s.scalar(select(Category).where(Category.name == "Con lắc")))
+    assert lesson.path == f"/{tree['physics']}/{tree['c2']}/{tree['l1']}/" and lesson.depth == 2
+    assert topic.path == lesson.path + f"{topic.id}/" and topic.depth == 3
+    # Cannot move a branch inside itself.
+    r = admin_client.post(f"/admin/categories/{tree['c2']}/move", data={"parent_id": str(topic.id)})
+    assert "chính nó" in r.text
+    # Moving an empty branch to another subject is fine; one with questions is not.
+    admin_client.post(f"/admin/categories/{tree['c2']}/move", data={"parent_id": str(tree["math"])})
+    assert db(lambda s: s.get(Category, tree["l1"])).root_id == tree["math"]
+    make_question(db, tree["physics"], tree["l2"])
+    r = admin_client.post(f"/admin/categories/{tree['c1']}/move", data={"parent_id": str(tree["math"])})
+    assert "chỉ chuyển được trong cùng môn" in r.text
 
-    r = admin_client.post(f"/admin/chapters/{tree['c1']}/delete")
-    assert "Không thể xoá chương" in r.text
-    r = admin_client.post(f"/admin/lessons/{tree['l1']}/delete")
-    assert "Không thể xoá bài" in r.text
-    r = admin_client.post(f"/admin/subjects/{tree['physics']}/delete")
-    assert "Không thể xoá" in r.text
-    assert db(lambda s: s.get(Chapter, tree["c1"])) is not None
 
-    # An unused chapter can be deleted, and its lessons go with it.
-    admin_client.post(f"/admin/chapters/{tree['c2']}/delete")
-    assert db(lambda s: s.get(Chapter, tree["c2"])) is None
+def test_cannot_delete_a_branch_that_has_questions(admin_client, db, tree):
+    make_question(db, tree["physics"], tree["l1"])
+    for target in ("c1", "l1", "physics"):
+        r = admin_client.post(f"/admin/categories/{tree[target]}/delete")
+        assert "Không thể xoá" in r.text
+    assert db(lambda s: s.get(Category, tree["c1"])) is not None
+    # An unused branch can be deleted, with everything below it.
+    admin_client.post("/admin/categories", data={"name": "Bài 9", "parent_id": str(tree["c2"])})
+    admin_client.post(f"/admin/categories/{tree['c2']}/delete")
+    assert db(lambda s: s.get(Category, tree["c2"])) is None
+    assert db(lambda s: s.scalar(select(Category.id).where(Category.name == "Bài 9"))) is None
 
 
 # ---------------------------------------------------------------- questions
@@ -129,12 +138,12 @@ def test_cannot_delete_chapter_or_subject_that_has_questions(admin_client, db, t
 def test_create_question_derives_chapter_and_subject_from_lesson(admin_client, db, tree):
     r = admin_client.post(
         "/admin/questions",
-        data=question_form(f"l:{tree['l2']}", content=r"Tính $T = \dfrac{2\pi}{\omega}$", correct=2),
+        data=question_form(f"c:{tree['l2']}", content=r"Tính $T = \dfrac{2\pi}{\omega}$", correct=2),
         follow_redirects=False,
     )
     assert r.status_code == 303
     q = db(lambda s: s.scalar(select(Question)))
-    assert (q.subject_id, q.chapter_id, q.lesson_id) == (tree["physics"], tree["c1"], tree["l2"])
+    assert (q.root_id, q.category_id) == (tree["physics"], tree["l2"])
     assert q.content == r"Tính $T = \dfrac{2\pi}{\omega}$"
     assert [c["is_correct"] for c in q.choices] == [False, False, True, False]
     ids = [c["id"] for c in q.choices]
@@ -174,7 +183,7 @@ def test_editing_question_keeps_existing_choice_ids(admin_client, db, tree):
 
 
 def test_question_list_filters_by_scope_and_renders_latex_source_escaped(admin_client, db, tree):
-    q1 = make_question(db, tree["physics"], tree["c1"], tree["l1"])
+    q1 = make_question(db, tree["physics"], tree["l1"])
     make_question(db, tree["math"])
 
     async def set_content(s):
@@ -198,8 +207,8 @@ def exam_form(scope, title="Đề luyện tập", duration="15", max_attempts=""
 
 
 def test_exam_lifecycle(admin_client, db, tree):
-    q1 = make_question(db, tree["physics"], tree["c1"], tree["l1"])
-    q2 = make_question(db, tree["physics"], tree["c1"], tree["l2"], Difficulty.APPLICATION)
+    q1 = make_question(db, tree["physics"], tree["l1"])
+    q2 = make_question(db, tree["physics"], tree["l2"], Difficulty.APPLICATION)
     other_subject_q = make_question(db, tree["math"])
 
     r = admin_client.post("/admin/exams", data=exam_form(f"c:{tree['c1']}"), follow_redirects=False)
@@ -240,7 +249,7 @@ def test_exam_lifecycle(admin_client, db, tree):
     assert (exam.max_attempts, exam.is_published) == (3, True)
 
     # Moving an exam that has questions to another subject is rejected.
-    r = admin_client.post(f"/admin/exams/{exam_id}", data=exam_form(f"s:{tree['math']}", published=True))
+    r = admin_client.post(f"/admin/exams/{exam_id}", data=exam_form(f"c:{tree['math']}", published=True))
     assert "không thể chuyển sang môn khác" in r.text
 
     # A question used in an exam cannot be deleted.
@@ -263,6 +272,6 @@ def test_exam_lifecycle(admin_client, db, tree):
     ],
 )
 def test_exam_validation(admin_client, tree, overrides, message):
-    r = admin_client.post("/admin/exams", data=exam_form(f"s:{tree['physics']}", **overrides))
+    r = admin_client.post("/admin/exams", data=exam_form(f"c:{tree['physics']}", **overrides))
     assert r.status_code == 400
     assert message in r.text
