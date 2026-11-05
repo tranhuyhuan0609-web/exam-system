@@ -12,8 +12,8 @@ from app.db import SessionLocal
 from app.infrastructure.storage import get_bronze_storage, get_storage
 from app.models import CrawlerSite, CrawlRun, CrawlRunStatus
 from app.pipeline.domain.models import SiteConfig
-from app.pipeline.ports import DLQ_TOPIC, RAW_TOPIC
-from app.pipeline.use_cases.silver import AIUnavailable, SilverDeps, ai_sweep, ingest_document
+from app.pipeline.ports import DLQ_TOPIC, RAW_TOPIC, AIUnavailable
+from app.pipeline.use_cases.silver import SilverDeps, ai_sweep, ingest_document, retry_ready
 
 log = logging.getLogger(__name__)
 VN = timezone(timedelta(hours=7))
@@ -24,13 +24,18 @@ def silver_deps(store=None) -> SilverDeps:
     from app.pipeline.adapters.mongo import MongoRawStore
 
     settings = get_settings()
-    enricher = embedder = None
-    if settings.gemini_api_key:
-        from app.pipeline.adapters.gemini import GeminiEmbedder, GeminiEnricher
+    from app.pipeline.adapters.ai_chain import build_chain
 
-        enricher, embedder = GeminiEnricher(), GeminiEmbedder()
+    enricher = build_chain()  # Gemini -> Groq -> OpenRouter, whichever have keys
+    embedder = None
+    if settings.gemini_api_key:
+        from app.pipeline.adapters.gemini import GeminiEmbedder
+
+        embedder = GeminiEmbedder()
     else:
-        log.warning("GEMINI_API_KEY is not set: no AI normalisation and no semantic dedup")
+        log.warning("GEMINI_API_KEY is not set: no semantic dedup")
+    if enricher is None:
+        log.warning("No AI provider configured: questions needing AI wait for review")
     return SilverDeps(
         store=store or MongoRawStore(),
         storage=get_storage(),
@@ -67,6 +72,8 @@ async def run_silver(stop: asyncio.Event | None = None) -> None:
             try:
                 async with SessionLocal() as session:
                     handled = await ai_sweep(session, deps)
+                async with SessionLocal() as session:
+                    handled += await retry_ready(session, deps)
                 pause = 1 if handled else 15
             except AIUnavailable:
                 pause = 120  # quota / overload: wait for it to recover

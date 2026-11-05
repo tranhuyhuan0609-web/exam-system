@@ -31,6 +31,18 @@
   </table>
 </div>
 
+<section class="card mt">
+  <h3>AI chuẩn hoá & viết lời giải</h3>
+  <p class="small">Thứ tự dự phòng:
+    {% for name, on in providers %}<span class="badge {{ 'badge-ok' if on else '' }}">{{ name }}{{ "" if on else " (chưa có key)" }}</span>{{ " → " if not loop.last }}{% endfor %}
+    · hạn mức/ngày: {% for name, n in limits.items() %}{{ name }} {{ n or "∞" }}{{ ", " if not loop.last }}{% endfor %}</p>
+  <table class="table">
+    <thead><tr><th>Ngày</th><th>Nhà cung cấp</th><th class="num">Lượt gọi</th><th class="num">Câu đã xử lý</th></tr></thead>
+    {% for u in usage %}<tr><td>{{ u.day.strftime("%d/%m/%Y") }}</td><td>{{ u.provider }}</td><td class="num">{{ u.calls }}</td><td class="num">{{ u.items }}</td></tr>
+    {% else %}<tr><td colspan="4" class="muted">Chưa có lượt gọi AI nào được ghi.</td></tr>{% endfor %}
+  </table>
+</section>
+
 <div class="grid-main-side mt">
   <section class="card">
     <h3>Câu vào ngân hàng theo ngày</h3>

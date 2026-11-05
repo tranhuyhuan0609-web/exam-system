@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
@@ -7,6 +7,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -413,6 +414,7 @@ class CrawledQuestion(Base):
     accepted_answers: Mapped[list[str] | None] = mapped_column(JSONB)
     explanation: Mapped[str | None] = mapped_column(Text)
     explanation_by_ai: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    ai_provider: Mapped[str | None] = mapped_column(String(30))  # which AI normalised it (gemini, groq...)
     image_path: Mapped[str | None] = mapped_column(String(300))  # re-hosted figure (our storage)
     images: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)  # [{"src", "key", "inline"}]
     difficulty: Mapped[Difficulty] = mapped_column(_enum(Difficulty, "difficulty"))
@@ -441,3 +443,14 @@ class CrawlCategoryMap(Base):
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"))
     source_title: Mapped[str] = mapped_column(String(500), default="")
     by_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
+
+class AIUsage(Base):
+    """AI calls per provider and day made by the crawler (budgets in AI_DAILY_LIMITS)."""
+
+    __tablename__ = "ai_usage"
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(30), primary_key=True)
+    calls: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    items: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

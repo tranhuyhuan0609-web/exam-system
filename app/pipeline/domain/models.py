@@ -17,6 +17,10 @@ DocKind = Literal["html", "pdf", "docx", "image"]
 class FollowRule(BaseModel):
     pattern: str  # regex on the absolute URL
     kind: Literal["listing", "detail", "file"] = "detail"
+    strip_query: bool = False  # drop "?filters" before matching (pagination links that differ only by filters)
+    # Pages that only show ids: regex with one group on the raw HTML, turned into URLs with `url` ("…/{id}.html").
+    extract: str | None = None
+    url: str | None = None
 
     @field_validator("pattern")
     @classmethod
@@ -32,6 +36,7 @@ class Seed(BaseModel):
     root: str = ""  # e.g. "Vật lí 11"
     series: str = ""  # e.g. "Kết nối tri thức"; empty = chapters directly under the root
     scope_prefix: str = ""  # only follow URLs starting with this (one book's folder); empty = whole site
+    chapter: str = ""  # fixed chapter for sources without numbered chapters (an exam list, a revision topic)
 
 
 class TocRules(BaseModel):
@@ -93,6 +98,7 @@ class SiteConfig(BaseModel):
     max_pages: int = 300  # per run (listing + detail + files)
     respect_robots: bool = True
     auto_publish: bool = True  # questions that pass dedup and labelling go straight to the bank
+    verify_answers: bool = False  # the AI re-checks the source's answer key (sources known to contain mistakes)
     default_difficulty: str = "UNDERSTANDING"
     rate_limit: RateLimit = RateLimit()
     seeds: list[Seed]
@@ -103,7 +109,12 @@ class SiteConfig(BaseModel):
     toc: TocRules = TocRules()
 
     def rule_for(self, url: str) -> FollowRule | None:
-        return next((r for r in self.follow if re.search(r.pattern, url)), None)
+        for rule in self.follow:
+            if rule.extract:
+                continue
+            if re.search(rule.pattern, url.split("?")[0] if rule.strip_query else url):
+                return rule
+        return None
 
 
 # ---------------------------------------------------------------- Bronze
@@ -146,6 +157,7 @@ class ParsedQuestion:
     choices: list[dict[str, Any]] = field(default_factory=list)  # {"id", "content", "is_correct"}
     accepted_answers: list[str] = field(default_factory=list)
     explanation: str = ""
+    difficulty: str | None = None  # when the source labels it (Nhận biết, Thông hiểu...)
     images: list[str] = field(default_factory=list)  # absolute URLs, referenced as [[img:N]] in the texts
     issues: list[str] = field(default_factory=list)  # parser warnings shown in review
 

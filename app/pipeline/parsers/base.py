@@ -79,6 +79,6 @@ def page_title(doc) -> str:
 
 
 def all_parsers() -> dict[str, Parser]:
-    from app.pipeline.parsers import loigiaihay, vietjack  # noqa: F401  (registers them)
+    from app.pipeline.parsers import hoc247, loigiaihay, tuyensinh247, vietjack  # noqa: F401  (registers them)
 
     return PARSERS

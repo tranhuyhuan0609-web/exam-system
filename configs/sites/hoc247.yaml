@@ -1,0 +1,77 @@
+# HOC247 — đề thi giữa học kì Toán và Vật lí 10–12. robots.txt forbids /lam-bai-thi/ and /bat-dau-lam-bai/ (the
+# online test pages): we only read the exam pages and the question pages, which it allows.
+# Question pages show the answer key and solution; some keys are wrong, so verify_answers has the AI re-check them.
+site_id: hoc247
+name: HOC247
+enabled: true
+base_url: https://hoc247.net
+parser: hoc247_question
+schedule_times: ["04:30"]
+refresh_days: 60
+max_pages: 200            # one exam = 1 page + ~40 question pages
+respect_robots: true
+auto_publish: true
+auto_toc: true
+verify_answers: true
+default_difficulty: UNDERSTANDING
+rate_limit:
+  delay_sec: 3
+  timeout_sec: 20
+  retries: 2
+  concurrency: 1
+toc:
+  scope: ["//ul[contains(@class, 'dsch')]", "//div[contains(@class, 'box-content')]"]
+seeds:
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-10-mon-toan-index.html
+    label: Toán 10 – Đề thi giữa học kì 1
+    root: Toán 10
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-10-mon-toan-index.html
+    label: Toán 10 – Đề thi giữa học kì 2
+    root: Toán 10
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-11-mon-toan-index.html
+    label: Toán 11 – Đề thi giữa học kì 1
+    root: Toán 11
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-11-mon-toan-index.html
+    label: Toán 11 – Đề thi giữa học kì 2
+    root: Toán 11
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-12-mon-toan-index.html
+    label: Toán 12 – Đề thi giữa học kì 1
+    root: Toán 12
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-12-mon-toan-index.html
+    label: Toán 12 – Đề thi giữa học kì 2
+    root: Toán 12
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-10-mon-vat-ly-index.html
+    label: Vật lí 10 – Đề thi giữa học kì 1
+    root: Vật lí 10
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-10-mon-vat-ly-index.html
+    label: Vật lí 10 – Đề thi giữa học kì 2
+    root: Vật lí 10
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-11-mon-vat-ly-index.html
+    label: Vật lí 11 – Đề thi giữa học kì 1
+    root: Vật lí 11
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-11-mon-vat-ly-index.html
+    label: Vật lí 11 – Đề thi giữa học kì 2
+    root: Vật lí 11
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-12-mon-vat-ly-index.html
+    label: Vật lí 12 – Đề thi giữa học kì 1
+    root: Vật lí 12
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-12-mon-vat-ly-index.html
+    label: Vật lí 12 – Đề thi giữa học kì 2
+    root: Vật lí 12
+    chapter: Đề thi giữa học kì 2
+follow:
+  - pattern: '^https://hoc247\.net/de-thi-[a-z0-9-]+-ktdt\d+\.html$'
+    kind: listing
+  - pattern: '^https://hoc247\.net/cau-hoi-[a-z0-9-]+-qid\d+\.html$'
+    kind: detail

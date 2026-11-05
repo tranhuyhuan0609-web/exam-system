@@ -121,6 +121,9 @@ Học sinh vào bất cứ lúc nào, chọn bài (VD: Vật lí 11 – Chương
 - [x] **Tự dựng mục lục từ nguồn** (`auto_toc`): spider đọc chương / bài trên trang mục lục của nguồn, Silver tìm-hoặc-tạo `Môn › Bộ sách › Chương › Bài` (khớp theo số "Chương I" = "Chương 1"); `adopt-series` chuyển chương cũ vào bộ sách
 - [x] Admin: chạy riêng một cuốn, tạm dừng / bật lại lịch từng nguồn, trang **Chất lượng dữ liệu** (theo nguồn × môn, lời giải AI viết, cảnh báo thường gặp, câu mới theo ngày)
 - [x] Gemini hết quota (429): câu chờ AI giữ nguyên, Silver tự nghỉ rồi làm tiếp
+- [x] Thêm nguồn **hoc247** (đề giữa kì Toán/Vật lí 10–12; đáp án nguồn có chỗ sai nên AI kiểm tra lại — `verify_answers`) và **tuyensinh247** (luyện chuyên đề THPT Vật lí/Toán, nhãn mức độ có sẵn)
+- [x] Giảm gọi AI: ảnh công thức có LaTeX trong `alt` dùng thẳng; công thức dạng chữ (π, cos(…), x^2, ≤…) chuyển sang LaTeX bằng code
+- [x] Chuỗi AI dự phòng **Gemini → Groq → OpenRouter** (API tương thích OpenAI, gói miễn phí), hạn mức/ngày (`AI_DAILY_LIMITS`), nghỉ 10 phút khi gặp 429, bảng `ai_usage`; embedding lỗi thì câu chờ và tự thử lại
 - [ ] Playwright cho nguồn render bằng JS / kho PDF (cấu hình `renderer: playwright` đã có chỗ)
 
 ### Giai đoạn 3 — Thi theo ca cố định & Chịu tải cao (Tuần 7–9)

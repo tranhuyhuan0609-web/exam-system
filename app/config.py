@@ -42,6 +42,24 @@ class Settings(BaseSettings):
     crawler_user_agent: str = "ExamSystemCrawler/0.1"
     gemini_embedding_model: str = "gemini-embedding-001"
     semantic_duplicate_threshold: float = 0.92  # cosine similarity at which a crawled question is a duplicate
+    # AI fallbacks for crawled questions when Gemini is out of quota (OpenAI-compatible APIs, free tiers).
+    groq_api_key: str = ""
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    openrouter_api_key: str = ""
+    openrouter_model: str = ""  # pick a ":free" model on openrouter.ai/models
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # Calls per provider and day (0 = no limit of ours; the provider still has its own).
+    ai_daily_limits: str = "gemini:500,groq:900,openrouter:45"
+
+    @property
+    def ai_daily_limit_map(self) -> dict[str, int]:
+        out = {}
+        for part in self.ai_daily_limits.split(","):
+            name, _, value = part.partition(":")
+            if name.strip() and value.strip().isdigit():
+                out[name.strip()] = int(value)
+        return out
 
     @property
     def gemini_model_list(self) -> list[str]:

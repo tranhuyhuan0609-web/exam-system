@@ -24,6 +24,8 @@ Với MỖI câu:
    explanation_written = true. Nếu đã có lời giải: chỉ chuẩn hoá công thức, explanation_written = false.
 4. Ước lượng mức độ: RECOGNITION (nhận biết), UNDERSTANDING (thông hiểu), APPLICATION (vận dụng),
    ADVANCED_APPLICATION (vận dụng cao).
+5. Tự giải và kiểm tra "answer": nếu chắc chắn đáp án nguồn đưa ra là SAI, đặt answer_ok = false và nêu đáp án đúng
+   trong explanation; ngược lại answer_ok = true. Không sửa "answer".
 Trả về đúng số câu, cùng "ref", "choices" cùng thứ tự và cùng số lượng như đầu vào."""
 
 
@@ -34,6 +36,7 @@ class _Enriched(BaseModel):
     explanation: str
     explanation_written: bool
     difficulty: str
+    answer_ok: bool = True  # false when the given answer is wrong
 
 
 class _EnrichResult(BaseModel):
@@ -78,6 +81,7 @@ class GeminiEnricher:
                     explanation=repair_latex(q.explanation),
                     explanation_written=q.explanation_written and not item.explanation,
                     difficulty=q.difficulty,
+                    answer_ok=q.answer_ok,
                 )
             )
         return out

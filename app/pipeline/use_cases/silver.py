@@ -35,23 +35,21 @@ from app.models import (
     SourceType,
 )
 from app.pipeline.domain.models import ParsedQuestion, RawDocument, SiteConfig
+from app.pipeline.domain.plain_math import normalize_plain_math
 from app.pipeline.parsers.base import all_parsers
-from app.pipeline.ports import Downloader, Embedder, Enricher, EnrichItem, RawStore
+from app.pipeline.ports import AIUnavailable, Downloader, Embedder, Enricher, EnrichItem, RawStore
 from app.pipeline.use_cases.toc import ensure_path
 
 log = logging.getLogger(__name__)
 
 _IMG = re.compile(r"\[\[img:(\d+)\]\]")
-_MATH = re.compile(r"\$\$.*?\$\$|\$[^$]*\$", re.S)
+_MATH = re.compile(r"\$\$.*?\$\$|\$[^$]*\$|\\\(.*?\\\)|\\\[.*?\\\]", re.S)
 # Signs of a formula written as plain text (outside $...$): Greek letters, roots, comparison signs, functions.
 _PLAIN_MATH = re.compile(r"[πωλφΦαβγΔδθμρσε√≤≥±≈∞]|\b(?:sin|cos|tan|cot|log|ln)\s*\(|\d\s*[\^_]|\b[a-zA-Z]\s*=\s*-?\d")
 MAX_AI_TRIES = 3
 NO_CATEGORY = "Chưa gắn được chương/bài."
 STALE = "Không còn trên trang nguồn khi bóc lại."
-
-
-class AIUnavailable(Exception):
-    """Gemini cannot take requests right now (quota, overload); PENDING_AI items keep waiting."""
+ANSWER_DOUBT = "AI nghi đáp án của nguồn sai — kiểm tra lại."
 
 
 EXT_BY_TYPE = {
@@ -210,14 +208,17 @@ async def _upsert(
     item.source_title = title[:500]
     item.source_context = doc.context or {}
     item.question_type = QuestionType(parsed.question_type)
-    item.content = parsed.content
-    item.choices = parsed.choices
+    # Plain-text formulas become LaTeX here (no AI); only what this cannot handle is left for Gemini.
+    item.content = normalize_plain_math(parsed.content)
+    item.choices = [{**c, "content": normalize_plain_math(c["content"])} for c in parsed.choices]
     item.accepted_answers = parsed.accepted_answers or None
-    item.explanation = parsed.explanation or None
+    item.explanation = normalize_plain_math(parsed.explanation) or None
     item.explanation_by_ai = False
     item.images = images
     item.image_path = None
-    item.difficulty = Difficulty(config.default_difficulty)
+    item.difficulty = Difficulty(
+        parsed.difficulty if parsed.difficulty in Difficulty.__members__ else config.default_difficulty
+    )
     item.source_hash = source_hash
     item.content_hash = source_hash
     item.issues = [*parsed.issues, *image_issues]
@@ -229,7 +230,12 @@ async def _upsert(
 
     inline = set().union(*(_inline_images(t) for t in _texts(item)))
     blocking = parsed.issues or image_issues or not parsed.has_answer
-    needs_ai = bool(inline) or not item.explanation or any(has_plain_math(t) for t in _texts(item))
+    needs_ai = (
+        bool(inline)
+        or not item.explanation
+        or config.verify_answers  # this source's answer keys contain mistakes: have them checked
+        or any(has_plain_math(t) for t in _texts(item))
+    )
     if blocking:
         item.status = CrawlItemStatus.NEEDS_REVIEW
     elif needs_ai and deps.enricher is not None:
@@ -324,9 +330,15 @@ async def ai_sweep(session: AsyncSession, deps: SilverDeps, batch: int = 8) -> i
         item.choices = [{**c, "content": text} for c, text in zip(item.choices, result.choices, strict=True)]
         item.explanation = result.explanation or item.explanation
         item.explanation_by_ai = result.explanation_written
-        if result.difficulty in Difficulty.__members__:
-            item.difficulty = Difficulty(result.difficulty)
+        item.ai_provider = result.provider or None
+        config = await _config(session, item.site_id)
+        if result.difficulty in Difficulty.__members__ and item.difficulty == Difficulty(config.default_difficulty):
+            item.difficulty = Difficulty(result.difficulty)  # the source's own level label wins
         item.updated_at = datetime.now(UTC)
+        if result.answer_ok is False:
+            item.status = CrawlItemStatus.NEEDS_REVIEW
+            item.issues = [*item.issues, ANSWER_DOUBT]
+            continue
         if set().union(*(_inline_images(t) for t in _texts(item))):
             item.status = CrawlItemStatus.NEEDS_REVIEW
             item.issues = [*item.issues, "AI chưa chuyển hết công thức dạng ảnh."]
@@ -389,7 +401,12 @@ async def advance(session: AsyncSession, deps: SilverDeps, item: CrawledQuestion
     # nearly identical and the answer is the same.
     vector = None
     if deps.embedder is not None:
-        vector = (await deps.embedder.embed([_embedding_text(item)]))[0]
+        try:
+            vector = (await deps.embedder.embed([_embedding_text(item)]))[0]
+        except Exception as exc:  # noqa: BLE001 - embeddings out of quota: retry later (retry_ready)
+            log.warning("Embedding unavailable, item %s waits: %s", item.id, exc)
+            item.status = CrawlItemStatus.READY
+            return
         distance = Question.embedding.cosine_distance(vector)
         candidates = (
             await session.execute(
@@ -515,6 +532,26 @@ async def set_mapping(session: AsyncSession, site_id: str, url: str, title: str,
         )
     else:
         mapped.category_id, mapped.by_admin = category_id, True
+
+
+async def retry_ready(session: AsyncSession, deps: SilverDeps, batch: int = 20) -> int:
+    """READY items left waiting (embeddings were unavailable): run dedup + labelling + Gold again."""
+    items = list(
+        (
+            await session.scalars(
+                select(CrawledQuestion)
+                .where(CrawledQuestion.status == CrawlItemStatus.READY)
+                .order_by(CrawledQuestion.updated_at)
+                .limit(batch)
+                .with_for_update(skip_locked=True)
+            )
+        ).all()
+    )
+    for item in items:
+        item.updated_at = datetime.now(UTC)
+        await advance(session, deps, item, await _config(session, item.site_id))
+    await session.commit()
+    return sum(1 for i in items if i.status != CrawlItemStatus.READY)
 
 
 async def reprocess(session: AsyncSession, deps: SilverDeps, item: CrawledQuestion) -> None:

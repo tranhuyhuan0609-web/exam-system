@@ -4,6 +4,7 @@ Politeness comes from the config (download delay, one request at a time, robots.
 refresh_days: detail pages and files fetched recently are not requested again.
 """
 
+import re
 from urllib.parse import urlparse
 
 import scrapy
@@ -31,7 +32,14 @@ class QuestionSpider(scrapy.Spider):
 
     async def start(self):
         for seed in self.site.seeds:
-            context = {"label": seed.label, "root": seed.root, "series": seed.series, "prefix": seed.scope_prefix}
+            context = {
+                "label": seed.label,
+                "root": seed.root,
+                "series": seed.series,
+                "prefix": seed.scope_prefix,
+                "seed_chapter": seed.chapter,
+                "chapter": seed.chapter,
+            }
             yield scrapy.Request(
                 seed.url,
                 callback=self.parse_listing,
@@ -52,6 +60,20 @@ class QuestionSpider(scrapy.Spider):
         callback = {"listing": self.parse_listing, "detail": self.parse_detail, "file": self.parse_file}[rule.kind]
         return scrapy.Request(url, callback=callback, errback=self.on_error, cb_kwargs={"context": context})
 
+    def _extracted(self, response, context: dict):
+        """Detail URLs built from ids found in the page (e.g. showAnswer(89475) -> /bai-tap-89475.html)."""
+        for rule in self.site.follow:
+            if not (rule.extract and rule.url):
+                continue
+            for found in dict.fromkeys(re.findall(rule.extract, response.text)):
+                url = rule.url.format(id=found)
+                if url in self.skip_urls:
+                    continue
+                child = {**context, "lesson": ""}
+                yield scrapy.Request(
+                    url, callback=self.parse_detail, errback=self.on_error, cb_kwargs={"context": child}
+                )
+
     def _follow(self, response, context: dict):
         """Walk headings and links in page order: a chapter heading (or the page's own h1) sets the chapter of
         the links below it, a link's text names its lesson. The context travels with each request."""
@@ -70,6 +92,9 @@ class QuestionSpider(scrapy.Spider):
             if not href:
                 continue
             url = response.urljoin(href).split("#")[0]
+            rule_hit = self.site.rule_for(url)
+            if rule_hit and rule_hit.strip_query:
+                url = url.split("?")[0]
             link_chapter = toc.chapter_of(text)
             child = {
                 **context,
@@ -80,7 +105,8 @@ class QuestionSpider(scrapy.Spider):
             if context.get("prefix") and not url.startswith(context["prefix"]):
                 continue  # another book linked from this one
             if rule and rule.kind == "listing":
-                child["chapter"], child["lesson"] = link_chapter or "", ""  # a listing names its own chapters
+                # a listing names its own chapters (a seed's fixed chapter carries on)
+                child["chapter"], child["lesson"] = link_chapter or context.get("seed_chapter", ""), ""
             if self.site.auto_toc and rule and rule.kind == "detail" and not child["chapter"]:
                 continue  # reached again from its chapter page, with the right context
             request = self._request(url, child)
@@ -95,13 +121,14 @@ class QuestionSpider(scrapy.Spider):
             "body": response.text,
             "title": " ".join((response.css("title::text").get() or "").split()),
             "label": context.get("label", ""),
-            "context": {k: v for k, v in context.items() if k not in ("label", "prefix") and v},
+            "context": {k: v for k, v in context.items() if k not in ("label", "prefix", "seed_chapter") and v},
         }
 
     def parse_listing(self, response, context: dict | None = None):
         context = context or {}
         yield self._page(response, "listing", context)  # Bronze keeps listings too; Silver ignores them
         yield from self._follow(response, context)
+        yield from self._extracted(response, context)
 
     def parse_detail(self, response, context: dict | None = None):
         # No link following from lesson pages: their sidebars link other lessons without chapter context.
@@ -122,7 +149,7 @@ class QuestionSpider(scrapy.Spider):
             "content_type": content_type,
             "title": response.url.rsplit("/", 1)[-1],
             "label": context.get("label", ""),
-            "context": {k: v for k, v in context.items() if k not in ("label", "prefix") and v},
+            "context": {k: v for k, v in context.items() if k not in ("label", "prefix", "seed_chapter") and v},
         }
 
     def on_error(self, failure):
