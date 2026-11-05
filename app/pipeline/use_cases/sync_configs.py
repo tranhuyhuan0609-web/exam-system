@@ -28,8 +28,11 @@ async def sync_configs(session: AsyncSession, directory: str | Path) -> list[str
         if site is None:
             session.add(CrawlerSite(site_id=config.site_id, name=config.name, enabled=config.enabled, config=data))
             changed.append(config.site_id)
-        elif site.config != data or site.name != config.name or site.enabled != config.enabled:
-            site.config, site.name, site.enabled = data, config.name, config.enabled
-            changed.append(config.site_id)
+        else:
+            # A pause set from the admin page survives a sync; `enabled: false` in YAML always wins.
+            enabled = site.enabled and config.enabled
+            if site.config != data or site.name != config.name or site.enabled != enabled:
+                site.config, site.name, site.enabled = data, config.name, enabled
+                changed.append(config.site_id)
     await session.commit()
     return changed

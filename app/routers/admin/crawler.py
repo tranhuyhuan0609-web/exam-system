@@ -8,7 +8,16 @@ from sqlalchemy import func, select
 
 from app.config import get_settings
 from app.deps import AdminUser, SessionDep
-from app.models import Category, CrawledQuestion, CrawlerSite, CrawlItemStatus, CrawlRun, CrawlRunStatus
+from app.models import (
+    Category,
+    CrawledQuestion,
+    CrawlerSite,
+    CrawlItemStatus,
+    CrawlRun,
+    CrawlRunStatus,
+    Question,
+    SourceType,
+)
 from app.pipeline.use_cases.silver import NO_CATEGORY, SilverDeps, publish, reprocess, set_mapping
 from app.pipeline.use_cases.sync_configs import sync_configs
 from app.routers.admin.common import get_or_404, redirect
@@ -104,12 +113,89 @@ async def queue_run(request: Request, user: AdminUser, session: SessionDep, site
         return redirect("/admin/crawler")
     session.add(
         CrawlRun(
-            site_id=site_id, trigger="manual", max_pages=max_pages, force=form.get("force") == "1", created_by=user.id
+            site_id=site_id,
+            trigger="manual",
+            max_pages=max_pages,
+            force=form.get("force") == "1",
+            seed_filter=str(form.get("seed") or "").strip() or None,
+            created_by=user.id,
         )
     )
     await session.commit()
     flash(request, f"Đã xếp lượt thu thập {site.name}. Scheduler sẽ bắt đầu trong vài giây.")
     return redirect("/admin/crawler")
+
+
+@router.post("/crawler/{site_id}/toggle")
+async def toggle_site(request: Request, user: AdminUser, session: SessionDep, site_id: str):
+    site = await get_or_404(session, CrawlerSite, site_id)
+    site.enabled = not site.enabled
+    await session.commit()
+    flash(request, f"{site.name}: {'đã bật lại lịch thu thập' if site.enabled else 'đã tạm dừng lịch thu thập'}.")
+    return redirect("/admin/crawler")
+
+
+@router.get("/crawler/stats")
+async def crawler_stats(request: Request, user: AdminUser, session: SessionDep):
+    """Data quality per source and subject: outcomes, AI-written solutions, parser issues, daily intake."""
+    items = (
+        await session.execute(
+            select(
+                CrawledQuestion.site_id,
+                CrawledQuestion.status,
+                CrawledQuestion.category_id,
+                CrawledQuestion.source_context,
+                CrawledQuestion.explanation_by_ai,
+                CrawledQuestion.issues,
+                CrawledQuestion.question_type,
+            )
+        )
+    ).all()
+    paths = dict((await session.execute(select(Category.id, Category.path))).all())
+    names = dict((await session.execute(select(Category.id, Category.name))).all())
+
+    def subject(category_id, context) -> str:
+        if category_id and category_id in paths:
+            return names.get(int(paths[category_id].strip("/").split("/")[0]), "?")
+        return (context or {}).get("root") or "Chưa gắn mục"
+
+    rows: dict[tuple[str, str], dict] = {}
+    issues: dict[str, int] = defaultdict(int)
+    types: dict[str, int] = defaultdict(int)
+    for site_id, status, category_id, context, by_ai, item_issues, qtype in items:
+        row = rows.setdefault(
+            (site_id, subject(category_id, context)),
+            {"total": 0, "ai": 0, "issues": 0, **{k: 0 for k in STATUS_LABELS}},
+        )
+        row["total"] += 1
+        row[status.value] += 1
+        row["ai"] += bool(by_ai) and status == CrawlItemStatus.PUBLISHED
+        row["issues"] += bool(item_issues)
+        types[qtype.value] += status == CrawlItemStatus.PUBLISHED
+        for issue in item_issues or []:
+            issues[issue.split(":")[0][:80]] += 1
+    daily = (
+        await session.execute(
+            select(func.date(Question.created_at).label("day"), func.count())
+            .where(Question.source_type == SourceType.CRAWLER)
+            .group_by("day")
+            .order_by(func.date(Question.created_at).desc())
+            .limit(14)
+        )
+    ).all()
+    return templates.TemplateResponse(
+        request,
+        "admin/crawler_stats.html",
+        {
+            "user": user,
+            "rows": sorted(rows.items()),
+            "issues": sorted(issues.items(), key=lambda kv: -kv[1])[:10],
+            "types": types,
+            "daily": list(reversed(daily)),
+            "STATUS_LABELS": STATUS_LABELS,
+            "total": len(items),
+        },
+    )
 
 
 @router.get("/crawler/items")

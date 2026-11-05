@@ -59,6 +59,7 @@ class BronzePipeline:
             run_id=spider.run_id,
             title=item.get("title", ""),
             seed_label=item.get("label", ""),
+            context=item.get("context") or {},
         )
         if item["kind"] == "html":
             doc.html = item["body"]

@@ -6,6 +6,7 @@
   <h1>Thu thập đề</h1>
   <div class="row">
     <a class="btn btn-outline btn-small" href="/admin/crawler/items">Hàng đợi duyệt</a>
+    <a class="btn btn-outline btn-small" href="/admin/crawler/stats">📊 Chất lượng dữ liệu</a>
     <form method="post" action="/admin/crawler/sync" class="inline"><button class="btn btn-outline btn-small">↻ Nạp lại cấu hình YAML</button></form>
   </div>
 </div>
@@ -21,7 +22,8 @@
     {% for s in sites %}
       {% set c = counts.get(s.site_id, {}) %}
       <tr>
-        <td><strong>{{ s.name }}</strong> {% if not s.enabled %}<span class="badge">Tắt</span>{% endif %}
+        <td><strong>{{ s.name }}</strong> {% if not s.enabled %}<span class="badge badge-warn">Tạm dừng</span>{% endif %}
+          <div class="muted small">{{ s.config.seeds | length }} nguồn{% if s.config.auto_toc %} · tự dựng mục lục{% endif %}</div>
           <div class="muted small">{{ s.config.base_url }} · parser {{ s.config.parser }} · {{ s.config.rate_limit.delay_sec }}s/trang</div></td>
         <td class="small">{{ s.config.schedule_times | join(", ") or "thủ công" }}</td>
         <td class="small">
@@ -32,9 +34,16 @@
         <td class="small">{{ s.last_run_at | local_dt if s.last_run_at else "—" }}</td>
         <td>
           <form method="post" action="/admin/crawler/{{ s.site_id }}/run" class="row inline-form">
+            <select name="seed" style="width: auto">
+              <option value="">Mọi sách ({{ s.config.seeds | length }})</option>
+              {% for seed in s.config.seeds if seed.label %}<option value="{{ seed.label }}">{{ seed.label }}</option>{% endfor %}
+            </select>
             <input type="number" name="max_pages" min="1" max="2000" placeholder="{{ s.config.max_pages }} trang" style="width: 110px">
             <label class="check small"><input type="checkbox" name="force" value="1"> tải lại cả trang đã có</label>
             <button class="btn btn-small">▶ Chạy</button>
+          </form>
+          <form method="post" action="/admin/crawler/{{ s.site_id }}/toggle" class="inline">
+            <button class="link small">{{ "⏸ Tạm dừng lịch" if s.enabled else "▶ Bật lại lịch" }}</button>
           </form>
         </td>
       </tr>

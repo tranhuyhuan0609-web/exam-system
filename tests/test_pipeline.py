@@ -186,7 +186,7 @@ def test_spider_follows_rules_and_skips_recent_pages():
         encoding="utf-8",
         request=Request("https://loigiaihay.com/c1.html"),
     )
-    results = list(spider.parse_listing(response, label="L"))
+    results = list(spider.parse_listing(response, context={"label": "L"}))
     page, requests = results[0], results[1:]
     assert page["role"] == "listing"
     assert [r.url for r in requests] == [

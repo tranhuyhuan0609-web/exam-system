@@ -117,3 +117,14 @@ async def delete_category(session: AsyncSession, category: Category) -> None:
     for node in nodes:  # children first (the parent FK is RESTRICT)
         await session.delete(node)
         await session.flush()
+
+
+async def unique_slug(session, base: str, exclude_id: int | None = None) -> str:
+    slug, n = base, 2
+    while True:
+        stmt = select(Category.id).where(Category.slug == slug)
+        if exclude_id is not None:
+            stmt = stmt.where(Category.id != exclude_id)
+        if not await session.scalar(stmt):
+            return slug
+        slug, n = f"{base}-{n}", n + 1

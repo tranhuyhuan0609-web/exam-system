@@ -28,7 +28,19 @@ _QUESTION = re.compile(r"^(Câu\s*\d+|Câu hỏi|Bài\s*\d+)\s*[:.]", re.I)
 _OPTION = re.compile(r"^([A-D])\s*[.)]\s*")
 _INLINE_OPTIONS = re.compile(r"(?:^|\s)([A-D])\s*\.\s+")
 _MC_ANSWER = re.compile(r"Đáp án(?: đúng)?(?: là)?\s*:?\s*([A-D])\b")
-_SA_ANSWER = re.compile(r"Đáp án\s*:?\s*(.+?)\s*\.?$")
+_SA_ANSWER = re.compile(r"^(?:Đáp (?:án|số)|Trả lời)\s*:?\s*(.+?)\s*\.?$")
+_STATEMENT = re.compile(r"^([a-d])\s*\)\s*")
+_TF_KEY = re.compile(r"\b([a-d])\s*\)\s*[-–:]?\s*(Đúng|Sai|Đ|S)\b", re.I)
+
+
+def _part_of(text: str) -> str:
+    low = re.sub(r"[-–/]", " ", text.lower())
+    low = " ".join(low.split())
+    if "đúng sai" in low:
+        return "TRUE_FALSE"
+    if "trả lời ngắn" in low:
+        return "SHORT_ANSWER"
+    return "MULTIPLE_CHOICE"
 
 
 def _tag(el) -> str:
@@ -67,12 +79,7 @@ def _drafts(root) -> list[_Draft]:
             continue
         tag, text = _tag(el), text_of(el)
         if tag == "p" and _PART.match(text):
-            low = text.lower()
-            part = (
-                "TRUE_FALSE"
-                if "đúng sai" in low or "đúng/sai" in low
-                else ("SHORT_ANSWER" if "trả lời ngắn" in low else "MULTIPLE_CHOICE")
-            )
+            part = _part_of(text)
             current = None
             continue
         if tag == "p" and _QUESTION.match(text):
@@ -87,6 +94,8 @@ def _drafts(root) -> list[_Draft]:
             current = None  # the answer closes the question
         elif tag == "table" and current.part == "TRUE_FALSE" and current.table is None:
             current.table = el
+        elif tag == "p" and current.part == "TRUE_FALSE" and (_STATEMENT.match(text) or current.options):
+            current.options.append(el)  # statements written as "a) …" paragraphs instead of a table
         elif tag == "p" and current.part == "MULTIPLE_CHOICE" and (_OPTION.match(text) or current.options):
             current.options.append(el)
         elif tag in ("p", "div", "figure", "center") and not current.options:
@@ -151,9 +160,13 @@ def _build(draft: _Draft, url: str, slug: str) -> ParsedQuestion:
         if correct is None:
             q.issues.append("Không tìm thấy đáp án.")
     elif draft.part == "TRUE_FALSE":
-        statements = [images.convert([row[1]]) for row in _table_rows(draft.table)] if draft.table is not None else []
+        if draft.table is not None:
+            statements = [images.convert([row[1]]) for row in _table_rows(draft.table)]
+        else:
+            statements = [_STATEMENT.sub("", images.convert([n]), count=1).strip() for n in draft.options]
         truth: list[bool | None] = [None] * len(statements)
         key_table = next((n for n in answer_blocks if _tag(n) == "table"), None)
+        key_line = None
         if key_table is not None:
             for i, row in enumerate(_table_rows(key_table)[: len(statements)]):
                 marks = [text_of(c).upper() for c in row[2:4]]
@@ -162,7 +175,16 @@ def _build(draft: _Draft, url: str, slug: str) -> ParsedQuestion:
                     if marks and marks[0].startswith("Đ")
                     else (False if len(marks) > 1 and marks[1].startswith("S") else None)
                 )
-        explanation_nodes = [n for n in answer_blocks if n is not key_table]
+        else:  # "Đáp án: a) Đúng, b) Sai, c) Sai, d) Đúng."
+            for node in answer_blocks:
+                marks = _TF_KEY.findall(text_of(node))
+                if len(marks) >= 2:
+                    key_line = node
+                    for letter, mark in marks:
+                        i = "abcd".index(letter.lower())
+                        if i < len(truth):
+                            truth[i] = mark.upper().startswith("Đ")
+        explanation_nodes = [n for n in answer_blocks if n is not key_table and n is not key_line]
         if len(statements) != 4:
             q.issues.append(f"Câu đúng/sai có {len(statements)} ý (cần 4).")
         if any(t is None for t in truth):
@@ -172,7 +194,7 @@ def _build(draft: _Draft, url: str, slug: str) -> ParsedQuestion:
         answer = None
         for node in answer_blocks:
             text = text_of(node)
-            found = _SA_ANSWER.match(text) if text.startswith("Đáp án") else None
+            found = _SA_ANSWER.match(text) if text.startswith(("Đáp", "Trả lời")) else None
             if found and answer is None:
                 answer = found.group(1).strip()
                 continue

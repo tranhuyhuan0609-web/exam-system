@@ -381,6 +381,7 @@ class CrawlRun(Base):
     )
     trigger: Mapped[str] = mapped_column(String(20), default="manual")  # manual | schedule | cli
     max_pages: Mapped[int | None] = mapped_column(Integer)
+    seed_filter: Mapped[str | None] = mapped_column(String(200))  # only seeds whose label contains this
     force: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # ignore refresh_days
     pages_fetched: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     pages_skipped: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
@@ -404,6 +405,8 @@ class CrawledQuestion(Base):
     doc_id: Mapped[str] = mapped_column(String(80))  # Bronze document (MongoDB raw_pages)
     source_url: Mapped[str] = mapped_column(String(500))
     source_title: Mapped[str] = mapped_column(String(500), default="")
+    # Place in the source's table of contents (root, series, chapter, lesson), for auto_toc labelling.
+    source_context: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
     question_type: Mapped[QuestionType] = mapped_column(_enum(QuestionType, "question_type"))
     content: Mapped[str] = mapped_column(Text)
     choices: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)

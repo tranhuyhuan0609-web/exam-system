@@ -5,7 +5,14 @@ from typing import Annotated
 from fastapi import APIRouter, Form, Request
 from sqlalchemy import func, select
 
-from app.application.categories import CategoryError, create_category, delete_category, move_order, reparent
+from app.application.categories import (
+    CategoryError,
+    create_category,
+    delete_category,
+    move_order,
+    reparent,
+    unique_slug,
+)
 from app.deps import AdminUser, SessionDep
 from app.models import Category, Exam, Question
 from app.routers.admin.common import clean_text, get_or_404, redirect
@@ -16,17 +23,6 @@ from app.text import slugify
 router = APIRouter()
 
 TextForm = Annotated[str, Form()]
-
-
-async def _unique_slug(session, base: str, exclude_id: int | None = None) -> str:
-    slug, n = base, 2
-    while True:
-        stmt = select(Category.id).where(Category.slug == slug)
-        if exclude_id is not None:
-            stmt = stmt.where(Category.id != exclude_id)
-        if not await session.scalar(stmt):
-            return slug
-        slug, n = f"{base}-{n}", n + 1
 
 
 def _back(category_id: int | None = None) -> str:
@@ -74,7 +70,7 @@ async def create(request: Request, session: SessionDep, name: TextForm, parent_i
         return redirect(_back())
     parent = await get_or_404(session, Category, int(parent_id)) if parent_id.isdigit() else None
     category = await create_category(
-        session, clean, parent, slug=None if parent else await _unique_slug(session, slugify(slug or clean))
+        session, clean, parent, slug=None if parent else await unique_slug(session, slugify(slug or clean))
     )
     await session.commit()
     flash(request, f"Đã thêm “{clean}”" + (f" vào “{parent.name}”." if parent else " (môn học mới)."))
@@ -91,7 +87,7 @@ async def rename(request: Request, session: SessionDep, category_id: int, name: 
     category.name = clean
     category.description = description.strip() or category.description
     if category.parent_id is None:
-        category.slug = await _unique_slug(session, slugify(clean), exclude_id=category.id)
+        category.slug = await unique_slug(session, slugify(clean), exclude_id=category.id)
     await session.commit()
     flash(request, "Đã đổi tên.")
     return redirect(_back(category_id))
@@ -115,7 +111,7 @@ async def move(request: Request, session: SessionDep, category_id: int, parent_i
         flash(request, str(exc), "error")
         return redirect(_back(category_id))
     if new_parent is None and not category.slug:
-        category.slug = await _unique_slug(session, slugify(category.name), exclude_id=category.id)
+        category.slug = await unique_slug(session, slugify(category.name), exclude_id=category.id)
     elif new_parent is not None:
         category.slug = None
     await session.commit()

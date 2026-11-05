@@ -31,49 +31,84 @@ class QuestionSpider(scrapy.Spider):
 
     async def start(self):
         for seed in self.site.seeds:
+            context = {"label": seed.label, "root": seed.root, "series": seed.series, "prefix": seed.scope_prefix}
             yield scrapy.Request(
                 seed.url,
                 callback=self.parse_listing,
                 errback=self.on_error,
-                cb_kwargs={"label": seed.label},
+                cb_kwargs={"context": context},
                 dont_filter=True,
             )
 
-    def _follow(self, response, label: str):
-        for href in response.css("a::attr(href)").getall():
-            url = response.urljoin(href).split("#")[0]
-            if urlparse(url).hostname not in self.allowed_domains:
-                continue
-            rule = self.site.rule_for(url)
-            if rule is None:
-                continue
-            if rule.kind != "listing" and url in self.skip_urls:
-                if url not in self._skipped:  # count each page once, however many listings link to it
-                    self._skipped.add(url)
-                    self.crawler.stats.inc_value("pages/skipped_recent")
-                continue
-            callback = {"listing": self.parse_listing, "detail": self.parse_detail, "file": self.parse_file}[rule.kind]
-            yield scrapy.Request(url, callback=callback, errback=self.on_error, cb_kwargs={"label": label})
+    def _request(self, url: str, context: dict):
+        rule = self.site.rule_for(url)
+        if rule is None or urlparse(url).hostname not in self.allowed_domains:
+            return None
+        if rule.kind != "listing" and url in self.skip_urls:
+            if url not in self._skipped:  # count each page once, however many listings link to it
+                self._skipped.add(url)
+                self.crawler.stats.inc_value("pages/skipped_recent")
+            return None
+        callback = {"listing": self.parse_listing, "detail": self.parse_detail, "file": self.parse_file}[rule.kind]
+        return scrapy.Request(url, callback=callback, errback=self.on_error, cb_kwargs={"context": context})
 
-    def _page(self, response, role: str, label: str) -> dict:
+    def _follow(self, response, context: dict):
+        """Walk headings and links in page order: a chapter heading (or the page's own h1) sets the chapter of
+        the links below it, a link's text names its lesson. The context travels with each request."""
+        toc = self.site.toc
+        chapter = context.get("chapter")
+        h1 = " ".join(" ".join(response.css("h1 ::text").getall()).split())
+        chapter = toc.chapter_of(h1) or chapter
+        area = next((found for xp in toc.scope if (found := response.xpath(xp))), None) or response.xpath("//body")
+        for node in area.xpath(".//*[self::h1 or self::h2 or self::h3 or self::h4 or self::a]"):
+            tag = node.root.tag
+            text = " ".join(" ".join(node.xpath(".//text()").getall()).split())
+            if tag != "a":
+                chapter = toc.chapter_of(text) or chapter
+                continue
+            href = node.attrib.get("href")
+            if not href:
+                continue
+            url = response.urljoin(href).split("#")[0]
+            link_chapter = toc.chapter_of(text)
+            child = {
+                **context,
+                "chapter": link_chapter or chapter or "",
+                "lesson": "" if link_chapter else (toc.lesson_of(text) or ""),
+            }
+            rule = self.site.rule_for(url)
+            if context.get("prefix") and not url.startswith(context["prefix"]):
+                continue  # another book linked from this one
+            if rule and rule.kind == "listing":
+                child["chapter"], child["lesson"] = link_chapter or "", ""  # a listing names its own chapters
+            if self.site.auto_toc and rule and rule.kind == "detail" and not child["chapter"]:
+                continue  # reached again from its chapter page, with the right context
+            request = self._request(url, child)
+            if request is not None:
+                yield request
+
+    def _page(self, response, role: str, context: dict) -> dict:
         return {
             "kind": "html",
             "role": role,
             "url": response.url,
             "body": response.text,
             "title": " ".join((response.css("title::text").get() or "").split()),
-            "label": label,
+            "label": context.get("label", ""),
+            "context": {k: v for k, v in context.items() if k not in ("label", "prefix") and v},
         }
 
-    def parse_listing(self, response, label: str = ""):
-        yield self._page(response, "listing", label)  # Bronze keeps listings too; Silver ignores them
-        yield from self._follow(response, label)
+    def parse_listing(self, response, context: dict | None = None):
+        context = context or {}
+        yield self._page(response, "listing", context)  # Bronze keeps listings too; Silver ignores them
+        yield from self._follow(response, context)
 
-    def parse_detail(self, response, label: str = ""):
-        yield self._page(response, "detail", label)
-        yield from self._follow(response, label)
+    def parse_detail(self, response, context: dict | None = None):
+        # No link following from lesson pages: their sidebars link other lessons without chapter context.
+        yield self._page(response, "detail", context or {})
 
-    def parse_file(self, response, label: str = ""):
+    def parse_file(self, response, context: dict | None = None):
+        context = context or {}
         content_type = response.headers.get("Content-Type", b"").decode().split(";")[0].strip()
         kind = FILE_TYPES.get(content_type)
         if kind is None:
@@ -86,7 +121,8 @@ class QuestionSpider(scrapy.Spider):
             "body": response.body,
             "content_type": content_type,
             "title": response.url.rsplit("/", 1)[-1],
-            "label": label,
+            "label": context.get("label", ""),
+            "context": {k: v for k, v in context.items() if k not in ("label", "prefix") and v},
         }
 
     def on_error(self, failure):
