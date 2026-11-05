@@ -9,7 +9,10 @@
       <div class="muted small">Lần làm #{{ attempt.attempt_no }}</div>
       <strong>{{ exam.title }}</strong>
     </div>
-    <div class="progress-text"><span id="answered-count">0</span>/<span id="total-count">{{ attempt.total_questions }}</span> câu đã chọn</div>
+    <div class="progress-text">
+      <div><span id="answered-count">0</span>/<span id="total-count">{{ attempt.total_questions }}</span> câu đã chọn</div>
+      <div id="save-status" class="save-status" data-state="idle">Đáp án được tự động lưu</div>
+    </div>
     <div class="timer" id="timer" aria-live="polite">--:--</div>
   </div>
 
@@ -25,7 +28,7 @@
       <div id="palette" class="palette"></div>
       <p class="hint mt">Ô xanh: đã chọn đáp án. Bấm số để chuyển tới câu.</p>
       <button class="btn full" id="submit-btn" type="button">📤 Nộp bài</button>
-      <p class="hint mt">Lưu ý: hiện đáp án chỉ giữ trên trang này. Tự động lưu và khôi phục khi F5 sẽ có ở Giai đoạn 2.</p>
+      <p class="hint mt">Đáp án được lưu ngay trên máy và tự động gửi lên máy chủ. Lỡ tắt trang hay mất mạng, vào lại sẽ tiếp tục đúng chỗ cũ.</p>
     </aside>
   </div>
 </div>

@@ -245,32 +245,76 @@ async def submit(session: AsyncSession, attempt_id: int, answers: Any) -> ExamAt
 
 
 async def finalize_expired(
-    session: AsyncSession, user_id: int, exam_id: int | None = None, now: datetime | None = None, commit: bool = True
+    session: AsyncSession,
+    user_id: int | None = None,
+    exam_id: int | None = None,
+    now: datetime | None = None,
+    commit: bool = True,
+    limit: int | None = None,
 ) -> int:
-    """Close this student's attempts whose time ran out without a submit (tab closed, offline...).
+    """Grade attempts whose time ran out without a submit (tab closed, offline...), using the auto-saved answers.
 
-    Phase 2 adds a background worker that does this for everyone; until then it runs lazily
-    whenever the student looks at their attempts.
+    Runs for one student lazily when they open their pages, and for everyone from the background worker
+    (user_id=None). SKIP LOCKED lets both run at once without blocking or double grading.
     """
     now = now or await db_now(session)
     stmt = (
         select(ExamAttempt)
-        .where(
-            ExamAttempt.user_id == user_id,
-            ExamAttempt.status == AttemptStatus.IN_PROGRESS,
-            ExamAttempt.expires_at + SUBMIT_GRACE < now,
-        )
+        .where(ExamAttempt.status == AttemptStatus.IN_PROGRESS, ExamAttempt.expires_at + SUBMIT_GRACE < now)
+        .order_by(ExamAttempt.expires_at)
         .with_for_update(skip_locked=True)
         .execution_options(populate_existing=True)
     )
+    if user_id is not None:
+        stmt = stmt.where(ExamAttempt.user_id == user_id)
     if exam_id is not None:
         stmt = stmt.where(ExamAttempt.exam_id == exam_id)
+    if limit is not None:
+        stmt = stmt.limit(limit)
     expired = (await session.scalars(stmt)).all()
     for attempt in expired:
         _finish(attempt, clean_answers(attempt.paper_snapshot, attempt.answers), attempt.expires_at)
     if expired and commit:
         await session.commit()
     return len(expired)
+
+
+class AttemptClosed(Exception):
+    """Answers can no longer be changed (submitted, or past the deadline)."""
+
+    def __init__(self, status: str):
+        self.status = status
+
+
+async def save_answers(session: AsyncSession, attempt_id: int, changes: Any) -> tuple[ExamAttempt, datetime]:
+    """Auto-save: merge {question_id: value | None} into the attempt; None clears an answer.
+
+    Invalid entries are ignored. The row lock serialises saves from several tabs; the client sends one
+    request at a time, so saves from one tab are applied in order.
+    """
+    attempt = await session.scalar(
+        select(ExamAttempt)
+        .where(ExamAttempt.id == attempt_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    now = await db_now(session)
+    if attempt.status != AttemptStatus.IN_PROGRESS or now > attempt.expires_at + SUBMIT_GRACE:
+        await session.commit()
+        raise AttemptClosed(attempt.status.value if attempt.status == AttemptStatus.SUBMITTED else "EXPIRED")
+    answers = dict(attempt.answers or {})
+    if isinstance(changes, dict):
+        for key, value in changes.items():
+            qid = str(key)
+            if value is None:
+                answers.pop(qid, None)
+                continue
+            cleaned = clean_answers(attempt.paper_snapshot, {qid: value})
+            if qid in cleaned:
+                answers[qid] = cleaned[qid]
+    attempt.answers = answers  # reassign so SQLAlchemy sees the JSONB change
+    await session.commit()
+    return attempt, now
 
 
 def review(attempt: ExamAttempt) -> list[dict[str, Any]]:

@@ -255,3 +255,9 @@ pre.sample { background: #f8fafc; border: 1px solid var(--border); border-radius
 .tf-truth.t { color: #166534; }
 .tf-truth.f { color: var(--danger); }
 .source-badge { background: #f1f5f9; color: #475569; }
+
+/* ---------- Part 8: auto-save ---------- */
+.save-status { font-size: .8rem; color: var(--muted); }
+.save-status[data-state="saved"] { color: #16a34a; }
+.save-status[data-state="saving"] { color: var(--primary); }
+.save-status[data-state="offline"] { color: #c2410c; font-weight: 600; }

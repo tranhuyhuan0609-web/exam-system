@@ -1,7 +1,7 @@
-"""Background worker for AI import jobs.
+"""Background worker: AI import jobs, plus a once-a-minute sweep that auto-submits expired attempts.
 
     python -m app.worker          # run forever
-    python -m app.worker --once   # process queued jobs, then exit
+    python -m app.worker --once   # auto-submit expired attempts, process queued jobs, then exit
 
 Jobs are claimed with FOR UPDATE SKIP LOCKED, so several workers can run side by side.
 """
@@ -17,6 +17,7 @@ from sqlalchemy import func, select, update
 from app.ai.normalize import NormalizeError
 from app.ai.pipeline import run_pipeline
 from app.ai.provider import AIError, AIProvider, GeminiProvider
+from app.attempts import finalize_expired
 from app.config import get_settings
 from app.db import SessionLocal
 from app.infrastructure.storage import StorageError, get_storage
@@ -25,6 +26,7 @@ from app.models import ImportJob, JobStatus
 log = logging.getLogger("app.worker")
 
 POLL_SECONDS = 3
+AUTO_SUBMIT_SECONDS = 60
 # A PROCESSING job untouched for this long belongs to a worker that died; put it back in the queue.
 STALE_AFTER = timedelta(minutes=30)
 
@@ -99,10 +101,30 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
         log.info("Job %s finished: %s", job_id, job.status)
 
 
-async def run(once: bool = False) -> None:
+async def auto_submit_once(batch: int = 500) -> int:
+    """Grade every attempt whose deadline (+ grace) has passed, using the answers auto-saved so far."""
+    total = 0
+    while True:
+        async with SessionLocal() as session:
+            done = await finalize_expired(session, limit=batch)
+        total += done
+        if done < batch:
+            return total
+
+
+async def auto_submit_loop() -> None:
+    while True:
+        try:
+            if graded := await auto_submit_once():
+                log.info("Auto-submitted %s expired attempt(s)", graded)
+        except Exception:  # never let a DB hiccup stop the loop
+            log.exception("Auto-submit failed")
+        await asyncio.sleep(AUTO_SUBMIT_SECONDS)
+
+
+async def ai_jobs_loop(once: bool = False) -> None:
     if requeued := await requeue_stale():
         log.info("Requeued %s stale job(s)", requeued)
-    log.info("Worker started (models: %s)", get_settings().gemini_models)
     while True:
         job_id = await claim_next()
         if job_id is not None:
@@ -112,6 +134,16 @@ async def run(once: bool = False) -> None:
         if once:
             return
         await asyncio.sleep(POLL_SECONDS)
+
+
+async def run(once: bool = False) -> None:
+    log.info("Worker started (models: %s)", get_settings().gemini_models)
+    if once:
+        await auto_submit_once()
+        await ai_jobs_loop(once=True)
+        return
+    # Two independent loops: AI import jobs, and the auto-submit sweep every minute.
+    await asyncio.gather(ai_jobs_loop(), auto_submit_loop())
 
 
 def main() -> None:

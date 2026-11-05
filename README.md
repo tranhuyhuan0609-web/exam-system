@@ -73,11 +73,11 @@ Học sinh vào bất cứ lúc nào, chọn bài (VD: Vật lí 11 – Chương
 - [x] Bắt đầu tách Clean Architecture: `app/domain/`, `app/infrastructure/`
 
 ### Giai đoạn 2 — Trải nghiệm thực tế & Ngân hàng đề động (Tuần 4–6)
-- [ ] Auto-save 2 tầng: IndexedDB mỗi lần chọn + đồng bộ debounce lên server mỗi 5–10s
-- [ ] Khôi phục phiên `IN_PROGRESS`: các câu đã chọn + số giây còn lại
+- [x] Auto-save 2 tầng: IndexedDB mỗi lần chọn + đồng bộ ngầm lên server (2s sau thao tác cuối, chậm nhất 10s; tự thử lại khi mất mạng)
+- [x] Khôi phục phiên `IN_PROGRESS`: các câu đã chọn (server + thay đổi chưa kịp gửi trên máy) + số giây còn lại
 - [ ] Sinh đề theo ma trận độ khó (Nhận biết / Thông hiểu / Vận dụng), đảo vị trí A/B/C/D
 - [ ] Lưu cấu trúc đề của lượt thi vào `paper_snapshot` (JSONB) để F5 không bị xáo lại
-- [ ] Background worker tự thu bài quá hạn `expires_at` → `SUBMITTED` và chấm điểm
+- [x] Worker tự thu bài mỗi phút: bài quá hạn `expires_at` → `SUBMITTED`, chấm theo đáp án đã auto-save
 
 ### Giai đoạn 3 — Thi theo ca cố định & Chịu tải cao (Tuần 7–9)
 - [ ] Chế độ `SCHEDULED`: `available_from` / `available_until`, `max_attempts = 1`, hạn nộp `LEAST(NOW() + duration, available_until)`
