@@ -1,0 +1,89 @@
+{% extends "admin/_layout.html" %}
+{% set active = "crawler" %}
+{% block title %}Hàng đợi thu thập · Quản trị{% endblock %}
+{% block admin_content %}
+<p><a href="/admin/crawler">← Thu thập đề</a></p>
+<div class="page-head">
+  <h1>Câu thu thập</h1>
+  <form method="get" class="row">
+    <input type="hidden" name="status" value="{{ status }}">
+    <select name="site" onchange="this.form.submit()">
+      <option value="">Mọi nguồn</option>
+      {% for s in sites %}<option value="{{ s }}" {{ 'selected' if s == site }}>{{ s }}</option>{% endfor %}
+    </select>
+  </form>
+</div>
+<nav class="filter-tabs">
+  {% for key, label in STATUS_LABELS.items() %}
+    <a href="?status={{ key }}&site={{ site }}" class="{{ 'active' if status == key }}">{{ label }} ({{ status_counts.get(key, 0) }})</a>
+  {% endfor %}
+</nav>
+
+<form method="post" action="/admin/crawler/items/action" id="bulk-form">
+  <input type="hidden" name="back" value="{{ back }}">
+</form>
+
+{% for (site_id, url), items in groups.items() %}
+  <section class="card crawl-group">
+    <div class="page-head">
+      <div>
+        <strong>{{ items[0].source_title or url }}</strong>
+        <div class="small"><a href="{{ url }}" target="_blank" rel="noopener noreferrer">{{ url }}</a> · {{ site_id }}</div>
+      </div>
+      <form method="post" action="/admin/crawler/map" class="row inline-form">
+        <input type="hidden" name="site_id" value="{{ site_id }}"><input type="hidden" name="source_url" value="{{ url }}">
+        <input type="hidden" name="back" value="{{ back }}">
+        <select name="category_id" required>
+          <option value="">— Gán trang này vào mục —</option>
+          {% for o in scope_options %}
+            {% set cid = o.key[2:] | int %}
+            <option value="{{ cid }}" {{ 'selected' if items[0].category_id == cid }}>{{ o.label }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-small">Gán &amp; xử lý</button>
+      </form>
+    </div>
+    {% for item in items %}
+      <article class="crawl-item">
+        <label class="check"><input type="checkbox" name="ids" value="{{ item.id }}" form="bulk-form"></label>
+        <div>
+          <div class="small">
+            <span class="badge">{{ TYPE_LABELS[item.question_type] }}</span>
+            <span class="badge">{{ DIFFICULTY_LABELS[item.difficulty] }}</span>
+            <span class="badge {{ {'PUBLISHED': 'badge-ok', 'NEEDS_REVIEW': 'badge-warn'}.get(item.status, '') }}">{{ STATUS_LABELS[item.status] }}</span>
+            {% if item.similarity is not none and item.status != "DUPLICATE" %}<span class="badge" title="Cosine với câu gần nhất trong ngân hàng (embedding)">{{ "giống" if item.status == "SIMILAR" else "gần nhất" }} {{ "%.0f" % (item.similarity * 100) }}%</span>{% endif %}
+            {% if item.duplicate_of and item.status in ("DUPLICATE", "SIMILAR") %}<a href="/admin/questions/{{ item.duplicate_of }}/edit" class="small">trùng câu #{{ item.duplicate_of }}</a>{% endif %}
+            {% if item.question_id %}<a href="/admin/questions/{{ item.question_id }}/edit" class="small">câu #{{ item.question_id }}</a>{% endif %}
+            {% if item.explanation_by_ai %}<span class="badge">🤖 lời giải AI</span>{% endif %}
+            {% if item.category_id %}<span class="muted">→ {{ scope_paths.get("c:" ~ item.category_id, "") }}</span>{% endif %}
+          </div>
+          <div class="q-content math">{{ item.content }}</div>
+          {% if item.image_path %}<img src="{{ media_url(item.image_path) }}" alt="" class="crawl-figure">{% endif %}
+          {% if item.choices %}
+            <ol class="crawl-choices" type="{{ 'a' if item.question_type == 'TRUE_FALSE' else 'A' }}">
+              {% for c in item.choices %}
+                <li class="math {{ 'correct' if c.is_correct }}">{{ c.content }}{% if item.question_type == "TRUE_FALSE" %} — <strong>{{ "Đúng" if c.is_correct else "Sai" }}</strong>{% endif %}</li>
+              {% endfor %}
+            </ol>
+          {% endif %}
+          {% if item.accepted_answers %}<p class="small">Đáp số: <strong>{{ item.accepted_answers | join(" ; ") }}</strong></p>{% endif %}
+          {% if item.explanation %}<details><summary class="small">Lời giải</summary><div class="q-content math small">{{ item.explanation }}</div></details>{% endif %}
+          {% for issue in item.issues %}<div class="small issue">⚠ {{ issue }}</div>{% endfor %}
+        </div>
+      </article>
+    {% endfor %}
+  </section>
+{% else %}
+  <div class="card muted">Không có câu nào ở trạng thái này.</div>
+{% endfor %}
+
+{% if groups %}
+  <div class="row bulk-bar">
+    <button class="btn" name="action" value="publish" form="bulk-form">Đưa câu đã chọn vào ngân hàng</button>
+    <button class="btn btn-outline" name="action" value="reject" form="bulk-form">Bỏ câu đã chọn</button>
+    <span class="muted small">Trang {{ page }}/{{ pages }} · {{ total }} câu</span>
+    {% if page > 1 %}<a href="?status={{ status }}&site={{ site }}&page={{ page - 1 }}">← Trước</a>{% endif %}
+    {% if page < pages %}<a href="?status={{ status }}&site={{ site }}&page={{ page + 1 }}">Sau →</a>{% endif %}
+  </div>
+{% endif %}
+{% endblock %}

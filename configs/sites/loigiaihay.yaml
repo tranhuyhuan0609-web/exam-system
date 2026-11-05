@@ -1,0 +1,30 @@
+# Lời giải hay — trắc nghiệm Vật lí 11 (Kết nối tri thức). robots.txt allows these paths.
+site_id: loigiaihay
+name: Lời giải hay
+enabled: true
+base_url: https://loigiaihay.com
+parser: loigiaihay_quiz
+schedule_times: ["02:30"]   # Vietnam time; quiet hours for the source
+refresh_days: 30
+max_pages: 120
+respect_robots: true
+auto_publish: true
+default_difficulty: UNDERSTANDING
+rate_limit:
+  delay_sec: 3
+  timeout_sec: 20
+  retries: 2
+  concurrency: 1
+seeds:
+  - url: https://loigiaihay.com/bai-tap-trac-nghiem-li-11-ket-noi-tri-thuc-c1680.html
+    label: Vật lí 11 – Kết nối tri thức
+follow:
+  - pattern: '^https://loigiaihay\.com/bai-tap-trac-nghiem-chuong-[a-z-]+-e\d+\.html$'
+    kind: listing
+  - pattern: '^https://loigiaihay\.com/trac-nghiem-vat-li-11-bai-\d+-ket-noi-tri-thuc-co-dap-an-a\d+\.html$'
+    kind: detail
+categories:
+  # Page title "Trắc nghiệm vật lí 11 bài 3 kết nối tri thức có đáp án" -> our "Vật lí 11 › … › Bài 3: …"
+  - pattern: 'trac-nghiem-vat-li-11-'
+    root: Vật lí 11
+    lesson: 'bài\s*(\d+)'

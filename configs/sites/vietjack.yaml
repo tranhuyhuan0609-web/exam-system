@@ -1,0 +1,28 @@
+# VietJack — trắc nghiệm Vật lí 11 (Kết nối tri thức): multiple choice, true/false and short answer parts.
+site_id: vietjack
+name: VietJack
+enabled: true
+base_url: https://vietjack.com
+parser: vietjack_quiz
+schedule_times: ["03:30"]
+refresh_days: 30
+max_pages: 120
+respect_robots: true   # vietjack.com has no robots.txt (404): everything is allowed, the delay still applies
+auto_publish: true
+default_difficulty: UNDERSTANDING
+rate_limit:
+  delay_sec: 3
+  timeout_sec: 20
+  retries: 2
+  concurrency: 1
+seeds:
+  - url: https://vietjack.com/vat-li-11-kn/trac-nghiem-vat-li-lop-11-ket-noi.jsp
+    label: Vật lí 11 – Kết nối tri thức
+follow:
+  - pattern: '^https://vietjack\.com/vat-li-11-kn/trac-nghiem-bai-\d+-[a-z0-9-]+\.jsp$'
+    kind: detail
+categories:
+  # Title "Trắc nghiệm Vật Lí 11 Kết nối tri thức Bài 3 (có đáp án): …" -> our "Bài 3: …"
+  - pattern: '/vat-li-11-kn/'
+    root: Vật lí 11
+    lesson: 'bài\s*(\d+)'

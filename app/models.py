@@ -3,6 +3,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
@@ -64,6 +65,28 @@ class ExamVisibility(StrEnum):
     PUBLIC = "PUBLIC"  # listed on the site once published
     PERSONAL = "PERSONAL"  # a quiz a student built for themself; only its owner (created_by) sees it
     PRIVATE = "PRIVATE"  # a teacher's test: never listed, students join with the link + access code
+
+
+EMBEDDING_DIM = 768
+
+
+class CrawlRunStatus(StrEnum):
+    QUEUED = "QUEUED"  # requested from the admin page; the scheduler starts it
+    RUNNING = "RUNNING"
+    DONE = "DONE"
+    FAILED = "FAILED"
+
+
+class CrawlItemStatus(StrEnum):
+    """Silver: where a crawled question is in the pipeline."""
+
+    PENDING_AI = "PENDING_AI"  # waiting for Gemini (formula images, plain-text formulas, missing solution)
+    READY = "READY"  # clean; dedup + labelling decide what happens next
+    PUBLISHED = "PUBLISHED"  # copied to questions (Gold)
+    DUPLICATE = "DUPLICATE"  # exact match (SHA-256) with a question or another crawled item
+    SIMILAR = "SIMILAR"  # semantic match (cosine >= threshold) with a question
+    NEEDS_REVIEW = "NEEDS_REVIEW"  # no category, parser issues or AI failure: an admin decides
+    REJECTED = "REJECTED"
 
 
 class JobStatus(StrEnum):
@@ -181,6 +204,19 @@ class Question(TimestampMixin, UpdatedAtMixin, Base):
     content_hash: Mapped[str | None] = mapped_column(String(64), index=True)
     # Only verified questions can be put into exams; crawled questions start unverified.
     is_verified: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # Crawled questions: the page they came from (attribution).
+    source_url: Mapped[str | None] = mapped_column(String(500))
+    # Gemini embedding of the normalised text, for semantic duplicate detection (pgvector, cosine).
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), deferred=True)
+
+    __table_args__ = (
+        Index(
+            "ix_questions_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+    )
 
 
 class Exam(TimestampMixin, UpdatedAtMixin, Base):
@@ -317,3 +353,88 @@ class ImportJob(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (Index("ix_import_jobs_queued", "id", postgresql_where="status = 'QUEUED'"),)
+
+
+# ---------------------------------------------------------------- crawler (app/pipeline)
+
+
+class CrawlerSite(Base):
+    """One crawled website; `config` mirrors configs/sites/<site_id>.yaml (`python -m app.pipeline sync-configs`)."""
+
+    __tablename__ = "crawler_sites"
+
+    site_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CrawlRun(Base):
+    __tablename__ = "crawl_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[str] = mapped_column(ForeignKey("crawler_sites.site_id", ondelete="CASCADE"), index=True)
+    status: Mapped[CrawlRunStatus] = mapped_column(
+        _enum(CrawlRunStatus, "crawl_run_status"), default=CrawlRunStatus.QUEUED
+    )
+    trigger: Mapped[str] = mapped_column(String(20), default="manual")  # manual | schedule | cli
+    max_pages: Mapped[int | None] = mapped_column(Integer)
+    force: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # ignore refresh_days
+    pages_fetched: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    pages_skipped: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    pages_failed: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    docs_published: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    error: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CrawledQuestion(Base):
+    """Silver layer: one question parsed from a Bronze page, cleaned, deduplicated and labelled."""
+
+    __tablename__ = "crawled_questions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[str] = mapped_column(ForeignKey("crawler_sites.site_id", ondelete="CASCADE"))
+    external_id: Mapped[str] = mapped_column(String(300))
+    doc_id: Mapped[str] = mapped_column(String(80))  # Bronze document (MongoDB raw_pages)
+    source_url: Mapped[str] = mapped_column(String(500))
+    source_title: Mapped[str] = mapped_column(String(500), default="")
+    question_type: Mapped[QuestionType] = mapped_column(_enum(QuestionType, "question_type"))
+    content: Mapped[str] = mapped_column(Text)
+    choices: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    accepted_answers: Mapped[list[str] | None] = mapped_column(JSONB)
+    explanation: Mapped[str | None] = mapped_column(Text)
+    explanation_by_ai: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    image_path: Mapped[str | None] = mapped_column(String(300))  # re-hosted figure (our storage)
+    images: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)  # [{"src", "key", "inline"}]
+    difficulty: Mapped[Difficulty] = mapped_column(_enum(Difficulty, "difficulty"))
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
+    source_hash: Mapped[str] = mapped_column(String(64))  # parsed text: tells whether the source changed
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)  # final text, compared with questions
+    status: Mapped[CrawlItemStatus] = mapped_column(_enum(CrawlItemStatus, "crawl_item_status"), index=True)
+    issues: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    similarity: Mapped[float | None] = mapped_column(Numeric(5, 4))  # best cosine match found by dedup
+    duplicate_of: Mapped[int | None] = mapped_column(ForeignKey("questions.id", ondelete="SET NULL"))
+    question_id: Mapped[int | None] = mapped_column(ForeignKey("questions.id", ondelete="SET NULL"))
+    ai_tries: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("site_id", "external_id", name="uq_crawled_questions_site_external"),)
+
+
+class CrawlCategoryMap(Base):
+    """A source page (lesson) assigned to a category, by the labelling rules or by an admin (remembered)."""
+
+    __tablename__ = "crawl_category_map"
+
+    site_id: Mapped[str] = mapped_column(ForeignKey("crawler_sites.site_id", ondelete="CASCADE"), primary_key=True)
+    source_url: Mapped[str] = mapped_column(String(500), primary_key=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"))
+    source_title: Mapped[str] = mapped_column(String(500), default="")
+    by_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

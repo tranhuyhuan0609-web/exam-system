@@ -38,6 +38,7 @@ async def _ensure_database() -> None:
 
 async def _reset_schema() -> None:
     async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))  # questions.embedding
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
