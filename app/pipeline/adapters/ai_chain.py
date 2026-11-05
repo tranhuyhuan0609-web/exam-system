@@ -162,19 +162,38 @@ class GeminiChainMember:
 class _Member:
     enricher: object
     daily_limit: int
+    batch_size: int = 8
 
 
 class ChainEnricher:
-    def __init__(self, members: list[tuple[object, int]], usage: Usage | None = None, clock=time.monotonic):
-        self.members = [_Member(e, limit) for e, limit in members]
+    """`members`: (enricher, daily limit) or (enricher, daily limit, batch size) tuples, tried in order."""
+
+    def __init__(self, members: list[tuple], usage: Usage | None = None, clock=time.monotonic):
+        self.members = [_Member(*m) for m in members]
         self.usage = usage or MemoryUsage()
         self._resting: dict[str, float] = {}
         self._clock = clock
 
     async def enrich(self, items: list[EnrichItem]) -> list[EnrichResult]:
-        needs_vision = any(i.images for i in items)
+        """Split into each provider's batch size; questions left over when every provider is out stay waiting."""
+        results: list[EnrichResult] = []
+        pending = list(items)
+        while pending:
+            try:
+                done, used = await self._one_batch(pending)
+            except AIUnavailable:
+                if results:
+                    return results  # the rest waits for the next sweep
+                raise
+            results += done
+            pending = pending[used:]
+        return results
+
+    async def _one_batch(self, items: list[EnrichItem]) -> tuple[list[EnrichResult], int]:
         errors = []
         for member in self.members:
+            chunk = items[: max(1, member.batch_size)]
+            needs_vision = any(i.images for i in chunk)
             name = member.enricher.name
             if needs_vision and not member.enricher.vision:
                 continue
@@ -184,16 +203,16 @@ class ChainEnricher:
                 errors.append(f"{name}: daily budget used")
                 continue
             try:
-                results = await member.enricher.enrich(items)
+                results = await member.enricher.enrich(chunk)
             except AIUnavailable as exc:
                 log.warning("%s unavailable, trying the next provider: %s", name, exc)
                 self._resting[name] = self._clock() + COOLDOWN_SECONDS
                 errors.append(str(exc))
                 continue
-            await self.usage.record(name, len(items))
+            await self.usage.record(name, len(chunk))
             for result in results:
                 result.provider = name
-            return results
+            return results, len(chunk)
         raise AIUnavailable("; ".join(errors) or "no AI provider configured for these questions")
 
 
@@ -203,14 +222,16 @@ def build_chain():
 
     settings = get_settings()
     limits = settings.ai_daily_limit_map
+    sizes = settings.ai_batch_size_map
     members: list[tuple[object, int]] = []
     if settings.gemini_api_key:
-        members.append((GeminiChainMember(), limits.get("gemini", 0)))
+        members.append((GeminiChainMember(), limits.get("gemini", 0), sizes.get("gemini", 15)))
     if settings.groq_api_key and settings.groq_model:
         members.append(
             (
                 OpenAICompatEnricher("groq", settings.groq_base_url, settings.groq_api_key, settings.groq_model),
                 limits.get("groq", 0),
+                sizes.get("groq", 6),
             )
         )
     if settings.openrouter_api_key and settings.openrouter_model:
@@ -220,6 +241,7 @@ def build_chain():
                     "openrouter", settings.openrouter_base_url, settings.openrouter_api_key, settings.openrouter_model
                 ),
                 limits.get("openrouter", 0),
+                sizes.get("openrouter", 8),
             )
         )
     return ChainEnricher(members, DbUsage()) if members else None

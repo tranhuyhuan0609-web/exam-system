@@ -13,6 +13,7 @@ respect_robots: true
 auto_publish: true
 auto_toc: true
 verify_answers: true
+verify_ratio: 0.2       # check 1 question in 5 (saves AI quota); doubtful keys go to review
 default_difficulty: UNDERSTANDING
 rate_limit:
   delay_sec: 3

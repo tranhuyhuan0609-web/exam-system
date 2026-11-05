@@ -92,9 +92,11 @@ UNITS = {
     "dm",
     "dB",
 }
-_MATH_CHARS = re.compile(r"^[A-Za-z0-9" + "".join(GREEK) + r"√()\[\]{}+\-−–*/=^_.,;:<>≤≥≠≈±×·→⇒∞°'|!]+$")
+_MATH_CHARS = re.compile(r"^[A-Za-z0-9§" + "".join(GREEK) + r"√()\[\]{}+\-−–*/=^_.,;:<>≤≥≠≈±×·→⇒∞°'|!]+$")
+_HOLE = re.compile(r"§(\d+)§")  # an existing $...$ formula, set aside while its plain-text neighbours are read
+_INLINE = re.compile(r"(?<!\$)\$(?!\$)([^$]+?)\$(?!\$)")
 _STRONG = re.compile(r"[=^√≤≥≠≈±×→⇒" + "".join(GREEK) + r"]|\b(?:" + "|".join(FUNCS) + r")\s*\(|\d[a-zA-Z]|[a-zA-Z]\d")
-_SEGMENT = re.compile(r"(\$\$.*?\$\$|\$[^$]*\$|\\\(.*?\\\))", re.S)
+_SEGMENT = re.compile(r"(\$\$.*?\$\$|\\\(.*?\\\)|\\\[.*?\\\])", re.S)  # display / \( \) formulas stay as they are
 
 
 def _unit(token: str) -> bool:
@@ -133,10 +135,16 @@ def _unfold(text: str) -> str:
     return re.sub(r"([\^_])\{([^{}$]*)\}", r"$\1{\2}$", text)
 
 
-def _convert_plain(text: str) -> str:
+def _convert_plain(text: str, holes: list[str] | None = None) -> str:
+    """`holes` are the LaTeX bodies of $...$ formulas replaced by §n§ in `text`: a run such as "P = sin(§0§)"
+    becomes ONE formula "$P = \\sin(\\alpha)$" (two adjacent $...$ would read as display math $$)."""
+    holes = holes or []
     tokens = re.split(r"(\s+)", text)
     out: list[str] = []
     run: list[str] = []
+
+    def restore(value: str) -> str:
+        return _HOLE.sub(lambda m: "$" + holes[int(m.group(1))] + "$", value)
 
     def flush():
         if not run:
@@ -151,10 +159,15 @@ def _convert_plain(text: str) -> str:
         m = re.search(r"[.,;:]+$", body)  # sentence punctuation stays outside
         if m:
             body, trail = body[: m.start()], m.group(0)
-        if words and _STRONG.search(body) and (len(body) > 1 or body in GREEK):
-            out.append("$" + _latex(body) + "$" + trail + (" " + _unfold(" ".join(tail)) if tail else ""))
+        plain = _HOLE.sub("", body)
+        merge = bool(_HOLE.search(body)) and bool(re.search(r"[A-Za-z0-9" + "".join(GREEK) + r"]", plain))
+        if words and ((_STRONG.search(plain) and (len(plain) > 1 or plain in GREEK)) or merge):
+            latex = _HOLE.sub(lambda h: " " + holes[int(h.group(1))] + " ", _latex(body))
+            out.append(
+                "$" + " ".join(latex.split()) + "$" + trail + (" " + restore(_unfold(" ".join(tail))) if tail else "")
+            )
         else:
-            out.append(_unfold("".join(run)))
+            out.append(restore(_unfold("".join(run))))
         run.clear()
 
     for token in tokens:
@@ -173,7 +186,7 @@ def _convert_plain(text: str) -> str:
                 out.append(space)
             else:
                 flush()
-            out.append(token)
+            out.append(restore(token))
     if run and run[-1].isspace():
         space = run.pop()
         flush()
@@ -189,5 +202,17 @@ def normalize_plain_math(text: str) -> str:
     lines = []
     for line in text.split("\n"):  # a formula never spans lines
         parts = _SEGMENT.split(_fold_scripts(line))
-        lines.append("".join(p if i % 2 else _convert_plain(p) for i, p in enumerate(parts)))
+        done = []
+        for i, part in enumerate(parts):
+            if i % 2:  # $$...$$ and \(...\) stay as they are
+                done.append(part)
+                continue
+            holes: list[str] = []
+
+            def hole(m, holes=holes):
+                holes.append(m.group(1))
+                return f"§{len(holes) - 1}§"
+
+            done.append(_convert_plain(_INLINE.sub(hole, part), holes))
+        lines.append("".join(done))
     return "\n".join(lines)

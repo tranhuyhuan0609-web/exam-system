@@ -100,8 +100,10 @@ def test_openai_compatible_adapter_parses_json_and_maps_errors(monkeypatch):
 def test_embedding_outage_keeps_questions_ready_until_it_returns(db):
     class FlakyEmbedder:
         down = True
+        calls = 0
 
         async def embed(self, texts):
+            self.calls += 1
             if self.down:
                 raise RuntimeError("429 RESOURCE_EXHAUSTED")
             return [[1.0] + [0.0] * 767 for _ in texts]
@@ -136,6 +138,105 @@ def test_embedding_outage_keeps_questions_ready_until_it_returns(db):
     db(lambda s: ingest_document(s, deps, doc))  # must not fail the whole page
     statuses = db(lambda s: s.scalars(select(CrawledQuestion.status)))
     assert set(statuses) == {CrawlItemStatus.READY}
+    with pytest.raises(AIUnavailable):  # still down: the sweep is told to back off
+        db(lambda s: retry_ready(s, deps))
     embedder.down = False
+    embedder.calls = 0
     assert db(lambda s: retry_ready(s, deps)) == 2
+    assert embedder.calls == 1  # one embedding request for the whole batch
     assert set(db(lambda s: s.scalars(select(CrawledQuestion.status)))) == {CrawlItemStatus.PUBLISHED}
+
+
+def test_chain_splits_work_into_each_providers_batch_size():
+    small = Fake("groq")
+    chain = ChainEnricher([(small, 0, 2)])
+    items = [EnrichItem(n, "MULTIPLE_CHOICE", "x", ["a", "b"], "A", "") for n in range(5)]
+    results = asyncio.run(chain.enrich(items))
+    assert [r.ref for r in results] == [0, 1, 2, 3, 4] and small.calls == 3  # 2 + 2 + 1
+
+
+def test_partial_results_when_providers_run_out_midway():
+    class TwoCalls(Fake):
+        async def enrich(self, items):
+            if self.calls >= 1:
+                self.calls += 1
+                raise AIUnavailable("groq: 429")
+            return await super().enrich(items)
+
+    chain = ChainEnricher([(TwoCalls("groq"), 0, 2)])
+    items = [EnrichItem(n, "MULTIPLE_CHOICE", "x", ["a", "b"], "A", "") for n in range(5)]
+    assert [r.ref for r in asyncio.run(chain.enrich(items))] == [0, 1]  # the rest waits for the next sweep
+
+
+def test_answer_checks_are_sampled_stably():
+    from app.pipeline.use_cases.silver import sampled_for_check
+
+    base = {
+        "site_id": "hoc247",
+        "name": "h",
+        "base_url": "https://hoc247.net",
+        "parser": "hoc247_question",
+        "verify_answers": True,
+        "seeds": [{"url": "https://hoc247.net/x"}],
+        "follow": [{"pattern": "x"}],
+    }
+    every = SiteConfig.model_validate(base)
+    fifth = SiteConfig.model_validate({**base, "verify_ratio": 0.2})
+    ids = [str(n) for n in range(1000)]
+    assert all(sampled_for_check(every, i) for i in ids)
+    picked = [i for i in ids if sampled_for_check(fifth, i)]
+    assert 150 < len(picked) < 250 and picked == [i for i in ids if sampled_for_check(fifth, i)]
+    assert not sampled_for_check(SiteConfig.model_validate({**base, "verify_answers": False}), "1")
+
+
+def test_renormalize_releases_questions_queued_before_the_rule_based_conversion(db):
+    from app.pipeline.use_cases.silver import renormalize_waiting
+
+    async def setup(s):
+        await make_tree(s, {"Vật lí 11": {"Chương 1: Dao động": {"Bài 1: Dao động điều hoà": {}}}})
+        config = SiteConfig.model_validate(
+            {
+                "site_id": "vietjack",
+                "name": "v",
+                "base_url": "https://vietjack.com",
+                "parser": "vietjack_quiz",
+                "seeds": [{"url": "https://vietjack.com/x"}],
+                "follow": [{"pattern": "x"}],
+                "categories": [{"pattern": "vietjack", "root": "Vật lí 11", "lesson": r"bài\s*(\d+)"}],
+            }
+        )
+        s.add(CrawlerSite(site_id="vietjack", name="v", config=config.model_dump(mode="json")))
+        await s.flush()
+        s.add(
+            CrawledQuestion(
+                site_id="vietjack",
+                external_id="q1",
+                doc_id="d",
+                source_url="https://vietjack.com/bai-1.jsp",
+                source_title="Trắc nghiệm Bài 1",
+                question_type="MULTIPLE_CHOICE",
+                content="Vật dao động theo x = 4cos(3πt) cm. Biên độ là",
+                explanation="A = 4 cm.",
+                choices=[
+                    {"id": "a", "content": "4 cm", "is_correct": True},
+                    {"id": "b", "content": "3 cm", "is_correct": False},
+                ],
+                difficulty="UNDERSTANDING",
+                source_hash="h",
+                content_hash="h",
+                status=CrawlItemStatus.PENDING_AI,
+                issues=[],
+            )
+        )
+
+    db(setup)
+    deps = SilverDeps(
+        store=MemoryRawStore(),
+        storage=get_storage(),
+        bronze_storage=get_bronze_storage(),
+        downloader=MemoryDownloader(),
+        enricher=Fake("groq"),
+    )
+    assert db(lambda s: renormalize_waiting(s, deps)) == {"PUBLISHED": 1}
+    item = db(lambda s: s.scalar(select(CrawledQuestion)))
+    assert item.content == r"Vật dao động theo $x = 4\cos(3\pi t)$ cm. Biên độ là"

@@ -34,3 +34,18 @@ def test_normalize_plain_math(text, expected):
     out = normalize_plain_math(text)
     assert out == expected
     assert not has_plain_math(out)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (r"Cho P = sin($\alpha$).cos($\beta$) và Q = 1.", r"Cho $P = \sin( \alpha ).\cos( \beta )$ và $Q = 1$."),
+        ("u$_{n}$ = 2 - 3n với n ≥ 1.", r"$u_{n} = 2 - 3n$ với $n \ge 1$."),
+        ("Lấy g = 10 m/s$^{2}$.", "Lấy $g = 10$ m/s$^{2}$."),
+        (r"Biết $\sin a = \frac{8}{17}$ và $\cos b = 0$.", r"Biết $\sin a = \frac{8}{17}$ và $\cos b = 0$."),
+    ],
+)
+def test_plain_text_next_to_existing_formulas_becomes_one_formula(text, expected):
+    out = normalize_plain_math(text)
+    assert out == expected
+    assert "$$" not in out

@@ -172,9 +172,7 @@ async def ingest_document(session: AsyncSession, deps: SilverDeps, doc: RawDocum
             stale.status = CrawlItemStatus.REJECTED
             stale.issues = [*stale.issues, STALE]
     await session.flush()
-    for item in items:
-        if item.status == CrawlItemStatus.READY:
-            await advance(session, deps, item, config)
+    await advance_many(session, deps, items)  # embeddings unavailable: they stay READY (retry_ready)
     await session.commit()
     return items
 
@@ -228,24 +226,62 @@ async def _upsert(
     item.updated_at = datetime.now(UTC)
     _place_figures(item)
 
-    inline = set().union(*(_inline_images(t) for t in _texts(item)))
     blocking = parsed.issues or image_issues or not parsed.has_answer
+    if blocking:
+        item.status = CrawlItemStatus.NEEDS_REVIEW
+    else:
+        _route(item, config, deps)
+    return item
+
+
+def sampled_for_check(config: SiteConfig, external_id: str) -> bool:
+    """verify_answers on a share of the questions only (verify_ratio), chosen stably by id."""
+    if not config.verify_answers:
+        return False
+    if config.verify_ratio >= 1:
+        return True
+    bucket = int(hashlib.sha1(f"{config.site_id}:{external_id}".encode()).hexdigest()[:8], 16) % 1000
+    return bucket < config.verify_ratio * 1000
+
+
+def _route(item: CrawledQuestion, config: SiteConfig, deps: SilverDeps) -> None:
+    """PENDING_AI only for what code cannot do: formula images, a missing solution, a formula still in plain
+    text after the rule-based conversion, or a sampled answer-key check."""
+    inline = set().union(*(_inline_images(t) for t in _texts(item)))
     needs_ai = (
         bool(inline)
         or not item.explanation
-        or config.verify_answers  # this source's answer keys contain mistakes: have them checked
+        or sampled_for_check(config, item.external_id)
         or any(has_plain_math(t) for t in _texts(item))
     )
-    if blocking:
-        item.status = CrawlItemStatus.NEEDS_REVIEW
-    elif needs_ai and deps.enricher is not None:
+    if needs_ai and deps.enricher is not None:
         item.status = CrawlItemStatus.PENDING_AI
     elif inline:  # formula images and no AI configured: a human has to fix them
         item.status = CrawlItemStatus.NEEDS_REVIEW
         item.issues = [*item.issues, "Có công thức dạng ảnh nhưng chưa cấu hình AI."]
     else:
         item.status = CrawlItemStatus.READY
-    return item
+
+
+async def renormalize_waiting(session: AsyncSession, deps: SilverDeps) -> dict[str, int]:
+    """Apply today's rule-based conversion to questions queued for the AI earlier; those that no longer
+    need it go on to dedup, labelling and the bank. Returns counts per resulting status."""
+    items = list(
+        (
+            await session.scalars(select(CrawledQuestion).where(CrawledQuestion.status == CrawlItemStatus.PENDING_AI))
+        ).all()
+    )
+    for item in items:
+        item.content = normalize_plain_math(item.content)
+        item.choices = [{**c, "content": normalize_plain_math(c["content"])} for c in item.choices]
+        item.explanation = normalize_plain_math(item.explanation or "") or None
+        _route(item, await _config(session, item.site_id), deps)
+    await advance_many(session, deps, items)
+    await session.commit()
+    counts: dict[str, int] = {}
+    for item in items:
+        counts[item.status.value] = counts.get(item.status.value, 0) + 1
+    return counts
 
 
 async def ingest_file(
@@ -276,7 +312,7 @@ async def ingest_file(
 # ---------------------------------------------------------------- AI enrichment
 
 
-async def ai_sweep(session: AsyncSession, deps: SilverDeps, batch: int = 8) -> int:
+async def ai_sweep(session: AsyncSession, deps: SilverDeps, batch: int = 15) -> int:
     """Send PENDING_AI items to Gemini in small batches; returns how many were handled."""
     if deps.enricher is None:
         return 0
@@ -344,7 +380,7 @@ async def ai_sweep(session: AsyncSession, deps: SilverDeps, batch: int = 8) -> i
             item.issues = [*item.issues, "AI chưa chuyển hết công thức dạng ảnh."]
             continue
         item.status = CrawlItemStatus.READY
-        await advance(session, deps, item, await _config(session, item.site_id))
+    await advance_many(session, deps, items)
     await session.commit()
     return len(items)
 
@@ -375,7 +411,35 @@ def same_question(a: CrawledQuestion | Question, b: CrawledQuestion | Question) 
     return ratio >= TEXT_RATIO and _answer_key(a) == _answer_key(b)
 
 
-async def advance(session: AsyncSession, deps: SilverDeps, item: CrawledQuestion, config: SiteConfig) -> None:
+async def advance_many(session: AsyncSession, deps: SilverDeps, items: list[CrawledQuestion]) -> bool:
+    """advance() the READY items with ONE embedding request for all of them (the free tier counts requests).
+    Returns False when embeddings are unavailable: the items stay READY for retry_ready."""
+    ready = [i for i in items if i.status == CrawlItemStatus.READY]
+    if not ready:
+        return True
+    vectors: dict[int, list[float]] = {}
+    if deps.embedder is not None:
+        try:
+            embedded = await deps.embedder.embed([_embedding_text(i) for i in ready])
+        except Exception as exc:  # noqa: BLE001 - quota / outage
+            log.warning("Embeddings unavailable, %s questions wait: %s", len(ready), exc)
+            return False
+        vectors = {i.id: v for i, v in zip(ready, embedded, strict=True)}
+    for item in ready:
+        await advance(
+            session, deps, item, await _config(session, item.site_id), vector=vectors.get(item.id), embedded=True
+        )
+    return True
+
+
+async def advance(
+    session: AsyncSession,
+    deps: SilverDeps,
+    item: CrawledQuestion,
+    config: SiteConfig,
+    vector: list[float] | None = None,
+    embedded: bool = False,
+) -> None:
     """READY item: exact dedup -> semantic dedup -> labelling -> Gold (when the site auto-publishes)."""
     item.duplicate_of = None  # a re-check starts from scratch
     item.content_hash = content_hash(item.question_type.value, item.content, (c["content"] for c in item.choices))
@@ -399,14 +463,14 @@ async def advance(session: AsyncSession, deps: SilverDeps, item: CrawledQuestion
     # physics questions on one topic are all close (~0.92+), and "gia tốc cực tiểu" vs "li độ cực tiểu" scores 0.97
     # with a different answer, so cosine only nominates candidates: a candidate is a duplicate when the texts are
     # nearly identical and the answer is the same.
-    vector = None
-    if deps.embedder is not None:
+    if deps.embedder is not None and not embedded:
         try:
             vector = (await deps.embedder.embed([_embedding_text(item)]))[0]
         except Exception as exc:  # noqa: BLE001 - embeddings out of quota: retry later (retry_ready)
             log.warning("Embedding unavailable, item %s waits: %s", item.id, exc)
             item.status = CrawlItemStatus.READY
             return
+    if deps.embedder is not None and vector is not None:
         distance = Question.embedding.cosine_distance(vector)
         candidates = (
             await session.execute(
@@ -549,8 +613,10 @@ async def retry_ready(session: AsyncSession, deps: SilverDeps, batch: int = 20) 
     )
     for item in items:
         item.updated_at = datetime.now(UTC)
-        await advance(session, deps, item, await _config(session, item.site_id))
+    ok = await advance_many(session, deps, items)
     await session.commit()
+    if not ok:
+        raise AIUnavailable("embeddings unavailable")  # the sweep backs off instead of retrying every second
     return sum(1 for i in items if i.status != CrawlItemStatus.READY)
 
 

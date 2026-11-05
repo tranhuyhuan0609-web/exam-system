@@ -99,6 +99,7 @@ class SiteConfig(BaseModel):
     respect_robots: bool = True
     auto_publish: bool = True  # questions that pass dedup and labelling go straight to the bank
     verify_answers: bool = False  # the AI re-checks the source's answer key (sources known to contain mistakes)
+    verify_ratio: float = Field(1.0, ge=0, le=1)  # share of the questions checked (stable sample by id)
     default_difficulty: str = "UNDERSTANDING"
     rate_limit: RateLimit = RateLimit()
     seeds: list[Seed]
