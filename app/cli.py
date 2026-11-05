@@ -141,7 +141,15 @@ async def recrop_figures() -> int:
     import pymupdf
     from PIL import Image
 
-    from app.ai.figures import SNAP_PAD_PX, cut, locate_crop, page_geometry, snap_to_graphics, trim_cut_text
+    from app.ai.figures import (
+        SNAP_PAD_PX,
+        cut,
+        locate_crop,
+        page_geometry,
+        remove_light_text,
+        snap_to_graphics,
+        trim_cut_text,
+    )
     from app.ai.pipeline import page_key
     from app.ai.schemas import BoundingBox
     from app.infrastructure.storage import StorageError, get_storage
@@ -157,13 +165,25 @@ async def recrop_figures() -> int:
 
     async with SessionLocal() as session:
         for job in (await session.scalars(select(ImportJob).order_by(ImportJob.id))).all():
-            geometries = None
+            geometries, clean_pages, pdf_bytes = None, {}, b""
             if job.stored_path.lower().endswith(".pdf"):
                 try:
-                    with pymupdf.open(stream=await storage.get(job.stored_path), filetype="pdf") as doc:
+                    pdf_bytes = await storage.get(job.stored_path)
+                    with pymupdf.open(stream=pdf_bytes, filetype="pdf") as doc:
                         geometries = [page_geometry(page) for page in doc]
                 except (StorageError, RuntimeError):
                     geometries = None
+
+            def clean_render(number: int, width: int, clean_pages=clean_pages, pdf_bytes=pdf_bytes) -> Image.Image:
+                """The PDF page without watermark text, at the resolution of the stored page image."""
+                if number not in clean_pages:
+                    with pymupdf.open(stream=pdf_bytes, filetype="pdf") as doc:
+                        page = doc[number - 1]
+                        remove_light_text(page)
+                        pix = page.get_pixmap(dpi=round(width / (page.rect.width / 72)))
+                        clean_pages[number] = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+                return clean_pages[number]
+
             drafts = [dict(d) for d in job.drafts or []]
             for d in drafts:
                 key = d.get("figure")
@@ -178,7 +198,8 @@ async def recrop_figures() -> int:
                 position = locate_crop(page, crop) if geometries and not stored else None
                 if geometries and stored:
                     snapped = snap_to_graphics(BoundingBox(**stored), geometries[(d.get("page") or 1) - 1])
-                    if snapped and (figure := cut(page, snapped, SNAP_PAD_PX, SNAP_PAD_PX)) is not None:
+                    clean = clean_render(d.get("page") or 1, page.width) if snapped else page
+                    if snapped and (figure := cut(clean, snapped, SNAP_PAD_PX, SNAP_PAD_PX)) is not None:
                         await save(key, figure)
                         done[key] = f"snapped from the stored box, {crop.size} -> {figure.size}"
                         continue
@@ -192,7 +213,8 @@ async def recrop_figures() -> int:
                         xmax=(x + crop.width) * 1000 // width,
                     )
                     snapped = snap_to_graphics(region, geometries[(d.get("page") or 1) - 1])
-                    if snapped and (figure := cut(page, snapped, SNAP_PAD_PX, SNAP_PAD_PX)) is not None:
+                    clean = clean_render(d.get("page") or 1, page.width) if snapped else page
+                    if snapped and (figure := cut(clean, snapped, SNAP_PAD_PX, SNAP_PAD_PX)) is not None:
                         await save(key, figure)
                         d["figure_bbox"] = region.model_dump()
                         done[key] = f"snapped to vector graphics, {crop.size} -> {figure.size}"

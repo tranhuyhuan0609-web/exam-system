@@ -4,10 +4,31 @@
 {% block content %}
 <p class="muted"><a href="/exams/{{ exam.id }}">← {{ exam.title }}</a></p>
 
+{% if grading_pending %}
+  <div class="flash flash-info" id="grading-banner" data-url="/api/attempts/{{ attempt.id }}/grading">
+    ⏳ AI đang chấm phần tự luận. Điểm bên dưới là điểm tạm tính (tự luận chưa được cộng); trang sẽ tự cập nhật.
+  </div>
+  <script>
+    (() => {
+      const banner = document.getElementById("grading-banner");
+      async function poll() {
+        try {
+          const res = await fetch(banner.dataset.url, { cache: "no-store" });
+          const data = await res.json();
+          if (data.grading_status !== "PENDING_AI") return location.reload();
+        } catch (e) { /* keep polling */ }
+        setTimeout(poll, 4000);
+      }
+      setTimeout(poll, 4000);
+    })();
+  </script>
+{% elif grading_failed %}
+  <div class="flash flash-error">AI chưa chấm được phần tự luận; các câu tự luận tạm tính 0 điểm.</div>
+{% endif %}
 <div class="card result-head">
   <div class="score-ring {{ 'good' if attempt.score >= 8 else ('ok' if attempt.score >= 5 else 'low') }}">
     <div class="score-value">{{ "%g" % attempt.score }}</div>
-    <div class="muted small">/ 10 điểm</div>
+    <div class="muted small">/ 10 điểm{% if grading_pending %} · tạm tính{% endif %}</div>
   </div>
   <div class="grow">
     <h1>{{ exam.title }}</h1>
@@ -16,6 +37,7 @@
       {% if unanswered %}<span>⚪ Bỏ trống {{ unanswered }} câu</span>{% endif %}
       <span>⏱ Thời gian làm: {{ time_spent | duration }}</span>
       <span>🔁 Lần #{{ attempt.attempt_no }}</span>
+      {% if chosen_parts %}<span>🧩 {% for p in chosen_parts %}{{ TYPE_LABELS[p] }}{{ " + " if not loop.last }}{% endfor %}</span>{% endif %}
       <span class="muted">Nộp lúc {{ attempt.submitted_at | local_dt }}</span>
     </div>
     <div class="row mt">
@@ -32,8 +54,8 @@
   <div class="palette result-palette">
     {% for r in rows %}<a href="#r-{{ r.number }}" class="{{ r.status }}">{{ r.number }}</a>{% endfor %}
   </div>
-  <p class="hint mt"><span class="dot correct"></span> Đúng · <span class="dot partial"></span> Đúng một phần · <span class="dot wrong"></span> Sai · <span class="dot unanswered"></span> Bỏ trống</p>
-  <p class="hint">Điểm theo cấu trúc THPT: trắc nghiệm 0,25 · đúng/sai 0,1 – 0,25 – 0,5 – 1 (đúng 1–4 ý) · trả lời ngắn 0,25; quy về thang 10.</p>
+  <p class="hint mt"><span class="dot correct"></span> Đúng · <span class="dot partial"></span> Đúng một phần · <span class="dot wrong"></span> Sai · <span class="dot unanswered"></span> Bỏ trống · <span class="dot pending"></span> Đang chấm</p>
+  <p class="hint">Điểm theo cấu trúc THPT: trắc nghiệm 0,25 · đúng/sai 0,1 – 0,25 – 0,5 – 1 (đúng 1–4 ý) · trả lời ngắn 0,25; tự luận theo điểm từng câu (AI chấm); quy về thang 10.</p>
 </div>
 
 {% for r in rows %}
@@ -43,13 +65,23 @@
       {% if r.status == "correct" %}<span class="badge badge-ok">Đúng</span>
       {% elif r.status == "partial" %}<span class="badge badge-warn">Đúng một phần</span>
       {% elif r.status == "wrong" %}<span class="badge badge-bad">Sai</span>
+      {% elif r.status == "pending" %}<span class="badge badge-warn">⏳ Đang chấm</span>
       {% else %}<span class="badge">Chưa trả lời</span>{% endif %}
       <span class="muted small">{{ "%g" % r.points }}/{{ "%g" % r.max_points }} điểm</span>
     </div>
     <div class="q-content">{{ r.content }}</div>
     {% if r.image_url %}<img class="q-figure" src="{{ r.image_url }}" alt="Hình vẽ câu {{ r.number }}">{% endif %}
 
-    {% if r.type == "TRUE_FALSE" %}
+    {% if r.type == "ESSAY" %}
+      <div class="essay-review">
+        <div class="essay-answer"><div class="muted small">Bài làm của em</div>
+          <div class="q-content">{{ r.answer or "— (bỏ trống)" }}</div></div>
+        {% if r.essay %}
+          <div class="essay-feedback"><div class="muted small">🤖 Nhận xét của AI · {{ "%g" % r.points }}/{{ "%g" % r.max_points }} điểm</div>
+            <div class="q-content">{{ r.essay.feedback }}</div></div>
+        {% endif %}
+      </div>
+    {% elif r.type == "TRUE_FALSE" %}
       <table class="tf-table review">
         <thead><tr><th></th><th>Ý</th><th>Bạn chọn</th><th>Đáp án</th></tr></thead>
         <tbody>
@@ -84,10 +116,11 @@
       </div>
     {% endif %}
 
-    {% if r.explanation %}
+    {% set solution = r.explanation or (r.essay.solution if r.essay else none) %}
+    {% if solution %}
       <details class="explanation" {% if r.status != "correct" %}open{% endif %}>
-        <summary>Lời giải chi tiết</summary>
-        <div class="q-content">{{ r.explanation }}</div>
+        <summary>Lời giải chi tiết{% if not r.explanation %} (AI){% endif %}</summary>
+        <div class="q-content">{{ solution }}</div>
       </details>
     {% endif %}
   </section>

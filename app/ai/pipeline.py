@@ -84,8 +84,6 @@ def _draft(q: ExtractedQuestion, solution: Solution | None, figure: str | None, 
     choices = [clean_choice(c.content) for c in q.choices]
     flags: list[str] = []
     correct, truths, answers = None, [], []
-    if q.type == "ESSAY":
-        flags.append("unsupported_type")
     if solution is None:
         flags.append("no_solution")
     elif q.type == "TRUE_FALSE":
@@ -133,7 +131,7 @@ def normalize_draft(draft: dict[str, Any]) -> dict[str, Any]:
     if not d.get("answers"):
         number = extract_number(d.get("short_answer") or "") or extract_number(d.get("final_value") or "")
         d["answers"] = [number] if d.get("type") == "SHORT_ANSWER" and number else []
-    if d.get("type") in ("TRUE_FALSE", "SHORT_ANSWER"):
+    if d.get("type") in ("TRUE_FALSE", "SHORT_ANSWER", "ESSAY"):
         d["flags"] = [f for f in d.get("flags", []) if f != "unsupported_type"]
     return d
 

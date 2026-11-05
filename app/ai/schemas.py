@@ -67,3 +67,18 @@ class Solution(BaseModel):
 
 class SolveResult(BaseModel):
     solutions: list[Solution]
+
+
+class EssayGrade(BaseModel):
+    number: int
+    reference_solution: str = Field(
+        description="Lời giải đúng, từng bước, tiếng Việt, công thức LaTeX trong $...$ (dùng lời giải mẫu nếu được cung cấp)"
+    )
+    feedback: str = Field(
+        description="Nhận xét bài làm của học sinh: ý đúng, chỗ sai (sai công thức, đơn vị, tính toán), cách sửa. Xưng 'em'."
+    )
+    points: float = Field(description="Điểm của bài làm, từ 0 đến max_points, làm tròn tới 0,25")
+
+
+class EssayGradeResult(BaseModel):
+    grades: list[EssayGrade]

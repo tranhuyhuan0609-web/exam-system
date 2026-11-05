@@ -38,6 +38,7 @@ class QuestionType(StrEnum):
     MULTIPLE_CHOICE = "MULTIPLE_CHOICE"  # Phần I: one correct option
     TRUE_FALSE = "TRUE_FALSE"  # Phần II: four statements, each true or false
     SHORT_ANSWER = "SHORT_ANSWER"  # Phần III: type a short (numeric) answer
+    ESSAY = "ESSAY"  # tự luận: free-form worked answer, graded by AI against the model solution
 
 
 class SourceType(StrEnum):
@@ -62,6 +63,12 @@ class JobStatus(StrEnum):
     PROCESSING = "PROCESSING"
     DONE = "DONE"  # drafts ready for review
     FAILED = "FAILED"
+
+
+class GradingStatus(StrEnum):
+    COMPLETE = "COMPLETE"  # every question graded
+    PENDING_AI = "PENDING_AI"  # essays waiting for the AI grader (worker)
+    FAILED = "FAILED"  # the AI grader gave up; essays count as 0 until regraded
 
 
 class AttemptStatus(StrEnum):
@@ -160,6 +167,8 @@ class Question(TimestampMixin, UpdatedAtMixin, Base):
     choices: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     # SHORT_ANSWER only: accepted answers, compared after normalisation ("1.50" == "1,5").
     accepted_answers: Mapped[list[str] | None] = mapped_column(JSONB)
+    # Points for ESSAY questions (other types use the THPT weights); NULL = default.
+    points: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     explanation: Mapped[str | None] = mapped_column(Text)
     # Figure (graph, circuit...): storage key under figures/, publicly readable.
     image_path: Mapped[str | None] = mapped_column(String(300))
@@ -197,6 +206,8 @@ class Exam(TimestampMixin, UpdatedAtMixin, Base):
     matrix: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
     shuffle_questions: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     shuffle_choices: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Students may pick which parts (multiple choice, true/false, short answer, essay) to practise.
+    allow_custom_parts: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
     __table_args__ = (
@@ -234,6 +245,14 @@ class ExamAttempt(Base):
     total_questions: Mapped[int] = mapped_column(Integer)
     correct_count: Mapped[int | None] = mapped_column(Integer)
     score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    grading_status: Mapped[GradingStatus] = mapped_column(
+        _enum(GradingStatus, "grading_status"),
+        default=GradingStatus.COMPLETE,
+        server_default=GradingStatus.COMPLETE.value,
+    )
+    # {"<question_id>": {"points": "0.75", "max_points": "1", "feedback": "...", "solution": "..."}}
+    essay_grades: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    grading_tries: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     __table_args__ = (
         UniqueConstraint("user_id", "exam_id", "attempt_no", name="uq_attempts_user_exam_no"),

@@ -30,6 +30,8 @@ class PageGeometry:
     """Graphics and words of one PDF page, as 0–1000 boxes (same scale as the model's boxes)."""
 
     graphics: list[BoundingBox] = field(default_factory=list)
+    # Same page rendered without watermark text (light-coloured text); figures are cut from this image.
+    figure_png: Path | None = None
     # Text lines, each a list of word boxes. A line that runs outside a figure is question text, not a label.
     lines: list[list[BoundingBox]] = field(default_factory=list)
 
@@ -71,12 +73,44 @@ def page_geometry(page) -> PageGeometry:
     for info in page.get_image_info():
         if box := norm(*info["bbox"]):
             geometry.graphics.append(box)
-    lines: dict[tuple[int, int], list[BoundingBox]] = {}
-    for x0, y0, x1, y1, _word, block, line, _n in page.get_text("words"):
-        if box := norm(x0, y0, x1, y1):
-            lines.setdefault((block, line), []).append(box)
-    geometry.lines = list(lines.values())
+    for block in page.get_text("dict")["blocks"]:
+        for line in block.get("lines", []):
+            boxes = [
+                box
+                for span in line["spans"]
+                if span["text"].strip() and not is_light_text(span) and (box := norm(*span["bbox"]))
+            ]
+            if boxes:
+                geometry.lines.append(boxes)
     return geometry
+
+
+def is_light_text(span: dict) -> bool:
+    """Watermark-style text: light grey/colour or mostly transparent (e.g. a teacher's logo inside figures)."""
+    colour = span.get("color", 0)
+    r, g, b = (colour >> 16) & 255, (colour >> 8) & 255, colour & 255
+    luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+    return luminance > LIGHT_LUMINANCE - 0.1 or span.get("alpha", 255) < 128
+
+
+def remove_light_text(page) -> int:
+    """Redact watermark-style text from a PyMuPDF page in memory (drawings and images are kept)."""
+    import pymupdf
+
+    count = 0
+    for block in page.get_text("dict")["blocks"]:
+        for line in block.get("lines", []):
+            for span in line["spans"]:
+                if span["text"].strip() and is_light_text(span):
+                    page.add_redact_annot(pymupdf.Rect(span["bbox"]))
+                    count += 1
+    if count:
+        page.apply_redactions(
+            images=pymupdf.PDF_REDACT_IMAGE_NONE,
+            graphics=pymupdf.PDF_REDACT_LINE_ART_NONE,
+            text=pymupdf.PDF_REDACT_TEXT_REMOVE,
+        )
+    return count
 
 
 def _area(b: BoundingBox) -> int:
@@ -191,7 +225,8 @@ def trim_cut_text(img: Image.Image, pad: int = SNAP_PAD_PX) -> Image.Image:
 def crop_figure(page_png: Path, box: BoundingBox, target: Path, geometry: PageGeometry | None = None) -> bool:
     """Cut the figure of `box` (0–1000 scale) out of the page. Returns False for degenerate boxes."""
     snapped = snap_to_graphics(box, geometry)
-    with Image.open(page_png) as img:
+    source = geometry.figure_png if snapped and geometry and geometry.figure_png else page_png
+    with Image.open(source) as img:
         width, height = img.size
         use = snapped or box
         if snapped:

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Body, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 
-from app.application.paper import question_count
+from app.application.paper import available_parts, question_count
 from app.attempts import (
     AttemptClosed,
     AttemptError,
@@ -20,7 +20,7 @@ from app.attempts import (
     submit,
 )
 from app.deps import ApiUser, CurrentUser, LoggedInUser, SessionDep
-from app.models import AttemptStatus, Exam, ExamAttempt, ExamMode, User, UserRole
+from app.models import AttemptStatus, Exam, ExamAttempt, ExamMode, GradingStatus, User, UserRole
 from app.routers.admin.common import redirect
 from app.scope import load_subject_tree, scope_of, scope_paths
 from app.templating import flash, templates
@@ -149,6 +149,7 @@ async def exam_page(request: Request, user: CurrentUser, session: SessionDep, ex
             "now": now,
             "limit_reached": exam.max_attempts is not None and used >= exam.max_attempts and not current,
             "best_score": max((a.score for a in attempts if a.score is not None), default=None),
+            "parts": await available_parts(session, exam),
             "scope_path": scope_paths(await load_subject_tree(session, exam.subject_id)).get(scope_of(exam).key, ""),
         },
     )
@@ -157,8 +158,11 @@ async def exam_page(request: Request, user: CurrentUser, session: SessionDep, ex
 @router.post("/exams/{exam_id}/start")
 async def start_exam(request: Request, user: LoggedInUser, session: SessionDep, exam_id: int):
     exam = await _get_visible_exam(session, exam_id, user)
+    form = await request.form()
+    # "custom" is present when the student used the part picker; otherwise the full exam is started.
+    parts = [str(p) for p in form.getlist("parts")] if form.get("custom") == "1" else None
     try:
-        attempt = await start_or_resume(session, user, exam)
+        attempt = await start_or_resume(session, user, exam, parts)
     except AttemptError as exc:
         flash(request, str(exc), "error")
         return redirect(f"/exams/{exam_id}")
@@ -202,6 +206,9 @@ async def attempt_result(request: Request, user: LoggedInUser, session: SessionD
             "rows": rows,
             "unanswered": sum(r["status"] == "unanswered" for r in rows),
             "time_spent": int((attempt.submitted_at - attempt.started_at).total_seconds()),
+            "grading_pending": attempt.grading_status == GradingStatus.PENDING_AI,
+            "grading_failed": attempt.grading_status == GradingStatus.FAILED,
+            "chosen_parts": (attempt.paper_snapshot or {}).get("parts"),
             "can_retry": exam.is_published and (exam.max_attempts is None or used < exam.max_attempts),
         },
         headers=NO_STORE,
@@ -280,5 +287,15 @@ async def autosave_answers(
             "remaining_seconds": remaining_seconds(attempt, now),
             "saved_at": now.isoformat(),
         },
+        headers=NO_STORE,
+    )
+
+
+@router.get("/api/attempts/{attempt_id}/grading")
+async def attempt_grading(user: ApiUser, session: SessionDep, attempt_id: int):
+    """Polled by the result page while the AI grades essays."""
+    attempt = await _own_attempt(session, attempt_id, user)
+    return JSONResponse(
+        {"grading_status": attempt.grading_status.value, "score": str(attempt.score) if attempt.score else None},
         headers=NO_STORE,
     )

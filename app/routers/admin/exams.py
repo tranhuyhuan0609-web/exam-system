@@ -39,6 +39,7 @@ class ExamForm:
     question_source: str = QuestionSource.FIXED.value
     shuffle_questions: bool = False
     shuffle_choices: bool = False
+    allow_custom_parts: bool = True
 
     @classmethod
     def from_exam(cls, e: Exam) -> "ExamForm":
@@ -52,6 +53,7 @@ class ExamForm:
             e.question_source.value,
             e.shuffle_questions,
             e.shuffle_choices,
+            e.allow_custom_parts,
         )
 
 
@@ -66,6 +68,7 @@ class ExamValues:
     question_source: QuestionSource
     shuffle_questions: bool
     shuffle_choices: bool
+    allow_custom_parts: bool
 
 
 async def _parse(session, form: FormData) -> tuple[ExamForm, ExamValues | None, list[str]]:
@@ -79,6 +82,7 @@ async def _parse(session, form: FormData) -> tuple[ExamForm, ExamValues | None, 
         question_source=str(form.get("question_source", QuestionSource.FIXED.value)),
         shuffle_questions=form.get("shuffle_questions") == "on",
         shuffle_choices=form.get("shuffle_choices") == "on",
+        allow_custom_parts=form.get("allow_custom_parts") == "on",
     )
     if data.question_source not in QuestionSource.__members__:
         data.question_source = QuestionSource.FIXED.value
@@ -112,6 +116,7 @@ async def _parse(session, form: FormData) -> tuple[ExamForm, ExamValues | None, 
             QuestionSource(data.question_source),
             data.shuffle_questions,
             data.shuffle_choices,
+            data.allow_custom_parts,
         ),
         [],
     )
@@ -123,6 +128,7 @@ def _apply(exam: Exam, v: ExamValues) -> None:
     exam.duration_seconds, exam.max_attempts, exam.is_published = v.duration_seconds, v.max_attempts, v.is_published
     exam.question_source = v.question_source
     exam.shuffle_questions, exam.shuffle_choices = v.shuffle_questions, v.shuffle_choices
+    exam.allow_custom_parts = v.allow_custom_parts
 
 
 async def _matrix_problem(session, subject_id: int, scope: Scope, matrix) -> str | None:

@@ -72,6 +72,13 @@ Học sinh vào bất cứ lúc nào, chọn bài (VD: Vật lí 11 – Chương
 - [x] PostgreSQL có pgvector (`pgvector/pgvector:pg17`), lưu trữ S3 (RustFS), ảnh trang 300 DPI
 - [x] Bắt đầu tách Clean Architecture: `app/domain/`, `app/infrastructure/`
 
+### Tự luận & tuỳ chọn cấu trúc đề
+- [x] Dạng câu **Tự luận** (điểm tuỳ chỉnh), học sinh trình bày lời giải (có xem trước LaTeX)
+- [x] **Gemini chấm tự luận** ở worker: so với lời giải mẫu (hoặc tự giải), cho điểm từng phần theo bậc 0,25 và nhận xét; điểm tạm tính cho tới khi chấm xong
+- [x] Nút **“🤖 AI giải”** trong form soạn câu: điền lời giải từng bước (và đáp án cho trắc nghiệm / đúng sai / trả lời ngắn)
+- [x] Học sinh **tự chọn cấu trúc đề**: chỉ trắc nghiệm, TN + đúng/sai, TN + ĐS + trả lời ngắn, đủ các phần (thời gian tính theo tỉ lệ số câu)
+- [x] Hình vẽ: bỏ chữ watermark (chữ màu nhạt) khi cắt hình
+
 ### Giai đoạn 2 — Trải nghiệm thực tế & Ngân hàng đề động (Tuần 4–6)
 - [x] Auto-save 2 tầng: IndexedDB mỗi lần chọn + đồng bộ ngầm lên server (2s sau thao tác cuối, chậm nhất 10s; tự thử lại khi mất mạng)
 - [x] Khôi phục phiên `IN_PROGRESS`: các câu đã chọn (server + thay đổi chưa kịp gửi trên máy) + số giây còn lại

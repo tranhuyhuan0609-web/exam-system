@@ -17,6 +17,7 @@ from sqlalchemy import func, select, update
 from app.ai.normalize import NormalizeError
 from app.ai.pipeline import run_pipeline
 from app.ai.provider import AIError, AIProvider, GeminiProvider
+from app.application.essay_grading import grade_pending_essays
 from app.attempts import finalize_expired
 from app.config import get_settings
 from app.db import SessionLocal
@@ -27,6 +28,7 @@ log = logging.getLogger("app.worker")
 
 POLL_SECONDS = 3
 AUTO_SUBMIT_SECONDS = 60
+ESSAY_SECONDS = 5
 # A PROCESSING job untouched for this long belongs to a worker that died; put it back in the queue.
 STALE_AFTER = timedelta(minutes=30)
 
@@ -122,6 +124,25 @@ async def auto_submit_loop() -> None:
         await asyncio.sleep(AUTO_SUBMIT_SECONDS)
 
 
+async def essay_grading_once(provider: AIProvider | None = None) -> int:
+    try:
+        provider = provider or default_provider()
+    except AIError as exc:  # no API key: essays stay pending until one is configured
+        log.warning("Essay grading disabled: %s", exc)
+        return 0
+    return await grade_pending_essays(provider)
+
+
+async def essay_grading_loop() -> None:
+    while True:
+        try:
+            if graded := await essay_grading_once():
+                log.info("AI graded essays of %s attempt(s)", graded)
+        except Exception:
+            log.exception("Essay grading loop failed")
+        await asyncio.sleep(ESSAY_SECONDS)
+
+
 async def ai_jobs_loop(once: bool = False) -> None:
     if requeued := await requeue_stale():
         log.info("Requeued %s stale job(s)", requeued)
@@ -140,10 +161,11 @@ async def run(once: bool = False) -> None:
     log.info("Worker started (models: %s)", get_settings().gemini_models)
     if once:
         await auto_submit_once()
+        await essay_grading_once()
         await ai_jobs_loop(once=True)
         return
-    # Two independent loops: AI import jobs, and the auto-submit sweep every minute.
-    await asyncio.gather(ai_jobs_loop(), auto_submit_loop())
+    # Independent loops: AI import jobs, auto-submit sweep every minute, AI essay grading.
+    await asyncio.gather(ai_jobs_loop(), auto_submit_loop(), essay_grading_loop())
 
 
 def main() -> None:

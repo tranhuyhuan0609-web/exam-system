@@ -25,10 +25,60 @@
   {% elif limit_reached %}
     <button class="btn" disabled>Đã hết lượt làm bài</button>
   {% else %}
-    <form method="post" action="/exams/{{ exam.id }}/start">
-      <button class="btn">▶ Bắt đầu làm bài</button>
+    {% set typed = parts.items() | rejectattr(0, "equalto", "ANY") | list %}
+    <form method="post" action="/exams/{{ exam.id }}/start" id="start-form">
+      {% if exam.allow_custom_parts and typed | length > 1 %}
+        <input type="hidden" name="custom" value="1">
+        <fieldset class="parts-picker">
+          <legend>Chọn cấu trúc đề muốn luyện</legend>
+          <div class="preset-row">
+            {% set keys = typed | map(attribute=0) | list %}
+            {% for label, preset in [("Chỉ trắc nghiệm", ["MULTIPLE_CHOICE"]),
+                                     ("TN + Đúng/Sai", ["MULTIPLE_CHOICE", "TRUE_FALSE"]),
+                                     ("TN + ĐS + Trả lời ngắn", ["MULTIPLE_CHOICE", "TRUE_FALSE", "SHORT_ANSWER"]),
+                                     ("Đủ các phần", keys)] %}
+              {% if preset | select("in", keys) | list | length == preset | length and preset | length <= keys | length %}
+                <button type="button" class="btn btn-outline btn-small preset" data-parts="{{ preset | join(',') }}">{{ label }}</button>
+              {% endif %}
+            {% endfor %}
+          </div>
+          {% for t, n in typed %}
+            <label class="check"><input type="checkbox" name="parts" value="{{ t }}" data-count="{{ n }}" checked>
+              {{ TYPE_LABELS[t] }}{% if n %} <span class="muted">· {{ n }} câu</span>{% endif %}</label>
+          {% endfor %}
+          <p class="hint mt" id="parts-estimate"></p>
+        </fieldset>
+      {% endif %}
+      <button class="btn" id="start-btn">▶ Bắt đầu làm bài</button>
     </form>
-    <p class="hint mt">Đồng hồ {{ exam.duration_seconds | duration }} bắt đầu chạy ngay khi bạn bấm và không dừng lại khi đóng trang.</p>
+    <p class="hint mt">Đồng hồ bắt đầu chạy ngay khi bạn bấm và không dừng lại khi đóng trang.</p>
+    <script>
+      (() => {
+        const boxes = [...document.querySelectorAll("#start-form input[name=parts]")];
+        if (!boxes.length) return;
+        const total = boxes.reduce((n, b) => n + Number(b.dataset.count), 0) + {{ parts.get("ANY", 0) }};
+        const duration = {{ exam.duration_seconds }};
+        const estimate = document.getElementById("parts-estimate");
+        const button = document.getElementById("start-btn");
+        function update() {
+          const picked = boxes.filter((b) => b.checked);
+          const count = picked.reduce((n, b) => n + Number(b.dataset.count), 0);
+          const minutes = picked.length === boxes.length ? Math.round(duration / 60)
+            : Math.max(1, Math.ceil(duration * count / Math.max(total, 1) / 60));
+          button.disabled = !picked.length;
+          estimate.textContent = picked.length
+            ? `Khoảng ${count} câu · ${minutes} phút (thời gian tính theo tỉ lệ số câu của đề)`
+            : "Hãy chọn ít nhất một phần.";
+        }
+        document.querySelectorAll(".preset").forEach((btn) => btn.addEventListener("click", () => {
+          const wanted = btn.dataset.parts.split(",");
+          boxes.forEach((b) => (b.checked = wanted.includes(b.value)));
+          update();
+        }));
+        boxes.forEach((b) => b.addEventListener("change", update));
+        update();
+      })();
+    </script>
   {% endif %}
 </div>
 
@@ -43,7 +93,8 @@
         <td>#{{ a.attempt_no }}</td>
         <td>{{ a.started_at | local_dt }}</td>
         <td>
-          {% if a.status == "SUBMITTED" %}<span class="badge badge-ok">Đã nộp</span>
+          {% if a.status == "SUBMITTED" and a.grading_status == "PENDING_AI" %}<span class="badge badge-warn">⏳ AI đang chấm tự luận</span>
+          {% elif a.status == "SUBMITTED" %}<span class="badge badge-ok">Đã nộp</span>
           {% else %}<a href="/attempts/{{ a.id }}" class="badge badge-warn">Đang làm</a>{% endif %}
         </td>
         <td class="num">{% if a.score is not none %}<strong>{{ "%g" % a.score }}</strong> <span class="muted small">({{ a.correct_count }}/{{ a.total_questions }})</span>{% else %}—{% endif %}</td>

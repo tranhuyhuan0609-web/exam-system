@@ -62,7 +62,7 @@
       </div>
     {% endif %}
 
-    <fieldset class="not-sa">
+    <fieldset class="has-choices">
       <legend>
         <span class="only-mc">Các lựa chọn <span class="muted small">(chọn ô tròn ở đáp án đúng)</span></span>
         <span class="only-tf">4 ý a, b, c, d <span class="muted small">(chọn Đúng / Sai cho từng ý)</span></span>
@@ -77,8 +77,15 @@
       <input name="accepted_answers" id="accepted" value="{{ form.accepted_answers }}" maxlength="100" placeholder="VD: 30   hoặc   1,25; 1,3">
     </label>
     <p class="hint only-sa">Khi chấm, “1.50”, “1,5” và “01,5” được coi là như nhau.</p>
+    <label class="only-essay">Điểm của câu <span class="muted small">(để trống = 1 điểm; học sinh làm xong, AI chấm theo lời giải bên dưới)</span>
+      <input name="points" id="points" value="{{ form.points }}" inputmode="decimal" placeholder="1" style="max-width: 120px">
+    </label>
 
-    <label>Lời giải chi tiết <span class="muted">(hiện cho học sinh sau khi nộp bài)</span>
+    <div class="row ai-solve-row">
+      <button type="button" class="btn btn-outline btn-small" id="ai-solve">🤖 AI giải câu này</button>
+      <span class="muted small" id="ai-solve-status">Gemini giải từng bước (có chạy code để tính số) và điền vào lời giải, đáp án.</span>
+    </div>
+    <label>Lời giải chi tiết <span class="muted">(hiện cho học sinh sau khi nộp bài; với tự luận còn là đáp án mẫu để AI chấm)</span>
       <textarea name="explanation" id="explanation" rows="4">{{ form.explanation }}</textarea>
     </label>
 
@@ -134,7 +141,7 @@
       const radio = row.querySelector("input[type=radio]");
       radio.value = i;
       radio.required = t === "MULTIPLE_CHOICE";
-      row.querySelector("textarea").required = t !== "SHORT_ANSWER";
+      row.querySelector("textarea").required = t === "MULTIPLE_CHOICE" || t === "TRUE_FALSE";
       row.querySelector("select").required = t === "TRUE_FALSE";
     });
     document.getElementById("accepted").required = t === "SHORT_ANSWER";
@@ -147,7 +154,7 @@
     pv.querySelector(".pv-content").textContent = document.getElementById("content").value;
     const list = pv.querySelector(".pv-choices");
     list.type = t === "TRUE_FALSE" ? "a" : "A";
-    list.replaceChildren(...(t === "SHORT_ANSWER" ? [] : rows().map((row) => {
+    list.replaceChildren(...(t === "SHORT_ANSWER" || t === "ESSAY" ? [] : rows().map((row) => {
       const li = document.createElement("li");
       let text = row.querySelector("textarea").value;
       if (t === "TRUE_FALSE") {
@@ -178,6 +185,45 @@
     e.target.closest(".choice-row").remove();
     renumber();
   });
+  // ---- AI solve: fills the explanation (and the answer for objective types)
+  const solveBtn = document.getElementById("ai-solve");
+  const solveStatus = document.getElementById("ai-solve-status");
+  solveBtn.addEventListener("click", async () => {
+    const content = document.getElementById("content").value.trim();
+    if (!content) { solveStatus.textContent = "Hãy nhập nội dung câu hỏi trước."; return; }
+    solveBtn.disabled = true;
+    solveStatus.textContent = "⏳ AI đang giải (khoảng 20–60 giây)…";
+    try {
+      const res = await fetch("/admin/questions/ai-solve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: type(),
+          content,
+          choices: rows().map((row) => row.querySelector("textarea").value),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Lỗi " + res.status);
+      document.getElementById("explanation").value = data.explanation;
+      if (data.correct !== null && data.correct !== undefined) {
+        const radio = rows()[data.correct]?.querySelector("input[type=radio]");
+        if (radio) radio.checked = true;
+      }
+      if (Array.isArray(data.truths)) {
+        rows().forEach((row, i) => { if (i < data.truths.length) row.querySelector("select").value = data.truths[i] ? "1" : "0"; });
+      }
+      if (data.short_answer) document.getElementById("accepted").value = data.short_answer;
+      if (data.difficulty) form.querySelector("select[name=difficulty]").value = data.difficulty;
+      solveStatus.textContent = "✓ Đã điền lời giải" + (data.final_value ? " · kết quả: " + data.final_value : "") + ". Hãy kiểm tra lại trước khi lưu.";
+      preview();
+    } catch (err) {
+      solveStatus.textContent = "⚠ " + err.message;
+    } finally {
+      solveBtn.disabled = false;
+    }
+  });
+
   renumber();
 })();
 </script>

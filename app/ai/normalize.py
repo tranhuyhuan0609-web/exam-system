@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from app.ai.figures import PageGeometry, page_geometry
+from app.ai.figures import PageGeometry, page_geometry, remove_light_text
 
 PDF_EXTENSIONS = (".pdf",)
 WORD_EXTENSIONS = (".docx", ".doc")
@@ -76,9 +76,14 @@ def pdf_to_pages(pdf: Path, out_dir: Path, dpi: int = RENDER_DPI) -> tuple[list[
         paths, geometries = [], []
         for index, page in enumerate(doc, start=1):
             path = out_dir / f"page-{index:03d}.png"
-            page.get_pixmap(dpi=dpi).save(path)
+            page.get_pixmap(dpi=dpi).save(path)  # original, for the AI and the review screen
             paths.append(path)
-            geometries.append(page_geometry(page))
+            geometry = page_geometry(page)
+            if remove_light_text(page):  # figures are cut from a render without watermark text
+                clean = out_dir / f"page-{index:03d}-clean.png"
+                page.get_pixmap(dpi=dpi).save(clean)
+                geometry.figure_png = clean
+            geometries.append(geometry)
     return paths, geometries
 
 

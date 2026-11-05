@@ -27,6 +27,8 @@
     Đảo thứ tự câu (trong từng phần I, II, III)</label>
   <label class="check"><input type="checkbox" name="shuffle_choices" {% if form.shuffle_choices %}checked{% endif %}>
     Đảo vị trí đáp án A, B, C, D (câu trắc nghiệm)</label>
+  <label class="check"><input type="checkbox" name="allow_custom_parts" {% if form.allow_custom_parts %}checked{% endif %}>
+    Cho học sinh tự chọn phần muốn làm (chỉ trắc nghiệm, TN + đúng/sai, …)</label>
 </fieldset>
 {% if show_publish %}
   <label class="check"><input type="checkbox" name="is_published" {% if form.is_published %}checked{% endif %}> Công khai cho học sinh</label>
