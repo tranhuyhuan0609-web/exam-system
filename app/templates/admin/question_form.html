@@ -57,7 +57,7 @@
 
     {% if question and question.image_path %}
       <div class="figure-edit">
-        <img class="q-figure small-figure" src="/media/{{ question.image_path }}" alt="Hình vẽ">
+        <img class="q-figure small-figure" src="{{ media_url(question.image_path) }}" alt="Hình vẽ">
         <label class="check"><input type="checkbox" name="remove_image"> Bỏ hình vẽ này</label>
       </div>
     {% endif %}

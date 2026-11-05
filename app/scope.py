@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models import Chapter, Lesson, Subject
 
-_INDENT = " " * 4
+_INDENT = "\u00a0" * 4
 
 
 @dataclass(frozen=True)

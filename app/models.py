@@ -40,6 +40,13 @@ class QuestionType(StrEnum):
     SHORT_ANSWER = "SHORT_ANSWER"  # Phần III: type a short (numeric) answer
 
 
+class SourceType(StrEnum):
+    MANUAL = "MANUAL"  # typed in the admin form
+    FILE_IMPORT = "FILE_IMPORT"  # Excel / Word / text template
+    AI_UPLOAD = "AI_UPLOAD"  # extracted and solved by the AI pipeline
+    CRAWLER = "CRAWLER"  # collected from the web (phase 4)
+
+
 class ExamMode(StrEnum):
     PRACTICE = "PRACTICE"  # self-paced, start any time
     SCHEDULED = "SCHEDULED"  # fixed time window (phase 3)
@@ -149,8 +156,15 @@ class Question(TimestampMixin, UpdatedAtMixin, Base):
     # SHORT_ANSWER only: accepted answers, compared after normalisation ("1.50" == "1,5").
     accepted_answers: Mapped[list[str] | None] = mapped_column(JSONB)
     explanation: Mapped[str | None] = mapped_column(Text)
-    # Figure (graph, circuit...) relative to <data_dir>/media, served publicly under /media/.
+    # Figure (graph, circuit...): storage key under figures/, publicly readable.
     image_path: Mapped[str | None] = mapped_column(String(300))
+    source_type: Mapped[SourceType] = mapped_column(
+        _enum(SourceType, "source_type"), default=SourceType.MANUAL, server_default=SourceType.MANUAL.value
+    )
+    # SHA-256 of the normalised type + text + options (app/domain/question_hash.py), for exact-duplicate checks.
+    content_hash: Mapped[str | None] = mapped_column(String(64), index=True)
+    # Only verified questions can be put into exams; crawled questions start unverified.
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
 
 class Exam(TimestampMixin, UpdatedAtMixin, Base):

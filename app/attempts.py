@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.infrastructure.storage import media_url
 from app.models import AttemptStatus, Exam, ExamAttempt, ExamQuestion, Question, QuestionType, User
 from app.question_rules import (
     SHORT_ANSWER_MAX_LEN,
@@ -46,7 +47,7 @@ def build_snapshot(questions: list[Question]) -> dict[str, Any]:
                 ],
                 "accepted_answers": list(q.accepted_answers or []),
                 "explanation": q.explanation,
-                "image_url": f"/media/{q.image_path}" if q.image_path else None,
+                "image_url": media_url(q.image_path),
             }
             for q in questions
         ]

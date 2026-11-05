@@ -1,6 +1,7 @@
 services:
+  # PostgreSQL 17 with the pgvector extension (semantic duplicate detection).
   db:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: exam
       POSTGRES_PASSWORD: exam
@@ -8,25 +9,41 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata17:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U exam"]
       interval: 5s
       retries: 10
 
+  # S3-compatible object storage for uploads, rendered pages and question figures.
+  # RustFS is used because MinIO no longer publishes server images; any S3 store works (see .env.example).
+  s3:
+    image: rustfs/rustfs:latest
+    environment:
+      RUSTFS_ACCESS_KEY: rustfsadmin
+      RUSTFS_SECRET_KEY: rustfsadmin
+    ports:
+      - "9000:9000"  # S3 API (figures are served from here)
+      - "9001:9001"  # web console
+    volumes:
+      - s3data:/data
+
   app:
     build: .
     env_file: .env  # SECRET_KEY, GEMINI_API_KEY...
-    environment:
+    environment: &app-env
       DATABASE_URL: postgresql+asyncpg://exam:exam@db:5432/exam
       DATA_DIR: /app/data
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT: s3:9000
+      S3_PUBLIC_URL: http://localhost:9000
     ports:
       - "8000:8000"
-    volumes:
-      - ./data:/app/data
     depends_on:
       db:
         condition: service_healthy
+      s3:
+        condition: service_started
 
   # Processes AI import jobs (PDF / Word / photos). Includes LibreOffice for .docx files.
   worker:
@@ -34,14 +51,13 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     env_file: .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://exam:exam@db:5432/exam
-      DATA_DIR: /app/data
-    volumes:
-      - ./data:/app/data
+    environment: *app-env
     depends_on:
       db:
         condition: service_healthy
+      s3:
+        condition: service_started
 
 volumes:
-  pgdata:
+  pgdata17:
+  s3data:

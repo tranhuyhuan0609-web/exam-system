@@ -254,3 +254,4 @@ pre.sample { background: #f8fafc; border: 1px solid var(--border); border-radius
 .tf-truth { font-weight: 600; margin-left: 6px; }
 .tf-truth.t { color: #166534; }
 .tf-truth.f { color: var(--danger); }
+.source-badge { background: #f1f5f9; color: #475569; }

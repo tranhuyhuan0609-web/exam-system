@@ -119,7 +119,7 @@ async def _render_detail(
     items = await _items(session, exam.id)
     in_exam = {q.id for _, q in items}
 
-    pick_conditions = [Question.subject_id == exam.subject_id]
+    pick_conditions = [Question.subject_id == exam.subject_id, Question.is_verified]
     picked_scope = await resolve_scope(session, pick_scope or scope_of(exam).key)
     if picked_scope and picked_scope.subject_id == exam.subject_id:
         pick_conditions += picked_scope.conditions(Question)
@@ -243,11 +243,11 @@ async def add_questions(request: Request, session: SessionDep, exam_id: int):
     existing = set(
         (await session.scalars(select(ExamQuestion.question_id).where(ExamQuestion.exam_id == exam_id))).all()
     )
-    # Only questions from the exam's own subject can be added.
+    # Only verified questions from the exam's own subject can be added.
     valid = (
         await session.scalars(
             select(Question.id)
-            .where(Question.id.in_(ids - existing), Question.subject_id == exam.subject_id)
+            .where(Question.id.in_(ids - existing), Question.subject_id == exam.subject_id, Question.is_verified)
             .order_by(Question.id)
         )
     ).all()

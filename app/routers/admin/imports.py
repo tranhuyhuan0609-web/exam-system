@@ -12,8 +12,9 @@ from sqlalchemy import func, select
 from starlette.datastructures import FormData
 
 from app.deps import AdminUser, SessionDep
+from app.domain.question_hash import content_hash
 from app.import_templates import TEXT_RULES, sample_docx, sample_text, sample_xlsx
-from app.models import Difficulty, Exam, ExamMode, ExamQuestion, Question, QuestionType
+from app.models import Difficulty, Exam, ExamMode, ExamQuestion, Question, QuestionType, SourceType
 from app.question_import import (
     MAX_FILE_BYTES,
     MAX_QUESTIONS,
@@ -137,19 +138,15 @@ async def import_preview(
     if errors:
         return await _render_form(request, session, user, settings, errors)
 
-    # Flag exact duplicates of questions already in this subject, or repeated within the file.
-    contents = [q.content for q in questions if q.content]
+    # Flag exact duplicates (same normalised text and options) already in the bank, or repeated within the file.
+    hashes = [content_hash(q.type, q.content, q.choices) for q in questions]
     existing = set(
-        (
-            await session.scalars(
-                select(Question.content).where(Question.subject_id == scope.subject_id, Question.content.in_(contents))
-            )
-        ).all()
+        (await session.scalars(select(Question.content_hash).where(Question.content_hash.in_(hashes)))).all()
     )
     seen: set[str] = set()
-    for q in questions:
-        q.duplicate = q.content in existing or q.content in seen
-        seen.add(q.content)
+    for q, digest in zip(questions, hashes, strict=True):
+        q.duplicate = digest in existing or digest in seen
+        seen.add(digest)
 
     subjects = await load_subject_tree(session)
     return templates.TemplateResponse(
@@ -207,6 +204,8 @@ async def import_confirm(request: Request, user: AdminUser, session: SessionDep)
                 choices=parsed.stored_choices(),
                 accepted_answers=parsed.answers if parsed.type == QuestionType.SHORT_ANSWER else None,
                 explanation=parsed.explanation.strip() or None,
+                source_type=SourceType.FILE_IMPORT,
+                content_hash=content_hash(parsed.type, parsed.content.strip(), parsed.choices),
             )
         )
     if not created:

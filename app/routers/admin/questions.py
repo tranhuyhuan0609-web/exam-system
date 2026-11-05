@@ -8,6 +8,7 @@ from starlette.datastructures import FormData
 
 from app import question_rules as rules
 from app.deps import AdminUser, SessionDep
+from app.domain.question_hash import hash_of_choices
 from app.models import QUESTION_MAX_CHOICES, Difficulty, Exam, ExamQuestion, Question, QuestionType
 from app.routers.admin.common import get_or_404, redirect
 from app.scope import Scope, load_subject_tree, resolve_scope, scope_of, scope_options, scope_paths
@@ -95,6 +96,7 @@ def _apply(question: Question, data: QuestionForm, scope: Scope) -> None:
     question.accepted_answers = (
         rules.split_accepted(data.accepted_answers) if data.question_type == QuestionType.SHORT_ANSWER else None
     )
+    question.content_hash = hash_of_choices(data.question_type, data.content, data.choices)
 
 
 async def _exams_using(session, question_id: int) -> list[Exam]:
@@ -127,10 +129,13 @@ async def list_questions(
     scope: str = "",
     difficulty: str = "",
     qtype: str = "",
+    verified: str = "",
     q: str = "",
     page: int = 1,
 ):
     conditions = []
+    if verified in ("yes", "no"):
+        conditions.append(Question.is_verified == (verified == "yes"))
     if qtype in QuestionType.__members__:
         conditions.append(Question.question_type == QuestionType(qtype))
     if selected := await resolve_scope(session, scope):
@@ -154,7 +159,7 @@ async def list_questions(
     ).all()
 
     subjects = await load_subject_tree(session)
-    filters = {"scope": scope, "difficulty": difficulty, "qtype": qtype, "q": q}
+    filters = {"scope": scope, "difficulty": difficulty, "qtype": qtype, "verified": verified, "q": q}
     return templates.TemplateResponse(
         request,
         "admin/questions.html",
@@ -228,3 +233,12 @@ async def delete_question(request: Request, session: SessionDep, question_id: in
     await session.commit()
     flash(request, f"Đã xoá câu hỏi #{question_id}.")
     return redirect("/admin/questions")
+
+
+@router.post("/questions/{question_id}/verify")
+async def verify_question(request: Request, session: SessionDep, question_id: int):
+    question = await get_or_404(session, Question, question_id)
+    question.is_verified = True
+    await session.commit()
+    flash(request, f"Đã duyệt câu #{question_id}; câu này giờ dùng được trong đề thi.")
+    return redirect("/admin/questions?verified=no")

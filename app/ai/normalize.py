@@ -20,7 +20,7 @@ WORD_EXTENSIONS = (".docx", ".doc")
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
 SUPPORTED_EXTENSIONS = PDF_EXTENSIONS + WORD_EXTENSIONS + IMAGE_EXTENSIONS
 
-RENDER_DPI = 200  # enough for small subscripts; ~1650×2340 px for A4
+RENDER_DPI = 300  # sharp subscripts and figure crops; ~2480×3508 px for A4 (AI gets a 1600 px copy)
 MAX_IMAGE_SIDE = 2400
 MAX_PAGES = 30
 FIGURE_PADDING = 0.012  # extra margin around model-reported figure boxes (fraction of the page)

@@ -11,7 +11,6 @@ import asyncio
 import logging
 import sys
 from datetime import timedelta
-from pathlib import Path
 
 from sqlalchemy import func, select, update
 
@@ -20,6 +19,7 @@ from app.ai.pipeline import run_pipeline
 from app.ai.provider import AIError, AIProvider, GeminiProvider
 from app.config import get_settings
 from app.db import SessionLocal
+from app.infrastructure.storage import StorageError, get_storage
 from app.models import ImportJob, JobStatus
 
 log = logging.getLogger("app.worker")
@@ -67,7 +67,6 @@ async def requeue_stale() -> int:
 
 async def process(job_id: int, provider: AIProvider | None = None) -> None:
     settings = get_settings()
-    data_dir = Path(settings.data_dir)
     async with SessionLocal() as session:
         job = await session.get(ImportJob, job_id)
 
@@ -79,14 +78,14 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
             provider = provider or default_provider()
             page_count, drafts = await run_pipeline(
                 job_id=job.id,
-                source=data_dir / job.stored_path,
-                data_dir=data_dir,
+                source_key=job.stored_path,
+                storage=get_storage(),
                 provider=provider,
                 soffice=settings.soffice_path,
                 default_difficulty=job.default_difficulty.value,
                 progress=progress,
             )
-        except (NormalizeError, AIError) as exc:
+        except (NormalizeError, AIError, StorageError) as exc:
             job.status, job.error, job.stage = JobStatus.FAILED, str(exc), "Lỗi"
         except Exception as exc:  # unexpected: keep the worker alive and record what happened
             log.exception("Job %s crashed", job_id)
