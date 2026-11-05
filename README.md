@@ -30,26 +30,29 @@ Test & lint: `pytest -q` · `ruff check .`
 
 Mỗi phần làm xong sẽ được review và duyệt trước khi sang phần tiếp theo.
 
-### Giai đoạn 1 — Core (<100 người)
 - [x] **Phần 0:** Khởi tạo repo, bộ khung FastAPI, Docker Postgres, CI
-- [ ] **Phần 1:** Mô hình dữ liệu (Alembic migrations) + đăng nhập bằng email, phân quyền (admin, thí sinh)
-- [ ] **Phần 2:** Ngân hàng câu hỏi — CRUD câu hỏi, phân loại theo chủ đề & độ khó (Nhận biết / Thông hiểu / Vận dụng)
-- [ ] **Phần 3:** Tạo bài thi — chọn câu hỏi, thời lượng, giờ mở/đóng đề
-- [ ] **Phần 4:** Làm bài — giao diện thí sinh, đồng hồ đếm ngược theo giờ server, payload **không chứa đáp án**
-- [ ] **Phần 5:** Nộp bài & chấm điểm trắc nghiệm tự động, xem kết quả
 
-### Giai đoạn 2 — Reliability
-- [ ] Auto-save đáp án (LocalStorage/IndexedDB + đồng bộ server có debounce, 5–10s)
-- [ ] Khôi phục phiên khi rớt mạng / F5 (trả đúng trạng thái bài làm + thời gian còn lại)
-- [ ] Audit trail — lịch sử chọn đáp án
-- [ ] Đồng bộ đồng hồ kiểu NTP đơn giản (bù trừ độ trễ mạng)
+### Giai đoạn 1 — MVP: Tự luyện theo chương/bài (Tuần 1–3)
+Học sinh vào bất cứ lúc nào, chọn bài (VD: Vật lí 11 – Chương 1), làm bài tính giờ cá nhân, nộp và xem điểm ngay.
+- [ ] **Phần 1:** Database & migration (`users`, `subjects`, `exams`, `questions`, `exam_attempts`) + đăng nhập bằng email, phân quyền admin/học sinh
+- [ ] **Phần 2:** Trang quản trị — môn học, câu hỏi (LaTeX, lựa chọn dạng JSONB, lời giải, độ khó), đề `PRACTICE`
+- [ ] **Phần 3:** Làm bài — danh sách đề, bấm "Bắt đầu" tạo lượt thi (`expires_at = NOW() + duration`), đồng hồ theo giờ server, API đề **lọc bỏ `is_correct`**, hiển thị công thức bằng KaTeX
+- [ ] **Phần 4:** Nộp bài — kiểm tra hạn nộp, chấm điểm đồng bộ, trả lời giải chi tiết; làm lại nhiều lần (`max_attempts = NULL`) và lịch sử điểm
 
-### Giai đoạn 3 — Scale & Security
-- [ ] Cache đề thi trên Redis
-- [ ] Đẩy nộp bài/chấm điểm qua message queue
-- [ ] Sinh mã đề ngẫu nhiên theo ma trận độ khó/chủ đề
-- [ ] Chống gian lận tầng trình duyệt (chuyển tab, fullscreen, copy/paste)
+### Giai đoạn 2 — Trải nghiệm thực tế & Ngân hàng đề động (Tuần 4–6)
+- [ ] Auto-save 2 tầng: IndexedDB mỗi lần chọn + đồng bộ debounce lên server mỗi 5–10s
+- [ ] Khôi phục phiên `IN_PROGRESS`: các câu đã chọn + số giây còn lại
+- [ ] Sinh đề theo ma trận độ khó (Nhận biết / Thông hiểu / Vận dụng), đảo vị trí A/B/C/D
+- [ ] Lưu cấu trúc đề của lượt thi vào `paper_snapshot` (JSONB) để F5 không bị xáo lại
+- [ ] Background worker tự thu bài quá hạn `expires_at` → `SUBMITTED` và chấm điểm
 
-### Về sau
-- [ ] Online proctoring (webcam, nhận diện khuôn mặt)
-- [ ] Tích hợp Safe Exam Browser cho kỳ thi quan trọng
+### Giai đoạn 3 — Thi theo ca cố định & Chịu tải cao (Tuần 7–9)
+- [ ] Chế độ `SCHEDULED`: `available_from` / `available_until`, `max_attempts = 1`, hạn nộp `LEAST(NOW() + duration, available_until)`
+- [ ] Redis: cache đề trước giờ G, auto-save ghi vào Redis Hash
+- [ ] Nộp bài bất đồng bộ qua message queue (RabbitMQ/Kafka), worker chấm và ghi PostgreSQL
+
+### Giai đoạn 4 — Chống gian lận & Phân tích dữ liệu (Tuần 10–12)
+- [ ] Bắt chuyển tab (`visibilitychange`), `blur`, thoát fullscreen, chặn chuột phải/copy
+- [ ] Ghi log vi phạm real-time, tự thu bài khi vượt ngưỡng
+- [ ] Phổ điểm, bảng xếp hạng
+- [ ] Tỷ lệ đúng/sai từng câu để phát hiện câu lỗi và độ khó thực tế
