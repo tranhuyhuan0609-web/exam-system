@@ -112,7 +112,7 @@ class ParsedQuestion:
 
 def _nfc(text: str) -> str:
     # Word often stores Vietnamese in decomposed form; normalise so regexes and duplicate checks work.
-    return unicodedata.normalize("NFC", text).replace(" ", " ")
+    return unicodedata.normalize("NFC", text).replace("\u00a0", " ")
 
 
 def _key(text: str) -> str:

@@ -7,7 +7,7 @@ A draft is a plain dict stored in ImportJob.drafts and edited during review:
         "content": "...", "choices": ["...", "..."], "correct": 2,         # MULTIPLE_CHOICE: index, or None
         "truths": [True, False, ...], "answers": ["30"],                    # TRUE_FALSE / SHORT_ANSWER
         "short_answer": None, "final_value": "25 N", "explanation": "...",
-        "difficulty": "APPLICATION", "figure": "figures/12-ab12cd.png",  # relative to <data_dir>/media
+        "difficulty": "APPLICATION", "figure": "figures/12-ab12cd.png",  # storage key (public)
         "flags": ["no_match"], "question_id": None,                         # set once published
     }
 """
@@ -15,6 +15,7 @@ A draft is a plain dict stored in ImportJob.drafts and edited during review:
 import logging
 import re
 import secrets
+import tempfile
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ from typing import Any
 from app.ai.normalize import crop_figure, thumbnail_bytes, to_page_images
 from app.ai.provider import AIProvider, FigureImage, PageImage
 from app.ai.schemas import ExtractedQuestion, Solution
+from app.infrastructure.storage import Storage
 from app.question_rules import extract_number
 
 log = logging.getLogger(__name__)
@@ -34,17 +36,18 @@ FLAG_LABELS = {
     "no_match": "Kết quả AI tính ra không khớp lựa chọn nào — hãy kiểm tra lại đáp án.",
     "no_solution": "AI chưa giải được câu này — hãy tự chọn đáp án và viết lời giải.",
     "figure_failed": "Câu có hình vẽ nhưng cắt hình không thành công.",
+    "duplicate": "Ngân hàng đã có câu giống hệt (cùng nội dung và lựa chọn).",
 }
 
 Progress = Callable[[str, int, int], Awaitable[None]]
 
 
-def job_dirs(data_dir: Path, job_id: int) -> tuple[Path, Path]:
-    return data_dir / "jobs" / str(job_id) / "pages", data_dir / "media" / "figures"
+def pages_prefix(job_id: int) -> str:
+    return f"pages/{job_id}/"
 
 
-def page_path(data_dir: Path, job_id: int, page: int) -> Path:
-    return job_dirs(data_dir, job_id)[0] / f"page-{page:03d}.png"
+def page_key(job_id: int, page: int) -> str:
+    return f"{pages_prefix(job_id)}page-{page:03d}.png"
 
 
 _TRAILING_DOT_IN_MATH = re.compile(r"\.(\s*\}?\s*\$)$")
@@ -136,73 +139,83 @@ def normalize_draft(draft: dict[str, Any]) -> dict[str, Any]:
 async def run_pipeline(
     *,
     job_id: int,
-    source: Path,
-    data_dir: Path,
+    source_key: str,
+    storage: Storage,
     provider: AIProvider,
     soffice: str,
     default_difficulty: str,
     progress: Progress,
 ) -> tuple[int, list[dict[str, Any]]]:
-    """Process one upload. Returns (page_count, drafts). Raises NormalizeError / AIError on failure."""
-    pages_dir, figures_dir = job_dirs(data_dir, job_id)
+    """Process one upload. Returns (page_count, drafts). Raises NormalizeError / AIError on failure.
 
-    await progress("Đang chuyển file thành ảnh từng trang…", 0, 1)
-    pages = await to_page_images(source, pages_dir, soffice)
+    Heavy work (LibreOffice, PyMuPDF, Pillow) runs in a temporary directory; results are written to storage:
+    pages/<job>/page-NNN.png for the review screen and figures/<name>.png for questions.
+    """
+    with tempfile.TemporaryDirectory(prefix=f"job-{job_id}-") as tmp:
+        work = Path(tmp)
+        await progress("Đang chuyển file thành ảnh từng trang…", 0, 1)
+        source = work / ("source" + Path(source_key).suffix.lower())
+        source.write_bytes(await storage.get(source_key))
+        pages = await to_page_images(source, work / "pages", soffice)
+        for number, page in enumerate(pages, start=1):
+            await storage.put(page_key(job_id, number), page.read_bytes(), "image/png")
 
-    chunks = _chunks(pages)
-    extracted: list[ExtractedQuestion] = []
-    for i, chunk in enumerate(chunks):
-        first, last = chunk[0].number, max(p.number for p in chunk if not p.context_only)
-        await progress(f"AI đang đọc trang {first}–{last} / {len(pages)}…", i, len(chunks))
-        for q in await provider.extract(chunk):
-            if not 1 <= q.page <= len(pages):
-                q.page = first
-            if not any(_same_question(q, seen) for seen in extracted):
-                extracted.append(q)
-    if not extracted:
-        return len(pages), []
+        chunks = _chunks(pages)
+        extracted: list[ExtractedQuestion] = []
+        for i, chunk in enumerate(chunks):
+            first, last = chunk[0].number, max(p.number for p in chunk if not p.context_only)
+            await progress(f"AI đang đọc trang {first}–{last} / {len(pages)}…", i, len(chunks))
+            for q in await provider.extract(chunk):
+                if not 1 <= q.page <= len(pages):
+                    q.page = first
+                if not any(_same_question(q, seen) for seen in extracted):
+                    extracted.append(q)
+        if not extracted:
+            return len(pages), []
 
-    figure_paths: dict[int, str | None] = {}
-    failed: set[int] = set()
-    for index, q in enumerate(extracted):
-        if q.figure_bbox is None:
-            continue
-        name = f"{job_id}-{index + 1}-{secrets.token_hex(6)}.png"  # unguessable: figures are served publicly
-        if crop_figure(pages[q.page - 1], q.figure_bbox, figures_dir / name):
-            figure_paths[index] = f"figures/{name}"
-        else:
-            failed.add(index)
+        figure_keys: dict[int, str] = {}
+        figure_bytes: dict[int, bytes] = {}
+        failed: set[int] = set()
+        for index, q in enumerate(extracted):
+            if q.figure_bbox is None:
+                continue
+            crop = work / "figures" / f"{index + 1}.png"
+            if crop_figure(pages[q.page - 1], q.figure_bbox, crop):
+                key = f"figures/{job_id}-{index + 1}-{secrets.token_hex(6)}.png"  # unguessable: figures are public
+                figure_bytes[index] = crop.read_bytes()
+                await storage.put(key, figure_bytes[index], "image/png")
+                figure_keys[index] = key
+            else:
+                failed.add(index)
 
-    solutions: dict[int, Solution] = {}
-    batches = [list(range(s, min(s + SOLVE_BATCH, len(extracted)))) for s in range(0, len(extracted), SOLVE_BATCH)]
-    for b, indexes in enumerate(batches):
-        questions = [extracted[i] for i in indexes]
-        await progress(
-            f"AI đang giải câu {questions[0].number}–{questions[-1].number} ({len(extracted)} câu)…", b, len(batches)
-        )
-        figures = [
-            FigureImage(extracted[i].number, (data_dir / "media" / figure_paths[i]).read_bytes())
-            for i in indexes
-            if figure_paths.get(i)
+        solutions: dict[int, Solution] = {}
+        batches = [list(range(s, min(s + SOLVE_BATCH, len(extracted)))) for s in range(0, len(extracted), SOLVE_BATCH)]
+        for b, indexes in enumerate(batches):
+            questions = [extracted[i] for i in indexes]
+            await progress(
+                f"AI đang giải câu {questions[0].number}–{questions[-1].number} ({len(extracted)} câu)…",
+                b,
+                len(batches),
+            )
+            figures = [FigureImage(extracted[i].number, figure_bytes[i]) for i in indexes if i in figure_bytes]
+            try:
+                answers = await provider.solve(questions, figures)
+            except Exception:  # keep the extracted questions even if solving one batch fails
+                log.exception("Solving batch %s of job %s failed", b, job_id)
+                continue
+            by_number: dict[int, list[Solution]] = {}
+            for sol in answers:
+                by_number.setdefault(sol.number, []).append(sol)
+            for position, i in enumerate(indexes):
+                candidates = by_number.get(extracted[i].number) or []
+                if len(candidates) == 1:
+                    solutions[i] = candidates[0]
+                elif position < len(answers):  # duplicate or missing numbers: fall back to order
+                    solutions[i] = answers[position]
+
+        drafts = [
+            _draft(q, solutions.get(i), figure_keys.get(i), i in failed, default_difficulty)
+            for i, q in enumerate(extracted)
         ]
-        try:
-            answers = await provider.solve(questions, figures)
-        except Exception:  # keep the extracted questions even if solving one batch fails
-            log.exception("Solving batch %s of job %s failed", b, job_id)
-            continue
-        by_number: dict[int, list[Solution]] = {}
-        for s in answers:
-            by_number.setdefault(s.number, []).append(s)
-        for position, i in enumerate(indexes):
-            candidates = by_number.get(extracted[i].number) or []
-            if len(candidates) == 1:
-                solutions[i] = candidates[0]
-            elif position < len(answers):  # duplicate or missing numbers: fall back to order
-                solutions[i] = answers[position]
-
-    drafts = [
-        _draft(q, solutions.get(i), figure_paths.get(i), i in failed, default_difficulty)
-        for i, q in enumerate(extracted)
-    ]
-    await progress("Hoàn tất", 1, 1)
-    return len(pages), drafts
+        await progress("Hoàn tất", 1, 1)
+        return len(pages), drafts

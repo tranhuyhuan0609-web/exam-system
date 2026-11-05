@@ -1,21 +1,32 @@
 """AI import: upload an exam file → background worker → review drafts → publish to the question bank."""
 
 import secrets
-import shutil
-from pathlib import Path, PurePath
+from pathlib import PurePath
 from typing import Annotated
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select
 
 from app import question_rules as rules
 from app.ai.normalize import SUPPORTED_EXTENSIONS
-from app.ai.pipeline import FLAG_LABELS, job_dirs, normalize_draft, page_path
+from app.ai.pipeline import FLAG_LABELS, normalize_draft, page_key, pages_prefix
 from app.config import get_settings
 from app.deps import AdminUser, SessionDep
-from app.models import Difficulty, Exam, ExamMode, ExamQuestion, ImportJob, JobStatus, Question, QuestionType
+from app.domain.question_hash import hash_of_choices
+from app.infrastructure.storage import StorageError, get_storage
+from app.models import (
+    Difficulty,
+    Exam,
+    ExamMode,
+    ExamQuestion,
+    ImportJob,
+    JobStatus,
+    Question,
+    QuestionType,
+    SourceType,
+)
 from app.routers.admin.common import clean_text, get_or_404, redirect
 from app.scope import load_subject_tree, resolve_scope, scope_of, scope_options, scope_paths
 from app.templating import flash, templates
@@ -24,10 +35,6 @@ router = APIRouter()
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 TYPE_LABELS = {**{t.value: label for t, label in rules.TYPE_LABELS.items()}, "ESSAY": "Tự luận"}
-
-
-def _data_dir() -> Path:
-    return Path(get_settings().data_dir)
 
 
 def _publishable(draft: dict) -> list[str]:
@@ -101,10 +108,8 @@ async def create_job(
         flash(request, f"File rỗng hoặc lớn hơn {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.", "error")
         return redirect(back)
 
-    relative = f"uploads/{secrets.token_hex(12)}{suffix}"
-    path = _data_dir() / relative
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(data)
+    relative = f"raw/{secrets.token_hex(12)}{suffix}"
+    await get_storage().put(relative, data, file.content_type or "application/octet-stream")
     job = ImportJob(
         created_by=user.id,
         original_filename=name[:300],
@@ -126,6 +131,18 @@ async def create_job(
 async def job_detail(request: Request, user: AdminUser, session: SessionDep, job_id: int):
     job = await _job_or_404(session, job_id)
     subjects = await load_subject_tree(session)
+    drafts = _drafts(job)
+    # Flag drafts that already exist in the bank (exact match on the normalised content hash).
+    hashes = [
+        hash_of_choices(d.get("type", ""), d.get("content", ""), [{"content": c} for c in d.get("choices", [])])
+        for d in drafts
+    ]
+    existing = set(
+        (await session.scalars(select(Question.content_hash).where(Question.content_hash.in_(hashes)))).all()
+    )
+    for d, digest in zip(drafts, hashes, strict=True):
+        if digest in existing and not d.get("question_id") and "duplicate" not in d["flags"]:
+            d["flags"] = [*d["flags"], "duplicate"]
     drafts = [
         {
             **d,
@@ -133,7 +150,7 @@ async def job_detail(request: Request, user: AdminUser, session: SessionDep, job
             "problems": _publishable(d),
             "flag_texts": [FLAG_LABELS.get(f, f) for f in d.get("flags", [])],
         }
-        for i, d in enumerate(_drafts(job))
+        for i, d in enumerate(drafts)
     ]
     return templates.TemplateResponse(
         request,
@@ -172,10 +189,11 @@ async def job_status(session: SessionDep, job_id: int):
 async def job_page(session: SessionDep, job_id: int, page: int):
     """Original page images are admin-only (they may contain unpublished exams)."""
     await _job_or_404(session, job_id)
-    path = page_path(_data_dir(), job_id, page)
-    if not path.is_file():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không có trang này.")
-    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
+    try:
+        data = await get_storage().get(page_key(job_id, page))
+    except StorageError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không có trang này.") from exc
+    return Response(data, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
 
 
 @router.post("/ai-imports/{job_id}/drafts/{index}")
@@ -234,7 +252,10 @@ async def publish(request: Request, user: AdminUser, session: SessionDep, job_id
             accepted_answers=d["answers"] if d["type"] == QuestionType.SHORT_ANSWER else None,
             explanation=d.get("explanation") or None,
             image_path=d.get("figure"),
+            source_type=SourceType.AI_UPLOAD,
+            is_verified=True,  # an admin reviewed it on this screen
         )
+        question.content_hash = hash_of_choices(d["type"], question.content, question.choices)
         created.append(question)
         created_at_index.append(index)
     if not created:
@@ -293,13 +314,12 @@ async def delete_job(request: Request, session: SessionDep, job_id: int):
     if job.status == JobStatus.PROCESSING:
         flash(request, "Job đang được xử lý, hãy đợi xong rồi xoá.", "error")
         return redirect(f"/admin/ai-imports/{job_id}")
-    data_dir = _data_dir()
-    pages_dir, figures_dir = job_dirs(data_dir, job_id)
+    storage = get_storage()
     for d in job.drafts or []:  # figures of published questions stay; they are now used by the bank
         if d.get("figure") and not d.get("question_id"):
-            (data_dir / "media" / d["figure"]).unlink(missing_ok=True)
-    shutil.rmtree(pages_dir.parent, ignore_errors=True)
-    (data_dir / job.stored_path).unlink(missing_ok=True)
+            await storage.delete(d["figure"])
+    await storage.delete_prefix(pages_prefix(job_id))
+    await storage.delete(job.stored_path)
     await session.delete(job)
     await session.commit()
     flash(request, f"Đã xoá job “{job.original_filename}”.")

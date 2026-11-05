@@ -1,5 +1,4 @@
 import asyncio
-from pathlib import Path
 
 import pymupdf
 import pytest
@@ -10,6 +9,7 @@ from app.ai.pipeline import clean_choice, run_pipeline
 from app.ai.provider import AIError, FigureImage, PageImage
 from app.ai.schemas import BoundingBox, ExtractedChoice, ExtractedQuestion, Solution
 from app.config import get_settings
+from app.infrastructure.storage import LocalStorage, get_storage
 from app.models import Chapter, Exam, ExamQuestion, ImportJob, JobStatus, Question, Subject, UserRole
 
 
@@ -97,14 +97,14 @@ def test_clean_choice_strips_labels_and_trailing_dots():
 
 
 def test_pipeline_builds_drafts_with_figures_flags_and_answers(tmp_path):
-    source = tmp_path / "de.pdf"
-    source.write_bytes(make_pdf())
+    storage = LocalStorage(tmp_path)
+    asyncio.run(storage.put("raw/de.pdf", make_pdf()))
     provider = FakeProvider()
     pages, drafts = asyncio.run(
         run_pipeline(
             job_id=7,
-            source=source,
-            data_dir=tmp_path,
+            source_key="raw/de.pdf",
+            storage=storage,
             provider=provider,
             soffice="soffice",
             default_difficulty="RECOGNITION",
@@ -117,7 +117,7 @@ def test_pipeline_builds_drafts_with_figures_flags_and_answers(tmp_path):
     assert first["choices"] == ["$1A\\text{ lít}$", "$1B\\text{ lít}$", "$1C\\text{ lít}$", "$1D\\text{ lít}$"]
     assert first["correct"] == 2 and first["flags"] == [] and first["difficulty"] == "UNDERSTANDING"
     assert first["figure"].startswith("figures/7-1-")
-    assert (tmp_path / "media" / first["figure"]).is_file()
+    assert asyncio.run(storage.exists(first["figure"]))
     assert second["flags"] == ["no_match"]
     assert third["type"] == "SHORT_ANSWER" and third["flags"] == []
     assert third["answers"] == ["30"]  # unit stripped from the model's "30 m"
@@ -125,17 +125,17 @@ def test_pipeline_builds_drafts_with_figures_flags_and_answers(tmp_path):
     ((_, figures),) = provider.solve_calls
     assert [f.question_number for f in figures] == [1]
     # Page images are rendered for the review screen.
-    assert (tmp_path / "jobs" / "7" / "pages" / "page-002.png").is_file()
+    assert asyncio.run(storage.exists("pages/7/page-002.png"))
 
 
 def test_pipeline_keeps_questions_when_solving_fails(tmp_path):
-    source = tmp_path / "de.pdf"
-    source.write_bytes(make_pdf(1))
+    storage = LocalStorage(tmp_path)
+    asyncio.run(storage.put("raw/de.pdf", make_pdf(1)))
     _, drafts = asyncio.run(
         run_pipeline(
             job_id=1,
-            source=source,
-            data_dir=tmp_path,
+            source_key="raw/de.pdf",
+            storage=storage,
             provider=FakeProvider(fail_solve=True),
             soffice="soffice",
             default_difficulty="RECOGNITION",
@@ -176,7 +176,7 @@ def test_upload_process_review_and_publish(admin_client, db, chapter_scope):
     job_id = int(r.headers["location"].rsplit("/", 1)[1])
     job = db(lambda s: s.get(ImportJob, job_id))
     assert job.status == JobStatus.QUEUED
-    assert (Path(get_settings().data_dir) / job.stored_path).is_file()
+    assert job.stored_path.startswith("raw/") and asyncio.run(get_storage().exists(job.stored_path))
 
     assert asyncio.run(worker.claim_next()) == job_id
     asyncio.run(worker.process(job_id, provider=FakeProvider()))
@@ -224,7 +224,9 @@ def test_upload_process_review_and_publish(admin_client, db, chapter_scope):
     assert (exam.title, exam.duration_seconds, exam.is_published) == ("Buổi 12", 1200, False)
     assert len(db(lambda s: s.scalars(select(ExamQuestion)))) == 3
 
-    # Figures are public under /media; publishing twice does not duplicate questions.
+    # Figures are public under /media/figures; questions record where they came from.
+    assert all(q.source_type.value == "AI_UPLOAD" and q.is_verified and len(q.content_hash) == 64 for q in questions)
+    # Publishing twice does not duplicate questions.
     assert admin_client.get(f"/media/{questions[0].image_path}").status_code == 200
     admin_client.post(f"/admin/ai-imports/{job_id}/publish", data={"selected": ["0", "1", "2"]})
     assert len(db(lambda s: s.scalars(select(Question.id)))) == 3

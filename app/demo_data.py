@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.db import SessionLocal
+from app.domain.question_hash import hash_of_choices
 from app.models import Chapter, Difficulty, Exam, ExamMode, ExamQuestion, Lesson, Question, Subject
 
 R, U, A = Difficulty.RECOGNITION, Difficulty.UNDERSTANDING, Difficulty.APPLICATION
@@ -138,14 +139,16 @@ async def seed_demo() -> None:
             lessons = {lesson.name.split(":")[0] + ":": lesson for lesson in chapter1.lessons}
             for i, (prefix, difficulty, content, options, explanation) in enumerate(DEMO_QUESTIONS):
                 lesson = lessons[prefix]
+                choices = _choices(options, rotate=i)
                 session.add(
                     Question(
+                        content_hash=hash_of_choices("MULTIPLE_CHOICE", content, choices),
                         subject_id=physics.id,
                         chapter_id=chapter1.id,
                         lesson_id=lesson.id,
                         difficulty=difficulty,
                         content=content,
-                        choices=_choices(options, rotate=i),
+                        choices=choices,
                         explanation=explanation,
                     )
                 )

@@ -90,7 +90,7 @@
           {% for text in d.flag_texts %}<div class="flag">⚠ {{ text }}</div>{% endfor %}
 
           <div class="q-content math">{{ d.content }}</div>
-          {% if d.figure %}<img class="q-figure" src="/media/{{ d.figure }}" alt="Hình câu {{ d.number }}">{% endif %}
+          {% if d.figure %}<img class="q-figure" src="{{ media_url(d.figure) }}" alt="Hình câu {{ d.number }}">{% endif %}
           {% if d.type == "TRUE_FALSE" %}
             <ol class="q-choices" type="a">
               {% for c in d.choices %}{% set t = d.truths[loop.index0] if loop.index0 < d.truths | length else none %}

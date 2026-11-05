@@ -29,6 +29,12 @@ Mở http://localhost:8000 · Kiểm tra: `/health` · `/health/db` · `/docs`
 
 Chạy cả app, worker AI lẫn DB bằng Docker: `docker compose up --build`
 
+### Lưu trữ file (S3)
+- Mặc định `STORAGE_BACKEND=local`: file nằm trong `data/media`, chỉ thư mục `figures/` được public.
+- Dùng S3: `docker compose up -d s3` (RustFS, tương thích S3; MinIO đã ngừng phát hành image), rồi đặt trong `.env`: `STORAGE_BACKEND=s3`, `S3_ENDPOINT=localhost:9000`, `S3_PUBLIC_URL=http://localhost:9000`. Cũng dùng được MinIO tự build, AWS S3, Cloudflare R2…
+- Chuyển file cũ sang storage đang cấu hình: `python -m app.cli migrate-files`
+- Bucket chỉ cho đọc công khai `figures/*`; file gốc (`raw/`) và ảnh trang đề (`pages/`) chỉ admin xem qua app.
+
 ### AI nhập đề (PDF / Word / ảnh)
 1. Lấy API key tại Google AI Studio, ghi vào `.env`: `GEMINI_API_KEY=...`
 2. Chạy worker xử lý job (terminal riêng): `python -m app.worker`
@@ -60,6 +66,11 @@ Học sinh vào bất cứ lúc nào, chọn bài (VD: Vật lí 11 – Chương
 - [x] Màn hình duyệt nháp: ảnh đề gốc bên trái, câu hỏi + lời giải AI bên phải → “Đưa vào ngân hàng đề”
 
 - [x] Dạng câu Đúng/Sai và Trả lời ngắn (định dạng THPT 2025): soạn, nhập file, AI, làm bài, chấm điểm theo thang THPT
+
+### Bổ sung schema & hạ tầng (đón đầu crawler)
+- [x] `source_type` (soạn tay / nhập file / AI / crawler), `content_hash` SHA-256 chống trùng, `is_verified` (đề chỉ dùng câu đã duyệt)
+- [x] PostgreSQL có pgvector (`pgvector/pgvector:pg17`), lưu trữ S3 (RustFS), ảnh trang 300 DPI
+- [x] Bắt đầu tách Clean Architecture: `app/domain/`, `app/infrastructure/`
 
 ### Giai đoạn 2 — Trải nghiệm thực tế & Ngân hàng đề động (Tuần 4–6)
 - [ ] Auto-save 2 tầng: IndexedDB mỗi lần chọn + đồng bộ debounce lên server mỗi 5–10s

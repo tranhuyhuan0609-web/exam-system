@@ -21,6 +21,11 @@
     <option value="">Mọi dạng câu</option>
     {% for t, label in TYPE_LABELS.items() %}<option value="{{ t }}" {% if filters.qtype == t %}selected{% endif %}>{{ label }}</option>{% endfor %}
   </select>
+  <select name="verified">
+    <option value="">Đã duyệt & chưa duyệt</option>
+    <option value="yes" {% if filters.verified == "yes" %}selected{% endif %}>Đã duyệt</option>
+    <option value="no" {% if filters.verified == "no" %}selected{% endif %}>Chưa duyệt</option>
+  </select>
   <input name="q" value="{{ filters.q }}" placeholder="Tìm trong nội dung…">
   <button class="btn btn-outline">Lọc</button>
 </form>
@@ -32,11 +37,16 @@
       <span class="badge type-badge">{{ TYPE_LABELS[q.question_type] }}</span>
       <span class="badge diff-{{ q.difficulty | lower }}">{{ DIFFICULTY_LABELS[q.difficulty] }}</span>
       <span class="muted small">{{ scope_paths.get(scope_of(q).key, '') }}</span>
+      <span class="badge source-badge">{{ SOURCE_LABELS[q.source_type] }}</span>
       <span class="grow"></span>
+      {% if not q.is_verified %}
+        <span class="badge badge-warn">Chưa duyệt</span>
+        <form method="post" action="/admin/questions/{{ q.id }}/verify" class="inline"><button class="btn btn-small">✓ Duyệt</button></form>
+      {% endif %}
       <a href="/admin/questions/{{ q.id }}/edit">Sửa</a>
     </div>
     <div class="q-content math">{{ q.content }}</div>
-    {% if q.image_path %}<img class="q-figure small-figure" src="/media/{{ q.image_path }}" alt="Hình vẽ">{% endif %}
+    {% if q.image_path %}<img class="q-figure small-figure" src="{{ media_url(q.image_path) }}" alt="Hình vẽ">{% endif %}
     {% if q.question_type == "TRUE_FALSE" %}
       <ol class="q-choices" type="a">
         {% for c in q.choices %}<li class="math">{{ c.content }} <span class="tf-truth {{ 't' if c.is_correct else 'f' }}">— {{ "Đúng" if c.is_correct else "Sai" }}</span></li>{% endfor %}
