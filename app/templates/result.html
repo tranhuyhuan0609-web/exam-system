@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Kết quả · {{ exam.title }}{% endblock %}
+{% block head %}{% include "_katex.html" %}{% endblock %}
+{% block content %}
+<p class="muted"><a href="/exams/{{ exam.id }}">← {{ exam.title }}</a></p>
+
+<div class="card result-head">
+  <div class="score-ring {{ 'good' if attempt.score >= 8 else ('ok' if attempt.score >= 5 else 'low') }}">
+    <div class="score-value">{{ "%g" % attempt.score }}</div>
+    <div class="muted small">/ 10 điểm</div>
+  </div>
+  <div class="grow">
+    <h1>{{ exam.title }}</h1>
+    <div class="exam-facts">
+      <span>✅ Đúng {{ attempt.correct_count }}/{{ attempt.total_questions }} câu</span>
+      {% if unanswered %}<span>⚪ Bỏ trống {{ unanswered }} câu</span>{% endif %}
+      <span>⏱ Thời gian làm: {{ time_spent | duration }}</span>
+      <span>🔁 Lần #{{ attempt.attempt_no }}</span>
+      <span class="muted">Nộp lúc {{ attempt.submitted_at | local_dt }}</span>
+    </div>
+    <div class="row mt">
+      {% if can_retry %}
+        <form method="post" action="/exams/{{ exam.id }}/start"><button class="btn">🔁 Làm lại đề này</button></form>
+      {% endif %}
+      <a class="btn btn-outline" href="/">Chọn đề khác</a>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Bảng đáp án</h3>
+  <div class="palette result-palette">
+    {% for r in rows %}<a href="#r-{{ r.number }}" class="{{ r.status }}">{{ r.number }}</a>{% endfor %}
+  </div>
+  <p class="hint mt"><span class="dot correct"></span> Đúng · <span class="dot wrong"></span> Sai · <span class="dot unanswered"></span> Bỏ trống</p>
+</div>
+
+{% for r in rows %}
+  <section class="card question-card review-{{ r.status }}" id="r-{{ r.number }}">
+    <div class="q-number">Câu {{ r.number }}
+      {% if r.status == "correct" %}<span class="badge badge-ok">Đúng</span>
+      {% elif r.status == "wrong" %}<span class="badge badge-bad">Sai</span>
+      {% else %}<span class="badge">Chưa trả lời</span>{% endif %}
+    </div>
+    <div class="q-content">{{ r.content }}</div>
+    <div class="choice-list">
+      {% for c in r.choices %}
+        <div class="choice review {% if c.id == r.correct_id %}is-correct{% endif %} {% if c.id == r.chosen and c.id != r.correct_id %}is-wrong{% endif %}">
+          <span class="choice-letter">{{ "ABCDEF"[loop.index0] }}</span>
+          <span class="choice-text">{{ c.content }}</span>
+          {% if c.id == r.chosen %}<span class="choice-tag">Bạn chọn</span>{% endif %}
+          {% if c.id == r.correct_id %}<span class="choice-tag ok">Đáp án đúng</span>{% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    {% if r.explanation %}
+      <details class="explanation" {% if r.status != "correct" %}open{% endif %}>
+        <summary>Lời giải chi tiết</summary>
+        <div class="q-content">{{ r.explanation }}</div>
+      </details>
+    {% endif %}
+  </section>
+{% endfor %}
+{% endblock %}

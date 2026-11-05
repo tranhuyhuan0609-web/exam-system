@@ -44,3 +44,13 @@ async def require_admin(user: Annotated[User, Depends(require_user)]) -> User:
 
 LoggedInUser = Annotated[User, Depends(require_user)]
 AdminUser = Annotated[User, Depends(require_admin)]
+
+
+async def require_api_user(user: CurrentUser) -> User:
+    """Like require_user, but answers JSON 401 instead of redirecting (for fetch() calls)."""
+    if user is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Phiên đăng nhập đã hết hạn.")
+    return user
+
+
+ApiUser = Annotated[User, Depends(require_api_user)]

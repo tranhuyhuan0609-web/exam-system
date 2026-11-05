@@ -13,7 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.config import get_settings
 from app.db import SessionLocal
 from app.deps import LoginRequired, SessionDep, get_current_user
-from app.routers import admin, auth, pages
+from app.routers import admin, auth, student
 from app.templating import templates
 
 settings = get_settings()
@@ -29,7 +29,7 @@ app.add_middleware(
 )
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
-app.include_router(pages.router)
+app.include_router(student.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
 

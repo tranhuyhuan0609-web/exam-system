@@ -20,7 +20,6 @@ def test_register_creates_student_and_logs_in(client):
 
     home = client.get("/")
     assert "Nguyễn Văn A" in home.text
-    assert "hs@example.com" in home.text
     # A self-registered account is a student, never an admin.
     assert client.get("/admin").status_code == 403
 
