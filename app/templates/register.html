@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Đăng ký · Exam System{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1>Tạo tài khoản học sinh</h1>
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+  <form method="post" action="/register">
+    <label>Họ và tên
+      <input name="full_name" value="{{ form.full_name or '' }}" required maxlength="200" autofocus autocomplete="name">
+    </label>
+    <label>Email
+      <input type="email" name="email" value="{{ form.email or '' }}" required autocomplete="email">
+    </label>
+    <label>Mật khẩu <span class="muted">(ít nhất 8 ký tự)</span>
+      <input type="password" name="password" required minlength="8" autocomplete="new-password">
+    </label>
+    <label>Nhập lại mật khẩu
+      <input type="password" name="password_confirm" required minlength="8" autocomplete="new-password">
+    </label>
+    <button class="btn full">Đăng ký</button>
+  </form>
+  <p class="muted center">Đã có tài khoản? <a href="/login">Đăng nhập</a></p>
+</div>
+{% endblock %}

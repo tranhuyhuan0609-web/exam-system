@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Quản trị · Exam System{% endblock %}
+{% block content %}
+<h1>Trang quản trị</h1>
+
+<div class="stats">
+  <div class="stat"><div class="stat-num">{{ role_counts.get("STUDENT", 0) }}</div><div class="muted">Học sinh</div></div>
+  <div class="stat"><div class="stat-num">{{ role_counts.get("ADMIN", 0) }}</div><div class="muted">Admin</div></div>
+  <div class="stat"><div class="stat-num">{{ subjects | length }}</div><div class="muted">Môn học</div></div>
+</div>
+
+<div class="card">
+  <h2>Môn học → Chương → Bài học</h2>
+  <p class="muted">Chỉ xem. Thêm/sửa/xoá sẽ có ở Phần 2.</p>
+  {% for s in subjects %}
+    <details class="tree" open>
+      <summary><strong>{{ s.name }}</strong> <span class="muted">· {{ s.chapters | length }} chương</span></summary>
+      {% for c in s.chapters %}
+        <details class="tree" open>
+          <summary>{{ c.name }} <span class="muted">· {{ c.lessons | length }} bài</span></summary>
+          <ul>
+            {% for l in c.lessons %}<li>{{ l.name }}</li>{% else %}<li class="muted">Chưa có bài học</li>{% endfor %}
+          </ul>
+        </details>
+      {% else %}
+        <p class="muted">Chưa có chương nào.</p>
+      {% endfor %}
+    </details>
+  {% else %}
+    <p class="muted">Chưa có môn học. Chạy <code>python -m app.cli seed-demo</code> để tạo dữ liệu mẫu.</p>
+  {% endfor %}
+</div>
+{% endblock %}

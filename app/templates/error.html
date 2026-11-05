@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Lỗi {{ status_code }} · Exam System{% endblock %}
+{% block content %}
+<div class="card narrow center">
+  <h1>{{ status_code }}</h1>
+  <p>{{ "Không tìm thấy trang." if status_code == 404 else detail }}</p>
+  <p><a class="btn" href="/">Về trang chủ</a></p>
+</div>
+{% endblock %}
