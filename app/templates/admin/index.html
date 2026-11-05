@@ -1,33 +1,19 @@
-{% extends "base.html" %}
+{% extends "admin/_layout.html" %}
+{% set active = "dashboard" %}
 {% block title %}Quản trị · Exam System{% endblock %}
-{% block content %}
+{% block admin_content %}
 <h1>Trang quản trị</h1>
 
 <div class="stats">
   <div class="stat"><div class="stat-num">{{ role_counts.get("STUDENT", 0) }}</div><div class="muted">Học sinh</div></div>
-  <div class="stat"><div class="stat-num">{{ role_counts.get("ADMIN", 0) }}</div><div class="muted">Admin</div></div>
-  <div class="stat"><div class="stat-num">{{ subjects | length }}</div><div class="muted">Môn học</div></div>
+  <div class="stat"><div class="stat-num">{{ stats.subjects }}</div><div class="muted">Môn học</div></div>
+  <div class="stat"><div class="stat-num">{{ stats.questions }}</div><div class="muted">Câu hỏi</div></div>
+  <div class="stat"><div class="stat-num">{{ stats.published }}<span class="muted small"> / {{ stats.exams }}</span></div><div class="muted">Đề công khai</div></div>
 </div>
 
-<div class="card">
-  <h2>Môn học → Chương → Bài học</h2>
-  <p class="muted">Chỉ xem. Thêm/sửa/xoá sẽ có ở Phần 2.</p>
-  {% for s in subjects %}
-    <details class="tree" open>
-      <summary><strong>{{ s.name }}</strong> <span class="muted">· {{ s.chapters | length }} chương</span></summary>
-      {% for c in s.chapters %}
-        <details class="tree" open>
-          <summary>{{ c.name }} <span class="muted">· {{ c.lessons | length }} bài</span></summary>
-          <ul>
-            {% for l in c.lessons %}<li>{{ l.name }}</li>{% else %}<li class="muted">Chưa có bài học</li>{% endfor %}
-          </ul>
-        </details>
-      {% else %}
-        <p class="muted">Chưa có chương nào.</p>
-      {% endfor %}
-    </details>
-  {% else %}
-    <p class="muted">Chưa có môn học. Chạy <code>python -m app.cli seed-demo</code> để tạo dữ liệu mẫu.</p>
-  {% endfor %}
+<div class="grid-3">
+  <a class="card tile" href="/admin/subjects"><h3>📚 Môn · Chương · Bài</h3><p class="muted">Tạo môn học, chia chương và bài học.</p></a>
+  <a class="card tile" href="/admin/questions/new"><h3>✏️ Thêm câu hỏi</h3><p class="muted">Soạn câu hỏi trắc nghiệm, hỗ trợ công thức LaTeX.</p></a>
+  <a class="card tile" href="/admin/exams/new"><h3>📝 Tạo đề luyện tập</h3><p class="muted">Chọn câu hỏi từ ngân hàng, đặt thời gian làm bài.</p></a>
 </div>
 {% endblock %}

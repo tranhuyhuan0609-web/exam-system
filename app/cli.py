@@ -1,7 +1,7 @@
 """Management commands.
 
-    python -m app.cli create-admin --email admin@example.com --name "Admin"
-    python -m app.cli seed-demo
+python -m app.cli create-admin --email admin@example.com --name "Admin"
+python -m app.cli seed-demo
 """
 
 import argparse
@@ -12,28 +12,9 @@ import sys
 from sqlalchemy import select
 
 from app.db import SessionLocal
-from app.models import Chapter, Lesson, Subject, User, UserRole
+from app.demo_data import seed_demo
+from app.models import User, UserRole
 from app.security import hash_password, normalize_email, password_problem
-
-DEMO_SUBJECTS = [
-    {
-        "name": "Vật lí 11",
-        "slug": "vat-li-11",
-        "chapters": [
-            ("Chương 1: Dao động", ["Bài 1: Dao động điều hoà", "Bài 2: Mô tả dao động điều hoà",
-                                    "Bài 3: Vận tốc, gia tốc trong dao động điều hoà"]),
-            ("Chương 2: Sóng", ["Bài 8: Mô tả sóng", "Bài 9: Sóng ngang. Sóng dọc"]),
-        ],
-    },
-    {
-        "name": "Toán 11",
-        "slug": "toan-11",
-        "chapters": [
-            ("Chương 1: Hàm số lượng giác và phương trình lượng giác",
-             ["Bài 1: Giá trị lượng giác của góc lượng giác", "Bài 2: Công thức lượng giác"]),
-        ],
-    },
-]
 
 
 async def create_admin(email: str, name: str, password: str) -> int:
@@ -51,23 +32,6 @@ async def create_admin(email: str, name: str, password: str) -> int:
     return 0
 
 
-async def seed_demo() -> int:
-    async with SessionLocal() as session:
-        for data in DEMO_SUBJECTS:
-            if await session.scalar(select(Subject.id).where(Subject.slug == data["slug"])):
-                print(f"Skip {data['name']} (already exists).")
-                continue
-            subject = Subject(name=data["name"], slug=data["slug"])
-            for ci, (chapter_name, lessons) in enumerate(data["chapters"], start=1):
-                chapter = Chapter(name=chapter_name, position=ci)
-                chapter.lessons = [Lesson(name=n, position=li) for li, n in enumerate(lessons, start=1)]
-                subject.chapters.append(chapter)
-            session.add(subject)
-            print(f"Created {data['name']}.")
-        await session.commit()
-    return 0
-
-
 def main() -> int:
     # Windows consoles default to a legacy code page that cannot print Vietnamese.
     sys.stdout.reconfigure(encoding="utf-8")
@@ -80,13 +44,14 @@ def main() -> int:
     p_admin.add_argument("--name", default="Admin")
     p_admin.add_argument("--password", help="Prompted if omitted")
 
-    sub.add_parser("seed-demo", help="Insert demo subjects, chapters and lessons")
+    sub.add_parser("seed-demo", help="Insert demo subjects, chapters, lessons, questions and an exam")
 
     args = parser.parse_args()
     if args.command == "create-admin":
         password = args.password or getpass.getpass("Password: ")
         return asyncio.run(create_admin(args.email, args.name, password))
-    return asyncio.run(seed_demo())
+    asyncio.run(seed_demo())
+    return 0
 
 
 if __name__ == "__main__":

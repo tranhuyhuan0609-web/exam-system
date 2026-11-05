@@ -1,0 +1,103 @@
+{% extends "admin/_layout.html" %}
+{% set active = "exams" %}
+{% block title %}{{ exam.title }} · Quản trị{% endblock %}
+{% block admin_content %}
+<p class="muted"><a href="/admin/exams">← Đề thi</a></p>
+<div class="page-head">
+  <h1>{{ exam.title }}
+    {% if exam.is_published %}<span class="badge badge-ok">Công khai</span>{% else %}<span class="badge">Nháp</span>{% endif %}
+  </h1>
+  <span class="muted">{{ scope_paths.get(scope_of(exam).key, '') }} · {{ attempt_count }} lượt làm</span>
+</div>
+
+{% if errors %}<div class="alert"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>{% endif %}
+
+<div class="grid-main-side">
+  <div>
+    <div class="card" id="questions">
+      <div class="page-head">
+        <h2>Câu hỏi trong đề ({{ items | length }})</h2>
+        <span class="small">
+          {% for d, label in DIFFICULTY_LABELS.items() %}<span class="badge diff-{{ d | lower }}">{{ label }}: {{ difficulty_counts.get(d, 0) }}</span> {% endfor %}
+        </span>
+      </div>
+      {% for eq, q in items %}
+        <div class="exam-item">
+          <span class="pos">{{ loop.index }}</span>
+          <div class="grow">
+            <div class="q-meta">
+              <span class="muted">#{{ q.id }}</span>
+              <span class="badge diff-{{ q.difficulty | lower }}">{{ DIFFICULTY_LABELS[q.difficulty] }}</span>
+              <a class="small" href="/admin/questions/{{ q.id }}/edit">Sửa câu</a>
+            </div>
+            <div class="q-content math clamp">{{ q.content }}</div>
+          </div>
+          <form method="post" action="/admin/exams/{{ exam.id }}/questions/{{ q.id }}/move" class="inline">
+            <button name="direction" value="up" class="icon-btn" title="Lên">▲</button>
+            <button name="direction" value="down" class="icon-btn" title="Xuống">▼</button>
+          </form>
+          <form method="post" action="/admin/exams/{{ exam.id }}/questions/{{ q.id }}/remove" class="inline">
+            <button class="icon-btn danger" title="Gỡ khỏi đề">✕</button>
+          </form>
+        </div>
+      {% else %}
+        <p class="muted">Đề chưa có câu hỏi. Chọn câu ở khung “Thêm câu hỏi” bên dưới.</p>
+      {% endfor %}
+    </div>
+
+    <div class="card">
+      <h2>Thêm câu hỏi từ ngân hàng</h2>
+      <form method="get" action="/admin/exams/{{ exam.id }}" class="row filters">
+        {% with name="pick_scope", options=pick_scope_options, selected=pick_scope %}{% include "admin/_scope_select.html" %}{% endwith %}
+        <select name="pick_difficulty">
+          <option value="">Mọi mức độ</option>
+          {% for d, label in DIFFICULTY_LABELS.items() %}<option value="{{ d.value }}" {% if pick_difficulty == d.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        <button class="btn btn-outline btn-small">Lọc</button>
+      </form>
+      <form method="post" action="/admin/exams/{{ exam.id }}/questions">
+        <input type="hidden" name="pick_scope" value="{{ pick_scope }}">
+        <input type="hidden" name="pick_difficulty" value="{{ pick_difficulty }}">
+        {% for q in candidates %}
+          <label class="pick-item">
+            <input type="checkbox" name="question_id" value="{{ q.id }}">
+            <div class="grow">
+              <div class="q-meta">
+                <span class="muted">#{{ q.id }}</span>
+                <span class="badge diff-{{ q.difficulty | lower }}">{{ DIFFICULTY_LABELS[q.difficulty] }}</span>
+                <span class="muted small">{{ scope_paths.get(scope_of(q).key, '') }}</span>
+              </div>
+              <div class="q-content math clamp">{{ q.content }}</div>
+            </div>
+          </label>
+        {% else %}
+          <p class="muted">Không còn câu hỏi nào phù hợp. <a href="/admin/questions/new?scope={{ pick_scope }}">Soạn câu mới</a></p>
+        {% endfor %}
+        {% if candidates %}
+          <div class="row mt">
+            <label class="check"><input type="checkbox" id="check-all"> Chọn tất cả</label>
+            <button class="btn">Thêm vào đề</button>
+          </div>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+
+  <aside>
+    <form method="post" action="/admin/exams/{{ exam.id }}" class="card">
+      <h2>Cài đặt đề</h2>
+      {% with show_publish=True %}{% include "admin/_exam_fields.html" %}{% endwith %}
+      <button class="btn">Lưu cài đặt</button>
+    </form>
+    <form method="post" action="/admin/exams/{{ exam.id }}/delete" data-confirm="Xoá đề này?">
+      <button class="btn btn-danger btn-small">Xoá đề</button>
+    </form>
+  </aside>
+</div>
+
+<script>
+  document.getElementById("check-all")?.addEventListener("change", (e) => {
+    document.querySelectorAll("input[name=question_id]").forEach((c) => (c.checked = e.target.checked));
+  });
+</script>
+{% endblock %}

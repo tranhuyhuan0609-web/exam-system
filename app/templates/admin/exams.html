@@ -1,0 +1,28 @@
+{% extends "admin/_layout.html" %}
+{% set active = "exams" %}
+{% block title %}Đề thi · Quản trị{% endblock %}
+{% block admin_content %}
+<div class="page-head">
+  <h1>Đề thi</h1>
+  <a class="btn" href="/admin/exams/new">+ Tạo đề luyện tập</a>
+</div>
+<div class="card">
+  <table class="table">
+    <thead><tr><th>Đề</th><th>Phạm vi</th><th class="num">Số câu</th><th class="num">Thời gian</th><th class="num">Số lần làm</th><th>Trạng thái</th></tr></thead>
+    <tbody>
+    {% for exam, n in rows %}
+      <tr>
+        <td><a href="/admin/exams/{{ exam.id }}"><strong>{{ exam.title }}</strong></a></td>
+        <td class="small muted">{{ scope_paths.get(scope_of(exam).key, '') }}</td>
+        <td class="num">{{ n }}</td>
+        <td class="num">{{ exam.duration_seconds // 60 }} phút</td>
+        <td class="num">{{ exam.max_attempts or "∞" }}</td>
+        <td>{% if exam.is_published %}<span class="badge badge-ok">Công khai</span>{% else %}<span class="badge">Nháp</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="muted">Chưa có đề nào.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

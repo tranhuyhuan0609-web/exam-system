@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block head %}{% include "_katex.html" %}{% endblock %}
+{% block container_class %}wide{% endblock %}
+{% block content %}
+<nav class="subnav">
+  <a href="/admin" class="{{ 'active' if active == 'dashboard' }}">Tổng quan</a>
+  <a href="/admin/subjects" class="{{ 'active' if active == 'subjects' }}">Môn · Chương · Bài</a>
+  <a href="/admin/questions" class="{{ 'active' if active == 'questions' }}">Ngân hàng câu hỏi</a>
+  <a href="/admin/exams" class="{{ 'active' if active == 'exams' }}">Đề thi</a>
+</nav>
+{% block admin_content %}{% endblock %}
+<script>
+  // Forms with data-confirm="..." ask before submitting (keeps user text out of inline JS).
+  document.addEventListener("submit", (e) => {
+    const msg = e.target.dataset.confirm;
+    if (msg && !confirm(msg)) e.preventDefault();
+  });
+</script>
+{% endblock %}
