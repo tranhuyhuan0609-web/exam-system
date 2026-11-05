@@ -12,6 +12,7 @@
     <a class="brand" href="/">📘 Exam System</a>
     <nav>
       {% if user %}
+        <a href="/practice/mine">Bài tự tạo</a>
         {% if user.role == "ADMIN" %}<a href="/admin">Quản trị</a>{% endif %}
         <span class="who">{{ user.full_name }} <span class="badge badge-{{ user.role | lower }}">{{ "Admin" if user.role == "ADMIN" else "Học sinh" }}</span></span>
         <form method="post" action="/logout" class="inline"><button class="link">Đăng xuất</button></form>
@@ -25,5 +26,12 @@
     {% for kind, message in flashes %}<div class="flash flash-{{ kind }}">{{ message }}</div>{% endfor %}
     {% block content %}{% endblock %}
   </main>
+  <script>
+    // Forms with data-confirm="..." ask before submitting (keeps user text out of inline JS).
+    document.addEventListener("submit", (e) => {
+      const msg = e.target.dataset.confirm;
+      if (msg && !confirm(msg)) e.preventDefault();
+    });
+  </script>
 </body>
 </html>

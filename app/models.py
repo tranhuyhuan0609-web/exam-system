@@ -59,6 +59,11 @@ class ExamMode(StrEnum):
     SCHEDULED = "SCHEDULED"  # fixed time window (phase 3)
 
 
+class ExamVisibility(StrEnum):
+    PUBLIC = "PUBLIC"  # listed on the site once published
+    PERSONAL = "PERSONAL"  # a quiz a student built for themself; only its owner (created_by) sees it
+
+
 class JobStatus(StrEnum):
     QUEUED = "QUEUED"
     PROCESSING = "PROCESSING"
@@ -194,6 +199,12 @@ class Exam(TimestampMixin, UpdatedAtMixin, Base):
     shuffle_choices: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Students may pick which parts (multiple choice, true/false, short answer, essay) to practise.
     allow_custom_parts: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    visibility: Mapped[ExamVisibility] = mapped_column(
+        _enum(ExamVisibility, "exam_visibility"),
+        default=ExamVisibility.PUBLIC,
+        server_default=ExamVisibility.PUBLIC.value,
+        index=True,
+    )
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
     __table_args__ = (

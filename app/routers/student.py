@@ -5,7 +5,15 @@ from fastapi import APIRouter, Body, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 
-from app.application.paper import available_parts, question_count
+from app.application.custom_quiz import (
+    LEVELS,
+    SECONDS_PER_QUESTION,
+    CustomQuizError,
+    QuizRequest,
+    bank_counts,
+    create_custom_quiz,
+)
+from app.application.paper import PART_ORDER, available_parts, question_count
 from app.application.report import build_report
 from app.attempts import (
     AttemptClosed,
@@ -21,7 +29,18 @@ from app.attempts import (
     submit,
 )
 from app.deps import ApiUser, CurrentUser, LoggedInUser, SessionDep
-from app.models import AttemptStatus, Exam, ExamAttempt, ExamMode, GradingStatus, User, UserRole
+from app.models import (
+    AttemptStatus,
+    Category,
+    Exam,
+    ExamAttempt,
+    ExamMode,
+    ExamVisibility,
+    GradingStatus,
+    Question,
+    User,
+    UserRole,
+)
 from app.routers.admin.common import redirect
 from app.scope import breadcrumb, load_categories, scope_of, scope_paths, walk
 from app.templating import flash, templates
@@ -31,16 +50,17 @@ router = APIRouter()
 NO_STORE = {"Cache-Control": "no-store"}
 
 
-def _visible_exams_filter(user: User | None):
-    conditions = [Exam.exam_mode == ExamMode.PRACTICE]
-    if not (user and user.role == UserRole.ADMIN):  # admins may preview drafts
-        conditions.append(Exam.is_published)
-    return conditions
+def _can_see(exam: Exam | None, user: User | None) -> bool:
+    if exam is None or exam.exam_mode != ExamMode.PRACTICE:
+        return False
+    if exam.visibility == ExamVisibility.PERSONAL:  # a student's own quiz: nobody else, not even admins
+        return user is not None and exam.created_by == user.id
+    return exam.is_published or (user is not None and user.role == UserRole.ADMIN)  # admins preview drafts
 
 
 async def _get_visible_exam(session, exam_id: int, user: User | None) -> Exam:
-    exam = await session.scalar(select(Exam).where(Exam.id == exam_id, *_visible_exams_filter(user)))
-    if exam is None:
+    exam = await session.get(Exam, exam_id)
+    if not _can_see(exam, user):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy đề thi.")
     return exam
 
@@ -66,9 +86,14 @@ async def _own_attempt(session, attempt_id: int, user: User) -> ExamAttempt:
 @router.get("/")
 async def home(request: Request, user: CurrentUser, session: SessionDep, c: int | None = None):
     """Exam list with a table-of-contents sidebar; `c` selects a category (its whole branch)."""
-    published = Exam.is_published  # the home page lists published exams only, even for admins
     exams = (
-        await session.scalars(select(Exam).where(Exam.exam_mode == ExamMode.PRACTICE, published).order_by(Exam.id))
+        await session.scalars(
+            select(Exam)
+            .where(  # published public exams only, even for admins
+                Exam.exam_mode == ExamMode.PRACTICE, Exam.visibility == ExamVisibility.PUBLIC, Exam.is_published
+            )
+            .order_by(Exam.id)
+        )
     ).all()
     counts = {exam.id: await question_count(session, exam) for exam in exams}
     mine: dict[int, int] = {}
@@ -104,6 +129,16 @@ async def home(request: Request, user: CurrentUser, session: SessionDep, c: int 
     nodes = {node.id: node for node, _ in walk(roots)}
     # Published exams per category, counting each exam in every ancestor of its category too.
     exam_counts: dict[int, int] = defaultdict(int)
+    # Verified questions per branch too: a category without exams can still host a custom quiz.
+    question_totals: dict[int, int] = defaultdict(int)
+    for category_id, n in (
+        await session.execute(
+            select(Question.category_id, func.count()).where(Question.is_verified).group_by(Question.category_id)
+        )
+    ).all():
+        if category := nodes.get(category_id):
+            for cid in category.path.strip("/").split("/"):
+                question_totals[int(cid)] += n
     branch_of: dict[int, set[int]] = {}
     for exam in exams:
         category = nodes.get(exam.category_id)
@@ -118,6 +153,9 @@ async def home(request: Request, user: CurrentUser, session: SessionDep, c: int 
     for exam in shown:
         by_root[exam.root_id].append(exam)
     groups = [(r, by_root[r.id]) for r in roots if by_root.get(r.id)]
+    quiz = None
+    if selected and question_totals.get(selected.id):
+        quiz = {"bank": await bank_counts(session, selected), "levels": LEVELS, "seconds": SECONDS_PER_QUESTION}
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -126,6 +164,9 @@ async def home(request: Request, user: CurrentUser, session: SessionDep, c: int 
             "groups": groups,
             "roots": roots,
             "exam_counts": exam_counts,
+            "question_totals": question_totals,
+            "toc_ids": set(exam_counts) | set(question_totals),
+            "quiz": quiz,
             "selected": selected,
             "trail": trail,
             "open_ids": {n.id for n in trail},
@@ -189,6 +230,116 @@ async def start_exam(request: Request, user: LoggedInUser, session: SessionDep, 
     return redirect(f"/attempts/{attempt.id}")
 
 
+# ---------------------------------------------------------------- custom quizzes
+
+
+def _int(value: Any, default: int = 0) -> int:
+    try:
+        return int(str(value).strip() or default)
+    except ValueError:
+        return default
+
+
+@router.post("/practice")
+async def create_practice(request: Request, user: LoggedInUser, session: SessionDep):
+    """Build a personal quiz from one category and start it right away."""
+    form = await request.form()
+    category = await session.get(Category, _int(form.get("category_id")))
+    if category is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy mục.")
+    back = f"/?c={category.id}#tu-tao"  # read before a rollback expires the instance
+    quiz = QuizRequest(
+        counts={t: _int(form.get(f"count_{t}")) for t in PART_ORDER},
+        levels=[str(lv) for lv in form.getlist("levels") if lv in LEVELS],
+        minutes=_int(form.get("minutes")) or None,
+    )
+    try:
+        exam = await create_custom_quiz(session, user, category, quiz)
+        attempt = await start_or_resume(session, user, exam)
+    except (CustomQuizError, AttemptError) as exc:
+        await session.rollback()
+        flash(request, str(exc), "error")
+        return redirect(back)
+    return redirect(f"/attempts/{attempt.id}")
+
+
+@router.get("/practice/mine")
+async def my_practice(request: Request, user: LoggedInUser, session: SessionDep):
+    """The quizzes this student built, newest first, with their attempts."""
+    await finalize_expired(session, user.id)
+    exams = (
+        await session.scalars(
+            select(Exam)
+            .where(Exam.visibility == ExamVisibility.PERSONAL, Exam.created_by == user.id)
+            .order_by(Exam.id.desc())
+        )
+    ).all()
+    ids = [e.id for e in exams]
+    stats = {
+        exam_id: (n, best)
+        for exam_id, n, best in (
+            await session.execute(
+                select(ExamAttempt.exam_id, func.count(), func.max(ExamAttempt.score))
+                .where(ExamAttempt.user_id == user.id, ExamAttempt.exam_id.in_(ids))
+                .group_by(ExamAttempt.exam_id)
+            )
+        ).all()
+    }
+    now = await db_now(session)
+    active = dict(
+        (
+            await session.execute(
+                select(ExamAttempt.exam_id, ExamAttempt.id).where(
+                    ExamAttempt.user_id == user.id,
+                    ExamAttempt.exam_id.in_(ids),
+                    ExamAttempt.status == AttemptStatus.IN_PROGRESS,
+                    ExamAttempt.expires_at > now,
+                )
+            )
+        ).all()
+    )
+    submitted = {
+        exam_id: attempt_id
+        for exam_id, attempt_id in (
+            await session.execute(
+                select(ExamAttempt.exam_id, func.max(ExamAttempt.id))
+                .where(
+                    ExamAttempt.user_id == user.id,
+                    ExamAttempt.exam_id.in_(ids),
+                    ExamAttempt.status == AttemptStatus.SUBMITTED,
+                )
+                .group_by(ExamAttempt.exam_id)
+            )
+        ).all()
+    }
+    roots = await load_categories(session)
+    return templates.TemplateResponse(
+        request,
+        "practice_mine.html",
+        {
+            "user": user,
+            "exams": exams,
+            "stats": stats,
+            "active": active,
+            "submitted": submitted,
+            "counts": {e.id: await question_count(session, e) for e in exams},
+            "scope_paths": scope_paths(roots),
+            "scope_of": scope_of,
+        },
+    )
+
+
+@router.post("/practice/{exam_id}/delete")
+async def delete_practice(request: Request, user: LoggedInUser, session: SessionDep, exam_id: int):
+    exam = await session.get(Exam, exam_id)
+    if exam is None or exam.visibility != ExamVisibility.PERSONAL or exam.created_by != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy bài.")
+    await session.delete(exam)
+    await session.commit()
+    flash(request, "Đã xoá bài tự tạo.")
+    return redirect("/practice/mine")
+
+
 @router.get("/attempts/{attempt_id}")
 async def attempt_page(request: Request, user: LoggedInUser, session: SessionDep, attempt_id: int):
     attempt = await _own_attempt(session, attempt_id, user)
@@ -233,7 +384,9 @@ async def _result_context(session, user: User, attempt_id: int) -> dict[str, Any
         "grading_pending": attempt.grading_status == GradingStatus.PENDING_AI,
         "grading_failed": attempt.grading_status == GradingStatus.FAILED,
         "chosen_parts": (attempt.paper_snapshot or {}).get("parts"),
-        "can_retry": exam.is_published and (exam.max_attempts is None or used < exam.max_attempts),
+        "can_retry": _can_see(exam, user)
+        and (exam.is_published or exam.visibility == ExamVisibility.PERSONAL)
+        and (exam.max_attempts is None or used < exam.max_attempts),
     }
 
 

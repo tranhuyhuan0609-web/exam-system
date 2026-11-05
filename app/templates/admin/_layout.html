@@ -10,11 +10,4 @@
   <a href="/admin/ai-imports" class="{{ 'active' if active == 'ai' }}">🤖 AI nhập đề</a>
 </nav>
 {% block admin_content %}{% endblock %}
-<script>
-  // Forms with data-confirm="..." ask before submitting (keeps user text out of inline JS).
-  document.addEventListener("submit", (e) => {
-    const msg = e.target.dataset.confirm;
-    if (msg && !confirm(msg)) e.preventDefault();
-  });
-</script>
 {% endblock %}

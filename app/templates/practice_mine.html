@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Bài tự tạo của tôi · Exam System{% endblock %}
+{% block content %}
+<h1>Bài tự tạo của tôi</h1>
+<p class="muted">Các bài kiểm tra bạn tự tạo từ mục lục. Mỗi lần làm lại sẽ ưu tiên câu bạn chưa gặp. Muốn tạo bài mới, hãy chọn một mục ở <a href="/">trang chủ</a>.</p>
+
+{% for exam in exams %}
+  {% set n, best = stats.get(exam.id, (0, None)) %}
+  <div class="card practice-row">
+    <div>
+      <div class="muted small">{{ scope_paths.get(scope_of(exam).key, '') }}</div>
+      <h3><a href="/exams/{{ exam.id }}">{{ exam.title }}</a></h3>
+      <div class="exam-facts small">
+        <span>📝 {{ counts.get(exam.id, 0) }} câu{% if exam.description %} ({{ exam.description }}){% endif %}</span>
+        <span>⏱ {{ exam.duration_seconds | duration }}</span>
+        <span>🗓 {{ exam.created_at | local_dt }}</span>
+      </div>
+      {% if active.get(exam.id) %}<span class="badge badge-warn">Đang làm dở</span>{% endif %}
+      {% if n - (1 if active.get(exam.id) else 0) %}<span class="badge">Đã làm {{ n - (1 if active.get(exam.id) else 0) }} lần{% if best is not none %} · cao nhất {{ "%g" % best }}đ{% endif %}</span>{% endif %}
+    </div>
+    <div class="practice-actions">
+      {% if submitted.get(exam.id) %}<a class="btn btn-outline btn-small" href="/attempts/{{ submitted[exam.id] }}/result">Kết quả gần nhất</a>{% endif %}
+      {% if active.get(exam.id) %}
+        <a class="btn btn-small" href="/attempts/{{ active[exam.id] }}">▶ Tiếp tục làm bài</a>
+      {% else %}
+        <form method="post" action="/exams/{{ exam.id }}/start" class="inline"><button class="btn btn-small">▶ Làm lại</button></form>
+      {% endif %}
+      <form method="post" action="/practice/{{ exam.id }}/delete" class="inline"
+            data-confirm="Xoá bài này cùng toàn bộ lịch sử làm bài?"><button class="btn btn-danger btn-small">Xoá</button></form>
+    </div>
+  </div>
+{% else %}
+  <div class="card muted">Bạn chưa tự tạo bài nào. Vào <a href="/">trang chủ</a>, chọn một mục (ví dụ “Chương 1”) rồi bấm “Tạo bài và bắt đầu”.</div>
+{% endfor %}
+{% endblock %}

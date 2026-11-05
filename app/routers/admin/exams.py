@@ -17,7 +17,7 @@ from app.application.paper import (
     validate_rules,
 )
 from app.deps import AdminUser, SessionDep
-from app.models import Difficulty, Exam, ExamAttempt, ExamMode, ExamQuestion, Question, QuestionSource
+from app.models import Difficulty, Exam, ExamAttempt, ExamMode, ExamQuestion, ExamVisibility, Question, QuestionSource
 from app.routers.admin.common import clean_text, get_or_404, move, redirect
 from app.scope import Scope, load_categories, resolve_scope, scope_by_id, scope_of, scope_options, scope_paths
 from app.templating import flash, templates
@@ -224,7 +224,9 @@ async def _render_detail(
 
 @router.get("/exams")
 async def list_exams(request: Request, user: AdminUser, session: SessionDep):
-    exams = (await session.scalars(select(Exam).order_by(Exam.id.desc()))).all()
+    exams = (
+        await session.scalars(select(Exam).where(Exam.visibility == ExamVisibility.PUBLIC).order_by(Exam.id.desc()))
+    ).all()
     rows = [(exam, await question_count(session, exam)) for exam in exams]
     subjects = await load_categories(session)
     return templates.TemplateResponse(

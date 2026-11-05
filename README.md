@@ -91,6 +91,11 @@ Học sinh vào bất cứ lúc nào, chọn bài (VD: Vật lí 11 – Chương
 - [x] Trang quản trị **Mục lục**: thêm mục con, đổi tên, sắp xếp ▲▼, chuyển sang nhánh khác (cập nhật path cả nhánh), xoá nhánh chưa dùng
 - [x] Trang học sinh: sidebar cây mục lục (kèm số đề), bấm một mục để lọc đề trong cả nhánh, breadcrumb “Vật lí › Lớp 11 › Chương 1”
 
+### Học sinh tự tạo bài kiểm tra
+- [x] Chọn một mục (môn / chương / bài) → chọn số câu trắc nghiệm, đúng/sai, trả lời ngắn, tự luận và mức độ; hiển thị số câu còn trong ngân hàng
+- [x] Thời gian tự tính theo số câu (học sinh sửa được), câu lấy ngẫu nhiên trong cả nhánh, ưu tiên câu chưa gặp
+- [x] Bài lưu dạng đề cá nhân (`visibility = PERSONAL`), chỉ chủ bài thấy; trang “Bài tự tạo của tôi”: tiếp tục, làm lại, xem kết quả, xoá
+
 ### Giai đoạn 2 — Trải nghiệm thực tế & Ngân hàng đề động (Tuần 4–6)
 - [x] Auto-save 2 tầng: IndexedDB mỗi lần chọn + đồng bộ ngầm lên server (2s sau thao tác cuối, chậm nhất 10s; tự thử lại khi mất mạng)
 - [x] Khôi phục phiên `IN_PROGRESS`: các câu đã chọn (server + thay đổi chưa kịp gửi trên máy) + số giây còn lại
