@@ -43,8 +43,15 @@ Mỗi phần làm xong sẽ được review và duyệt trước khi sang phần
 Học sinh vào bất cứ lúc nào, chọn bài (VD: Vật lí 11 – Chương 1), làm bài tính giờ cá nhân, nộp và xem điểm ngay.
 - [x] **Phần 1:** Database & migration (`users`, `subjects`, `exams`, `questions`, `exam_attempts`) + đăng nhập bằng email, phân quyền admin/học sinh
 - [x] **Phần 2:** Trang quản trị — môn học, câu hỏi (LaTeX, lựa chọn dạng JSONB, lời giải, độ khó), đề `PRACTICE`
-- [ ] **Phần 3:** Làm bài — danh sách đề, bấm "Bắt đầu" tạo lượt thi (`expires_at = NOW() + duration`), đồng hồ theo giờ server, API đề **lọc bỏ `is_correct`**, hiển thị công thức bằng KaTeX
+- [x] **Phần 3:** Làm bài — danh sách đề, bấm "Bắt đầu" tạo lượt thi (`expires_at = NOW() + duration`), đồng hồ theo giờ server, API đề **lọc bỏ `is_correct`**, hiển thị công thức bằng KaTeX
 - [ ] **Phần 4:** Nộp bài — kiểm tra hạn nộp, chấm điểm đồng bộ, trả lời giải chi tiết; làm lại nhiều lần (`max_attempts = NULL`) và lịch sử điểm
+
+### Giai đoạn 1.5 — AI bóc tách & giải đề (sau Phần 4)
+- [ ] Upload PDF / Word / ảnh → job nền (`import_jobs` trong PostgreSQL, worker riêng; file lưu volume, sau này chuyển MinIO/S3)
+- [ ] Chuẩn hoá: `.docx` → PDF bằng LibreOffice headless (trong container worker) để giữ MathType; PDF → ảnh trang (PyMuPDF); ảnh chụp → xoay thẳng
+- [ ] Gemini 2.5 Flash/Pro: đọc đề sang Markdown + LaTeX, Structured Outputs (lời giải từng bước trước đáp án), bật `code_execution` để tính số chính xác
+- [ ] Cắt hình vẽ (đồ thị, mạch điện) theo bounding box, gắn vào câu hỏi
+- [ ] Màn hình duyệt nháp: ảnh đề gốc bên trái, câu hỏi + lời giải AI bên phải → “Đưa vào ngân hàng đề”
 
 ### Giai đoạn 2 — Trải nghiệm thực tế & Ngân hàng đề động (Tuần 4–6)
 - [ ] Auto-save 2 tầng: IndexedDB mỗi lần chọn + đồng bộ debounce lên server mỗi 5–10s

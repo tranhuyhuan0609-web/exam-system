@@ -29,7 +29,7 @@
         {% if active.get(exam.id) %}
           <span class="badge badge-warn">Đang làm dở</span>
         {% elif my_attempts.get(exam.id) %}
-          <span class="badge">Đã làm {{ my_attempts[exam.id] }} lần</span>
+          <span class="badge">Đã làm {{ my_attempts[exam.id] }} lần{% if best.get(exam.id) is not none %} · cao nhất {{ "%g" % best[exam.id] }}đ{% endif %}</span>
         {% endif %}
       </a>
     {% endfor %}

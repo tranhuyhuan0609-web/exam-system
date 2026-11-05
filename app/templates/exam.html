@@ -34,9 +34,9 @@
 
 {% if attempts %}
 <div class="card">
-  <h2>Lịch sử làm bài</h2>
+  <h2>Lịch sử làm bài {% if best_score is not none %}<span class="muted small">· cao nhất {{ "%g" % best_score }} điểm</span>{% endif %}</h2>
   <table class="table">
-    <thead><tr><th>Lần</th><th>Bắt đầu</th><th>Trạng thái</th><th class="num">Điểm</th></tr></thead>
+    <thead><tr><th>Lần</th><th>Bắt đầu</th><th>Trạng thái</th><th class="num">Điểm</th><th></th></tr></thead>
     <tbody>
     {% for a in attempts %}
       <tr>
@@ -44,10 +44,10 @@
         <td>{{ a.started_at | local_dt }}</td>
         <td>
           {% if a.status == "SUBMITTED" %}<span class="badge badge-ok">Đã nộp</span>
-          {% elif a.expires_at > now %}<a href="/attempts/{{ a.id }}" class="badge badge-warn">Đang làm</a>
-          {% else %}<span class="badge">Hết giờ, chờ chấm</span>{% endif %}
+          {% else %}<a href="/attempts/{{ a.id }}" class="badge badge-warn">Đang làm</a>{% endif %}
         </td>
-        <td class="num">{{ a.score if a.score is not none else "—" }}</td>
+        <td class="num">{% if a.score is not none %}<strong>{{ "%g" % a.score }}</strong> <span class="muted small">({{ a.correct_count }}/{{ a.total_questions }})</span>{% else %}—{% endif %}</td>
+        <td>{% if a.status == "SUBMITTED" %}<a href="/attempts/{{ a.id }}/result">Xem lại</a>{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>

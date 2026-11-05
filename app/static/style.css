@@ -182,3 +182,30 @@ pre.sample { background: #f8fafc; border: 1px solid var(--border); border-radius
 .palette { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .palette button { padding: 8px 0; border: 1px solid var(--border); background: #fff; border-radius: 6px; cursor: pointer; font-weight: 600; }
 .palette button.answered { background: #16a34a; border-color: #16a34a; color: #fff; }
+
+/* ---------- Part 4: results ---------- */
+.result-head { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
+.result-head h1 { margin: 0 0 8px; }
+.score-ring { width: 130px; height: 130px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 8px solid; }
+.score-ring.good { border-color: #16a34a; color: #166534; }
+.score-ring.ok { border-color: #f59e0b; color: #92400e; }
+.score-ring.low { border-color: #dc2626; color: #991b1b; }
+.score-value { font-size: 2.4rem; font-weight: 800; line-height: 1; }
+.badge-bad { background: var(--danger-bg); color: var(--danger); }
+.result-palette a { display: block; text-align: center; padding: 8px 0; border-radius: 6px; font-weight: 600; color: #fff; }
+.result-palette a:hover { text-decoration: none; opacity: .85; }
+.result-palette .correct, .dot.correct { background: #16a34a; }
+.result-palette .wrong, .dot.wrong { background: #dc2626; }
+.result-palette .unanswered, .dot.unanswered { background: #9ca3af; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; }
+.choice.review { cursor: default; }
+.choice.review:hover { border-color: var(--border); background: none; }
+.choice.is-correct, .choice.is-correct:hover { border-color: #16a34a; background: #f0fdf4; }
+.choice.is-wrong, .choice.is-wrong:hover { border-color: #dc2626; background: #fef2f2; }
+.choice-tag { margin-left: auto; font-size: .75rem; padding: 2px 8px; border-radius: 999px; background: #e5e7eb; white-space: nowrap; }
+.choice-tag.ok { background: #dcfce7; color: #166534; }
+.explanation { margin-top: 14px; padding: 10px 14px; background: #f8fafc; border-radius: 8px; }
+.explanation summary { cursor: pointer; font-weight: 600; }
+.review-correct { border-left: 4px solid #16a34a; }
+.review-wrong { border-left: 4px solid #dc2626; }
+.review-unanswered { border-left: 4px solid #9ca3af; }

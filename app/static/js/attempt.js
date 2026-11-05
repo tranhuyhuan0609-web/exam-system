@@ -16,12 +16,15 @@
     total: document.getElementById("total-count"),
     timeUp: document.getElementById("time-up"),
     error: document.getElementById("load-error"),
+    submit: document.getElementById("submit-btn"),
   };
 
   const RESYNC_MS = 30_000;
   const answers = {}; // { questionId: choiceId }
   let deadline = null; // performance.now() value at which time runs out
   let locked = false;
+  let submitting = false;
+  let questionCount = 0;
 
   // ------------------------------------------------------------------ server clock
 
@@ -67,6 +70,7 @@
     if (left <= 0) lock();
   }
 
+  // Time is up: freeze the page and hand the answers in automatically.
   function lock() {
     if (locked) return;
     locked = true;
@@ -74,12 +78,56 @@
     els.timeUp.hidden = false;
     root.classList.add("locked");
     root.querySelectorAll("input[type=radio]").forEach((input) => (input.disabled = true));
+    submitAnswers();
   }
+
+  // ------------------------------------------------------------------ submit
+
+  async function submitAnswers() {
+    if (submitting) return;
+    submitting = true;
+    els.submit.disabled = true;
+    els.submit.textContent = "Đang nộp bài…";
+    // Retry a few times: a flaky connection at the deadline must not lose the attempt.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const res = await fetch(`/api/attempts/${attemptId}/submit`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ answers }),
+          cache: "no-store",
+        });
+        if (res.status === 401) {
+          window.location.href = "/login?next=" + encodeURIComponent(window.location.pathname);
+          return;
+        }
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        window.location.href = data.result_url;
+        return;
+      } catch (err) {
+        console.warn("Submit failed, retrying", err);
+        await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
+      }
+    }
+    submitting = false;
+    els.submit.disabled = false;
+    els.submit.textContent = "📤 Nộp lại";
+    els.error.textContent = "Không nộp được bài do lỗi kết nối. Hãy kiểm tra mạng rồi bấm “Nộp lại”.";
+    els.error.hidden = false;
+  }
+
+  els.submit.addEventListener("click", () => {
+    const left = questionCount - Object.keys(answers).length;
+    const message = left > 0 ? `Bạn còn ${left} câu chưa chọn đáp án. Vẫn nộp bài?` : "Nộp bài và xem kết quả?";
+    if (confirm(message)) submitAnswers();
+  });
 
   // ------------------------------------------------------------------ rendering
 
   function renderPaper(data) {
     els.total.textContent = data.questions.length;
+    questionCount = data.questions.length;
     const cards = data.questions.map((q) => {
       const card = document.createElement("section");
       card.className = "card question-card";
@@ -175,9 +223,9 @@
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") resync();
     });
-    // Answers are not saved to the server yet (phase 2), so warn before leaving.
+    // Answers are only sent on submit until phase 2 auto-save, so warn before leaving.
     window.addEventListener("beforeunload", (e) => {
-      if (!locked && Object.keys(answers).length) {
+      if (!locked && !submitting && Object.keys(answers).length) {
         e.preventDefault();
         e.returnValue = "";
       }

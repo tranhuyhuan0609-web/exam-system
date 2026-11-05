@@ -1,6 +1,8 @@
-"""Exam attempt lifecycle: start / resume, paper snapshot, and the student-safe view of a paper."""
+"""Exam attempt lifecycle: start / resume, paper snapshot, student-safe paper view, submit and grading."""
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from sqlalchemy import func, select, text
@@ -78,6 +80,8 @@ async def start_or_resume(session: AsyncSession, user: User, exam: Exam) -> Exam
 
     if existing := await active_attempt(session, user.id, exam.id, now):
         return existing
+    # No commit here: committing would release the advisory lock before the new attempt exists.
+    await finalize_expired(session, user.id, exam.id, now, commit=False)
 
     used, last_no = (
         await session.execute(
@@ -116,3 +120,124 @@ async def start_or_resume(session: AsyncSession, user: User, exam: Exam) -> Exam
     session.add(attempt)
     await session.commit()
     return attempt
+
+
+# ---------------------------------------------------------------- submit & grading
+
+# Accept submissions this long after expires_at to absorb network latency on the final auto-submit.
+SUBMIT_GRACE = timedelta(seconds=30)
+MAX_SCORE = Decimal(10)
+
+
+@dataclass(frozen=True)
+class Grade:
+    correct_count: int
+    total: int
+    score: Decimal
+
+
+def clean_answers(snapshot: dict[str, Any], answers: Any) -> dict[str, str]:
+    """Keep only {question_id: choice_id} pairs that exist in this paper."""
+    if not isinstance(answers, dict):
+        return {}
+    valid = {str(q["id"]): {c["id"] for c in q["choices"]} for q in snapshot["questions"]}
+    cleaned = {}
+    for key, choice in answers.items():
+        qid = str(key)
+        if qid in valid and choice in valid[qid]:
+            cleaned[qid] = choice
+    return cleaned
+
+
+def grade(snapshot: dict[str, Any], answers: dict[str, str]) -> Grade:
+    questions = snapshot["questions"]
+    correct = sum(
+        1
+        for q in questions
+        if (chosen := answers.get(str(q["id"]))) and any(c["id"] == chosen and c["is_correct"] for c in q["choices"])
+    )
+    total = len(questions)
+    score = (MAX_SCORE * correct / total).quantize(Decimal("0.01"), ROUND_HALF_UP) if total else Decimal(0)
+    return Grade(correct, total, score)
+
+
+def _finish(attempt: ExamAttempt, answers: dict[str, str], submitted_at: datetime) -> None:
+    result = grade(attempt.paper_snapshot, answers)
+    attempt.answers = answers
+    attempt.status = AttemptStatus.SUBMITTED
+    attempt.submitted_at = submitted_at
+    attempt.correct_count = result.correct_count
+    attempt.total_questions = result.total
+    attempt.score = result.score
+
+
+async def submit(session: AsyncSession, attempt_id: int, answers: Any) -> ExamAttempt:
+    """Grade and close an attempt. Idempotent: a second submit returns the first result unchanged."""
+    # populate_existing: re-read the row after acquiring the lock; a concurrent submit may have just finished.
+    attempt = await session.scalar(
+        select(ExamAttempt)
+        .where(ExamAttempt.id == attempt_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if attempt.status == AttemptStatus.SUBMITTED:
+        await session.commit()  # release the row lock (commit keeps loaded attributes; rollback would expire them)
+        return attempt
+    now = await db_now(session)
+    if now <= attempt.expires_at + SUBMIT_GRACE:
+        final_answers = clean_answers(attempt.paper_snapshot, answers)
+    else:
+        # Too late: only what the server already had at the deadline counts (phase 2 auto-save fills this).
+        final_answers = clean_answers(attempt.paper_snapshot, attempt.answers)
+    _finish(attempt, final_answers, min(now, attempt.expires_at))
+    await session.commit()
+    return attempt
+
+
+async def finalize_expired(
+    session: AsyncSession, user_id: int, exam_id: int | None = None, now: datetime | None = None, commit: bool = True
+) -> int:
+    """Close this student's attempts whose time ran out without a submit (tab closed, offline...).
+
+    Phase 2 adds a background worker that does this for everyone; until then it runs lazily
+    whenever the student looks at their attempts.
+    """
+    now = now or await db_now(session)
+    stmt = (
+        select(ExamAttempt)
+        .where(
+            ExamAttempt.user_id == user_id,
+            ExamAttempt.status == AttemptStatus.IN_PROGRESS,
+            ExamAttempt.expires_at + SUBMIT_GRACE < now,
+        )
+        .with_for_update(skip_locked=True)
+        .execution_options(populate_existing=True)
+    )
+    if exam_id is not None:
+        stmt = stmt.where(ExamAttempt.exam_id == exam_id)
+    expired = (await session.scalars(stmt)).all()
+    for attempt in expired:
+        _finish(attempt, clean_answers(attempt.paper_snapshot, attempt.answers), attempt.expires_at)
+    if expired and commit:
+        await session.commit()
+    return len(expired)
+
+
+def review(attempt: ExamAttempt) -> list[dict[str, Any]]:
+    """Per-question breakdown for the result page (answers and explanations are shown after submit)."""
+    rows = []
+    for number, q in enumerate(attempt.paper_snapshot["questions"], start=1):
+        chosen = attempt.answers.get(str(q["id"]))
+        correct_id = next((c["id"] for c in q["choices"] if c["is_correct"]), None)
+        rows.append(
+            {
+                "number": number,
+                "content": q["content"],
+                "choices": q["choices"],
+                "explanation": q.get("explanation"),
+                "chosen": chosen,
+                "correct_id": correct_id,
+                "status": "unanswered" if chosen is None else ("correct" if chosen == correct_id else "wrong"),
+            }
+        )
+    return rows

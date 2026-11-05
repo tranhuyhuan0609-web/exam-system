@@ -1,10 +1,21 @@
 from collections import defaultdict
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Body, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 
-from app.attempts import AttemptError, active_attempt, db_now, public_questions, remaining_seconds, start_or_resume
+from app.attempts import (
+    AttemptError,
+    active_attempt,
+    db_now,
+    finalize_expired,
+    public_questions,
+    remaining_seconds,
+    review,
+    start_or_resume,
+    submit,
+)
 from app.deps import ApiUser, CurrentUser, LoggedInUser, SessionDep
 from app.models import AttemptStatus, Exam, ExamAttempt, ExamMode, ExamQuestion, User, UserRole
 from app.routers.admin.common import redirect
@@ -30,6 +41,17 @@ async def _get_visible_exam(session, exam_id: int, user: User | None) -> Exam:
     return exam
 
 
+async def _best_scores(session, user_id: int, exam_id: int | None = None) -> dict[int, Any]:
+    stmt = (
+        select(ExamAttempt.exam_id, func.max(ExamAttempt.score))
+        .where(ExamAttempt.user_id == user_id, ExamAttempt.status == AttemptStatus.SUBMITTED)
+        .group_by(ExamAttempt.exam_id)
+    )
+    if exam_id is not None:
+        stmt = stmt.where(ExamAttempt.exam_id == exam_id)
+    return dict((await session.execute(stmt)).all())
+
+
 async def _own_attempt(session, attempt_id: int, user: User) -> ExamAttempt:
     attempt = await session.get(ExamAttempt, attempt_id)
     if attempt is None or attempt.user_id != user.id:  # 404, not 403: don't reveal other students' attempts
@@ -48,8 +70,11 @@ async def home(request: Request, user: CurrentUser, session: SessionDep):
     )
     mine: dict[int, int] = {}
     active: dict[int, int] = {}
+    best: dict[int, Any] = {}
     if user:
         now = await db_now(session)
+        await finalize_expired(session, user.id, now=now)
+        best = await _best_scores(session, user.id)
         mine = dict(
             (
                 await session.execute(
@@ -86,6 +111,7 @@ async def home(request: Request, user: CurrentUser, session: SessionDep):
             "question_counts": counts,
             "my_attempts": mine,
             "active": active,
+            "best": best,
             "scope_paths": paths,
             "scope_of": scope_of,
         },
@@ -101,6 +127,7 @@ async def exam_page(request: Request, user: CurrentUser, session: SessionDep, ex
     attempts, current, now = [], None, None
     if user:
         now = await db_now(session)
+        await finalize_expired(session, user.id, exam_id, now)
         attempts = (
             await session.scalars(
                 select(ExamAttempt)
@@ -122,6 +149,7 @@ async def exam_page(request: Request, user: CurrentUser, session: SessionDep, ex
             "current_remaining": remaining_seconds(current, now) if current else 0,
             "now": now,
             "limit_reached": exam.max_attempts is not None and used >= exam.max_attempts and not current,
+            "best_score": max((a.score for a in attempts if a.score is not None), default=None),
             "scope_path": scope_paths(await load_subject_tree(session, exam.subject_id)).get(scope_of(exam).key, ""),
         },
     )
@@ -141,9 +169,43 @@ async def start_exam(request: Request, user: LoggedInUser, session: SessionDep, 
 @router.get("/attempts/{attempt_id}")
 async def attempt_page(request: Request, user: LoggedInUser, session: SessionDep, attempt_id: int):
     attempt = await _own_attempt(session, attempt_id, user)
+    await finalize_expired(session, user.id, attempt.exam_id)
+    await session.refresh(attempt)
+    if attempt.status == AttemptStatus.SUBMITTED:
+        return redirect(f"/attempts/{attempt_id}/result")
     exam = await session.get(Exam, attempt.exam_id)
     return templates.TemplateResponse(
         request, "attempt.html", {"user": user, "attempt": attempt, "exam": exam}, headers=NO_STORE
+    )
+
+
+@router.get("/attempts/{attempt_id}/result")
+async def attempt_result(request: Request, user: LoggedInUser, session: SessionDep, attempt_id: int):
+    attempt = await _own_attempt(session, attempt_id, user)
+    await finalize_expired(session, user.id, attempt.exam_id)
+    await session.refresh(attempt)
+    if attempt.status != AttemptStatus.SUBMITTED:  # still running: answers must stay hidden
+        return redirect(f"/attempts/{attempt_id}")
+    exam = await session.get(Exam, attempt.exam_id)
+    used = await session.scalar(
+        select(func.count())
+        .select_from(ExamAttempt)
+        .where(ExamAttempt.user_id == user.id, ExamAttempt.exam_id == exam.id)
+    )
+    rows = review(attempt)
+    return templates.TemplateResponse(
+        request,
+        "result.html",
+        {
+            "user": user,
+            "attempt": attempt,
+            "exam": exam,
+            "rows": rows,
+            "unanswered": sum(r["status"] == "unanswered" for r in rows),
+            "time_spent": int((attempt.submitted_at - attempt.started_at).total_seconds()),
+            "can_retry": exam.is_published and (exam.max_attempts is None or used < exam.max_attempts),
+        },
+        headers=NO_STORE,
     )
 
 
@@ -176,4 +238,23 @@ async def attempt_clock(user: ApiUser, session: SessionDep, attempt_id: int):
     now = await db_now(session)
     return JSONResponse(
         {"status": attempt.status.value, "remaining_seconds": remaining_seconds(attempt, now)}, headers=NO_STORE
+    )
+
+
+@router.post("/api/attempts/{attempt_id}/submit")
+async def submit_attempt(
+    user: ApiUser, session: SessionDep, attempt_id: int, answers: Annotated[dict[str, Any], Body(embed=True)]
+):
+    """Grade the attempt. JSON body {"answers": {question_id: choice_id}}; safe to call twice."""
+    await _own_attempt(session, attempt_id, user)
+    attempt = await submit(session, attempt_id, answers)
+    return JSONResponse(
+        {
+            "status": attempt.status.value,
+            "score": str(attempt.score),
+            "correct_count": attempt.correct_count,
+            "total_questions": attempt.total_questions,
+            "result_url": f"/attempts/{attempt_id}/result",
+        },
+        headers=NO_STORE,
     )
