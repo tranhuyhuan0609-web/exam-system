@@ -45,8 +45,8 @@ DIFFICULTY_ALIASES = {
     "hiểu": Difficulty.UNDERSTANDING,
     "vận dụng": Difficulty.APPLICATION,
     "vd": Difficulty.APPLICATION,
-    "vận dụng cao": Difficulty.APPLICATION,
-    "vdc": Difficulty.APPLICATION,
+    "vận dụng cao": Difficulty.ADVANCED_APPLICATION,
+    "vdc": Difficulty.ADVANCED_APPLICATION,
     **{d.value.lower(): d for d in Difficulty},
 }
 

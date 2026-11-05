@@ -217,6 +217,27 @@ def _max(q: dict[str, Any]) -> Decimal:
     return max_points(_type(q), q.get("points"))
 
 
+def clean_flags(snapshot: dict[str, Any], flags: Any) -> list[str]:
+    """Keep the flagged ("unsure") question ids that belong to this paper, in paper order."""
+    if not isinstance(flags, list):
+        return []
+    wanted = {str(f) for f in flags}
+    return [str(q["id"]) for q in snapshot["questions"] if str(q["id"]) in wanted]
+
+
+def clean_times(attempt: ExamAttempt, times: Any) -> dict[str, int]:
+    """Seconds per question from the browser: only questions of this paper, capped at the attempt's length."""
+    if not isinstance(times, dict):
+        return dict(attempt.question_times or {})
+    limit = int((attempt.expires_at - attempt.started_at + SUBMIT_GRACE).total_seconds())
+    ids = {str(q["id"]) for q in attempt.paper_snapshot["questions"]}
+    cleaned = {}
+    for key, value in times.items():
+        if str(key) in ids and isinstance(value, int | float) and value >= 0:
+            cleaned[str(key)] = min(int(value), limit)
+    return cleaned
+
+
 def question_result(q: dict[str, Any], answer: Any, essay_grade: dict | None = None) -> tuple[Decimal, str]:
     """(points earned, status) where status is correct | partial | wrong | unanswered | pending (essay)."""
     kind = _type(q)
@@ -272,7 +293,9 @@ def _finish(attempt: ExamAttempt, answers: dict[str, Any], submitted_at: datetim
     attempt.grading_status = GradingStatus.PENDING_AI if result.pending_essays else GradingStatus.COMPLETE
 
 
-async def submit(session: AsyncSession, attempt_id: int, answers: Any) -> ExamAttempt:
+async def submit(
+    session: AsyncSession, attempt_id: int, answers: Any, flags: Any = None, times: Any = None
+) -> ExamAttempt:
     """Grade and close an attempt. Idempotent: a second submit returns the first result unchanged."""
     # populate_existing: re-read the row after acquiring the lock; a concurrent submit may have just finished.
     attempt = await session.scalar(
@@ -287,6 +310,10 @@ async def submit(session: AsyncSession, attempt_id: int, answers: Any) -> ExamAt
     now = await db_now(session)
     if now <= attempt.expires_at + SUBMIT_GRACE:
         final_answers = clean_answers(attempt.paper_snapshot, answers)
+        if flags is not None:
+            attempt.flags = clean_flags(attempt.paper_snapshot, flags)
+        if times is not None:
+            attempt.question_times = clean_times(attempt, times)
     else:
         # Too late: only what the server already had at the deadline counts (phase 2 auto-save fills this).
         final_answers = clean_answers(attempt.paper_snapshot, attempt.answers)
@@ -337,7 +364,9 @@ class AttemptClosed(Exception):
         self.status = status
 
 
-async def save_answers(session: AsyncSession, attempt_id: int, changes: Any) -> tuple[ExamAttempt, datetime]:
+async def save_answers(
+    session: AsyncSession, attempt_id: int, changes: Any, flags: Any = None, times: Any = None
+) -> tuple[ExamAttempt, datetime]:
     """Auto-save: merge {question_id: value | None} into the attempt; None clears an answer.
 
     Invalid entries are ignored. The row lock serialises saves from several tabs; the client sends one
@@ -364,6 +393,10 @@ async def save_answers(session: AsyncSession, attempt_id: int, changes: Any) -> 
             if qid in cleaned:
                 answers[qid] = cleaned[qid]
     attempt.answers = answers  # reassign so SQLAlchemy sees the JSONB change
+    if flags is not None:  # the full current list of flagged questions
+        attempt.flags = clean_flags(attempt.paper_snapshot, flags)
+    if times is not None:  # cumulative seconds per question
+        attempt.question_times = clean_times(attempt, times)
     await session.commit()
     return attempt, now
 

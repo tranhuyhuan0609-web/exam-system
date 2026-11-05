@@ -79,6 +79,12 @@ Học sinh vào bất cứ lúc nào, chọn bài (VD: Vật lí 11 – Chương
 - [x] Học sinh **tự chọn cấu trúc đề**: chỉ trắc nghiệm, TN + đúng/sai, TN + ĐS + trả lời ngắn, đủ các phần (thời gian tính theo tỉ lệ số câu)
 - [x] Hình vẽ: bỏ chữ watermark (chữ màu nhạt) khi cắt hình
 
+### Báo cáo sau khi nộp & cờ phân vân (GĐ3 roadmap mới)
+- [x] Cắm cờ 🚩 câu phân vân (auto-save cùng đáp án, khôi phục khi F5)
+- [x] Hộp xác nhận nộp bài: liệt kê câu bỏ trống / câu cắm cờ, bấm để nhảy tới câu
+- [x] Dashboard: thời gian, trung bình giây/câu, đúng/sai/bỏ trống, biểu đồ tỉ lệ đúng theo mức độ, cảnh báo chuyên đề dưới 50%
+- [x] Xem lại có bộ lọc Tất cả / Sai / Bỏ trống / Phân vân
+
 ### Giai đoạn 2 — Trải nghiệm thực tế & Ngân hàng đề động (Tuần 4–6)
 - [x] Auto-save 2 tầng: IndexedDB mỗi lần chọn + đồng bộ ngầm lên server (2s sau thao tác cuối, chậm nhất 10s; tự thử lại khi mất mạng)
 - [x] Khôi phục phiên `IN_PROGRESS`: các câu đã chọn (server + thay đổi chưa kịp gửi trên máy) + số giây còn lại

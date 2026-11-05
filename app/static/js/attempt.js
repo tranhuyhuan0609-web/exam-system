@@ -27,6 +27,11 @@
   let submitting = false;
   let questionCount = 0;
   const questionsById = {};
+  const flags = new Set(); // question ids marked "unsure" (🚩)
+  let flagsDirty = false; // flags changed since the last successful sync
+  const times = {}; // seconds spent per question id (estimate: the question in view or last touched)
+  let timesDirty = false;
+  let activeId = null;
 
   // ------------------------------------------------------------------ server clock
 
@@ -122,7 +127,10 @@
     }
     return {
       load: () => tx("readonly", (s) => s.get(attemptId)),
-      save: () => tx("readwrite", (s) => s.put({ answers, pending, updatedAt: Date.now() }, attemptId)),
+      save: () =>
+        tx("readwrite", (s) =>
+          s.put({ answers, pending, flags: [...flags], flagsDirty, times, updatedAt: Date.now() }, attemptId)
+        ),
       clear: () => tx("readwrite", (s) => s.delete(attemptId)),
     };
   })();
@@ -140,16 +148,24 @@
   }
 
   async function syncNow(keepalive = false) {
-    if (syncing || submitting || !Object.keys(pending).length) return;
+    if (syncing || submitting || (!Object.keys(pending).length && !flagsDirty && !timesDirty)) return;
     syncing = true;
     syncTimer = null;
     const batch = Object.assign({}, pending);
+    const sendFlags = flagsDirty;
+    flagsDirty = false;
+    const sendTimes = timesDirty;
+    timesDirty = false;
     setSaveStatus("saving", "Đang lưu…");
     try {
       const res = await fetch(`/api/attempts/${attemptId}/answers`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ changes: batch }),
+        body: JSON.stringify({
+          changes: batch,
+          ...(sendFlags ? { flags: [...flags] } : {}),
+          ...(sendTimes ? { times } : {}),
+        }),
         cache: "no-store",
         keepalive,
       });
@@ -172,14 +188,29 @@
       setSaveStatus("saved", "✓ Đã lưu lúc " + time);
       if (typeof data.remaining_seconds === "number") deadline = performance.now() + data.remaining_seconds * 1000;
     } catch (err) {
+      if (sendFlags) flagsDirty = true;
+      if (sendTimes) timesDirty = true;
       setSaveStatus("offline", "⚠ Mất kết nối, đáp án vẫn được giữ trên máy và sẽ tự lưu lại");
       clearTimeout(syncTimer);
       syncTimer = setTimeout(() => syncNow(), retryDelay);
       retryDelay = Math.min(retryDelay * 2, 30000);
     } finally {
       syncing = false;
-      if (Object.keys(pending).length && !syncTimer) scheduleSync();
+      if ((Object.keys(pending).length || flagsDirty) && !syncTimer) scheduleSync();
     }
+  }
+
+  function toggleFlag(questionId, button) {
+    if (locked) return;
+    const id = String(questionId);
+    if (flags.has(id)) flags.delete(id);
+    else flags.add(id);
+    button.setAttribute("aria-pressed", flags.has(id) ? "true" : "false");
+    button.textContent = flags.has(id) ? "🚩 Đã cắm cờ" : "🚩 Phân vân";
+    flagsDirty = true;
+    local.save();
+    scheduleSync();
+    refreshProgress();
   }
 
   function recordChange(questionId, value) {
@@ -208,7 +239,7 @@
         const res = await fetch(`/api/attempts/${attemptId}/submit`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ answers }),
+          body: JSON.stringify({ answers, flags: [...flags], times }),
           cache: "no-store",
         });
         if (res.status === 401) {
@@ -232,10 +263,39 @@
     els.error.hidden = false;
   }
 
+  // Submit dialog: lists blank and flagged questions; clicking a number jumps to it.
+  const dialog = document.getElementById("submit-dialog");
+  function jumpList(container, ids) {
+    container.replaceChildren(
+      ...ids.map((id) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = questionsById[id].number;
+        btn.addEventListener("click", () => {
+          dialog.close();
+          document.getElementById("q-" + id).scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+        return btn;
+      })
+    );
+  }
   els.submit.addEventListener("click", () => {
-    const left = Object.keys(questionsById).filter((id) => answerState(id) !== "answered").length;
-    const message = left > 0 ? `Bạn còn ${left} câu chưa chọn đáp án. Vẫn nộp bài?` : "Nộp bài và xem kết quả?";
-    if (confirm(message)) submitAnswers();
+    const ids = Object.keys(questionsById);
+    const blank = ids.filter((id) => answerState(id) !== "answered");
+    const flagged = ids.filter((id) => flags.has(id));
+    dialog.querySelector(".blank-block").hidden = !blank.length;
+    dialog.querySelector(".flag-block").hidden = !flagged.length;
+    dialog.querySelector(".all-done").hidden = Boolean(blank.length || flagged.length);
+    dialog.querySelector(".blank-count").textContent = blank.length;
+    dialog.querySelector(".flag-count").textContent = flagged.length;
+    jumpList(dialog.querySelector(".jump-list.blanks"), blank);
+    jumpList(dialog.querySelector(".jump-list.flags"), flagged);
+    dialog.showModal();
+  });
+  dialog.querySelector("[data-action=back]").addEventListener("click", () => dialog.close());
+  dialog.querySelector("[data-action=submit]").addEventListener("click", () => {
+    dialog.close();
+    submitAnswers();
   });
 
 
@@ -399,6 +459,15 @@
       badge.className = "badge type-badge";
       badge.textContent = TYPE_LABELS[q.type] || "";
       head.append(" ", badge);
+      const flagBtn = document.createElement("button");
+      flagBtn.type = "button";
+      flagBtn.className = "flag-btn";
+      const isFlagged = flags.has(String(q.id));
+      flagBtn.setAttribute("aria-pressed", isFlagged ? "true" : "false");
+      flagBtn.textContent = isFlagged ? "🚩 Đã cắm cờ" : "🚩 Phân vân";
+      flagBtn.title = "Đánh dấu câu còn phân vân để xem lại trước khi nộp";
+      flagBtn.addEventListener("click", () => toggleFlag(q.id, flagBtn));
+      head.append(flagBtn);
 
       const parts = [head, content];
       if (q.image_url) {
@@ -432,10 +501,38 @@
 
   function setAnswer(questionId, value) {
     if (locked) return;
+    activeId = String(questionId); // answering a question makes it the one being worked on
     if (value === null) delete answers[questionId];
     else answers[questionId] = value;
     recordChange(questionId, value);
     refreshProgress();
+  }
+
+  // Time per question: the card most visible on screen (or the one last answered) gets each second
+  // while the tab is visible. Totals are an estimate used for the "slowest questions" review filter.
+  function startQuestionTimer() {
+    const ratios = new Map();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => ratios.set(e.target.id.slice(2), e.intersectionRatio));
+        let best = null;
+        let bestRatio = 0;
+        ratios.forEach((ratio, id) => {
+          if (ratio > bestRatio) [best, bestRatio] = [id, ratio];
+        });
+        if (best) activeId = best;
+      },
+      { threshold: [0, 0.25, 0.5, 0.75, 1] }
+    );
+    document.querySelectorAll(".question-card").forEach((card) => observer.observe(card));
+    let ticks = 0;
+    setInterval(() => {
+      if (locked || document.visibilityState !== "visible" || !activeId) return;
+      times[activeId] = (times[activeId] || 0) + 1;
+      timesDirty = true;
+      if (++ticks % 5 === 0) local.save();
+      if (ticks % 30 === 0) syncNow(); // keep the server copy fresh even without answer changes
+    }, 1000);
   }
 
   function refreshProgress() {
@@ -444,6 +541,7 @@
       const state = answerState(btn.dataset.questionId);
       btn.classList.toggle("answered", state === "answered");
       btn.classList.toggle("partial", state === "partial");
+      btn.classList.toggle("flagged", flags.has(String(btn.dataset.questionId)));
       if (state === "answered") count++;
     });
     els.answered.textContent = count;
@@ -467,10 +565,15 @@
         }
       }
       data.answers = restored;
+      (saved && saved.flagsDirty ? saved.flags : data.flags || []).forEach((id) => flags.add(String(id)));
+      for (const source of [data.times || {}, (saved && saved.times) || {}]) {
+        for (const [id, sec] of Object.entries(source)) times[id] = Math.max(times[id] || 0, sec);
+      }
+      if (saved && saved.flagsDirty) flagsDirty = true;
       renderPaper(data);
       const count = Object.keys(restored).length;
       if (count) setSaveStatus("saved", `↺ Đã khôi phục ${count} câu đã làm`);
-      if (Object.keys(pending).length) scheduleSync();
+      if (Object.keys(pending).length || flagsDirty) scheduleSync();
       if (data.status !== "IN_PROGRESS" || data.remaining_seconds <= 0) lock();
     } catch (err) {
       if (err.message === "unauthenticated") return;
@@ -481,6 +584,7 @@
     }
     tick();
     setInterval(tick, 250);
+    startQuestionTimer();
     setInterval(resync, RESYNC_MS);
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") resync();

@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 
 from app.application.paper import available_parts, question_count
+from app.application.report import build_report
 from app.attempts import (
     AttemptClosed,
     AttemptError,
@@ -182,13 +183,13 @@ async def attempt_page(request: Request, user: LoggedInUser, session: SessionDep
     )
 
 
-@router.get("/attempts/{attempt_id}/result")
-async def attempt_result(request: Request, user: LoggedInUser, session: SessionDep, attempt_id: int):
+async def _result_context(session, user: User, attempt_id: int) -> dict[str, Any] | None:
+    """Data shared by the report dashboard and the solutions page; None while the attempt is running."""
     attempt = await _own_attempt(session, attempt_id, user)
     await finalize_expired(session, user.id, attempt.exam_id)
     await session.refresh(attempt)
     if attempt.status != AttemptStatus.SUBMITTED:  # still running: answers must stay hidden
-        return redirect(f"/attempts/{attempt_id}")
+        return None
     exam = await session.get(Exam, attempt.exam_id)
     used = await session.scalar(
         select(func.count())
@@ -196,23 +197,43 @@ async def attempt_result(request: Request, user: LoggedInUser, session: SessionD
         .where(ExamAttempt.user_id == user.id, ExamAttempt.exam_id == exam.id)
     )
     rows = review(attempt)
-    return templates.TemplateResponse(
-        request,
-        "result.html",
-        {
-            "user": user,
-            "attempt": attempt,
-            "exam": exam,
-            "rows": rows,
-            "unanswered": sum(r["status"] == "unanswered" for r in rows),
-            "time_spent": int((attempt.submitted_at - attempt.started_at).total_seconds()),
-            "grading_pending": attempt.grading_status == GradingStatus.PENDING_AI,
-            "grading_failed": attempt.grading_status == GradingStatus.FAILED,
-            "chosen_parts": (attempt.paper_snapshot or {}).get("parts"),
-            "can_retry": exam.is_published and (exam.max_attempts is None or used < exam.max_attempts),
-        },
-        headers=NO_STORE,
-    )
+    flagged = set(attempt.flags or [])
+    times = attempt.question_times or {}
+    for row, q in zip(rows, attempt.paper_snapshot["questions"], strict=True):
+        row["flagged"] = str(q["id"]) in flagged
+        row["seconds"] = times.get(str(q["id"]))
+    report = await build_report(session, attempt, rows)
+    return {
+        "user": user,
+        "attempt": attempt,
+        "exam": exam,
+        "rows": rows,
+        "report": report,
+        "slowest": set(report.slowest),
+        "flagged_count": len(flagged),
+        "grading_pending": attempt.grading_status == GradingStatus.PENDING_AI,
+        "grading_failed": attempt.grading_status == GradingStatus.FAILED,
+        "chosen_parts": (attempt.paper_snapshot or {}).get("parts"),
+        "can_retry": exam.is_published and (exam.max_attempts is None or used < exam.max_attempts),
+    }
+
+
+@router.get("/attempts/{attempt_id}/result")
+async def attempt_result(request: Request, user: LoggedInUser, session: SessionDep, attempt_id: int):
+    """Report dashboard shown right after submitting."""
+    context = await _result_context(session, user, attempt_id)
+    if context is None:
+        return redirect(f"/attempts/{attempt_id}")
+    return templates.TemplateResponse(request, "result.html", context, headers=NO_STORE)
+
+
+@router.get("/attempts/{attempt_id}/solutions")
+async def attempt_solutions(request: Request, user: LoggedInUser, session: SessionDep, attempt_id: int):
+    """Detailed solutions, opened from the dashboard: answers, answer keys and worked solutions."""
+    context = await _result_context(session, user, attempt_id)
+    if context is None:
+        return redirect(f"/attempts/{attempt_id}")
+    return templates.TemplateResponse(request, "solutions.html", context, headers=NO_STORE)
 
 
 @router.get("/api/attempts/{attempt_id}/paper")
@@ -232,6 +253,8 @@ async def attempt_paper(user: ApiUser, session: SessionDep, attempt_id: int):
             "expires_at": attempt.expires_at.isoformat(),
             "questions": public_questions(attempt.paper_snapshot),
             "answers": attempt.answers,
+            "flags": attempt.flags or [],
+            "times": attempt.question_times or {},
         },
         headers=NO_STORE,
     )
@@ -249,11 +272,16 @@ async def attempt_clock(user: ApiUser, session: SessionDep, attempt_id: int):
 
 @router.post("/api/attempts/{attempt_id}/submit")
 async def submit_attempt(
-    user: ApiUser, session: SessionDep, attempt_id: int, answers: Annotated[dict[str, Any], Body(embed=True)]
+    user: ApiUser,
+    session: SessionDep,
+    attempt_id: int,
+    answers: Annotated[dict[str, Any], Body(embed=True)],
+    flags: Annotated[list[str] | None, Body(embed=True)] = None,
+    times: Annotated[dict[str, Any] | None, Body(embed=True)] = None,
 ):
-    """Grade the attempt. JSON body {"answers": {question_id: choice_id}}; safe to call twice."""
+    """Grade the attempt. JSON body {"answers": {question_id: ...}, "flags": [question_id]}; safe to call twice."""
     await _own_attempt(session, attempt_id, user)
-    attempt = await submit(session, attempt_id, answers)
+    attempt = await submit(session, attempt_id, answers, flags, times)
     return JSONResponse(
         {
             "status": attempt.status.value,
@@ -268,12 +296,17 @@ async def submit_attempt(
 
 @router.patch("/api/attempts/{attempt_id}/answers")
 async def autosave_answers(
-    user: ApiUser, session: SessionDep, attempt_id: int, changes: Annotated[dict[str, Any], Body(embed=True)]
+    user: ApiUser,
+    session: SessionDep,
+    attempt_id: int,
+    changes: Annotated[dict[str, Any], Body(embed=True)],
+    flags: Annotated[list[str] | None, Body(embed=True)] = None,
+    times: Annotated[dict[str, Any] | None, Body(embed=True)] = None,
 ):
     """Auto-save. JSON body {"changes": {question_id: value | null}}; only the changed questions are sent."""
     await _own_attempt(session, attempt_id, user)
     try:
-        attempt, now = await save_answers(session, attempt_id, changes)
+        attempt, now = await save_answers(session, attempt_id, changes, flags, times)
     except AttemptClosed as exc:
         return JSONResponse(
             {"status": exc.status, "result_url": f"/attempts/{attempt_id}/result"},

@@ -169,7 +169,8 @@ def test_essay_answer_is_graded_by_the_ai_worker(student, db, mixed_exam):
     assert attempt.grading_status == GradingStatus.COMPLETE
     assert attempt.essay_grades[str(ids["ESSAY1"])]["points"] == "1.50"
     assert attempt.score == Decimal("4.67")  # (0.25 + 1.5) / 3.75 * 10
-    page = student.get(f"/attempts/{attempt_id}/result").text
+    assert "AI đang chấm" not in student.get(f"/attempts/{attempt_id}/result").text
+    page = student.get(f"/attempts/{attempt_id}/solutions").text
     assert "Em làm đúng hướng" in page and "Nhận xét của AI · 1.5/2 điểm" in page and "AI đang chấm" not in page
     assert student.get(f"/api/attempts/{attempt_id}/grading").json()["grading_status"] == "COMPLETE"
 

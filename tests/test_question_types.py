@@ -258,7 +258,7 @@ def test_student_takes_mixed_exam(client, make_user, db, subject_scope):
     # 0.25 + 0.5 (3 of 4 statements) + 0.25 = 1.0 / 1.5
     assert (data["score"], data["correct_count"]) == ("6.67", 2)
 
-    result = client.get(data["result_url"])
+    result = client.get(f"/attempts/{attempt_id}/solutions")
     assert "Đúng một phần" in result.text
     assert "0.5/1 điểm" in result.text
     assert "GIAI_TF" in result.text

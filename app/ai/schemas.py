@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 ChoiceLabel = Literal["A", "B", "C", "D", "E", "F"]
 QuestionType = Literal["MULTIPLE_CHOICE", "TRUE_FALSE", "SHORT_ANSWER", "ESSAY"]
-DifficultyName = Literal["RECOGNITION", "UNDERSTANDING", "APPLICATION"]
+DifficultyName = Literal["RECOGNITION", "UNDERSTANDING", "APPLICATION", "ADVANCED_APPLICATION"]
 
 
 class BoundingBox(BaseModel):
@@ -61,7 +61,8 @@ class Solution(BaseModel):
         description="SHORT_ANSWER: CHỈ con số đáp án, dấu phẩy thập phân, không kèm đơn vị (VD: 30 hoặc 1,25); dạng khác: null"
     )
     difficulty: DifficultyName = Field(
-        description="RECOGNITION = Nhận biết, UNDERSTANDING = Thông hiểu, APPLICATION = Vận dụng"
+        description="RECOGNITION = Nhận biết, UNDERSTANDING = Thông hiểu, APPLICATION = Vận dụng, "
+        "ADVANCED_APPLICATION = Vận dụng cao"
     )
 
 

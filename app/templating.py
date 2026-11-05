@@ -33,6 +33,7 @@ templates.env.globals["DIFFICULTY_LABELS"] = {
     Difficulty.RECOGNITION: "Nhận biết",
     Difficulty.UNDERSTANDING: "Thông hiểu",
     Difficulty.APPLICATION: "Vận dụng",
+    Difficulty.ADVANCED_APPLICATION: "Vận dụng cao",
 }
 
 # Vietnam has no DST, so a fixed UTC+7 offset is exact.
@@ -45,6 +46,8 @@ def _local_dt(value: datetime | None, fmt: str = "%H:%M %d/%m/%Y") -> str:
 
 def _duration(seconds: int) -> str:
     minutes, secs = divmod(int(seconds), 60)
+    if not minutes:
+        return f"{secs} giây"
     return f"{minutes} phút" + (f" {secs} giây" if secs else "")
 
 
