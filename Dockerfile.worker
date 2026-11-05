@@ -1,0 +1,15 @@
+# AI import worker: same app code plus LibreOffice, which renders .docx (MathType, Word shapes) to PDF.
+FROM python:3.13-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libreoffice-writer-nogui \
+        # Metric-compatible replacements for Times New Roman / Arial / Calibri / Cambria used in Vietnamese exams
+        fonts-liberation fonts-crosextra-carlito fonts-crosextra-caladea fonts-dejavu \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY app ./app
+ENV SOFFICE_PATH=soffice DATA_DIR=/app/data
+CMD ["python", "-m", "app.worker"]

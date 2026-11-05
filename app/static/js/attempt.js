@@ -163,7 +163,15 @@
         list.append(label);
       });
 
-      card.append(head, content, list);
+      const parts = [head, content];
+      if (q.image_url) {
+        const img = document.createElement("img");
+        img.className = "q-figure";
+        img.src = q.image_url;
+        img.alt = "Hình vẽ câu " + q.number;
+        parts.push(img);
+      }
+      card.append(...parts, list);
       return card;
     });
     els.questions.replaceChildren(...cards);

@@ -1,8 +1,11 @@
 import asyncio
 import os
+import tempfile
 
 # Must be set before any app module is imported (settings and engine are created at import time).
 os.environ["APP_ENV"] = "test"
+os.environ["DATA_DIR"] = tempfile.mkdtemp(prefix="exam-test-data-")
+os.environ["GEMINI_API_KEY"] = ""  # tests never call the real AI
 os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://exam:exam@localhost:5432/exam_test"
 )

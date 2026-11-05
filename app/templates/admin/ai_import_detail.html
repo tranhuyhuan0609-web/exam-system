@@ -1,0 +1,155 @@
+{% extends "admin/_layout.html" %}
+{% set active = "ai" %}
+{% block title %}{{ job.original_filename }} · AI nhập đề{% endblock %}
+{% block admin_content %}
+<p class="muted"><a href="/admin/ai-imports">← AI nhập đề</a></p>
+<div class="page-head">
+  <h1>{{ job.original_filename }} {% include "admin/_job_status.html" %}</h1>
+  <span class="muted small">Lưu vào: {{ scope_path }}{% if job.models_used %} · Model: {{ job.models_used }}{% endif %}</span>
+</div>
+
+{% if job.status in ("QUEUED", "PROCESSING") %}
+  <div class="card" id="job-progress" data-status-url="/admin/ai-imports/{{ job.id }}/status">
+    <p><strong id="job-stage">{{ job.stage or "Đang chờ worker…" }}</strong></p>
+    <div class="progress"><div class="progress-bar" id="job-bar" style="width: 0%"></div></div>
+    <p class="hint mt">Trang tự cập nhật. Bạn có thể rời trang này, việc xử lý vẫn tiếp tục.
+      Nếu chờ lâu mà vẫn “Đang chờ”, hãy kiểm tra worker đã chạy chưa: <code>python -m app.worker</code>.</p>
+  </div>
+  <script>
+    (() => {
+      const box = document.getElementById("job-progress");
+      async function poll() {
+        try {
+          const res = await fetch(box.dataset.statusUrl, { cache: "no-store" });
+          const s = await res.json();
+          document.getElementById("job-stage").textContent = s.stage || "";
+          const pct = s.progress_total ? Math.round((100 * s.progress_done) / s.progress_total) : 0;
+          document.getElementById("job-bar").style.width = pct + "%";
+          if (s.status === "DONE" || s.status === "FAILED") return location.reload();
+        } catch (e) { /* retry on next tick */ }
+        setTimeout(poll, 3000);
+      }
+      poll();
+    })();
+  </script>
+{% elif job.status == "FAILED" %}
+  <div class="alert">{{ job.error }}</div>
+  <form method="post" action="/admin/ai-imports/{{ job.id }}/retry"><button class="btn">↻ Chạy lại</button></form>
+{% endif %}
+
+{% if job.status == "DONE" %}
+  {% if not drafts %}
+    <div class="card muted">AI không tìm thấy câu hỏi nào trong file này.</div>
+  {% else %}
+  <form method="post" action="/admin/ai-imports/{{ job.id }}/publish" id="publish-form">
+    <div class="card confirm-bar">
+      <div>
+        <strong>{{ drafts | length }}</strong> câu AI đọc được ·
+        <strong class="ok-text">{{ ready_count }}</strong> câu sẵn sàng ·
+        {{ published_count }} câu đã đưa vào ngân hàng
+        <div class="muted small">Kiểm tra từng câu, nhất là các câu có cảnh báo ⚠, rồi chọn câu để đưa vào ngân hàng.</div>
+      </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" name="create_exam" id="create_exam"> Tạo đề luyện tập</label>
+        <span id="exam-fields" class="row" hidden>
+          <input name="exam_title" value="{{ default_title }}" maxlength="300" placeholder="Tên đề">
+          <input type="number" name="duration_minutes" value="15" min="1" max="600" style="width: 80px" title="Phút">
+          <label class="check"><input type="checkbox" name="publish_exam"> Công khai</label>
+        </span>
+        <button class="btn">Đưa <span id="selected-count">0</span> câu vào ngân hàng</button>
+      </div>
+    </div>
+  </form>
+  {% endif %}
+
+  <div class="review-layout">
+    <aside class="review-pages">
+      {% for p in pages %}
+        <figure id="page-{{ p }}">
+          <figcaption class="muted small">Trang {{ p }}</figcaption>
+          <img src="/admin/ai-imports/{{ job.id }}/pages/{{ p }}.png" alt="Trang {{ p }}" loading="lazy">
+        </figure>
+      {% endfor %}
+    </aside>
+
+    <div class="review-drafts">
+      {% for d in drafts %}
+        <section class="card draft {{ 'draft-published' if d.question_id }} {{ 'draft-warn' if d.flags and not d.question_id }}" id="draft-{{ d.index }}">
+          <div class="q-meta">
+            {% if d.question_id %}
+              <span class="badge badge-ok">✓ Đã vào ngân hàng (#{{ d.question_id }})</span>
+            {% else %}
+              <label class="check"><input type="checkbox" name="selected" value="{{ d.index }}" form="publish-form"
+                {% if d.problems %}disabled{% elif not d.flags %}checked{% endif %}> <strong>Câu {{ d.number }}</strong></label>
+            {% endif %}
+            <span class="badge">{{ type_labels.get(d.type, d.type) }}</span>
+            <span class="badge diff-{{ d.difficulty | lower }}">{{ DIFFICULTY_LABELS[d.difficulty] }}</span>
+            <a class="small" href="#page-{{ d.page }}">Trang {{ d.page }}</a>
+            {% if d.edited %}<span class="badge">Đã sửa</span>{% endif %}
+          </div>
+          {% for text in d.flag_texts %}<div class="flag">⚠ {{ text }}</div>{% endfor %}
+
+          <div class="q-content math">{{ d.content }}</div>
+          {% if d.figure %}<img class="q-figure" src="/media/{{ d.figure }}" alt="Hình câu {{ d.number }}">{% endif %}
+          {% if d.choices %}
+            <ol class="q-choices" type="A">
+              {% for c in d.choices %}<li class="math {% if loop.index0 == d.correct %}correct{% endif %}">{{ c }}</li>{% endfor %}
+            </ol>
+          {% endif %}
+          {% if d.short_answer %}<p><strong>Đáp số:</strong> <span class="math">{{ d.short_answer }}</span></p>{% endif %}
+          {% if d.explanation %}
+            <details class="explanation"><summary>Lời giải AI{% if d.final_value %} · kết quả: <span class="math">{{ d.final_value }}</span>{% endif %}</summary>
+              <div class="q-content math">{{ d.explanation }}</div>
+            </details>
+          {% endif %}
+
+          {% if not d.question_id %}
+          <details class="edit-draft">
+            <summary>✏️ Sửa câu này</summary>
+            <form method="post" action="/admin/ai-imports/{{ job.id }}/drafts/{{ d.index }}" class="mt">
+              <div class="row">
+                <label>Dạng câu
+                  <select name="type">{% for t, label in type_labels.items() %}<option value="{{ t }}" {% if t == d.type %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+                </label>
+                <label>Mức độ
+                  <select name="difficulty">{% for dd, label in DIFFICULTY_LABELS.items() %}<option value="{{ dd.value }}" {% if dd.value == d.difficulty %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+                </label>
+              </div>
+              <label>Nội dung <textarea name="content" rows="4">{{ d.content }}</textarea></label>
+              {% for c in d.choices %}
+                <div class="choice-row">
+                  <label class="choice-correct"><input type="radio" name="correct" value="{{ loop.index0 }}" {% if loop.index0 == d.correct %}checked{% endif %}>
+                    <span class="choice-letter">{{ letters[loop.index0] }}</span></label>
+                  <textarea name="choice_content" rows="1">{{ c }}</textarea>
+                </div>
+              {% endfor %}
+              <label>Lời giải <textarea name="explanation" rows="6">{{ d.explanation }}</textarea></label>
+              {% if d.figure %}<label class="check"><input type="checkbox" name="remove_figure"> Bỏ hình vẽ (nếu AI cắt sai)</label>{% endif %}
+              <button class="btn btn-small mt">Lưu thay đổi</button>
+            </form>
+          </details>
+          {% endif %}
+        </section>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
+<form method="post" action="/admin/ai-imports/{{ job.id }}/delete" class="mt" data-confirm="Xoá lần nhập này? Các câu đã đưa vào ngân hàng vẫn được giữ.">
+  <button class="btn btn-danger btn-small">Xoá lần nhập</button>
+</form>
+
+<script>
+  (() => {
+    const boxes = [...document.querySelectorAll("input[name=selected]:not(:disabled)")];
+    const counter = document.getElementById("selected-count");
+    if (counter) {
+      const update = () => (counter.textContent = boxes.filter((b) => b.checked).length);
+      boxes.forEach((b) => b.addEventListener("change", update));
+      update();
+    }
+    const toggle = document.getElementById("create_exam");
+    toggle?.addEventListener("change", () => (document.getElementById("exam-fields").hidden = !toggle.checked));
+  })();
+</script>
+{% endblock %}

@@ -188,12 +188,15 @@ async def edit_question(request: Request, user: AdminUser, session: SessionDep, 
 @router.post("/questions/{question_id}")
 async def update_question(request: Request, user: AdminUser, session: SessionDep, question_id: int):
     question = await get_or_404(session, Question, question_id)
-    data, scope, errors = await _parse(session, await request.form())
+    form = await request.form()
+    data, scope, errors = await _parse(session, form)
     if scope and scope.subject_id != question.subject_id and await _exams_using(session, question_id):
         errors.append("Câu hỏi đang nằm trong đề thi nên không thể chuyển sang môn khác.")
     if errors:
         return await _render_form(request, session, user, data, question, errors)
     _apply(question, data, scope)
+    if form.get("remove_image") == "on":
+        question.image_path = None
     await session.commit()
     flash(request, f"Đã lưu câu hỏi #{question_id}.")
     return redirect("/admin/questions?" + urlencode({"scope": scope.key}))

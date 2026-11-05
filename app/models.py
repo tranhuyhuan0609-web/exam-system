@@ -39,6 +39,13 @@ class ExamMode(StrEnum):
     SCHEDULED = "SCHEDULED"  # fixed time window (phase 3)
 
 
+class JobStatus(StrEnum):
+    QUEUED = "QUEUED"
+    PROCESSING = "PROCESSING"
+    DONE = "DONE"  # drafts ready for review
+    FAILED = "FAILED"
+
+
 class AttemptStatus(StrEnum):
     IN_PROGRESS = "IN_PROGRESS"
     SUBMITTED = "SUBMITTED"
@@ -128,6 +135,8 @@ class Question(TimestampMixin, UpdatedAtMixin, Base):
     # Choices keep stable ids so answers survive shuffling; is_correct must never be sent to students.
     choices: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     explanation: Mapped[str | None] = mapped_column(Text)
+    # Figure (graph, circuit...) relative to <data_dir>/media, served publicly under /media/.
+    image_path: Mapped[str | None] = mapped_column(String(300))
 
 
 class Exam(TimestampMixin, UpdatedAtMixin, Base):
@@ -193,3 +202,33 @@ class ExamAttempt(Base):
             postgresql_where="status = 'IN_PROGRESS'",
         ),
     )
+
+
+class ImportJob(Base):
+    """An uploaded exam file processed by the AI worker into draft questions awaiting review."""
+
+    __tablename__ = "import_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    original_filename: Mapped[str] = mapped_column(String(300))
+    stored_path: Mapped[str] = mapped_column(String(300))  # relative to data_dir
+    status: Mapped[JobStatus] = mapped_column(_enum(JobStatus, "job_status"), default=JobStatus.QUEUED)
+    stage: Mapped[str | None] = mapped_column(String(200))  # human-readable progress, e.g. "Đang giải câu 6–10"
+    progress_done: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    progress_total: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    page_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Where published questions go.
+    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"))
+    chapter_id: Mapped[int | None] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"))
+    lesson_id: Mapped[int | None] = mapped_column(ForeignKey("lessons.id", ondelete="SET NULL"))
+    default_difficulty: Mapped[Difficulty] = mapped_column(_enum(Difficulty, "difficulty"))
+    # Draft questions produced by the pipeline and edited during review (see app/ai/pipeline.py).
+    drafts: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, server_default="[]")
+    error: Mapped[str | None] = mapped_column(Text)
+    models_used: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("ix_import_jobs_queued", "id", postgresql_where="status = 'QUEUED'"),)

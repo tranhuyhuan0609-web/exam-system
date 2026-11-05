@@ -13,6 +13,19 @@ class Settings(BaseSettings):
     session_https_only: bool = False
     session_max_age_seconds: int = 7 * 24 * 3600
 
+    # Files: uploads, rendered pages and cropped figures. Mounted as a Docker volume in production.
+    data_dir: str = "data"
+
+    # AI import (Gemini). Models are tried in order; later ones are fallbacks when one is overloaded.
+    gemini_api_key: str = ""
+    gemini_models: str = "gemini-3.5-flash,gemini-3.8-flash,gemini-3.6-flash"
+    # LibreOffice binary used to turn .docx (MathType, Word shapes) into PDF.
+    soffice_path: str = "soffice"
+
+    @property
+    def gemini_model_list(self) -> list[str]:
+        return [m.strip() for m in self.gemini_models.split(",") if m.strip()]
+
 
 @lru_cache
 def get_settings() -> Settings:

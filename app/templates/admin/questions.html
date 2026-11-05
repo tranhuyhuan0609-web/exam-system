@@ -5,6 +5,7 @@
 <div class="page-head">
   <h1>Ngân hàng câu hỏi <span class="muted small">({{ total }})</span></h1>
   <div>
+    <a class="btn btn-outline" href="/admin/ai-imports{% if filters.scope %}?scope={{ filters.scope }}{% endif %}">🤖 AI nhập đề</a>
     <a class="btn btn-outline" href="/admin/questions/import{% if filters.scope %}?scope={{ filters.scope }}{% endif %}">⬆ Nhập từ file</a>
     <a class="btn" href="/admin/questions/new{% if filters.scope %}?scope={{ filters.scope }}{% endif %}">+ Thêm câu hỏi</a>
   </div>
@@ -30,6 +31,7 @@
       <a href="/admin/questions/{{ q.id }}/edit">Sửa</a>
     </div>
     <div class="q-content math">{{ q.content }}</div>
+    {% if q.image_path %}<img class="q-figure small-figure" src="/media/{{ q.image_path }}" alt="Hình vẽ">{% endif %}
     <ol class="q-choices" type="A">
       {% for c in q.choices %}<li class="math {% if c.is_correct %}correct{% endif %}">{{ c.content }}</li>{% endfor %}
     </ol>
