@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Exam System{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">📘 Exam System</a>
+    <nav>
+      {% if user %}
+        {% if user.role == "ADMIN" %}<a href="/admin">Quản trị</a>{% endif %}
+        <span class="who">{{ user.full_name }} <span class="badge badge-{{ user.role | lower }}">{{ "Admin" if user.role == "ADMIN" else "Học sinh" }}</span></span>
+        <form method="post" action="/logout" class="inline"><button class="link">Đăng xuất</button></form>
+      {% else %}
+        <a href="/login">Đăng nhập</a>
+        <a href="/register" class="btn btn-small">Đăng ký</a>
+      {% endif %}
+    </nav>
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

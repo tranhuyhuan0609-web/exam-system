@@ -16,15 +16,22 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 copy .env.example .env          # Linux/macOS: cp .env.example .env
 
-# 3. Chạy server
+# 3. Tạo bảng + dữ liệu mẫu + tài khoản admin
+alembic upgrade head
+python -m app.cli seed-demo
+python -m app.cli create-admin --email admin@example.com --name "Admin Demo"
+
+# 4. Chạy server
 uvicorn app.main:app --reload
 ```
 
-Kiểm tra: http://localhost:8000/health · http://localhost:8000/health/db · http://localhost:8000/docs
+Mở http://localhost:8000 · Kiểm tra: `/health` · `/health/db` · `/docs`
 
 Chạy cả app lẫn DB bằng Docker: `docker compose up --build`
 
-Test & lint: `pytest -q` · `ruff check .`
+Test & lint: `pytest -q` · `ruff check .` (test dùng database riêng `exam_test`, tự tạo nếu chưa có)
+
+Sau khi sửa model: `alembic revision --autogenerate -m "..."` rồi `alembic upgrade head`.
 
 ## Lộ trình
 

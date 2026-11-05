@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+{% if user %}
+  <h1>Xin chào, {{ user.full_name }} 👋</h1>
+  <p class="muted">Bạn đang đăng nhập bằng <strong>{{ user.email }}</strong>.</p>
+  <div class="card">
+    <h2>Đề luyện tập</h2>
+    <p class="muted">Danh sách đề theo chương/bài sẽ xuất hiện ở đây (Phần 3).</p>
+  </div>
+  {% if user.role == "ADMIN" %}
+    <p><a class="btn" href="/admin">Vào trang quản trị →</a></p>
+  {% endif %}
+{% else %}
+  <section class="hero">
+    <h1>Tự luyện thi trắc nghiệm theo chương, theo bài</h1>
+    <p class="muted">Chọn bài, làm bài có tính giờ, nộp bài và xem điểm kèm lời giải ngay.</p>
+    <p>
+      <a class="btn" href="/register">Tạo tài khoản</a>
+      <a class="btn btn-outline" href="/login">Đăng nhập</a>
+    </p>
+  </section>
+{% endif %}
+{% endblock %}

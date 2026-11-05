@@ -1,15 +1,57 @@
 from datetime import UTC, datetime
-from typing import Annotated
+from pathlib import Path
+from urllib.parse import quote
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.exception_handlers import http_exception_handler
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.sessions import SessionMiddleware
 
-from app.db import get_session
+from app.config import get_settings
+from app.db import SessionLocal
+from app.deps import LoginRequired, SessionDep, get_current_user
+from app.routers import admin, auth, pages
+from app.templating import templates
 
-app = FastAPI(title="Exam System", version="0.0.1")
+settings = get_settings()
 
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
+app = FastAPI(title="Exam System", version="0.1.0")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.secret_key,
+    session_cookie="exam_session",
+    max_age=settings.session_max_age_seconds,
+    same_site="lax",  # keeps the cookie off cross-site POSTs (basic CSRF protection)
+    https_only=settings.session_https_only,
+)
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+
+app.include_router(pages.router)
+app.include_router(auth.router)
+app.include_router(admin.router)
+
+
+@app.exception_handler(LoginRequired)
+async def login_required_handler(request: Request, exc: LoginRequired):
+    return RedirectResponse(f"/login?next={quote(exc.next_url)}", status.HTTP_303_SEE_OTHER)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def html_error_handler(request: Request, exc: StarletteHTTPException):
+    # JSON errors for API/health endpoints, a friendly HTML page for everything else.
+    if request.url.path.startswith(("/api/", "/health")):
+        return await http_exception_handler(request, exc)
+    async with SessionLocal() as session:
+        user = await get_current_user(request, session)
+    return templates.TemplateResponse(
+        request,
+        "error.html",
+        {"user": user, "status_code": exc.status_code, "detail": exc.detail},
+        status_code=exc.status_code,
+    )
 
 
 @app.get("/health")

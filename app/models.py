@@ -1,0 +1,192 @@
+from datetime import datetime
+from decimal import Decimal
+from enum import StrEnum
+from typing import Any
+
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db import Base
+
+
+class UserRole(StrEnum):
+    ADMIN = "ADMIN"
+    STUDENT = "STUDENT"
+
+
+class Difficulty(StrEnum):
+    RECOGNITION = "RECOGNITION"  # Nhận biết
+    UNDERSTANDING = "UNDERSTANDING"  # Thông hiểu
+    APPLICATION = "APPLICATION"  # Vận dụng
+
+
+class ExamMode(StrEnum):
+    PRACTICE = "PRACTICE"  # self-paced, start any time
+    SCHEDULED = "SCHEDULED"  # fixed time window (phase 3)
+
+
+class AttemptStatus(StrEnum):
+    IN_PROGRESS = "IN_PROGRESS"
+    SUBMITTED = "SUBMITTED"
+
+
+def _enum(enum_cls: type[StrEnum], name: str) -> SAEnum:
+    # Stored as VARCHAR + CHECK constraint so new values only need a constraint change, not a PG type migration.
+    return SAEnum(enum_cls, name=name, native_enum=False, create_constraint=True, length=20)
+
+
+class TimestampMixin:
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class UpdatedAtMixin:
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class User(TimestampMixin, Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Always stored lower-cased so uniqueness is case-insensitive.
+    email: Mapped[str] = mapped_column(String(320), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    full_name: Mapped[str] = mapped_column(String(200))
+    role: Mapped[UserRole] = mapped_column(_enum(UserRole, "user_role"), default=UserRole.STUDENT)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+
+    __table_args__ = (CheckConstraint("email = lower(email)", name="ck_users_email_lowercase"),)
+
+
+class Subject(TimestampMixin, Base):
+    __tablename__ = "subjects"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    slug: Mapped[str] = mapped_column(String(200), unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+
+    chapters: Mapped[list["Chapter"]] = relationship(
+        back_populates="subject", order_by="Chapter.position", cascade="all, delete-orphan"
+    )
+
+
+class Chapter(TimestampMixin, Base):
+    __tablename__ = "chapters"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(300))
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+    subject: Mapped[Subject] = relationship(back_populates="chapters")
+    lessons: Mapped[list["Lesson"]] = relationship(
+        back_populates="chapter", order_by="Lesson.position", cascade="all, delete-orphan"
+    )
+
+
+class Lesson(TimestampMixin, Base):
+    __tablename__ = "lessons"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chapter_id: Mapped[int] = mapped_column(ForeignKey("chapters.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(300))
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+    chapter: Mapped[Chapter] = relationship(back_populates="lessons")
+
+
+class Question(TimestampMixin, UpdatedAtMixin, Base):
+    __tablename__ = "questions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id", ondelete="RESTRICT"), index=True)
+    chapter_id: Mapped[int | None] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"), index=True)
+    lesson_id: Mapped[int | None] = mapped_column(ForeignKey("lessons.id", ondelete="SET NULL"), index=True)
+    difficulty: Mapped[Difficulty] = mapped_column(_enum(Difficulty, "difficulty"))
+    # Question text; may contain LaTeX ($...$ / $$...$$) rendered client-side.
+    content: Mapped[str] = mapped_column(Text)
+    # [{"id": "c1", "content": "...", "is_correct": true}, ...]
+    # Choices keep stable ids so answers survive shuffling; is_correct must never be sent to students.
+    choices: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    explanation: Mapped[str | None] = mapped_column(Text)
+
+
+class Exam(TimestampMixin, UpdatedAtMixin, Base):
+    __tablename__ = "exams"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id", ondelete="RESTRICT"), index=True)
+    chapter_id: Mapped[int | None] = mapped_column(ForeignKey("chapters.id", ondelete="SET NULL"))
+    lesson_id: Mapped[int | None] = mapped_column(ForeignKey("lessons.id", ondelete="SET NULL"))
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str | None] = mapped_column(Text)
+    exam_mode: Mapped[ExamMode] = mapped_column(_enum(ExamMode, "exam_mode"), default=ExamMode.PRACTICE)
+    duration_seconds: Mapped[int] = mapped_column(Integer)
+    max_attempts: Mapped[int | None] = mapped_column(Integer)  # NULL = unlimited
+    available_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    available_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+    __table_args__ = (
+        CheckConstraint("duration_seconds > 0", name="ck_exams_duration_positive"),
+        CheckConstraint("max_attempts IS NULL OR max_attempts > 0", name="ck_exams_max_attempts_positive"),
+    )
+
+
+class ExamQuestion(Base):
+    __tablename__ = "exam_questions"
+
+    exam_id: Mapped[int] = mapped_column(ForeignKey("exams.id", ondelete="CASCADE"), primary_key=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="RESTRICT"), primary_key=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ExamAttempt(Base):
+    __tablename__ = "exam_attempts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    exam_id: Mapped[int] = mapped_column(ForeignKey("exams.id", ondelete="CASCADE"))
+    attempt_no: Mapped[int] = mapped_column(Integer)
+    status: Mapped[AttemptStatus] = mapped_column(
+        _enum(AttemptStatus, "attempt_status"), default=AttemptStatus.IN_PROGRESS
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # {"<question_id>": "<choice_id>"}
+    answers: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, server_default="{}")
+    # Frozen copy of the paper (questions, choice order, correct ids) at start time,
+    # so later edits to the bank never change an attempt's grading or review.
+    paper_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    total_questions: Mapped[int] = mapped_column(Integer)
+    correct_count: Mapped[int | None] = mapped_column(Integer)
+    score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "exam_id", "attempt_no", name="uq_attempts_user_exam_no"),
+        Index("ix_attempts_user_exam", "user_id", "exam_id"),
+        # Lets the phase-2 worker find expired in-progress attempts cheaply.
+        Index(
+            "ix_attempts_in_progress_expires",
+            "expires_at",
+            postgresql_where="status = 'IN_PROGRESS'",
+        ),
+    )
