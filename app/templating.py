@@ -45,6 +45,8 @@ def _local_dt(value: datetime | None, fmt: str = "%H:%M %d/%m/%Y") -> str:
 
 def _duration(seconds: int) -> str:
     minutes, secs = divmod(int(seconds), 60)
+    if not minutes:
+        return f"{secs} giây"
     return f"{minutes} phút" + (f" {secs} giây" if secs else "")
 
 

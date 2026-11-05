@@ -30,5 +30,17 @@
     </aside>
   </div>
 </div>
+<dialog id="submit-dialog" class="submit-dialog" aria-labelledby="submit-title">
+  <h3 id="submit-title">Nộp bài?</h3>
+  <div class="blank-block"><p>Còn <strong class="blank-count">0</strong> câu chưa làm xong. Bấm số để quay lại câu đó:</p>
+    <div class="jump-list blanks"></div></div>
+  <div class="flag-block"><p>🚩 <strong class="flag-count">0</strong> câu bạn đã cắm cờ phân vân:</p>
+    <div class="jump-list flags"></div></div>
+  <p class="all-done">Bạn đã làm hết các câu. Nộp bài và xem kết quả?</p>
+  <div class="row mt">
+    <button type="button" class="btn btn-outline" data-action="back">Làm tiếp</button>
+    <button type="button" class="btn" data-action="submit">📤 Nộp bài</button>
+  </div>
+</dialog>
 <script src="{{ url_for('static', path='js/attempt.js') }}"></script>
 {% endblock %}
