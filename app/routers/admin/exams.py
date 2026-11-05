@@ -1,3 +1,4 @@
+import random
 from collections import Counter
 from dataclasses import dataclass
 from urllib.parse import urlencode
@@ -6,8 +7,17 @@ from fastapi import APIRouter, Request, status
 from sqlalchemy import delete, func, select
 from starlette.datastructures import FormData
 
+from app.application.paper import (
+    MatrixRule,
+    PaperError,
+    availability,
+    draw_matrix,
+    parse_matrix,
+    question_count,
+    validate_rules,
+)
 from app.deps import AdminUser, SessionDep
-from app.models import Difficulty, Exam, ExamAttempt, ExamMode, ExamQuestion, Question
+from app.models import Difficulty, Exam, ExamAttempt, ExamMode, ExamQuestion, Question, QuestionSource
 from app.routers.admin.common import clean_text, get_or_404, move, redirect
 from app.scope import Scope, load_subject_tree, resolve_scope, scope_of, scope_options, scope_paths
 from app.templating import flash, templates
@@ -26,6 +36,9 @@ class ExamForm:
     duration_minutes: str = "15"
     max_attempts: str = ""
     is_published: bool = False
+    question_source: str = QuestionSource.FIXED.value
+    shuffle_questions: bool = False
+    shuffle_choices: bool = False
 
     @classmethod
     def from_exam(cls, e: Exam) -> "ExamForm":
@@ -36,6 +49,9 @@ class ExamForm:
             str(e.duration_seconds // 60),
             "" if e.max_attempts is None else str(e.max_attempts),
             e.is_published,
+            e.question_source.value,
+            e.shuffle_questions,
+            e.shuffle_choices,
         )
 
 
@@ -47,6 +63,9 @@ class ExamValues:
     duration_seconds: int
     max_attempts: int | None
     is_published: bool
+    question_source: QuestionSource
+    shuffle_questions: bool
+    shuffle_choices: bool
 
 
 async def _parse(session, form: FormData) -> tuple[ExamForm, ExamValues | None, list[str]]:
@@ -57,7 +76,12 @@ async def _parse(session, form: FormData) -> tuple[ExamForm, ExamValues | None, 
         duration_minutes=str(form.get("duration_minutes", "")).strip(),
         max_attempts=str(form.get("max_attempts", "")).strip(),
         is_published=form.get("is_published") == "on",
+        question_source=str(form.get("question_source", QuestionSource.FIXED.value)),
+        shuffle_questions=form.get("shuffle_questions") == "on",
+        shuffle_choices=form.get("shuffle_choices") == "on",
     )
+    if data.question_source not in QuestionSource.__members__:
+        data.question_source = QuestionSource.FIXED.value
     errors = []
     title = clean_text(data.title, 300)
     if not title:
@@ -78,7 +102,17 @@ async def _parse(session, form: FormData) -> tuple[ExamForm, ExamValues | None, 
         return data, None, errors
     return (
         data,
-        ExamValues(title, data.description.strip() or None, scope, duration * 60, max_attempts, data.is_published),
+        ExamValues(
+            title,
+            data.description.strip() or None,
+            scope,
+            duration * 60,
+            max_attempts,
+            data.is_published,
+            QuestionSource(data.question_source),
+            data.shuffle_questions,
+            data.shuffle_choices,
+        ),
         [],
     )
 
@@ -87,6 +121,19 @@ def _apply(exam: Exam, v: ExamValues) -> None:
     exam.title, exam.description = v.title, v.description
     exam.subject_id, exam.chapter_id, exam.lesson_id = v.scope.subject_id, v.scope.chapter_id, v.scope.lesson_id
     exam.duration_seconds, exam.max_attempts, exam.is_published = v.duration_seconds, v.max_attempts, v.is_published
+    exam.question_source = v.question_source
+    exam.shuffle_questions, exam.shuffle_choices = v.shuffle_questions, v.shuffle_choices
+
+
+async def _matrix_problem(session, subject_id: int, scope: Scope, matrix) -> str | None:
+    """Dry-run the matrix draw for an exam with these settings; None means a paper can be built."""
+    # Transient probe object: never added to the session.
+    probe = Exam(subject_id=subject_id, chapter_id=scope.chapter_id, lesson_id=scope.lesson_id, matrix=matrix)
+    try:
+        await draw_matrix(session, probe, random.Random(0))
+    except PaperError as exc:
+        return str(exc)
+    return None
 
 
 async def _items(session, exam_id: int) -> list[tuple[ExamQuestion, Question]]:
@@ -114,9 +161,19 @@ async def _render_new(request, session, user, data: ExamForm, errors=None):
 
 
 async def _render_detail(
-    request, session, user, exam: Exam, data: ExamForm, errors=None, pick_scope: str = "", pick_difficulty: str = ""
+    request,
+    session,
+    user,
+    exam: Exam,
+    data: ExamForm,
+    errors=None,
+    pick_scope: str = "",
+    pick_difficulty: str = "",
+    matrix_rules: list[MatrixRule] | None = None,
 ):
     items = await _items(session, exam.id)
+    rules = matrix_rules if matrix_rules is not None else parse_matrix(exam.matrix)
+    available = await availability(session, exam, rules)
     in_exam = {q.id for _, q in items}
 
     pick_conditions = [Question.subject_id == exam.subject_id, Question.is_verified]
@@ -152,6 +209,8 @@ async def _render_detail(
             "scope_paths": scope_paths(all_subjects),
             "scope_of": scope_of,
             "attempt_count": attempts or 0,
+            "matrix_rows": list(zip(rules, available, strict=True)),
+            "matrix_total": sum(r.count for r in rules),
         },
         status_code=status.HTTP_400_BAD_REQUEST if errors else status.HTTP_200_OK,
     )
@@ -159,15 +218,8 @@ async def _render_detail(
 
 @router.get("/exams")
 async def list_exams(request: Request, user: AdminUser, session: SessionDep):
-    question_counts = func.count(ExamQuestion.question_id)
-    rows = (
-        await session.execute(
-            select(Exam, question_counts)
-            .outerjoin(ExamQuestion, ExamQuestion.exam_id == Exam.id)
-            .group_by(Exam.id)
-            .order_by(Exam.id.desc())
-        )
-    ).all()
+    exams = (await session.scalars(select(Exam).order_by(Exam.id.desc()))).all()
+    rows = [(exam, await question_count(session, exam)) for exam in exams]
     subjects = await load_subject_tree(session)
     return templates.TemplateResponse(
         request,
@@ -218,8 +270,12 @@ async def update_exam(request: Request, user: AdminUser, session: SessionDep, ex
         items = await _items(session, exam_id)
         if values.scope.subject_id != exam.subject_id and items:
             errors.append("Đề đã có câu hỏi nên không thể chuyển sang môn khác. Hãy gỡ hết câu hỏi trước.")
-        if values.is_published and not items:
+        if values.is_published and values.question_source == QuestionSource.FIXED and not items:
             errors.append("Đề phải có ít nhất 1 câu hỏi mới công khai được.")
+        if values.is_published and values.question_source == QuestionSource.MATRIX:
+            problem = await _matrix_problem(session, values.scope.subject_id, values.scope, exam.matrix)
+            if problem:
+                errors.append(f"Chưa công khai được đề theo ma trận: {problem}")
     if errors:
         return await _render_detail(request, session, user, exam, data, errors)
     _apply(exam, values)
@@ -301,3 +357,35 @@ async def delete_exam(request: Request, session: SessionDep, exam_id: int):
     await session.commit()
     flash(request, f"Đã xoá đề “{exam.title}”.")
     return redirect("/admin/exams")
+
+
+@router.post("/exams/{exam_id}/matrix")
+async def save_matrix(request: Request, user: AdminUser, session: SessionDep, exam_id: int):
+    exam = await get_or_404(session, Exam, exam_id)
+    form = await request.form()
+    columns = [form.getlist(name) for name in ("rule_scope", "rule_difficulty", "rule_type", "rule_count")]
+    raw = [
+        {"scope": scope, "difficulty": difficulty or None, "type": qtype or None, "count": count}
+        for scope, difficulty, qtype, count in zip(*columns, strict=False)
+        if str(count).strip()
+    ]
+    rules = parse_matrix(raw)
+    errors = validate_rules(rules)
+    for number, rule in enumerate(rules, start=1):
+        if rule.scope_key:
+            scope = await resolve_scope(session, rule.scope_key)
+            if scope is None or scope.subject_id != exam.subject_id:
+                errors.append(f"Dòng {number}: phạm vi phải thuộc môn của đề.")
+    matrix = [r.to_json() for r in rules]
+    problem = None if errors else await _matrix_problem(session, exam.subject_id, scope_of(exam), matrix)
+    if problem and exam.is_published:
+        errors.append(f"Đề đang công khai nên không lưu ma trận không bốc đủ câu: {problem}")
+    if errors:
+        return await _render_detail(request, session, user, exam, ExamForm.from_exam(exam), errors, matrix_rules=rules)
+    exam.matrix = matrix
+    await session.commit()
+    if problem:
+        flash(request, f"Đã lưu ma trận, nhưng hiện chưa bốc đủ câu: {problem}", "error")
+    else:
+        flash(request, f"Đã lưu ma trận: mỗi lượt làm sẽ bốc {sum(r.count for r in rules)} câu.")
+    return redirect(f"/admin/exams/{exam_id}#matrix")

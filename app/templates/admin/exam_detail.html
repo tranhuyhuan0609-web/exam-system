@@ -15,6 +15,73 @@
 
 <div class="grid-main-side">
   <div>
+{% macro rule_row(rule, available) %}
+  <tr class="rule-row">
+    <td>
+      <select name="rule_scope">
+        <option value="">Cả phạm vi của đề</option>
+        {% for o in pick_scope_options %}<option value="{{ o.key }}" {% if rule and o.key == rule.scope_key %}selected{% endif %}>{{ o.label }}</option>{% endfor %}
+      </select>
+    </td>
+    <td>
+      <select name="rule_difficulty">
+        <option value="">Mọi mức độ</option>
+        {% for d, label in DIFFICULTY_LABELS.items() %}<option value="{{ d.value }}" {% if rule and rule.difficulty == d.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </td>
+    <td>
+      <select name="rule_type">
+        <option value="">Mọi dạng</option>
+        {% for t, label in TYPE_LABELS.items() %}<option value="{{ t }}" {% if rule and rule.question_type == t %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </td>
+    <td><input type="number" name="rule_count" value="{{ rule.count if rule else '' }}" min="1" max="200" class="count-input"></td>
+    <td class="small">
+      {% if rule %}
+        {% if available is none %}<span class="badge badge-bad">Phạm vi không hợp lệ</span>
+        {% elif available < rule.count %}<span class="badge badge-bad">Chỉ có {{ available }} câu</span>
+        {% else %}<span class="badge badge-ok">Có {{ available }} câu</span>{% endif %}
+      {% endif %}
+    </td>
+    <td><button type="button" class="icon-btn danger remove-rule" title="Xoá dòng">✕</button></td>
+  </tr>
+{% endmacro %}
+
+{% if exam.question_source == "MATRIX" %}
+    <div class="card" id="matrix">
+      <div class="page-head">
+        <h2>Ma trận đề ({{ matrix_total }} câu mỗi lượt)</h2>
+      </div>
+      <p class="hint">Mỗi lần học sinh bấm “Bắt đầu”, hệ thống bốc ngẫu nhiên các câu <strong>đã duyệt</strong> theo từng dòng,
+        ưu tiên câu học sinh chưa gặp ở các lần làm trước, rồi xếp theo phần I (trắc nghiệm), II (đúng/sai), III (trả lời ngắn).
+        “Có X câu” là số câu phù hợp trong ngân hàng (chưa trừ câu trùng giữa các dòng).</p>
+      <form method="post" action="/admin/exams/{{ exam.id }}/matrix">
+        <table class="table matrix-table">
+          <thead><tr><th>Phạm vi</th><th>Mức độ</th><th>Dạng câu</th><th>Số câu</th><th>Ngân hàng</th><th></th></tr></thead>
+          <tbody id="rules">
+            {% for rule, available in matrix_rows %}{{ rule_row(rule, available) }}{% endfor %}
+            {% if not matrix_rows %}{{ rule_row(none, none) }}{% endif %}
+          </tbody>
+        </table>
+        <div class="row mt">
+          <button type="button" class="btn btn-outline btn-small" id="add-rule">+ Thêm dòng</button>
+          <button class="btn">Lưu ma trận</button>
+        </div>
+      </form>
+      <template id="rule-tpl">{{ rule_row(none, none) }}</template>
+    </div>
+    <script>
+      (() => {
+        const body = document.getElementById("rules");
+        document.getElementById("add-rule").addEventListener("click", () => {
+          body.appendChild(document.getElementById("rule-tpl").content.cloneNode(true));
+        });
+        body.addEventListener("click", (e) => {
+          if (e.target.closest(".remove-rule") && body.querySelectorAll(".rule-row").length > 1) e.target.closest(".rule-row").remove();
+        });
+      })();
+    </script>
+{% else %}
     <div class="card" id="questions">
       <div class="page-head">
         <h2>Câu hỏi trong đề ({{ items | length }})</h2>
@@ -83,6 +150,7 @@
         {% endif %}
       </form>
     </div>
+{% endif %}
   </div>
 
   <aside>
