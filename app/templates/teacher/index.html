@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Bài kiểm tra của tôi · Exam System{% endblock %}
+{% block container_class %}wide{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Bài kiểm tra của tôi</h1>
+  {% if has_pro %}<a class="btn" href="/teacher/tests/new">+ Tạo bài kiểm tra</a>{% endif %}
+</div>
+
+{% if user.role == "TEACHER" %}
+  {% if has_pro %}
+    <p class="muted">Gói <span class="badge badge-ok">Pro</span> còn hạn đến {{ user.pro_until | local_dt }}.
+      Bài kiểm tra không hiện trên web — chỉ học sinh có link và mã bạn gửi mới vào được.</p>
+  {% else %}
+    <section class="card pro-card">
+      <h3>⭐ Gói Pro cho giáo viên</h3>
+      <ul>
+        <li>Tạo bài kiểm tra định kỳ riêng cho lớp: giờ mở, giờ đóng, thời gian làm bài, mỗi học sinh 1 lượt</li>
+        <li>Lấy câu từ ngân hàng theo mục lục, số câu từng phần và mức độ; đề ngẫu nhiên từng học sinh hoặc chung một đề</li>
+        <li>Gửi link + mã truy cập; học sinh xem điểm và lời giải sau giờ đóng bài</li>
+        <li>Bảng kết quả, phổ điểm, xuất Excel</li>
+      </ul>
+      {% if user.pro_until %}<p class="muted">Gói Pro của bạn đã hết hạn ngày {{ user.pro_until | local_dt("%d/%m/%Y") }}.</p>{% endif %}
+      {% if user.pro_requested_at %}
+        <p><span class="badge badge-warn">Đã gửi yêu cầu lúc {{ user.pro_requested_at | local_dt }}</span> — quản trị viên sẽ duyệt sớm.</p>
+      {% else %}
+        <form method="post" action="/teacher/upgrade"><button class="btn">Yêu cầu nâng cấp Pro</button></form>
+      {% endif %}
+    </section>
+  {% endif %}
+{% endif %}
+
+<div class="card">
+  <table class="table">
+    <thead><tr><th>Bài kiểm tra</th><th>Giờ mở – đóng</th><th class="num">Thời gian</th><th class="num">Học sinh</th><th>Trạng thái</th></tr></thead>
+    <tbody>
+    {% for t in tests %}
+      {% set st = status_of(t) %}
+      <tr>
+        <td><a href="/teacher/tests/{{ t.id }}"><strong>{{ t.title }}</strong></a>
+          <div class="muted small">{{ scope_paths.get("c:" ~ t.category_id, "") }} · {{ t.description }}</div></td>
+        <td class="small">{{ t.available_from | local_dt }}<br>→ {{ t.available_until | local_dt }}</td>
+        <td class="num">{{ t.duration_seconds // 60 }} phút</td>
+        <td class="num">{{ joined.get(t.id, 0) }}</td>
+        <td><span class="badge {{ {'OPEN': 'badge-ok', 'UPCOMING': 'badge-warn'}.get(st, '') }}">{{ STATUS_LABELS[st] }}</span></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="muted">Chưa có bài kiểm tra nào.{% if has_pro %} Bấm “+ Tạo bài kiểm tra” để bắt đầu.{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

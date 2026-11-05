@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block head %}{% include "_katex.html" %}{% endblock %}
+{% block title %}{{ exam.title }} · Bài kiểm tra{% endblock %}
+{% block container_class %}wide{% endblock %}
+{% block content %}
+<p><a href="/teacher">← Bài kiểm tra của tôi</a></p>
+<div class="page-head">
+  <h1>{{ exam.title }}
+    <span class="badge {{ {'OPEN': 'badge-ok', 'UPCOMING': 'badge-warn'}.get(status, '') }}">{{ STATUS_LABELS[status] }}</span></h1>
+  <div class="row">
+    {% if not started and has_pro %}<a class="btn btn-outline btn-small" href="/teacher/tests/{{ exam.id }}/edit">Sửa</a>{% endif %}
+    {% if not started %}
+      <form method="post" action="/teacher/tests/{{ exam.id }}/delete" class="inline" data-confirm="Xoá bài kiểm tra này?">
+        <button class="btn btn-danger btn-small">Xoá</button></form>
+    {% endif %}
+  </div>
+</div>
+<p class="muted">{% for c in trail %}{{ c.name }}{{ " › " if not loop.last }}{% endfor %} · {{ question_count }} câu ({{ exam.description }})
+  · {{ exam.duration_seconds // 60 }} phút · {{ "chung một đề" if exam.question_source == "FIXED" else "mỗi học sinh một đề ngẫu nhiên" }}</p>
+
+<div class="grid-main-side">
+  <div>
+    <section class="card">
+      <div class="page-head">
+        <h3>Kết quả</h3>
+        <a class="btn btn-outline btn-small" href="/teacher/tests/{{ exam.id }}/results.xlsx">⬇ Xuất Excel</a>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="stat-num">{{ stats.joined }}</div><div class="muted small">Đã vào bằng mã</div></div>
+        <div class="stat"><div class="stat-num">{{ stats.submitted }}</div><div class="muted small">Đã nộp</div></div>
+        <div class="stat"><div class="stat-num">{{ "%g" % stats.average if stats.average is not none else "–" }}</div><div class="muted small">Điểm trung bình</div></div>
+        <div class="stat"><div class="stat-num">{{ "%g" % stats.highest if stats.highest is not none else "–" }}<span class="muted small"> / {{ "%g" % stats.lowest if stats.lowest is not none else "–" }}</span></div><div class="muted small">Cao nhất / thấp nhất</div></div>
+      </div>
+
+      {% if stats.submitted %}
+        {% set peak = stats.bins | max %}
+        <figure class="histogram" aria-label="Phổ điểm">
+          <figcaption class="small muted">Phổ điểm (số học sinh theo khoảng điểm)</figcaption>
+          <div class="hist-bars">
+            {% for n in stats.bins %}
+              {% set band = "từ 9 đến 10" if loop.last else "từ " ~ loop.index0 ~ " đến dưới " ~ loop.index %}
+              <div class="hist-col" title="{{ n }} học sinh đạt {{ band }} điểm">
+                <span class="hist-value">{{ n if n else "" }}</span>
+                <span class="hist-track"><span class="hist-bar" style="height: {{ (n / peak * 100) | round(1) if peak else 0 }}%"></span></span>
+                <span class="hist-label">{{ loop.index0 }}–{{ loop.index }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        </figure>
+      {% endif %}
+
+      <table class="table">
+        <thead><tr><th>#</th><th>Học sinh</th><th>Trạng thái</th><th class="num">Điểm</th><th class="num">Đúng</th><th class="num">Thời gian</th><th>Nộp lúc</th></tr></thead>
+        <tbody>
+        {% for r in rows %}
+          {% set a = r.attempt %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td><strong>{{ r.user.full_name }}</strong><div class="muted small">{{ r.user.email }}</div></td>
+            <td><span class="badge {{ {'Đã nộp': 'badge-ok', 'Đang làm': 'badge-warn'}.get(r.status, '') }}">{{ r.status }}</span></td>
+            <td class="num">{% if a and a.status == "SUBMITTED" and a.score is not none %}<strong>{{ "%g" % a.score }}</strong>{% else %}–{% endif %}</td>
+            <td class="num">{% if a and a.status == "SUBMITTED" %}{{ a.correct_count }}/{{ a.total_questions }}{% else %}–{% endif %}</td>
+            <td class="num">{{ "%g phút" % r.minutes if r.minutes is not none else "–" }}</td>
+            <td class="small">{{ a.submitted_at | local_dt if a else "" }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="muted">Chưa có học sinh nào vào bài. Gửi link và mã ở bên phải cho lớp.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    {% if paper %}
+      <section class="card" id="de">
+        <div class="page-head">
+          <h3>Đề chung ({{ paper | length }} câu)</h3>
+          {% if not started and has_pro %}
+            <form method="post" action="/teacher/tests/{{ exam.id }}/redraw" class="inline" data-confirm="Bốc một đề khác thay cho đề này?">
+              <button class="btn btn-outline btn-small">🎲 Bốc đề khác</button></form>
+          {% endif %}
+        </div>
+        <ol class="paper-preview">
+          {% for q in paper %}
+            <li><span class="badge">{{ TYPE_LABELS[q.question_type] }}</span> <span class="badge">{{ DIFFICULTY_LABELS[q.difficulty] }}</span>
+              <div class="q-content math clamp">{{ q.content }}</div></li>
+          {% endfor %}
+        </ol>
+      </section>
+    {% endif %}
+  </div>
+
+  <aside>
+    <section class="card share-card">
+      <h3>Gửi cho học sinh</h3>
+      <label>Link bài kiểm tra
+        <div class="copy-row"><input readonly value="{{ link }}" id="share-link"><button type="button" class="btn btn-small" data-copy="share-link">Sao chép</button></div>
+      </label>
+      <label>Mã truy cập
+        <div class="copy-row"><input readonly value="{{ exam.access_code }}" id="share-code" class="code-input"><button type="button" class="btn btn-small" data-copy="share-code">Sao chép</button></div>
+      </label>
+      <form method="post" action="/teacher/tests/{{ exam.id }}/code" class="inline" data-confirm="Tạo mã mới? Mã cũ sẽ không dùng được nữa.">
+        <button class="link small">Đổi mã truy cập</button></form>
+      <p class="hint">Học sinh mở link, đăng nhập rồi nhập mã. Bài không hiện ở bất kỳ trang nào khác.</p>
+    </section>
+    <section class="card">
+      <h3>Lịch</h3>
+      <p>🟢 Mở: <strong>{{ exam.available_from | local_dt }}</strong><br>🔴 Đóng: <strong>{{ exam.available_until | local_dt }}</strong></p>
+      <p class="hint">Mỗi học sinh 1 lượt, {{ exam.duration_seconds // 60 }} phút (bị thu khi đến giờ đóng). Học sinh xem điểm và lời giải sau giờ đóng.</p>
+    </section>
+  </aside>
+</div>
+<script>
+  document.querySelectorAll("[data-copy]").forEach((btn) => btn.addEventListener("click", async () => {
+    const input = document.getElementById(btn.dataset.copy);
+    input.select();
+    try { await navigator.clipboard.writeText(input.value); } catch { document.execCommand("copy"); }
+    btn.textContent = "Đã chép ✓";
+    setTimeout(() => (btn.textContent = "Sao chép"), 1500);
+  }));
+</script>
+{% endblock %}

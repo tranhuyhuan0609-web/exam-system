@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}{{ "Sửa" if exam else "Tạo" }} bài kiểm tra · Exam System{% endblock %}
+{% block content %}
+<p><a href="{{ '/teacher/tests/' ~ exam.id if exam else '/teacher' }}">← Quay lại</a></p>
+<h1>{{ "Sửa bài kiểm tra" if exam else "Tạo bài kiểm tra" }}</h1>
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+
+<form method="post" action="{{ '/teacher/tests/' ~ exam.id if exam else '/teacher/tests' }}" id="test-form" class="card">
+  <label>Tên bài kiểm tra
+    <input name="title" value="{{ values.title }}" required maxlength="300" placeholder="VD: Kiểm tra 15 phút – Chương 1 – Lớp 11A2">
+  </label>
+
+  <label>Phạm vi (mục lục)
+    <select name="category_id" id="category" required>
+      <option value="">— Chọn môn / chương / bài —</option>
+      {% for o in scope_options %}
+        {% set cid = o.key[2:] | int %}
+        <option value="{{ cid }}" {{ 'selected' if values.category_id == cid }}>{{ o.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <fieldset class="quiz-levels">
+    <legend>Mức độ</legend>
+    {% for lv in levels %}
+      <label class="check"><input type="checkbox" name="levels" value="{{ lv }}" {{ 'checked' if lv in values.levels }}> {{ DIFFICULTY_LABELS[lv] }}</label>
+    {% endfor %}
+  </fieldset>
+
+  <div class="quiz-parts">
+    {% for t in parts %}
+      <label class="quiz-part">
+        <span class="quiz-part-name">{{ TYPE_LABELS[t] }}</span>
+        <input type="number" name="count_{{ t }}" data-type="{{ t }}" min="0" value="{{ values.counts.get(t, 0) }}">
+        <span class="muted small" data-have="{{ t }}"></span>
+      </label>
+    {% endfor %}
+  </div>
+  <p class="hint" id="bank-hint">Chọn phạm vi để xem số câu có trong ngân hàng.</p>
+
+  <div class="grid-3 mt">
+    <label>Giờ mở bài
+      <input type="datetime-local" name="starts_at" value="{{ values.starts_at | local_input }}" required>
+    </label>
+    <label>Giờ đóng bài
+      <input type="datetime-local" name="ends_at" value="{{ values.ends_at | local_input }}" required>
+    </label>
+    <label>Thời gian làm bài (phút)
+      <input type="number" name="minutes" min="1" max="300" value="{{ values.minutes }}" required>
+    </label>
+  </div>
+  <p class="hint">Học sinh vào lúc nào trong khoảng mở cũng được làm đủ thời gian, nhưng mọi bài đều bị thu khi đến giờ đóng.</p>
+
+  <fieldset class="mt">
+    <legend>Đề</legend>
+    <label class="check"><input type="radio" name="same_paper" value="0" {{ 'checked' if not values.same_paper }}>
+      Mỗi học sinh một đề ngẫu nhiên <span class="muted small">(chống chép bài)</span></label>
+    <label class="check"><input type="radio" name="same_paper" value="1" {{ 'checked' if values.same_paper }}>
+      Cả lớp chung một đề <span class="muted small">(bốc đề ngay, xem trước và bốc lại được)</span></label>
+    <label class="check"><input type="checkbox" name="shuffle" value="1" {{ 'checked' if values.shuffle }}>
+      Đảo thứ tự câu trong từng phần và đảo đáp án A/B/C/D</label>
+  </fieldset>
+
+  <p class="quiz-summary" id="test-summary"></p>
+  <button class="btn" id="test-submit">{{ "Lưu thay đổi" if exam else "Tạo bài kiểm tra" }}</button>
+</form>
+
+<script>
+  (() => {
+    const form = document.getElementById("test-form");
+    const category = document.getElementById("category");
+    const inputs = [...form.querySelectorAll("input[data-type]")];
+    const levels = [...form.querySelectorAll("input[name=levels]")];
+    const hint = document.getElementById("bank-hint");
+    const summary = document.getElementById("test-summary");
+    const submit = document.getElementById("test-submit");
+    let firstLoad = true;
+    const pace = {{ pace | tojson }};
+    let bank = null;
+    function update() {
+      const picked = levels.filter((l) => l.checked).map((l) => l.value);
+      let total = 0, seconds = 0, over = false;
+      for (const input of inputs) {
+        const t = input.dataset.type;
+        const label = form.querySelector(`[data-have="${t}"]`);
+        if (bank) {
+          const have = picked.reduce((s, lv) => s + ((bank[t] || {})[lv] || 0), 0);
+          if (firstLoad && Number(input.value) > have) input.value = have;  // fit the default to the bank
+          input.max = have;
+          label.textContent = `/ ${have} câu`;
+          input.closest(".quiz-part").classList.toggle("is-empty", !have);
+          over ||= Number(input.value) > have;
+        }
+        const n = Math.max(0, Number(input.value) || 0);
+        total += n;
+        seconds += n * (pace[t] || 90);
+      }
+      if (bank) firstLoad = false;
+      const suggest = Math.max(5, Math.ceil(seconds / 60 / 5) * 5);
+      submit.disabled = over || !total || !picked.length;
+      summary.textContent = !picked.length ? "Hãy chọn ít nhất một mức độ."
+        : over ? "Có phần vượt quá số câu trong ngân hàng."
+        : total ? `Tổng ${total} câu · gợi ý khoảng ${suggest} phút` : "Hãy chọn ít nhất 1 câu.";
+    }
+    async function loadBank() {
+      bank = null;
+      if (!category.value) { hint.hidden = false; update(); return; }
+      const r = await fetch(`/api/categories/${category.value}/bank`);
+      if (r.ok) { bank = await r.json(); hint.hidden = true; }
+      update();
+    }
+    category.addEventListener("change", loadBank);
+    form.addEventListener("input", update);
+    loadBank();
+  })();
+</script>
+{% endblock %}

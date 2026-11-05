@@ -1,0 +1,67 @@
+{% extends "admin/_layout.html" %}
+{% set active = "users" %}
+{% block title %}Người dùng · Quản trị{% endblock %}
+{% block admin_content %}
+<div class="page-head">
+  <h1>Người dùng</h1>
+  <form method="get" class="row">
+    <input type="hidden" name="filter" value="{{ filter }}">
+    <input name="q" value="{{ q }}" placeholder="Tìm email hoặc tên">
+    <button class="btn btn-outline btn-small">Tìm</button>
+  </form>
+</div>
+<nav class="filter-tabs">
+  {% for key, label in filters.items() %}
+    <a href="?filter={{ key }}" class="{{ 'active' if filter == key }}">{{ label }}</a>
+  {% endfor %}
+</nav>
+{% set back = "/admin/users?filter=" ~ filter %}
+<div class="card">
+  <table class="table">
+    <thead><tr><th>Người dùng</th><th>Vai trò</th><th>Gói Pro</th><th>Thao tác</th></tr></thead>
+    <tbody>
+    {% for u in users %}
+      {% set pro = u.has_pro(now) %}
+      <tr>
+        <td><strong>{{ u.full_name }}</strong><div class="muted small">{{ u.email }} · tạo {{ u.created_at | local_dt("%d/%m/%Y") }}</div></td>
+        <td><span class="badge badge-{{ u.role | lower }}">{{ ROLE_LABELS[u.role] }}</span></td>
+        <td>
+          {% if u.role == "TEACHER" %}
+            {% if pro %}<span class="badge badge-ok">Pro đến {{ u.pro_until | local_dt("%d/%m/%Y") }}</span>
+            {% elif u.pro_until %}<span class="badge">Hết hạn {{ u.pro_until | local_dt("%d/%m/%Y") }}</span>
+            {% else %}<span class="muted small">Chưa có</span>{% endif %}
+            {% if u.pro_requested_at %}<div><span class="badge badge-warn">Yêu cầu lúc {{ u.pro_requested_at | local_dt }}</span></div>{% endif %}
+          {% else %}<span class="muted small">—</span>{% endif %}
+        </td>
+        <td>
+          {% if u.role == "TEACHER" %}
+            <form method="post" action="/admin/users/{{ u.id }}/pro" class="row inline-form">
+              <input type="hidden" name="back" value="{{ back }}">
+              <select name="days">
+                <option value="30">+30 ngày</option><option value="90">+90 ngày</option><option value="365">+1 năm</option>
+              </select>
+              <button class="btn btn-small">{{ "Gia hạn" if pro else "Bật Pro" }}</button>
+            </form>
+            {% if pro %}
+              <form method="post" action="/admin/users/{{ u.id }}/pro" class="inline" data-confirm="Tắt gói Pro của {{ u.full_name }}?">
+                <input type="hidden" name="back" value="{{ back }}"><input type="hidden" name="days" value="0">
+                <button class="link">Tắt Pro</button>
+              </form>
+            {% endif %}
+          {% endif %}
+          {% if u.role != "ADMIN" %}
+            <form method="post" action="/admin/users/{{ u.id }}/role" class="inline">
+              <input type="hidden" name="back" value="{{ back }}">
+              <input type="hidden" name="role" value="{{ 'STUDENT' if u.role == 'TEACHER' else 'TEACHER' }}">
+              <button class="link small">{{ "Chuyển thành học sinh" if u.role == "TEACHER" else "Chuyển thành giáo viên" }}</button>
+            </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="muted">{{ "Không có yêu cầu nâng cấp nào đang chờ." if filter == "requests" else "Không có người dùng nào." }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

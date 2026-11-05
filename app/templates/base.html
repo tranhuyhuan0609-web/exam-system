@@ -12,9 +12,11 @@
     <a class="brand" href="/">📘 Exam System</a>
     <nav>
       {% if user %}
+        {% if user.role in ("TEACHER", "ADMIN") %}<a href="/teacher">Bài kiểm tra của tôi</a>{% endif %}
+        {% if user.role == "STUDENT" %}<a href="/tests/mine">Bài kiểm tra</a>{% endif %}
         <a href="/practice/mine">Bài tự tạo</a>
         {% if user.role == "ADMIN" %}<a href="/admin">Quản trị</a>{% endif %}
-        <span class="who">{{ user.full_name }} <span class="badge badge-{{ user.role | lower }}">{{ "Admin" if user.role == "ADMIN" else "Học sinh" }}</span></span>
+        <span class="who">{{ user.full_name }} <span class="badge badge-{{ user.role | lower }}">{{ ROLE_LABELS[user.role] }}</span></span>
         <form method="post" action="/logout" class="inline"><button class="link">Đăng xuất</button></form>
       {% else %}
         <a href="/login">Đăng nhập</a>

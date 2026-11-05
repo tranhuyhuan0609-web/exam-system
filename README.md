@@ -96,6 +96,13 @@ Học sinh vào bất cứ lúc nào, chọn bài (VD: Vật lí 11 – Chương
 - [x] Thời gian tự tính theo số câu (học sinh sửa được), câu lấy ngẫu nhiên trong cả nhánh, ưu tiên câu chưa gặp
 - [x] Bài lưu dạng đề cá nhân (`visibility = PERSONAL`), chỉ chủ bài thấy; trang “Bài tự tạo của tôi”: tiếp tục, làm lại, xem kết quả, xoá
 
+### Giáo viên gói Pro — bài kiểm tra định kỳ riêng tư
+- [x] Đăng ký tài khoản Giáo viên, gửi yêu cầu nâng cấp; admin bật / gia hạn / tắt Pro ở trang **Người dùng**
+- [x] Tạo bài kiểm tra: phạm vi mục lục, số câu từng phần, mức độ, giờ mở – giờ đóng, thời gian làm bài; đề ngẫu nhiên từng học sinh hoặc chung một đề (xem trước, bốc lại)
+- [x] Bài không hiện trên web (`visibility = PRIVATE`): học sinh mở link `/k/<token>`, đăng nhập và nhập mã; đếm ngược tới giờ mở, mỗi học sinh 1 lượt, hạn nộp `LEAST(bắt đầu + thời lượng, giờ đóng)`
+- [x] Học sinh xem điểm, báo cáo và lời giải sau giờ đóng bài
+- [x] Kết quả cho giáo viên: danh sách học sinh, điểm, thời gian làm, điểm trung bình, phổ điểm, xuất Excel
+
 ### Giai đoạn 2 — Trải nghiệm thực tế & Ngân hàng đề động (Tuần 4–6)
 - [x] Auto-save 2 tầng: IndexedDB mỗi lần chọn + đồng bộ ngầm lên server (2s sau thao tác cuối, chậm nhất 10s; tự thử lại khi mất mạng)
 - [x] Khôi phục phiên `IN_PROGRESS`: các câu đã chọn (server + thay đổi chưa kịp gửi trên máy) + số giây còn lại

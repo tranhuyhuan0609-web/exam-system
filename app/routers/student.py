@@ -15,6 +15,7 @@ from app.application.custom_quiz import (
 )
 from app.application.paper import PART_ORDER, available_parts, question_count
 from app.application.report import build_report
+from app.application.teacher_tests import results_visible
 from app.attempts import (
     AttemptClosed,
     AttemptError,
@@ -361,6 +362,9 @@ async def _result_context(session, user: User, attempt_id: int) -> dict[str, Any
     if attempt.status != AttemptStatus.SUBMITTED:  # still running: answers must stay hidden
         return None
     exam = await session.get(Exam, attempt.exam_id)
+    now = await db_now(session)
+    if not results_visible(exam, now):  # private test still open: no score or answers yet
+        return {"user": user, "attempt": attempt, "exam": exam, "locked": True}
     used = await session.scalar(
         select(func.count())
         .select_from(ExamAttempt)
@@ -396,6 +400,8 @@ async def attempt_result(request: Request, user: LoggedInUser, session: SessionD
     context = await _result_context(session, user, attempt_id)
     if context is None:
         return redirect(f"/attempts/{attempt_id}")
+    if context.get("locked"):
+        return templates.TemplateResponse(request, "result_locked.html", context, headers=NO_STORE)
     return templates.TemplateResponse(request, "result.html", context, headers=NO_STORE)
 
 
@@ -405,6 +411,8 @@ async def attempt_solutions(request: Request, user: LoggedInUser, session: Sessi
     context = await _result_context(session, user, attempt_id)
     if context is None:
         return redirect(f"/attempts/{attempt_id}")
+    if context.get("locked"):
+        return redirect(f"/attempts/{attempt_id}/result")
     return templates.TemplateResponse(request, "solutions.html", context, headers=NO_STORE)
 
 
@@ -454,6 +462,11 @@ async def submit_attempt(
     """Grade the attempt. JSON body {"answers": {question_id: ...}, "flags": [question_id]}; safe to call twice."""
     await _own_attempt(session, attempt_id, user)
     attempt = await submit(session, attempt_id, answers, flags, times)
+    exam = await session.get(Exam, attempt.exam_id)
+    if not results_visible(exam, await db_now(session)):
+        return JSONResponse(
+            {"status": attempt.status.value, "result_url": f"/attempts/{attempt_id}/result"}, headers=NO_STORE
+        )
     return JSONResponse(
         {
             "status": attempt.status.value,
@@ -500,7 +513,12 @@ async def autosave_answers(
 async def attempt_grading(user: ApiUser, session: SessionDep, attempt_id: int):
     """Polled by the result page while the AI grades essays."""
     attempt = await _own_attempt(session, attempt_id, user)
+    exam = await session.get(Exam, attempt.exam_id)
+    hidden = not results_visible(exam, await db_now(session))
     return JSONResponse(
-        {"grading_status": attempt.grading_status.value, "score": str(attempt.score) if attempt.score else None},
+        {
+            "grading_status": attempt.grading_status.value,
+            "score": str(attempt.score) if attempt.score and not hidden else None,
+        },
         headers=NO_STORE,
     )

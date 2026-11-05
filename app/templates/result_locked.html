@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Đã nộp bài · {{ exam.title }}{% endblock %}
+{% block content %}
+<div class="card narrow center">
+  <h1>✅ Đã nộp bài</h1>
+  <p><strong>{{ exam.title }}</strong></p>
+  <p class="muted">Nộp lúc {{ attempt.submitted_at | local_dt }}.</p>
+  <p>Điểm, báo cáo và lời giải chi tiết sẽ có sau khi bài kiểm tra đóng lúc
+    <strong>{{ exam.available_until | local_dt }}</strong>, để các bạn chưa làm xong không xem được đáp án.</p>
+  <p><a class="btn btn-outline" href="/tests/mine">Bài kiểm tra của tôi</a></p>
+</div>
+{% endblock %}

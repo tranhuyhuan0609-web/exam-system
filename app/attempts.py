@@ -129,6 +129,10 @@ async def start_or_resume(session: AsyncSession, user: User, exam: Exam, parts: 
     ).one()
     if exam.max_attempts is not None and used >= exam.max_attempts:
         raise AttemptError(f"Bạn đã dùng hết {exam.max_attempts} lượt làm đề này.")
+    if exam.available_from is not None and now < exam.available_from:
+        raise AttemptError("Chưa đến giờ làm bài.")
+    if exam.available_until is not None and now >= exam.available_until:
+        raise AttemptError("Bài kiểm tra đã đóng.")
 
     available = await available_parts(session, exam)
     if parts is not None:
@@ -148,6 +152,9 @@ async def start_or_resume(session: AsyncSession, user: User, exam: Exam, parts: 
     if parts is not None:  # fewer questions, proportionally less time (whole minutes, at least 1)
         full = await question_count(session, exam)
         duration = max(60, math.ceil(exam.duration_seconds * len(questions) / max(full, 1) / 60) * 60)
+    expires_at = now + timedelta(seconds=duration)
+    if exam.available_until is not None:  # a scheduled test closes for everyone at the same time
+        expires_at = min(expires_at, exam.available_until)
 
     attempt = ExamAttempt(
         user_id=user.id,
@@ -155,7 +162,7 @@ async def start_or_resume(session: AsyncSession, user: User, exam: Exam, parts: 
         attempt_no=last_no + 1,
         status=AttemptStatus.IN_PROGRESS,
         started_at=now,
-        expires_at=now + timedelta(seconds=duration),
+        expires_at=expires_at,
         answers={},
         paper_snapshot=build_snapshot(questions, exam.shuffle_choices, parts=parts),
         total_questions=len(questions),
