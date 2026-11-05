@@ -10,6 +10,7 @@ from typing import Protocol
 from pydantic import BaseModel, ValidationError
 
 from app.ai.schemas import ExtractedQuestion, ExtractionResult, Solution, SolveResult
+from app.domain.latex import repair_latex
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +52,8 @@ Quy tắc:
 - Viết MỌI công thức, ký hiệu, chỉ số, số mũ, phân số, vectơ bằng LaTeX đặt trong $...$. \
 Ví dụ: $10^5$ Pa, $p_1$, $1{,}25 \\cdot 10^5$ Pa, $\\rho = 1000\\ \\text{kg/m}^3$, $\\vec{F}$, $\\Delta\\varphi$, $\\dfrac{3}{4}$. \
 Dấu thập phân kiểu Việt Nam viết là {,} trong LaTeX.
+- Không dùng \\color / \\textcolor. Ký hiệu độ viết là $^\\circ\\text{C}$ (VD: $20^\\circ\\text{C}$).
+- Trong JSON, mỗi dấu \\ của LaTeX phải viết thành \\\\ (VD: "\\\\frac{1}{2}", "\\\\text{kg}").
 - Bỏ qua tiêu đề, tên lớp/giáo viên, logo, watermark, số trang, đáp án in sẵn ở cuối đề.
 - Nội dung lựa chọn không kèm nhãn “A.” và không kèm dấu chấm cuối.
 - Câu có các ý a), b), c), d) đúng/sai: type = TRUE_FALSE, đưa từng ý vào choices với nhãn A, B, C, D.
@@ -150,6 +153,10 @@ class GeminiProvider:
             contents += [label, types.Part.from_bytes(data=page.png, mime_type="image/png")]
         contents.append(EXTRACT_PROMPT)
         result = await self._generate(contents, ExtractionResult)
+        for q in result.questions:
+            q.content = repair_latex(q.content)
+            for c in q.choices:
+                c.content = repair_latex(c.content)
         return result.questions
 
     async def solve(self, questions: list[ExtractedQuestion], figures: list[FigureImage]) -> list[Solution]:
@@ -160,4 +167,8 @@ class GeminiProvider:
         for fig in figures:
             contents += [f"HÌNH CÂU {fig.question_number}", types.Part.from_bytes(data=fig.png, mime_type="image/png")]
         result = await self._generate(contents, SolveResult, code_execution=True)
+        for sol in result.solutions:
+            sol.step_by_step_solution = repair_latex(sol.step_by_step_solution)
+            sol.final_value = repair_latex(sol.final_value)
+            sol.short_answer = repair_latex(sol.short_answer)
         return result.solutions
