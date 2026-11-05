@@ -14,16 +14,23 @@ class MemoryRawStore:
         self.dlq: list[dict[str, Any]] = []
 
     async def save(self, doc: RawDocument) -> bool:
-        if doc.id in self.docs:
-            return False
+        old = self.docs.get(doc.id)
+        if old is not None:
+            changed = bool(doc.context) and old.context != doc.context
+            old.context = doc.context or old.context
+            return changed
         self.docs[doc.id] = doc
         return True
 
     async def get(self, doc_id: str) -> RawDocument | None:
         return self.docs.get(doc_id)
 
-    async def fetched_since(self, site_id: str, since: datetime) -> set[str]:
-        return {d.url for d in self.docs.values() if d.site_id == site_id and d.fetched_at >= since}
+    async def fetched_since(self, site_id: str, since: datetime, with_context: bool = False) -> set[str]:
+        return {
+            d.url
+            for d in self.docs.values()
+            if d.site_id == site_id and d.fetched_at >= since and (not with_context or d.context.get("chapter"))
+        }
 
     async def iter_site(self, site_id: str) -> AsyncIterator[RawDocument]:
         for doc in list(self.docs.values()):

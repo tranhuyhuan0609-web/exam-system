@@ -1,0 +1,55 @@
+{% extends "admin/_layout.html" %}
+{% set active = "crawler" %}
+{% block title %}Chất lượng dữ liệu thu thập · Quản trị{% endblock %}
+{% block admin_content %}
+<p><a href="/admin/crawler">← Thu thập đề</a></p>
+<h1>Chất lượng dữ liệu thu thập</h1>
+<p class="muted">{{ total }} câu đã bóc tách ở tầng Silver. “Đã vào ngân hàng” là câu đang phục vụ học sinh (Gold).</p>
+
+<div class="card">
+  <table class="table">
+    <thead><tr><th>Nguồn</th><th>Môn</th><th class="num">Bóc được</th><th class="num">Vào ngân hàng</th>
+      <th class="num">Trùng</th><th class="num">Trùng ngữ nghĩa</th><th class="num">Cần duyệt</th><th class="num">Chờ AI</th>
+      <th class="num">Lời giải AI viết</th><th class="num">Có cảnh báo</th></tr></thead>
+    <tbody>
+    {% for (site_id, subject), r in rows %}
+      <tr>
+        <td>{{ site_id }}</td><td><strong>{{ subject }}</strong></td>
+        <td class="num">{{ r.total }}</td>
+        <td class="num"><a href="/admin/crawler/items?status=PUBLISHED&site={{ site_id }}">{{ r.PUBLISHED }}</a>
+          <span class="muted small">{{ "%.0f" % (100 * r.PUBLISHED / r.total) }}%</span></td>
+        <td class="num">{{ r.DUPLICATE }}</td><td class="num">{{ r.SIMILAR }}</td>
+        <td class="num">{% if r.NEEDS_REVIEW %}<a href="/admin/crawler/items?status=NEEDS_REVIEW&site={{ site_id }}">{{ r.NEEDS_REVIEW }}</a>{% else %}0{% endif %}</td>
+        <td class="num">{{ r.PENDING_AI }}</td>
+        <td class="num">{{ r.ai }}{% if r.PUBLISHED %} <span class="muted small">{{ "%.0f" % (100 * r.ai / r.PUBLISHED) }}%</span>{% endif %}</td>
+        <td class="num">{{ r.issues }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="10" class="muted">Chưa có dữ liệu.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="grid-main-side mt">
+  <section class="card">
+    <h3>Câu vào ngân hàng theo ngày</h3>
+    {% set peak = daily | map(attribute=1) | max if daily else 0 %}
+    {% for day, n in daily %}
+      <div class="daybar" title="{{ n }} câu ngày {{ day.strftime('%d/%m/%Y') }}">
+        <span class="daybar-label small">{{ day.strftime("%d/%m") }}</span>
+        <span class="daybar-track"><span class="daybar-fill" style="width: {{ (100 * n / peak) | round(1) if peak else 0 }}%"></span></span>
+        <span class="daybar-value small">{{ n }}</span>
+      </div>
+    {% else %}<p class="muted">Chưa có câu nào.</p>{% endfor %}
+    <p class="hint mt">Theo dạng câu: {% for t, n in types.items() if n %}{{ TYPE_LABELS[t] }} {{ n }}{{ " · " if not loop.last }}{% endfor %}</p>
+  </section>
+  <section class="card">
+    <h3>Cảnh báo thường gặp</h3>
+    <table class="table">
+      {% for issue, n in issues %}<tr><td class="small">{{ issue }}</td><td class="num">{{ n }}</td></tr>
+      {% else %}<tr><td class="muted">Không có cảnh báo.</td></tr>{% endfor %}
+    </table>
+  </section>
+</div>
+{% endblock %}

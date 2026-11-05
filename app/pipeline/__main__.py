@@ -61,6 +61,16 @@ async def _recheck(status: str) -> None:
         print(f"Rechecked {len(items)}:", {s.value: sum(1 for i in items if i.status == s) for s in CrawlItemStatus})
 
 
+async def _adopt(root: str, series: str) -> None:
+    from app.db import SessionLocal
+    from app.pipeline.use_cases.toc import adopt_series
+
+    async with SessionLocal() as session:
+        moved = await adopt_series(session, root, series)
+        await session.commit()
+    print(f"Moved {moved} chapters of {root} under {series}")
+
+
 async def _embed(batch: int = 100) -> None:
     from sqlalchemy import select
 
@@ -95,6 +105,7 @@ def main(argv: list[str] | None = None) -> None:
     crawl.add_argument("--max-pages", type=int)
     crawl.add_argument("--force", action="store_true", help="ignore refresh_days")
     crawl.add_argument("--run-id", type=int)
+    crawl.add_argument("--seed", help="only seeds whose label contains this, e.g. 'Toán 11 – Kết nối'")
     sub.add_parser("scheduler")
     sub.add_parser("silver")
     sub.add_parser("dlq")
@@ -103,6 +114,9 @@ def main(argv: list[str] | None = None) -> None:
     reparse = sub.add_parser("reparse")
     reparse.add_argument("site_id")
     sub.add_parser("embed-questions")
+    adopt = sub.add_parser("adopt-series")
+    adopt.add_argument("root")
+    adopt.add_argument("series")
     recheck = sub.add_parser("recheck")
     recheck.add_argument("status", choices=["SIMILAR", "NEEDS_REVIEW", "READY", "DUPLICATE"])
     args = parser.parse_args(argv)
@@ -116,7 +130,12 @@ def main(argv: list[str] | None = None) -> None:
         from app.pipeline.crawl.runner import run_crawl
 
         run_id = run_crawl(
-            args.site_id, args.run_id, args.max_pages, args.force, trigger="cli" if not args.run_id else "queued"
+            args.site_id,
+            args.run_id,
+            args.max_pages,
+            args.force,
+            trigger="cli" if not args.run_id else "queued",
+            seed_filter=args.seed,
         )
         print("Crawl run", run_id, "finished")
     elif args.command == "scheduler":
@@ -139,6 +158,8 @@ def main(argv: list[str] | None = None) -> None:
         asyncio.run(_reparse(args.site_id))
     elif args.command == "embed-questions":
         asyncio.run(_embed())
+    elif args.command == "adopt-series":
+        asyncio.run(_adopt(args.root, args.series))
     elif args.command == "recheck":
         asyncio.run(_recheck(args.status))
 

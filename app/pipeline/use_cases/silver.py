@@ -37,6 +37,7 @@ from app.models import (
 from app.pipeline.domain.models import ParsedQuestion, RawDocument, SiteConfig
 from app.pipeline.parsers.base import all_parsers
 from app.pipeline.ports import Downloader, Embedder, Enricher, EnrichItem, RawStore
+from app.pipeline.use_cases.toc import ensure_path
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +47,13 @@ _MATH = re.compile(r"\$\$.*?\$\$|\$[^$]*\$", re.S)
 _PLAIN_MATH = re.compile(r"[πωλφΦαβγΔδθμρσε√≤≥±≈∞]|\b(?:sin|cos|tan|cot|log|ln)\s*\(|\d\s*[\^_]|\b[a-zA-Z]\s*=\s*-?\d")
 MAX_AI_TRIES = 3
 NO_CATEGORY = "Chưa gắn được chương/bài."
+STALE = "Không còn trên trang nguồn khi bóc lại."
+
+
+class AIUnavailable(Exception):
+    """Gemini cannot take requests right now (quota, overload); PENDING_AI items keep waiting."""
+
+
 EXT_BY_TYPE = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
@@ -149,6 +157,22 @@ async def ingest_document(session: AsyncSession, deps: SilverDeps, doc: RawDocum
         item = await _upsert(session, deps, doc, config, parsed, page.title)
         if item is not None:
             items.append(item)
+    # Questions an earlier (worse) parse found on this page but the current one does not, e.g. a true/false
+    # question once read as multiple choice under another id: drop them unless they are already in the bank.
+    current = {parsed.external_id for parsed in page.questions}
+    for stale in (
+        await session.scalars(
+            select(CrawledQuestion).where(
+                CrawledQuestion.site_id == doc.site_id,
+                CrawledQuestion.source_url == doc.url,
+                CrawledQuestion.status != CrawlItemStatus.PUBLISHED,
+                CrawledQuestion.status != CrawlItemStatus.REJECTED,
+            )
+        )
+    ).all():
+        if stale.external_id not in current:
+            stale.status = CrawlItemStatus.REJECTED
+            stale.issues = [*stale.issues, STALE]
     await session.flush()
     for item in items:
         if item.status == CrawlItemStatus.READY:
@@ -168,6 +192,13 @@ async def _upsert(
             CrawledQuestion.site_id == doc.site_id, CrawledQuestion.external_id == parsed.external_id
         )
     )
+    if item is not None and item.source_hash == source_hash and doc.context and item.source_context != doc.context:
+        item.source_context = doc.context  # same question, now with its place in the source's table of contents
+        if item.status == CrawlItemStatus.NEEDS_REVIEW and NO_CATEGORY in item.issues:
+            item.issues = [i for i in item.issues if i != NO_CATEGORY]
+            item.status = CrawlItemStatus.READY if not item.issues else item.status
+            return item if item.status == CrawlItemStatus.READY else None
+        return None
     if item is not None and (item.source_hash == source_hash or item.status == CrawlItemStatus.PUBLISHED):
         return None  # unchanged (or already in the bank: edits there win)
     if item is None:
@@ -177,6 +208,7 @@ async def _upsert(
     item.doc_id = doc.id
     item.source_url = doc.url
     item.source_title = title[:500]
+    item.source_context = doc.context or {}
     item.question_type = QuestionType(parsed.question_type)
     item.content = parsed.content
     item.choices = parsed.choices
@@ -214,7 +246,7 @@ async def ingest_file(
     session: AsyncSession, deps: SilverDeps, doc: RawDocument, config: SiteConfig
 ) -> ImportJob | None:
     """PDF / Word / image from a source: hand it to the existing AI import pipeline (draft review)."""
-    category = await label(session, config, doc.url, doc.title or doc.url)
+    category = await label(session, config, doc.url, doc.title or doc.url, doc.context)
     if category is None:
         raise LookupError(f"No category for file {doc.url}; add a categories rule to {config.site_id}.yaml")
     data = await deps.bronze_storage.get(doc.storage_key)
@@ -276,10 +308,11 @@ async def ai_sweep(session: AsyncSession, deps: SilverDeps, batch: int = 8) -> i
     try:
         results = {r.ref: r for r in await deps.enricher.enrich(requests)}
     except Exception as exc:  # noqa: BLE001
-        log.warning("AI enrichment failed: %s", exc)
-        results = {}
-        for item in items:
-            item.issues = [*item.issues[-4:], f"AI lỗi: {str(exc)[:200]}"]
+        # Quota / overload (429, 5xx after the provider's own retries): not the questions' fault. Leave them
+        # waiting, untouched, and tell the caller to back off instead of burning their tries.
+        log.warning("AI enrichment unavailable, backing off: %s", exc)
+        await session.rollback()
+        raise AIUnavailable(str(exc)) from exc
     for item in items:
         result = results.get(item.id)
         if result is None:
@@ -378,7 +411,7 @@ async def advance(session: AsyncSession, deps: SilverDeps, item: CrawledQuestion
     # Labelling: which chapter / lesson of our table of contents.
     category = await session.get(Category, item.category_id) if item.category_id else None
     if category is None:
-        category = await label(session, config, item.source_url, item.source_title)
+        category = await label(session, config, item.source_url, item.source_title, item.source_context)
     if category is None:
         item.status = CrawlItemStatus.NEEDS_REVIEW
         if NO_CATEGORY not in item.issues:
@@ -427,11 +460,24 @@ async def _category_by_path(session: AsyncSession, path: str) -> Category | None
     return parent
 
 
-async def label(session: AsyncSession, config: SiteConfig, url: str, title: str) -> Category | None:
-    """Category of a source page: an admin's (or earlier) choice, else the site's rules ("Bài N" -> lesson N)."""
+async def label(
+    session: AsyncSession, config: SiteConfig, url: str, title: str, context: dict | None = None
+) -> Category | None:
+    """Category of a source page: an admin's (or earlier) choice; else the source's own table of contents
+    (auto_toc: root › series › chapter › lesson, missing nodes created); else the site's rules ("Bài N")."""
     mapped = await session.get(CrawlCategoryMap, (config.site_id, url))
     if mapped is not None:
         return await session.get(Category, mapped.category_id)
+    context = context or {}
+    if config.auto_toc and context.get("root") and context.get("chapter"):
+        target = await ensure_path(
+            session, [context["root"], context.get("series", ""), context["chapter"], context.get("lesson", "")]
+        )
+        session.add(
+            CrawlCategoryMap(site_id=config.site_id, source_url=url, category_id=target.id, source_title=title[:500])
+        )
+        await session.flush()
+        return target
     for rule in config.categories:
         if not re.search(rule.pattern, url):
             continue

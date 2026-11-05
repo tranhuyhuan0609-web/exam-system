@@ -15,7 +15,9 @@ from app.models import CrawlerSite, CrawlRun, CrawlRunStatus
 from app.pipeline.domain.models import SiteConfig
 
 
-async def _prepare(site_id: str, run_id: int | None, max_pages: int | None, force: bool, trigger: str):
+async def _prepare(
+    site_id: str, run_id: int | None, max_pages: int | None, force: bool, trigger: str, seed_filter: str | None
+):
     from app.pipeline.adapters.mongo import MongoRawStore
 
     async with SessionLocal() as session:
@@ -25,16 +27,23 @@ async def _prepare(site_id: str, run_id: int | None, max_pages: int | None, forc
         config = SiteConfig.model_validate(site.config)
         run = await session.get(CrawlRun, run_id) if run_id else None
         if run is None:
-            run = CrawlRun(site_id=site_id, trigger=trigger, max_pages=max_pages, force=force)
+            run = CrawlRun(site_id=site_id, trigger=trigger, max_pages=max_pages, force=force, seed_filter=seed_filter)
             session.add(run)
         run.status = CrawlRunStatus.RUNNING
         run.started_at = datetime.now(UTC)
         await session.commit()
         run_id, max_pages, force = run.id, run.max_pages or max_pages, run.force or force
+        seed_filter = run.seed_filter or seed_filter
+    if seed_filter:
+        wanted = [s for s in config.seeds if seed_filter.casefold() in s.label.casefold()]
+        if not wanted:
+            raise SystemExit(f"No seed of {site_id} matches {seed_filter!r}")
+        config = config.model_copy(update={"seeds": wanted})
     skip: set[str] = set()
     if not force:
         store = MongoRawStore()
-        skip = await store.fetched_since(site_id, datetime.now(UTC) - timedelta(days=config.refresh_days))
+        since = datetime.now(UTC) - timedelta(days=config.refresh_days)
+        skip = await store.fetched_since(site_id, since, with_context=config.auto_toc)
         await store.close()
     await engine.dispose()  # the Scrapy reactor runs its own event loop
     return config, run_id, max_pages, skip
@@ -57,14 +66,19 @@ async def _finish(run_id: int, stats: dict, error: str | None) -> None:
 
 
 def run_crawl(
-    site_id: str, run_id: int | None = None, max_pages: int | None = None, force: bool = False, trigger: str = "cli"
+    site_id: str,
+    run_id: int | None = None,
+    max_pages: int | None = None,
+    force: bool = False,
+    trigger: str = "cli",
+    seed_filter: str | None = None,
 ) -> int:
     from scrapy.crawler import CrawlerProcess
     from scrapy.utils.reactor import install_reactor
 
     from app.pipeline.crawl.spider import QuestionSpider, scrapy_settings
 
-    config, run_id, max_pages, skip = asyncio.run(_prepare(site_id, run_id, max_pages, force, trigger))
+    config, run_id, max_pages, skip = asyncio.run(_prepare(site_id, run_id, max_pages, force, trigger, seed_filter))
     install_reactor("twisted.internet.asyncioreactor.AsyncioSelectorReactor")
     process = CrawlerProcess(scrapy_settings(config, get_settings().crawler_user_agent, max_pages))
     crawler = process.create_crawler(QuestionSpider)

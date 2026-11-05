@@ -13,7 +13,7 @@ from app.infrastructure.storage import get_bronze_storage, get_storage
 from app.models import CrawlerSite, CrawlRun, CrawlRunStatus
 from app.pipeline.domain.models import SiteConfig
 from app.pipeline.ports import DLQ_TOPIC, RAW_TOPIC
-from app.pipeline.use_cases.silver import SilverDeps, ai_sweep, ingest_document
+from app.pipeline.use_cases.silver import AIUnavailable, SilverDeps, ai_sweep, ingest_document
 
 log = logging.getLogger(__name__)
 VN = timezone(timedelta(hours=7))
@@ -63,13 +63,16 @@ async def run_silver(stop: asyncio.Event | None = None) -> None:
 
     async def sweep() -> None:
         while not (stop and stop.is_set()):
+            pause = 15
             try:
                 async with SessionLocal() as session:
                     handled = await ai_sweep(session, deps)
+                pause = 1 if handled else 15
+            except AIUnavailable:
+                pause = 120  # quota / overload: wait for it to recover
             except Exception:  # noqa: BLE001
                 log.exception("AI sweep failed")
-                handled = 0
-            await asyncio.sleep(1 if handled else 15)
+            await asyncio.sleep(pause)
 
     await asyncio.gather(
         consume(RAW_TOPIC, "silver", lambda e: handle_raw_event(deps, e), on_error=to_dlq, stop=stop), sweep()

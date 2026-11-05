@@ -25,6 +25,7 @@ def _to_doc(row: dict[str, Any]) -> RawDocument:
         storage_key=row.get("storage_key"),
         title=row.get("title", ""),
         seed_label=row.get("seed_label", ""),
+        context=row.get("context") or {},
     )
 
 
@@ -57,24 +58,31 @@ class MongoRawStore:
             "storage_key": doc.storage_key,
             "title": doc.title,
             "seed_label": doc.seed_label,
+            "context": doc.context,
         }
         try:
             await self.docs.insert_one(row)
             return True
         except DuplicateKeyError:  # same URL and same bytes: just remember we saw it again
-            await self.docs.update_one({"_id": doc.id}, {"$set": {"last_seen_at": doc.fetched_at}})
-            return False
+            old = await self.docs.find_one_and_update(
+                {"_id": doc.id}, {"$set": {"last_seen_at": doc.fetched_at, "context": doc.context or {}}}
+            )
+            # A page first crawled without table-of-contents context counts as new once it has one.
+            return bool(doc.context) and (old or {}).get("context") != doc.context
 
     async def get(self, doc_id: str) -> RawDocument | None:
         row = await self.docs.find_one({"_id": doc_id})
         return _to_doc(row) if row else None
 
-    async def fetched_since(self, site_id: str, since: datetime) -> set[str]:
+    async def fetched_since(self, site_id: str, since: datetime, with_context: bool = False) -> set[str]:
         await self._ensure_indexes()
-        cursor = self.docs.find(
-            {"site_id": site_id, "$or": [{"fetched_at": {"$gte": since}}, {"last_seen_at": {"$gte": since}}]},
-            {"url": 1},
-        )
+        query: dict[str, Any] = {
+            "site_id": site_id,
+            "$or": [{"fetched_at": {"$gte": since}}, {"last_seen_at": {"$gte": since}}],
+        }
+        if with_context:  # pages stored before auto_toc must be fetched again to learn their chapter
+            query["context.chapter"] = {"$exists": True}
+        cursor = self.docs.find(query, {"url": 1})
         return {row["url"] async for row in cursor}
 
     async def iter_site(self, site_id: str) -> AsyncIterator[RawDocument]:

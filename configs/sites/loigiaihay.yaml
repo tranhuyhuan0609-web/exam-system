@@ -1,4 +1,5 @@
-# Lời giải hay — trắc nghiệm Vật lí 11 (Kết nối tri thức). robots.txt allows these paths.
+# Lời giải hay — trắc nghiệm Vật lí 10–11, three series. robots.txt allows these paths.
+# Not covered: Toán (the "tự luyện" pages load questions with JavaScript) and Lí 12 (old-curriculum category).
 site_id: loigiaihay
 name: Lời giải hay
 enabled: true
@@ -6,25 +7,51 @@ base_url: https://loigiaihay.com
 parser: loigiaihay_quiz
 schedule_times: ["02:30"]   # Vietnam time; quiet hours for the source
 refresh_days: 30
-max_pages: 120
+max_pages: 200
 respect_robots: true
 auto_publish: true
+auto_toc: true
 default_difficulty: UNDERSTANDING
 rate_limit:
   delay_sec: 3
   timeout_sec: 20
   retries: 2
   concurrency: 1
+toc:
+  # Chapter pages: the h1 names the chapter, the main column lists its lessons (the sidebars list others).
+  scope: ["//div[contains(@class, 'left-3col')]"]
 seeds:
+  - url: https://loigiaihay.com/bai-tap-trac-nghiem-li-10-ket-noi-tri-thuc-c1333.html
+    label: Vật lí 10 – Kết nối tri thức
+    root: Vật lí 10
+    series: Kết nối tri thức
+  - url: https://loigiaihay.com/bai-tap-trac-nghiem-li-10-chan-troi-sang-tao-c1334.html
+    label: Vật lí 10 – Chân trời sáng tạo
+    root: Vật lí 10
+    series: Chân trời sáng tạo
+  - url: https://loigiaihay.com/bai-tap-trac-nghiem-li-10-canh-dieu-c1335.html
+    label: Vật lí 10 – Cánh diều
+    root: Vật lí 10
+    series: Cánh diều
   - url: https://loigiaihay.com/bai-tap-trac-nghiem-li-11-ket-noi-tri-thuc-c1680.html
     label: Vật lí 11 – Kết nối tri thức
+    root: Vật lí 11
+    series: Kết nối tri thức
+  - url: https://loigiaihay.com/bai-tap-trac-nghiem-li-11-chan-troi-sang-tao-c1682.html
+    label: Vật lí 11 – Chân trời sáng tạo
+    root: Vật lí 11
+    series: Chân trời sáng tạo
+  - url: https://loigiaihay.com/bai-tap-trac-nghiem-li-11-canh-dieu-c1681.html
+    label: Vật lí 11 – Cánh diều
+    root: Vật lí 11
+    series: Cánh diều
 follow:
-  - pattern: '^https://loigiaihay\.com/bai-tap-trac-nghiem-chuong-[a-z-]+-e\d+\.html$'
+  - pattern: '^https://loigiaihay\.com/bai-tap-trac-nghiem-(chuong|chu-de|phan)-[a-z0-9-]+-e\d+\.html$'
     kind: listing
-  - pattern: '^https://loigiaihay\.com/trac-nghiem-vat-li-11-bai-\d+-ket-noi-tri-thuc-co-dap-an-a\d+\.html$'
+  - pattern: '^https://loigiaihay\.com/trac-nghiem-vat-li-1[01]-bai-[a-z0-9-]+-co-dap-an-a\d+\.html$'
     kind: detail
 categories:
-  # Page title "Trắc nghiệm vật lí 11 bài 3 kết nối tri thức có đáp án" -> our "Vật lí 11 › … › Bài 3: …"
-  - pattern: 'trac-nghiem-vat-li-11-'
+  # Fallback for pages crawled before auto_toc (no context).
+  - pattern: 'trac-nghiem-vat-li-11-bai-\d+-ket-noi'
     root: Vật lí 11
     lesson: 'bài\s*(\d+)'

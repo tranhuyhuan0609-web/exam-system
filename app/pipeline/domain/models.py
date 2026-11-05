@@ -28,6 +28,41 @@ class FollowRule(BaseModel):
 class Seed(BaseModel):
     url: str
     label: str = ""  # human-readable source area, e.g. "Vật lí 11 – Kết nối tri thức"
+    # Where this seed's lessons go in our table of contents (auto_toc): subject root and textbook series.
+    root: str = ""  # e.g. "Vật lí 11"
+    series: str = ""  # e.g. "Kết nối tri thức"; empty = chapters directly under the root
+    scope_prefix: str = ""  # only follow URLs starting with this (one book's folder); empty = whole site
+
+
+class TocRules(BaseModel):
+    """How listing pages name chapters and lessons, for building our table of contents from the source."""
+
+    chapter: str = r"^(Chương|Chủ đề|Phần)\s*[IVXLC\d]+"  # heading / link text of a chapter
+    lesson: str = r"^Bài\s*\d+"  # link text of a lesson
+    strip: str = (
+        r"^(Bài tập\s*)?[Tt]rắc nghiệm\s*|\s*Luyện tập và củng cố.*$|\s*[-–]\s*(Vật Lí|Vật lí|Toán)\s*1[012].*$"
+        r"|\s*\(có đáp án\).*$"
+    )
+    # Where the table of contents lives on listing pages (first XPath that matches; else the whole body).
+    # Menus and sidebars outside it would attach lessons to the wrong chapter.
+    scope: list[str] = []
+
+    @field_validator("chapter", "lesson", "strip")
+    @classmethod
+    def _compiles(cls, value: str) -> str:
+        re.compile(value)
+        return value
+
+    def clean(self, text: str) -> str:
+        return " ".join(re.sub(self.strip, "", " ".join(text.split()), flags=re.I).split())
+
+    def chapter_of(self, text: str) -> str | None:
+        text = self.clean(text)
+        return text if re.match(self.chapter, text, re.I) else None
+
+    def lesson_of(self, text: str) -> str | None:
+        text = self.clean(text)
+        return text if re.match(self.lesson, text, re.I) else None
 
 
 class RateLimit(BaseModel):
@@ -63,6 +98,9 @@ class SiteConfig(BaseModel):
     seeds: list[Seed]
     follow: list[FollowRule]
     categories: list[CategoryRule] = []
+    # Build missing chapters / lessons in our table of contents from the source's listing pages.
+    auto_toc: bool = False
+    toc: TocRules = TocRules()
 
     def rule_for(self, url: str) -> FollowRule | None:
         return next((r for r in self.follow if re.search(r.pattern, url)), None)
@@ -89,6 +127,8 @@ class RawDocument:
     storage_key: str | None = None  # files: key in the bronze-raw bucket
     title: str = ""
     seed_label: str = ""
+    # Where the page sits in the source's table of contents: {"root", "series", "chapter", "lesson"}.
+    context: dict[str, str] = field(default_factory=dict)
 
     def event(self) -> dict[str, Any]:
         """Kafka message on raw.exam.ingestion: the id only, the payload stays in MongoDB."""
