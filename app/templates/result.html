@@ -43,6 +43,7 @@
       {% else %}<span class="badge">Chưa trả lời</span>{% endif %}
     </div>
     <div class="q-content">{{ r.content }}</div>
+    {% if r.image_url %}<img class="q-figure" src="{{ r.image_url }}" alt="Hình vẽ câu {{ r.number }}">{% endif %}
     <div class="choice-list">
       {% for c in r.choices %}
         <div class="choice review {% if c.id == r.correct_id %}is-correct{% endif %} {% if c.id == r.chosen and c.id != r.correct_id %}is-wrong{% endif %}">

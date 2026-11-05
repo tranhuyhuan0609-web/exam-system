@@ -10,3 +10,6 @@ htmlcov/
 *.db
 .vscode/
 .idea/
+
+# Uploaded files, rendered pages, figures
+/data/

@@ -1,0 +1,162 @@
+"""Model provider behind a small interface so the pipeline can be tested without network calls."""
+
+import asyncio
+import json
+import logging
+import re
+from dataclasses import dataclass
+from typing import Protocol
+
+from pydantic import BaseModel, ValidationError
+
+from app.ai.schemas import ExtractedQuestion, ExtractionResult, Solution, SolveResult
+
+log = logging.getLogger(__name__)
+
+
+@dataclass
+class PageImage:
+    number: int  # 1-based page number in the document
+    png: bytes
+    context_only: bool = False  # included so a question split across pages can be completed
+
+
+@dataclass
+class FigureImage:
+    question_number: int
+    png: bytes
+
+
+class AIProvider(Protocol):
+    async def extract(self, pages: list[PageImage]) -> list[ExtractedQuestion]: ...
+
+    async def solve(self, questions: list[ExtractedQuestion], figures: list[FigureImage]) -> list[Solution]: ...
+
+    @property
+    def models_used(self) -> set[str]: ...
+
+
+class AIError(Exception):
+    """The model could not produce a usable answer (after retries and fallbacks)."""
+
+
+EXTRACT_PROMPT = """Bạn là chuyên gia số hoá đề thi Vật lí THPT Việt Nam. Các ảnh trên là các trang của một đề thi, \
+mỗi ảnh được đánh dấu bằng nhãn “TRANG n” ngay trước nó.
+
+Nhiệm vụ: trích xuất MỌI câu hỏi bắt đầu trên các trang KHÔNG đánh dấu “chỉ tham khảo”. \
+Trang “chỉ tham khảo” chỉ dùng để đọc nốt phần cuối của câu bị ngắt sang trang sau; không trích câu bắt đầu ở trang đó.
+
+Quy tắc:
+- Giữ NGUYÊN VĂN đề bài, kể cả lỗi chính tả; không tóm tắt, không giải.
+- Viết MỌI công thức, ký hiệu, chỉ số, số mũ, phân số, vectơ bằng LaTeX đặt trong $...$. \
+Ví dụ: $10^5$ Pa, $p_1$, $1{,}25 \\cdot 10^5$ Pa, $\\rho = 1000\\ \\text{kg/m}^3$, $\\vec{F}$, $\\Delta\\varphi$, $\\dfrac{3}{4}$. \
+Dấu thập phân kiểu Việt Nam viết là {,} trong LaTeX.
+- Bỏ qua tiêu đề, tên lớp/giáo viên, logo, watermark, số trang, đáp án in sẵn ở cuối đề.
+- Nội dung lựa chọn không kèm nhãn “A.” và không kèm dấu chấm cuối.
+- Câu có các ý a), b), c), d) đúng/sai: type = TRUE_FALSE, đưa từng ý vào choices với nhãn A, B, C, D.
+- Nếu câu có hình vẽ / đồ thị / sơ đồ mạch, trả figure_bbox bao sát riêng phần hình (không lấy chữ đề bài), \
+theo thang 0–1000 của đúng trang chứa hình, và page là trang chứa câu hỏi."""
+
+SOLVE_PROMPT = """Bạn là giáo viên Vật lí giỏi. Giải từng câu hỏi dưới đây (dữ liệu JSON; ảnh hình vẽ kèm theo được \
+đánh dấu “HÌNH CÂU n”).
+
+Với mỗi câu:
+1. Viết lời giải từng bước bằng tiếng Việt: tóm tắt dữ kiện, đổi đơn vị về SI, viết công thức, thay số.
+2. Dùng công cụ chạy code Python để tính mọi phép tính số (không tính nhẩm), rồi ghi kết quả vào lời giải.
+3. So sánh kết quả với các lựa chọn rồi mới chốt correct_label. Nếu không khớp lựa chọn nào, đặt matches_an_option = false \
+và chọn lựa chọn gần nhất.
+4. Câu SHORT_ANSWER: ghi đáp số vào short_answer (kèm đơn vị), correct_label = null.
+5. Đánh giá mức độ: RECOGNITION (nhớ công thức/khái niệm), UNDERSTANDING (áp dụng 1 bước), APPLICATION (nhiều bước, suy luận).
+Công thức trong lời giải viết LaTeX trong $...$; công thức quan trọng có thể đặt riêng dòng bằng $$...$$."""
+
+
+def _json_block(text: str) -> str:
+    blocks = re.findall(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
+    if blocks:
+        return blocks[-1]
+    start, end = text.find("{"), text.rfind("}")
+    return text[start : end + 1] if start != -1 and end > start else text
+
+
+class GeminiProvider:
+    """Gemini with retries, model fallbacks and structured outputs."""
+
+    RETRYABLE = {429, 500, 502, 503, 504}
+
+    def __init__(self, api_key: str, models: list[str], max_rounds: int = 4, base_delay: float = 5.0):
+        from google import genai
+
+        if not api_key:
+            raise AIError("Chưa cấu hình GEMINI_API_KEY.")
+        if not models:
+            raise AIError("Chưa cấu hình GEMINI_MODELS.")
+        self._client = genai.Client(api_key=api_key)
+        self._models = models
+        self._max_rounds = max_rounds
+        self._base_delay = base_delay
+        self._used: set[str] = set()
+
+    @property
+    def models_used(self) -> set[str]:
+        return self._used
+
+    async def _generate(self, contents: list, schema: type[BaseModel], code_execution: bool = False) -> BaseModel:
+        from google.genai import errors, types
+
+        last_error: Exception | None = None
+        for round_no in range(self._max_rounds):
+            for model in self._models:
+                config = types.GenerateContentConfig(temperature=0)
+                if code_execution:
+                    # Code execution cannot be combined with a response schema on every model, so ask for a
+                    # JSON block in the text and validate it ourselves.
+                    config.tools = [types.Tool(code_execution=types.ToolCodeExecution())]
+                    prompt_tail = (
+                        "\n\nSau khi giải xong, trả về DUY NHẤT một khối ```json ...``` đúng JSON Schema sau:\n"
+                        + json.dumps(schema.model_json_schema(), ensure_ascii=False)
+                    )
+                    request = [*contents, prompt_tail]
+                else:
+                    config.response_mime_type = "application/json"
+                    config.response_schema = schema
+                    request = contents
+                try:
+                    response = await self._client.aio.models.generate_content(
+                        model=model, contents=request, config=config
+                    )
+                    self._used.add(model)
+                    if not code_execution and response.parsed is not None:
+                        return response.parsed
+                    text = "".join(p.text or "" for p in (response.candidates[0].content.parts or []))
+                    return schema.model_validate_json(_json_block(text))
+                except errors.APIError as exc:
+                    last_error = exc
+                    if exc.code not in self.RETRYABLE:
+                        raise AIError(f"Gemini từ chối yêu cầu ({exc.code}): {exc.message}") from exc
+                    log.warning("Gemini %s busy (%s), trying next model", model, exc.code)
+                except (ValidationError, ValueError, IndexError, AttributeError) as exc:
+                    last_error = exc
+                    log.warning("Gemini %s returned unusable output: %s", model, exc)
+            await asyncio.sleep(self._base_delay * 3**round_no)
+        raise AIError(f"Gemini không phản hồi được sau nhiều lần thử: {last_error}")
+
+    async def extract(self, pages: list[PageImage]) -> list[ExtractedQuestion]:
+        from google.genai import types
+
+        contents: list = []
+        for page in pages:
+            label = f"TRANG {page.number}" + (" (chỉ tham khảo)" if page.context_only else "")
+            contents += [label, types.Part.from_bytes(data=page.png, mime_type="image/png")]
+        contents.append(EXTRACT_PROMPT)
+        result = await self._generate(contents, ExtractionResult)
+        return result.questions
+
+    async def solve(self, questions: list[ExtractedQuestion], figures: list[FigureImage]) -> list[Solution]:
+        from google.genai import types
+
+        payload = [q.model_dump(include={"number", "type", "content", "choices"}) for q in questions]
+        contents: list = [SOLVE_PROMPT, json.dumps(payload, ensure_ascii=False)]
+        for fig in figures:
+            contents += [f"HÌNH CÂU {fig.question_number}", types.Part.from_bytes(data=fig.png, mime_type="image/png")]
+        result = await self._generate(contents, SolveResult, code_execution=True)
+        return result.solutions

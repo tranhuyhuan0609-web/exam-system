@@ -1,0 +1,4 @@
+{% if job.status == "QUEUED" %}<span class="badge">Đang chờ</span>
+{% elif job.status == "PROCESSING" %}<span class="badge badge-warn">Đang xử lý</span>
+{% elif job.status == "DONE" %}<span class="badge badge-ok">Chờ duyệt</span>
+{% else %}<span class="badge badge-bad">Lỗi</span>{% endif %}

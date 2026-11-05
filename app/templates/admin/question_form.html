@@ -43,6 +43,12 @@
     </label>
     <p class="hint">Công thức viết bằng LaTeX: <code>$v = \omega A$</code> cho công thức trong dòng, <code>$$T = \dfrac{2\pi}{\omega}$$</code> cho công thức riêng một dòng.</p>
 
+    {% if question and question.image_path %}
+      <div class="figure-edit">
+        <img class="q-figure small-figure" src="/media/{{ question.image_path }}" alt="Hình vẽ">
+        <label class="check"><input type="checkbox" name="remove_image"> Bỏ hình vẽ này</label>
+      </div>
+    {% endif %}
     <fieldset>
       <legend>Các lựa chọn <span class="muted small">(chọn ô tròn ở đáp án đúng)</span></legend>
       <div id="choices">

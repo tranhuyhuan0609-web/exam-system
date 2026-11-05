@@ -38,6 +38,7 @@ def build_snapshot(questions: list[Question]) -> dict[str, Any]:
                     {"id": c["id"], "content": c["content"], "is_correct": bool(c["is_correct"])} for c in q.choices
                 ],
                 "explanation": q.explanation,
+                "image_url": f"/media/{q.image_path}" if q.image_path else None,
             }
             for q in questions
         ]
@@ -52,6 +53,7 @@ def public_questions(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
             "number": number,
             "content": q["content"],
             "choices": [{"id": c["id"], "content": c["content"]} for c in q["choices"]],
+            "image_url": q.get("image_url"),
         }
         for number, q in enumerate(snapshot["questions"], start=1)
     ]
@@ -235,6 +237,7 @@ def review(attempt: ExamAttempt) -> list[dict[str, Any]]:
                 "content": q["content"],
                 "choices": q["choices"],
                 "explanation": q.get("explanation"),
+                "image_url": q.get("image_url"),
                 "chosen": chosen,
                 "correct_id": correct_id,
                 "status": "unanswered" if chosen is None else ("correct" if chosen == correct_id else "wrong"),

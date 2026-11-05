@@ -16,10 +16,29 @@ services:
 
   app:
     build: .
+    env_file: .env  # SECRET_KEY, GEMINI_API_KEY...
     environment:
       DATABASE_URL: postgresql+asyncpg://exam:exam@db:5432/exam
+      DATA_DIR: /app/data
     ports:
       - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Processes AI import jobs (PDF / Word / photos). Includes LibreOffice for .docx files.
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://exam:exam@db:5432/exam
+      DATA_DIR: /app/data
+    volumes:
+      - ./data:/app/data
     depends_on:
       db:
         condition: service_healthy

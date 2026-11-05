@@ -28,6 +28,10 @@ app.add_middleware(
     https_only=settings.session_https_only,
 )
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+# Question figures (public; file names are unguessable). Page images of uploads stay admin-only.
+_media = Path(settings.data_dir) / "media"
+_media.mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=_media), name="media")
 
 app.include_router(student.router)
 app.include_router(auth.router)
