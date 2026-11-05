@@ -1,11 +1,11 @@
 """Demo content for local development (`python -m app.cli seed-demo`). Safe to run repeatedly."""
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import selectinload
 
+from app.application.categories import create_category
 from app.db import SessionLocal
 from app.domain.question_hash import hash_of_choices
-from app.models import Chapter, Difficulty, Exam, ExamMode, ExamQuestion, Lesson, Question, Subject
+from app.models import Category, Difficulty, Exam, ExamMode, ExamQuestion, Question
 
 R, U, A = Difficulty.RECOGNITION, Difficulty.UNDERSTANDING, Difficulty.APPLICATION
 
@@ -111,41 +111,39 @@ def _choices(options: list[str], rotate: int) -> list[dict]:
 async def seed_demo() -> None:
     async with SessionLocal() as session:
         for data in DEMO_SUBJECTS:
-            if await session.scalar(select(Subject.id).where(Subject.slug == data["slug"])):
+            if await session.scalar(select(Category.id).where(Category.slug == data["slug"])):
                 print(f"Skip subject {data['name']} (already exists).")
                 continue
-            subject = Subject(name=data["name"], slug=data["slug"])
-            for ci, (chapter_name, lessons) in enumerate(data["chapters"], start=1):
-                chapter = Chapter(name=chapter_name, position=ci)
-                chapter.lessons = [Lesson(name=n, position=li) for li, n in enumerate(lessons, start=1)]
-                subject.chapters.append(chapter)
-            session.add(subject)
+            subject = await create_category(session, data["name"], slug=data["slug"])
+            for chapter_name, lessons in data["chapters"]:
+                chapter = await create_category(session, chapter_name, subject)
+                for lesson_name in lessons:
+                    await create_category(session, lesson_name, chapter)
             print(f"Created subject {data['name']}.")
         await session.commit()
 
-        physics = await session.scalar(
-            select(Subject)
-            .where(Subject.slug == "vat-li-11")
-            .options(selectinload(Subject.chapters).selectinload(Chapter.lessons))
-        )
-        if physics is None or not physics.chapters:
+        physics = await session.scalar(select(Category).where(Category.slug == "vat-li-11"))
+        if physics is None:
             return
-        chapter1 = physics.chapters[0]
+        chapter1 = await session.scalar(
+            select(Category).where(Category.parent_id == physics.id).order_by(Category.position).limit(1)
+        )
+        if chapter1 is None:
+            return
 
-        if await session.scalar(select(func.count()).select_from(Question).where(Question.subject_id == physics.id)):
+        if await session.scalar(select(func.count()).select_from(Question).where(Question.root_id == physics.id)):
             print("Skip demo questions (subject already has questions).")
         else:
             # "Bài 1: Dao động điều hoà" -> "Bài 1:"
-            lessons = {lesson.name.split(":")[0] + ":": lesson for lesson in chapter1.lessons}
+            children = (await session.scalars(select(Category).where(Category.parent_id == chapter1.id))).all()
+            lessons = {lesson.name.split(":")[0] + ":": lesson for lesson in children}
             for i, (prefix, difficulty, content, options, explanation) in enumerate(DEMO_QUESTIONS):
-                lesson = lessons[prefix]
                 choices = _choices(options, rotate=i)
                 session.add(
                     Question(
                         content_hash=hash_of_choices("MULTIPLE_CHOICE", content, choices),
-                        subject_id=physics.id,
-                        chapter_id=chapter1.id,
-                        lesson_id=lesson.id,
+                        root_id=physics.id,
+                        category_id=lessons[prefix].id,
                         difficulty=difficulty,
                         content=content,
                         choices=choices,
@@ -158,12 +156,13 @@ async def seed_demo() -> None:
         if await session.scalar(select(Exam.id).where(Exam.title == DEMO_EXAM_TITLE)):
             print("Skip demo exam (already exists).")
             return
+        branch = select(Category.id).where(Category.path.like(f"{chapter1.path}%"))
         question_ids = (
-            await session.scalars(select(Question.id).where(Question.chapter_id == chapter1.id).order_by(Question.id))
+            await session.scalars(select(Question.id).where(Question.category_id.in_(branch)).order_by(Question.id))
         ).all()
         exam = Exam(
-            subject_id=physics.id,
-            chapter_id=chapter1.id,
+            root_id=physics.id,
+            category_id=chapter1.id,
             title=DEMO_EXAM_TITLE,
             description="Đề luyện tập mẫu: 8 câu, 15 phút, làm lại không giới hạn.",
             exam_mode=ExamMode.PRACTICE,

@@ -25,7 +25,7 @@ from app.question_import import (
     validate,
 )
 from app.routers.admin.common import clean_text, redirect
-from app.scope import Scope, load_subject_tree, resolve_scope, scope_options, scope_paths
+from app.scope import Scope, load_categories, resolve_scope, scope_options, scope_paths
 from app.templating import flash, templates
 
 router = APIRouter()
@@ -78,7 +78,7 @@ async def _render_form(request, session, user, settings: ImportSettings, errors=
             "user": user,
             "settings": settings,
             "errors": errors or [],
-            "scope_options": scope_options(await load_subject_tree(session)),
+            "scope_options": scope_options(await load_categories(session)),
             "rules": TEXT_RULES,
             "max_mb": MAX_FILE_BYTES // (1024 * 1024),
             "max_questions": MAX_QUESTIONS,
@@ -148,7 +148,7 @@ async def import_preview(
         q.duplicate = digest in existing or digest in seen
         seen.add(digest)
 
-    subjects = await load_subject_tree(session)
+    subjects = await load_categories(session)
     return templates.TemplateResponse(
         request,
         "admin/import_preview.html",
@@ -195,9 +195,8 @@ async def import_confirm(request: Request, user: AdminUser, session: SessionDep)
             continue
         created.append(
             Question(
-                subject_id=scope.subject_id,
-                chapter_id=scope.chapter_id,
-                lesson_id=scope.lesson_id,
+                root_id=scope.root_id,
+                category_id=scope.category_id,
                 difficulty=Difficulty(parsed.difficulty) if parsed.difficulty else default_difficulty,
                 question_type=QuestionType(parsed.type),
                 content=parsed.content.strip(),
@@ -218,9 +217,8 @@ async def import_confirm(request: Request, user: AdminUser, session: SessionDep)
     exam = None
     if settings.create_exam:
         exam = Exam(
-            subject_id=scope.subject_id,
-            chapter_id=scope.chapter_id,
-            lesson_id=scope.lesson_id,
+            root_id=scope.root_id,
+            category_id=scope.category_id,
             title=clean_text(settings.exam_title, 300),
             exam_mode=ExamMode.PRACTICE,
             duration_seconds=int(settings.duration_minutes) * 60,

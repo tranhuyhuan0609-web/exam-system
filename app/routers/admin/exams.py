@@ -19,7 +19,7 @@ from app.application.paper import (
 from app.deps import AdminUser, SessionDep
 from app.models import Difficulty, Exam, ExamAttempt, ExamMode, ExamQuestion, Question, QuestionSource
 from app.routers.admin.common import clean_text, get_or_404, move, redirect
-from app.scope import Scope, load_subject_tree, resolve_scope, scope_of, scope_options, scope_paths
+from app.scope import Scope, load_categories, resolve_scope, scope_by_id, scope_of, scope_options, scope_paths
 from app.templating import flash, templates
 
 router = APIRouter()
@@ -124,17 +124,17 @@ async def _parse(session, form: FormData) -> tuple[ExamForm, ExamValues | None, 
 
 def _apply(exam: Exam, v: ExamValues) -> None:
     exam.title, exam.description = v.title, v.description
-    exam.subject_id, exam.chapter_id, exam.lesson_id = v.scope.subject_id, v.scope.chapter_id, v.scope.lesson_id
+    exam.root_id, exam.category_id = v.scope.root_id, v.scope.category_id
     exam.duration_seconds, exam.max_attempts, exam.is_published = v.duration_seconds, v.max_attempts, v.is_published
     exam.question_source = v.question_source
     exam.shuffle_questions, exam.shuffle_choices = v.shuffle_questions, v.shuffle_choices
     exam.allow_custom_parts = v.allow_custom_parts
 
 
-async def _matrix_problem(session, subject_id: int, scope: Scope, matrix) -> str | None:
+async def _matrix_problem(session, scope: Scope, matrix) -> str | None:
     """Dry-run the matrix draw for an exam with these settings; None means a paper can be built."""
     # Transient probe object: never added to the session.
-    probe = Exam(subject_id=subject_id, chapter_id=scope.chapter_id, lesson_id=scope.lesson_id, matrix=matrix)
+    probe = Exam(root_id=scope.root_id, category_id=scope.category_id, matrix=matrix)
     try:
         await draw_matrix(session, probe, random.Random(0))
     except PaperError as exc:
@@ -160,7 +160,7 @@ async def _render_new(request, session, user, data: ExamForm, errors=None):
             "user": user,
             "form": data,
             "errors": errors or [],
-            "scope_options": scope_options(await load_subject_tree(session)),
+            "scope_options": scope_options(await load_categories(session)),
         },
         status_code=status.HTTP_400_BAD_REQUEST if errors else status.HTTP_200_OK,
     )
@@ -182,9 +182,9 @@ async def _render_detail(
     available = await availability(session, exam, rules)
     in_exam = {q.id for _, q in items}
 
-    pick_conditions = [Question.subject_id == exam.subject_id, Question.is_verified]
+    pick_conditions = [Question.root_id == exam.root_id, Question.is_verified]
     picked_scope = await resolve_scope(session, pick_scope or scope_of(exam).key)
-    if picked_scope and picked_scope.subject_id == exam.subject_id:
+    if picked_scope and picked_scope.root_id == exam.root_id:
         pick_conditions += picked_scope.conditions(Question)
     if pick_difficulty in Difficulty.__members__:
         pick_conditions.append(Question.difficulty == Difficulty(pick_difficulty))
@@ -194,8 +194,8 @@ async def _render_detail(
         await session.scalars(select(Question).where(*pick_conditions).order_by(Question.id).limit(PICKER_LIMIT))
     ).all()
 
-    all_subjects = await load_subject_tree(session)
-    own_subject = [s for s in all_subjects if s.id == exam.subject_id]
+    all_subjects = await load_categories(session)
+    own_subject = [s for s in all_subjects if s.id == exam.root_id]
     attempts = await session.scalar(select(func.count()).select_from(ExamAttempt).where(ExamAttempt.exam_id == exam.id))
     return templates.TemplateResponse(
         request,
@@ -226,7 +226,7 @@ async def _render_detail(
 async def list_exams(request: Request, user: AdminUser, session: SessionDep):
     exams = (await session.scalars(select(Exam).order_by(Exam.id.desc()))).all()
     rows = [(exam, await question_count(session, exam)) for exam in exams]
-    subjects = await load_subject_tree(session)
+    subjects = await load_categories(session)
     return templates.TemplateResponse(
         request,
         "admin/exams.html",
@@ -274,12 +274,12 @@ async def update_exam(request: Request, user: AdminUser, session: SessionDep, ex
     data, values, errors = await _parse(session, await request.form())
     if values:
         items = await _items(session, exam_id)
-        if values.scope.subject_id != exam.subject_id and items:
+        if values.scope.root_id != exam.root_id and items:
             errors.append("Đề đã có câu hỏi nên không thể chuyển sang môn khác. Hãy gỡ hết câu hỏi trước.")
         if values.is_published and values.question_source == QuestionSource.FIXED and not items:
             errors.append("Đề phải có ít nhất 1 câu hỏi mới công khai được.")
         if values.is_published and values.question_source == QuestionSource.MATRIX:
-            problem = await _matrix_problem(session, values.scope.subject_id, values.scope, exam.matrix)
+            problem = await _matrix_problem(session, values.scope, exam.matrix)
             if problem:
                 errors.append(f"Chưa công khai được đề theo ma trận: {problem}")
     if errors:
@@ -309,7 +309,7 @@ async def add_questions(request: Request, session: SessionDep, exam_id: int):
     valid = (
         await session.scalars(
             select(Question.id)
-            .where(Question.id.in_(ids - existing), Question.subject_id == exam.subject_id, Question.is_verified)
+            .where(Question.id.in_(ids - existing), Question.root_id == exam.root_id, Question.is_verified)
             .order_by(Question.id)
         )
     ).all()
@@ -380,10 +380,11 @@ async def save_matrix(request: Request, user: AdminUser, session: SessionDep, ex
     for number, rule in enumerate(rules, start=1):
         if rule.scope_key:
             scope = await resolve_scope(session, rule.scope_key)
-            if scope is None or scope.subject_id != exam.subject_id:
+            if scope is None or scope.root_id != exam.root_id:
                 errors.append(f"Dòng {number}: phạm vi phải thuộc môn của đề.")
     matrix = [r.to_json() for r in rules]
-    problem = None if errors else await _matrix_problem(session, exam.subject_id, scope_of(exam), matrix)
+    exam_scope = await scope_by_id(session, exam.category_id)
+    problem = None if errors else await _matrix_problem(session, exam_scope, matrix)
     if problem and exam.is_published:
         errors.append(f"Đề đang công khai nên không lưu ma trận không bốc đủ câu: {problem}")
     if errors:

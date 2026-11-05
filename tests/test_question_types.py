@@ -4,8 +4,9 @@ import pytest
 from sqlalchemy import select
 
 from app import question_rules as rules
+from app.application.categories import create_category
 from app.attempts import clean_answers, grade
-from app.models import Exam, ExamQuestion, Question, QuestionType, Subject
+from app.models import Exam, ExamQuestion, Question, QuestionType
 from app.question_import import parse_file, parse_text
 
 # ---------------------------------------------------------------- rules
@@ -138,16 +139,14 @@ def test_text_import_detects_true_false_and_short_answer():
 @pytest.fixture
 def subject_scope(db):
     async def _make(s):
-        subject = Subject(name="Vật lí 12", slug="vat-li-12")
-        s.add(subject)
-        await s.flush()
+        subject = await create_category(s, "Vật lí 12", slug="vat-li-12")
         return subject.id
 
     return db(_make)
 
 
 def test_admin_creates_true_false_and_short_answer_questions(admin_client, db, subject_scope):
-    scope = f"s:{subject_scope}"
+    scope = f"c:{subject_scope}"
     r = admin_client.post(
         "/admin/questions",
         data={
@@ -207,7 +206,8 @@ def test_student_takes_mixed_exam(client, make_user, db, subject_scope):
     async def _make(s):
         questions = [
             Question(
-                subject_id=subject_scope,
+                root_id=subject_scope,
+                category_id=subject_scope,
                 difficulty="RECOGNITION",
                 question_type=QuestionType.MULTIPLE_CHOICE,
                 content="MC",
@@ -217,7 +217,8 @@ def test_student_takes_mixed_exam(client, make_user, db, subject_scope):
                 ],
             ),
             Question(
-                subject_id=subject_scope,
+                root_id=subject_scope,
+                category_id=subject_scope,
                 difficulty="UNDERSTANDING",
                 question_type=QuestionType.TRUE_FALSE,
                 content="TF",
@@ -225,7 +226,8 @@ def test_student_takes_mixed_exam(client, make_user, db, subject_scope):
                 explanation="GIAI_TF",
             ),
             Question(
-                subject_id=subject_scope,
+                root_id=subject_scope,
+                category_id=subject_scope,
                 difficulty="APPLICATION",
                 question_type=QuestionType.SHORT_ANSWER,
                 content="SA",
@@ -234,7 +236,13 @@ def test_student_takes_mixed_exam(client, make_user, db, subject_scope):
             ),
         ]
         s.add_all(questions)
-        exam = Exam(subject_id=subject_scope, title="Đề THPT mini", duration_seconds=900, is_published=True)
+        exam = Exam(
+            root_id=subject_scope,
+            category_id=subject_scope,
+            title="Đề THPT mini",
+            duration_seconds=900,
+            is_published=True,
+        )
         s.add(exam)
         await s.flush()
         s.add_all(ExamQuestion(exam_id=exam.id, question_id=q.id, position=i) for i, q in enumerate(questions, 1))

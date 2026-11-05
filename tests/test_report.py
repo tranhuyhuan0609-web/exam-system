@@ -3,7 +3,8 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import func, update
 
-from app.models import Chapter, Difficulty, Exam, ExamAttempt, ExamQuestion, Lesson, Question, Subject
+from app.models import Difficulty, Exam, ExamAttempt, ExamQuestion, Question
+from tests.factories import make_tree
 
 
 @pytest.fixture
@@ -12,19 +13,13 @@ def topic_exam(db):
     (application). Correct option id ends with "a"."""
 
     async def _make(s):
-        subject = Subject(name="Vật lí 12", slug="vat-li-12")
-        chapter = Chapter(name="Chương 2", position=1)
-        chapter.lessons = [Lesson(name="Định luật Boyle", position=1)]
-        subject.chapters = [chapter]
-        s.add(subject)
-        await s.flush()
-        lesson = chapter.lessons[0]
+        t = await make_tree(s, {"Vật lí 12": {"Chương 2": {"Định luật Boyle": {}}}})
+        subject, chapter, lesson = t["Vật lí 12"], t["Chương 2"], t["Định luật Boyle"]
 
         def mc(n, difficulty, lesson_id=None):
             return Question(
-                subject_id=subject.id,
-                chapter_id=chapter.id,
-                lesson_id=lesson_id,
+                root_id=subject.id,
+                category_id=lesson_id or chapter.id,
                 difficulty=difficulty,
                 content=f"Câu {n}",
                 choices=[
@@ -40,7 +35,9 @@ def topic_exam(db):
             mc(4, Difficulty.APPLICATION),
         ]
         s.add_all(questions)
-        exam = Exam(subject_id=subject.id, title="Đề báo cáo", duration_seconds=600, is_published=True)
+        exam = Exam(
+            root_id=subject.id, category_id=subject.id, title="Đề báo cáo", duration_seconds=600, is_published=True
+        )
         s.add(exam)
         await s.flush()
         s.add_all(ExamQuestion(exam_id=exam.id, question_id=q.id, position=i) for i, q in enumerate(questions, 1))

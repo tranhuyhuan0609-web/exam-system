@@ -53,7 +53,7 @@ Mỗi phần làm xong sẽ được review và duyệt trước khi sang phần
 
 ### Giai đoạn 1 — MVP: Tự luyện theo chương/bài (Tuần 1–3)
 Học sinh vào bất cứ lúc nào, chọn bài (VD: Vật lí 11 – Chương 1), làm bài tính giờ cá nhân, nộp và xem điểm ngay.
-- [x] **Phần 1:** Database & migration (`users`, `subjects`, `exams`, `questions`, `exam_attempts`) + đăng nhập bằng email, phân quyền admin/học sinh
+- [x] **Phần 1:** Database & migration (`users`, `subjects` (nay là `categories`), `exams`, `questions`, `exam_attempts`) + đăng nhập bằng email, phân quyền admin/học sinh
 - [x] **Phần 2:** Trang quản trị — môn học, câu hỏi (LaTeX, lựa chọn dạng JSONB, lời giải, độ khó), đề `PRACTICE`
 - [x] **Phần 3:** Làm bài — danh sách đề, bấm "Bắt đầu" tạo lượt thi (`expires_at = NOW() + duration`), đồng hồ theo giờ server, API đề **lọc bỏ `is_correct`**, hiển thị công thức bằng KaTeX
 - [x] **Phần 4:** Nộp bài — kiểm tra hạn nộp, chấm điểm đồng bộ, trả lời giải chi tiết; làm lại nhiều lần (`max_attempts = NULL`) và lịch sử điểm
@@ -84,6 +84,12 @@ Học sinh vào bất cứ lúc nào, chọn bài (VD: Vật lí 11 – Chương
 - [x] Hộp xác nhận nộp bài: liệt kê câu bỏ trống / câu cắm cờ, bấm để nhảy tới câu
 - [x] Dashboard: thời gian, trung bình giây/câu, đúng/sai/bỏ trống, biểu đồ tỉ lệ đúng theo mức độ, cảnh báo chuyên đề dưới 50%
 - [x] Xem lại có bộ lọc Tất cả / Sai / Bỏ trống / Phân vân
+
+### Cây mục lục đa cấp
+- [x] Bảng `categories` (`parent_id`, `path` dạng `/1/5/12/`, `depth`) thay cho Môn / Chương / Bài cố định, không giới hạn số cấp; migration giữ nguyên dữ liệu cũ
+- [x] Câu hỏi, đề, job nhập file gắn `root_id` (môn) + `category_id` (mục cụ thể); lọc cả nhánh bằng `path LIKE`
+- [x] Trang quản trị **Mục lục**: thêm mục con, đổi tên, sắp xếp ▲▼, chuyển sang nhánh khác (cập nhật path cả nhánh), xoá nhánh chưa dùng
+- [x] Trang học sinh: sidebar cây mục lục (kèm số đề), bấm một mục để lọc đề trong cả nhánh, breadcrumb “Vật lí › Lớp 11 › Chương 1”
 
 ### Giai đoạn 2 — Trải nghiệm thực tế & Ngân hàng đề động (Tuần 4–6)
 - [x] Auto-save 2 tầng: IndexedDB mỗi lần chọn + đồng bộ ngầm lên server (2s sau thao tác cuối, chậm nhất 10s; tự thử lại khi mất mạng)

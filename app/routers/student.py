@@ -23,7 +23,7 @@ from app.attempts import (
 from app.deps import ApiUser, CurrentUser, LoggedInUser, SessionDep
 from app.models import AttemptStatus, Exam, ExamAttempt, ExamMode, GradingStatus, User, UserRole
 from app.routers.admin.common import redirect
-from app.scope import load_subject_tree, scope_of, scope_paths
+from app.scope import breadcrumb, load_categories, scope_of, scope_paths, walk
 from app.templating import flash, templates
 
 router = APIRouter()
@@ -64,7 +64,8 @@ async def _own_attempt(session, attempt_id: int, user: User) -> ExamAttempt:
 
 
 @router.get("/")
-async def home(request: Request, user: CurrentUser, session: SessionDep):
+async def home(request: Request, user: CurrentUser, session: SessionDep, c: int | None = None):
+    """Exam list with a table-of-contents sidebar; `c` selects a category (its whole branch)."""
     published = Exam.is_published  # the home page lists published exams only, even for admins
     exams = (
         await session.scalars(select(Exam).where(Exam.exam_mode == ExamMode.PRACTICE, published).order_by(Exam.id))
@@ -98,18 +99,36 @@ async def home(request: Request, user: CurrentUser, session: SessionDep):
             ).all()
         )
 
-    subjects = await load_subject_tree(session)
-    paths = scope_paths(subjects)
-    by_subject: dict[int, list[Exam]] = defaultdict(list)
+    roots = await load_categories(session)
+    paths = scope_paths(roots)
+    nodes = {node.id: node for node, _ in walk(roots)}
+    # Published exams per category, counting each exam in every ancestor of its category too.
+    exam_counts: dict[int, int] = defaultdict(int)
+    branch_of: dict[int, set[int]] = {}
     for exam in exams:
-        by_subject[exam.subject_id].append(exam)
-    groups = [(s, by_subject[s.id]) for s in subjects if by_subject.get(s.id)]
+        category = nodes.get(exam.category_id)
+        ancestors = {int(i) for i in category.path.strip("/").split("/")} if category else set()
+        branch_of[exam.id] = ancestors
+        for cid in ancestors:
+            exam_counts[cid] += 1
+    selected = nodes.get(c) if c else None
+    trail = breadcrumb(roots, selected.id) if selected else []
+    shown = [e for e in exams if selected is None or selected.id in branch_of[e.id]]
+    by_root: dict[int, list[Exam]] = defaultdict(list)
+    for exam in shown:
+        by_root[exam.root_id].append(exam)
+    groups = [(r, by_root[r.id]) for r in roots if by_root.get(r.id)]
     return templates.TemplateResponse(
         request,
         "index.html",
         {
             "user": user,
             "groups": groups,
+            "roots": roots,
+            "exam_counts": exam_counts,
+            "selected": selected,
+            "trail": trail,
+            "open_ids": {n.id for n in trail},
             "question_counts": counts,
             "my_attempts": mine,
             "active": active,
@@ -151,7 +170,7 @@ async def exam_page(request: Request, user: CurrentUser, session: SessionDep, ex
             "limit_reached": exam.max_attempts is not None and used >= exam.max_attempts and not current,
             "best_score": max((a.score for a in attempts if a.score is not None), default=None),
             "parts": await available_parts(session, exam),
-            "scope_path": scope_paths(await load_subject_tree(session, exam.subject_id)).get(scope_of(exam).key, ""),
+            "trail": breadcrumb(await load_categories(session, exam.root_id), exam.category_id),
         },
     )
 
