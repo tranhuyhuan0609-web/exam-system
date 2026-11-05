@@ -4,6 +4,7 @@ Matrix rule (stored in Exam.matrix as JSON):
 
     {"scope": "c:3", "difficulty": "RECOGNITION" | null, "type": "MULTIPLE_CHOICE" | null, "count": 10}
 
+An optional "levels" list (several difficulties) is used by student-built quizzes instead of "difficulty".
 Only verified questions from the exam's subject are drawn. Questions the student already saw in earlier
 attempts of the same exam are used last, so each retry gets as many new questions as the bank allows.
 Papers are ordered by THPT section (multiple choice, true/false, short answer).
@@ -40,9 +41,13 @@ class MatrixRule:
     difficulty: str | None
     question_type: str | None
     count: int
+    levels: tuple[str, ...] = ()  # any of these difficulties (ignored when `difficulty` is set)
 
     def to_json(self) -> dict[str, Any]:
-        return {"scope": self.scope_key, "difficulty": self.difficulty, "type": self.question_type, "count": self.count}
+        data = {"scope": self.scope_key, "difficulty": self.difficulty, "type": self.question_type, "count": self.count}
+        if self.levels:
+            data["levels"] = list(self.levels)
+        return data
 
 
 def parse_matrix(raw: Any) -> list[MatrixRule]:
@@ -56,7 +61,9 @@ def parse_matrix(raw: Any) -> list[MatrixRule]:
             count = int(item.get("count", 0))
         except (TypeError, ValueError):
             count = 0
-        rules.append(MatrixRule(str(item.get("scope") or ""), difficulty, qtype, count))
+        raw_levels = item.get("levels") if isinstance(item.get("levels"), list) else []
+        levels = tuple(lv for lv in Difficulty.__members__ if lv in raw_levels)
+        rules.append(MatrixRule(str(item.get("scope") or ""), difficulty, qtype, count, levels))
     return rules
 
 
@@ -89,6 +96,8 @@ async def rule_candidates(
     conditions = [Question.is_verified, Question.root_id == exam.root_id, *scope.conditions(Question)]
     if rule.difficulty:
         conditions.append(Question.difficulty == Difficulty(rule.difficulty))
+    elif rule.levels:
+        conditions.append(Question.difficulty.in_([Difficulty(lv) for lv in rule.levels]))
     if rule.question_type:
         conditions.append(Question.question_type == QuestionType(rule.question_type))
     elif parts is not None:  # "any type" rule, restricted to the parts the student chose

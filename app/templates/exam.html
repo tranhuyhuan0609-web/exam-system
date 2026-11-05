@@ -5,7 +5,8 @@
 
 <div class="card exam-intro">
   <h1>{{ exam.title }}
-    {% if not exam.is_published %}<span class="badge">Nháp (chỉ admin thấy)</span>{% endif %}
+    {% if exam.visibility == "PERSONAL" %}<span class="badge">Bài tự tạo · chỉ bạn thấy</span>
+    {% elif not exam.is_published %}<span class="badge">Nháp (chỉ admin thấy)</span>{% endif %}
   </h1>
   {% if exam.description %}<p>{{ exam.description }}</p>{% endif %}
 

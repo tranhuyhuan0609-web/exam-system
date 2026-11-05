@@ -3,28 +3,104 @@
 
 {% macro tree(nodes) %}
   <ul class="toc">
-    {% for node in nodes if exam_counts.get(node.id) %}
-      {% set kids = node.kids | selectattr("id", "in", exam_counts) | list %}
+    {% for node in nodes if node.id in toc_ids %}
+      {% set kids = node.kids | selectattr("id", "in", toc_ids) | list %}
       <li>
         {% if kids %}
           <details {% if node.id in open_ids or (not selected and node.depth == 0) %}open{% endif %}>
             <summary><a href="/?c={{ node.id }}" class="{{ 'current' if selected and selected.id == node.id }}">{{ node.name }}</a>
-              <span class="toc-count">{{ exam_counts[node.id] }}</span></summary>
+              {% if exam_counts.get(node.id) %}<span class="toc-count" title="Số đề có sẵn">{{ exam_counts[node.id] }}</span>{% endif %}</summary>
             {{ tree(node.kids) }}
           </details>
         {% else %}
           <a href="/?c={{ node.id }}" class="leaf {{ 'current' if selected and selected.id == node.id }}">{{ node.name }}</a>
-          <span class="toc-count">{{ exam_counts[node.id] }}</span>
+          {% if exam_counts.get(node.id) %}<span class="toc-count" title="Số đề có sẵn">{{ exam_counts[node.id] }}</span>{% endif %}
         {% endif %}
       </li>
     {% endfor %}
   </ul>
 {% endmacro %}
 
+
+{% macro quiz_form() %}
+  <section class="card quiz-builder" id="tu-tao">
+    <h3>🎯 Tự tạo bài kiểm tra · {{ selected.name }}</h3>
+    <p class="muted small">Chọn số câu từng phần; câu hỏi lấy ngẫu nhiên trong cả mục này (ưu tiên câu bạn chưa gặp). Bài chỉ mình bạn thấy.</p>
+    {% if not user %}
+      <a class="btn" href="/login?next=/?c={{ selected.id }}">Đăng nhập để tự tạo bài</a>
+    {% else %}
+      <form method="post" action="/practice" id="quiz-form">
+        <input type="hidden" name="category_id" value="{{ selected.id }}">
+        <fieldset class="quiz-levels">
+          <legend>Mức độ</legend>
+          {% for lv in quiz.levels %}
+            <label class="check"><input type="checkbox" name="levels" value="{{ lv }}" checked> {{ DIFFICULTY_LABELS[lv] }}</label>
+          {% endfor %}
+        </fieldset>
+        <div class="quiz-parts">
+          {% for t, by_level in quiz.bank.items() %}
+            {% set have = by_level.values() | sum %}
+            <label class="quiz-part {{ 'is-empty' if not have }}">
+              <span class="quiz-part-name">{{ TYPE_LABELS[t] }}</span>
+              <input type="number" name="count_{{ t }}" data-type="{{ t }}" min="0" max="{{ have }}"
+                     value="{{ [10, have] | min if t == 'MULTIPLE_CHOICE' else 0 }}" {{ 'disabled' if not have }}>
+              <span class="muted small quiz-have" data-have="{{ t }}">/ {{ have }} câu</span>
+            </label>
+          {% endfor %}
+        </div>
+        <div class="row quiz-footer">
+          <label>Thời gian (phút)
+            <input type="number" name="minutes" id="quiz-minutes" min="1" max="180" placeholder="tự tính">
+          </label>
+          <p class="quiz-summary" id="quiz-summary"></p>
+          <button class="btn" id="quiz-submit">▶ Tạo bài và bắt đầu</button>
+        </div>
+      </form>
+      <script>
+        (() => {
+          const bank = {{ quiz.bank | tojson }};
+          const pace = {{ quiz.seconds | tojson }};
+          const form = document.getElementById("quiz-form");
+          const inputs = [...form.querySelectorAll("input[data-type]")];
+          const levels = [...form.querySelectorAll("input[name=levels]")];
+          const minutes = document.getElementById("quiz-minutes");
+          const summary = document.getElementById("quiz-summary");
+          const submit = document.getElementById("quiz-submit");
+          function update() {
+            const picked = levels.filter((l) => l.checked).map((l) => l.value);
+            let total = 0, seconds = 0, over = false;
+            for (const input of inputs) {
+              const t = input.dataset.type;
+              const have = picked.reduce((n, lv) => n + (bank[t][lv] || 0), 0);
+              input.max = have;
+              input.disabled = !have;
+              form.querySelector(`[data-have="${t}"]`).textContent = `/ ${have} câu`;
+              const n = input.disabled ? 0 : Math.max(0, Number(input.value) || 0);
+              over ||= n > have;
+              total += n;
+              seconds += n * (pace[t] || 90);
+            }
+            const auto = Math.min(180, Math.max(5, Math.ceil(seconds / 60 / 5) * 5));
+            minutes.placeholder = `tự tính: ${auto}`;
+            const shown = Number(minutes.value) || auto;
+            submit.disabled = !picked.length || !total || over || total > 100;
+            summary.textContent = !picked.length ? "Hãy chọn ít nhất một mức độ."
+              : over ? "Có phần vượt quá số câu trong ngân hàng."
+              : total > 100 ? "Một bài tối đa 100 câu."
+              : total ? `Tổng ${total} câu · ${shown} phút` : "Hãy chọn ít nhất 1 câu.";
+          }
+          form.addEventListener("input", update);
+          update();
+        })();
+      </script>
+    {% endif %}
+  </section>
+{% endmacro %}
+
 {% block content %}
 {% if user %}
   <h1>Xin chào, {{ user.full_name }} 👋</h1>
-  <p class="muted">Chọn một mục ở mục lục bên trái hoặc một đề bên dưới. Mỗi lần bấm “Bắt đầu” sẽ tính giờ riêng cho bạn.</p>
+  <p class="muted">Chọn một mục ở mục lục bên trái để làm đề có sẵn hoặc tự tạo bài kiểm tra theo ý mình. Mỗi lần bấm “Bắt đầu” sẽ tính giờ riêng cho bạn.</p>
 {% else %}
   <section class="hero">
     <h1>Tự luyện thi trắc nghiệm theo chương, theo bài</h1>
@@ -46,6 +122,8 @@
   <div>
     {% with trail_link_last=False %}{% include "_breadcrumb.html" %}{% endwith %}
     {% if selected %}<h2 class="subject-title">{{ selected.name }}</h2>{% endif %}
+    {% if quiz %}{{ quiz_form() }}{% endif %}
+    {% if selected and groups %}<h3 class="mt">Đề có sẵn</h3>{% endif %}
     {% for subject, exams in groups %}
       {% if not selected %}<h2 class="subject-title">{{ subject.name }}</h2>{% endif %}
       <div class="exam-grid">
@@ -67,7 +145,7 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="card muted">{{ "Mục này chưa có đề luyện tập nào." if selected else "Chưa có đề luyện tập nào được công khai." }}</div>
+      <div class="card muted">{{ ("Mục này chưa có đề có sẵn — hãy tự tạo bài ở trên." if quiz else "Mục này chưa có đề luyện tập nào.") if selected else "Chưa có đề luyện tập nào được công khai." }}</div>
     {% endfor %}
   </div>
 </div>
