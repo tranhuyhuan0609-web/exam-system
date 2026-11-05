@@ -26,7 +26,7 @@
         <td><strong>{{ u.full_name }}</strong><div class="muted small">{{ u.email }} · tạo {{ u.created_at | local_dt("%d/%m/%Y") }}</div></td>
         <td><span class="badge badge-{{ u.role | lower }}">{{ ROLE_LABELS[u.role] }}</span></td>
         <td>
-          {% if u.role == "TEACHER" %}
+          {% if u.role != "ADMIN" %}
             {% if pro %}<span class="badge badge-ok">Pro đến {{ u.pro_until | local_dt("%d/%m/%Y") }}</span>
             {% elif u.pro_until %}<span class="badge">Hết hạn {{ u.pro_until | local_dt("%d/%m/%Y") }}</span>
             {% else %}<span class="muted small">Chưa có</span>{% endif %}
@@ -34,7 +34,7 @@
           {% else %}<span class="muted small">—</span>{% endif %}
         </td>
         <td>
-          {% if u.role == "TEACHER" %}
+          {% if u.role != "ADMIN" %}
             <form method="post" action="/admin/users/{{ u.id }}/pro" class="row inline-form">
               <input type="hidden" name="back" value="{{ back }}">
               <select name="days">

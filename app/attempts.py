@@ -20,6 +20,7 @@ from app.application.paper import (
 )
 from app.infrastructure.storage import media_url
 from app.models import AttemptStatus, Exam, ExamAttempt, GradingStatus, Question, QuestionType, User
+from app.plans import check_exam_quota
 from app.question_rules import (
     ESSAY_ANSWER_MAX_LEN,
     SHORT_ANSWER_MAX_LEN,
@@ -133,6 +134,8 @@ async def start_or_resume(session: AsyncSession, user: User, exam: Exam, parts: 
         raise AttemptError("Chưa đến giờ làm bài.")
     if exam.available_until is not None and now >= exam.available_until:
         raise AttemptError("Bài kiểm tra đã đóng.")
+    if reason := await check_exam_quota(session, user, exam, now):  # free accounts: N new exams a day
+        raise AttemptError(reason)
 
     available = await available_parts(session, exam)
     if parts is not None:

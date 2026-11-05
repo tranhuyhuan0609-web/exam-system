@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Gói tài khoản · Exam System{% endblock %}
+{% block content %}
+<h1>⭐ Gói tài khoản</h1>
+
+{% if user.role == "ADMIN" %}
+  <p class="muted">Quản trị viên có toàn quyền.</p>
+{% elif pro %}
+  <p><span class="badge badge-ok">Pro</span> còn hạn đến {{ user.pro_until | local_dt }}.</p>
+{% else %}
+  <p>Bạn đang dùng gói <strong>miễn phí</strong>. Hôm nay: đã làm {{ exams_used }}/{{ exam_limit }} đề,
+    đã xem {{ docs_read }}/{{ doc_limit }} tài liệu. Lượt mới vào 0 giờ mỗi ngày.</p>
+  {% if user.pro_until %}<p class="muted">Gói Pro của bạn đã hết hạn ngày {{ user.pro_until | local_dt("%d/%m/%Y") }}.</p>{% endif %}
+{% endif %}
+
+<div class="card">
+  <table class="table">
+    <thead><tr><th></th><th>Học sinh</th><th>Học sinh Pro</th><th>Giáo viên Pro</th></tr></thead>
+    <tbody>
+      <tr><td>Luyện đề</td><td>{{ exam_limit }} đề / ngày</td><td>Không giới hạn</td><td>Không giới hạn</td></tr>
+      <tr><td>Xem tài liệu trong thư viện</td><td>{{ doc_limit }} tài liệu / ngày</td><td>Không giới hạn</td><td>Không giới hạn</td></tr>
+      <tr><td>Tải về</td><td>—</td><td>—</td><td>Tải đề thi (sách chỉ xem trực tuyến)</td></tr>
+      <tr><td>Tạo bài kiểm tra cho lớp</td><td>—</td><td>—</td><td>✓</td></tr>
+      <tr><td>Làm bài kiểm tra giáo viên giao</td><td>✓ (không tính lượt)</td><td>✓</td><td>—</td></tr>
+    </tbody>
+  </table>
+</div>
+
+{% if user.role != "ADMIN" and not pro %}
+  {% if user.pro_requested_at %}
+    <p><span class="badge badge-warn">Đã gửi yêu cầu lúc {{ user.pro_requested_at | local_dt }}</span> — quản trị viên sẽ duyệt sớm.</p>
+  {% else %}
+    <form method="post" action="/plans/request"><button class="btn">Yêu cầu nâng cấp Pro</button></form>
+  {% endif %}
+{% endif %}
+<p class="small"><a href="/library">📚 Vào thư viện tài liệu</a></p>
+{% endblock %}

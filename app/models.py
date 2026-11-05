@@ -133,16 +133,14 @@ class User(TimestampMixin, Base):
     full_name: Mapped[str] = mapped_column(String(200))
     role: Mapped[UserRole] = mapped_column(_enum(UserRole, "user_role"), default=UserRole.STUDENT)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
-    # Teacher Pro plan: active while pro_until is in the future (set by an admin).
+    # Pro plan (teachers and students): active while pro_until is in the future (set by an admin). See app/plans.py.
     pro_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pro_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (CheckConstraint("email = lower(email)", name="ck_users_email_lowercase"),)
 
     def has_pro(self, now: datetime) -> bool:
-        return self.role == UserRole.ADMIN or (
-            self.role == UserRole.TEACHER and self.pro_until is not None and self.pro_until > now
-        )
+        return self.role == UserRole.ADMIN or (self.pro_until is not None and self.pro_until > now)
 
 
 class Category(TimestampMixin, Base):
@@ -499,3 +497,16 @@ class LibraryDocument(Base):
     import_job_id: Mapped[int | None] = mapped_column(ForeignKey("import_jobs.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class LibraryView(Base):
+    """A document a free account opened on a given day (Vietnam time): the daily reading limit counts these."""
+
+    __tablename__ = "library_views"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    document_id: Mapped[int] = mapped_column(ForeignKey("library_documents.id", ondelete="CASCADE"))
+    day: Mapped[date] = mapped_column(Date)
+
+    __table_args__ = (UniqueConstraint("user_id", "day", "document_id", name="uq_library_views_user_day_doc"),)

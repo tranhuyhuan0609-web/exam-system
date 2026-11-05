@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     crawler_configs_dir: str = "configs/sites"
     drive_configs_dir: str = "configs/drive"
     google_drive_api_key: str = ""  # Google Cloud API key restricted to the Drive API (public folders)
+    # Free accounts (see app/plans.py); Pro and admins are unlimited.
+    free_exams_per_day: int = 3
+    free_docs_per_day: int = 3
     crawler_user_agent: str = "ExamSystemCrawler/0.1"
     gemini_embedding_model: str = "gemini-embedding-001"
     semantic_duplicate_threshold: float = 0.92  # cosine similarity at which a crawled question is a duplicate

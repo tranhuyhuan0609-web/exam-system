@@ -33,7 +33,7 @@ async def list_users(request: Request, user: AdminUser, session: SessionDep, fil
     stmt = select(User)
     if filter == "requests":
         stmt = stmt.where(
-            User.role == UserRole.TEACHER,
+            User.role != UserRole.ADMIN,
             User.pro_requested_at.is_not(None),
             (User.pro_until.is_(None)) | (User.pro_until < User.pro_requested_at),
         )
@@ -59,8 +59,8 @@ async def set_pro(request: Request, user: AdminUser, session: SessionDep, user_i
     form = await request.form()
     days = int(str(form.get("days") or "0")) if str(form.get("days") or "0").isdigit() else 0
     back = _back(form)
-    if target.role != UserRole.TEACHER:
-        flash(request, "Chỉ tài khoản giáo viên mới có gói Pro.", "error")
+    if target.role == UserRole.ADMIN:
+        flash(request, "Quản trị viên đã có toàn quyền, không cần gói Pro.", "error")
         return redirect(back)
     now = await db_now(session)
     if days > 0:
