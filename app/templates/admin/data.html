@@ -1,0 +1,85 @@
+{% extends "admin/_layout.html" %}
+{% set active = "data" %}
+{% block title %}Kho dữ liệu · Quản trị{% endblock %}
+{% block admin_content %}
+<div class="page-head">
+  <h1>📊 Kho dữ liệu</h1>
+  <div class="row">
+    <a class="btn btn-outline btn-small" href="/admin/crawler/stats">Chất lượng theo nguồn</a>
+    <a class="btn btn-outline btn-small" href="/admin/library">Thư viện</a>
+    <a class="btn btn-outline btn-small" href="/admin/ai-imports">AI nhập đề</a>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="stat-num">{{ "{:,}".format(tiles.questions).replace(",", ".") }}</div><div class="muted">Câu hỏi trong ngân hàng</div></div>
+  <div class="stat"><div class="stat-num">{{ "{:,}".format(tiles.exams).replace(",", ".") }}</div><div class="muted">Đề đang mở</div></div>
+  <div class="stat"><div class="stat-num">{{ "{:,}".format(tiles.library).replace(",", ".") }}</div><div class="muted">Tài liệu thư viện</div></div>
+  <div class="stat"><div class="stat-num">{{ tiles.keys }}</div><div class="muted">Mã đề có đáp án chính thức</div></div>
+</div>
+
+<section class="card">
+  <h2>Độ phủ: môn × lớp</h2>
+  <p class="muted small">Số câu trong ngân hàng. Mục tiêu: từ lớp 1 đến đại học — ô trống là chỗ còn thiếu.</p>
+  <div style="overflow-x: auto">
+    <table class="table coverage">
+      <thead><tr><th>Môn</th>{% for c in columns %}<th class="num">{{ "Lớp " ~ c if c|length <= 2 else c }}</th>{% endfor %}<th class="num">Tổng</th></tr></thead>
+      <tbody>
+      {% for row in matrix %}
+        <tr>
+          <td><strong>{{ row.subject }}</strong></td>
+          {% for n in row.cells %}
+            {% set alpha = (0.08 + 0.47 * (n / peak) ** 0.5) if n and peak else 0 %}
+            <td class="num" style="min-width: 44px; {{ 'background: rgba(37, 99, 235, %.2f)' % alpha if n else 'color: #9ca3af' }}"
+                title="{{ row.subject }} · {{ columns[loop.index0] }}: {{ n }} câu">{{ n if n else "·" }}</td>
+          {% endfor %}
+          <td class="num"><strong>{{ row.total }}</strong></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="{{ columns|length + 2 }}" class="muted">Ngân hàng chưa có câu hỏi.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted small">Ô càng đậm càng nhiều câu (tối đa {{ peak }} câu/ô) · “·” = chưa có câu nào.</p>
+</section>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px">
+  <section class="card">
+    <h3>Ngân hàng theo nguồn</h3>
+    <table class="table">{% for name, n in by_source.items() %}<tr><td>{{ name }}</td><td class="num">{{ n }}</td></tr>{% endfor %}</table>
+    <h3>Theo dạng câu</h3>
+    <table class="table">{% for name, n in by_type.items() %}<tr><td>{{ name }}</td><td class="num">{{ n }}</td></tr>{% endfor %}</table>
+  </section>
+  <section class="card">
+    <h3>Hàng chờ</h3>
+    <table class="table">
+      <tr><th colspan="2">Crawler (câu đã bóc)</th></tr>
+      {% for name, n in crawled %}<tr><td>{{ name }}</td><td class="num">{{ n }}</td></tr>{% endfor %}
+      <tr><th colspan="2">AI nhập đề</th></tr>
+      <tr><td>Đang chờ AI</td><td class="num">{{ jobs.get("QUEUED", 0) }}</td></tr>
+      <tr><td>Đang xử lý</td><td class="num">{{ jobs.get("PROCESSING", 0) }}</td></tr>
+      <tr><td>Xong, chờ admin duyệt</td><td class="num">{{ waiting_admin }}</td></tr>
+      <tr><td>Lỗi</td><td class="num">{{ jobs.get("FAILED", 0) }}</td></tr>
+    </table>
+    <h3>Quota AI hôm nay</h3>
+    <table class="table">
+      {% for u in usage %}<tr><td>{{ u.provider }}</td><td class="num">{{ u.calls }} lượt · {{ u.items }} mục</td></tr>
+      {% else %}<tr><td class="muted">Chưa dùng lượt nào hôm nay.</td></tr>{% endfor %}
+    </table>
+  </section>
+</div>
+
+<section class="card">
+  <h3>Thư viện tài liệu</h3>
+  <table class="table">
+    <thead><tr><th>Loại</th><th class="num">Công khai</th><th class="num">Chờ duyệt</th><th class="num">Ẩn</th><th class="num">Chỉ mục lục</th><th class="num">Tổng</th></tr></thead>
+    <tbody>
+    {% for kind, r in library_rows %}
+      <tr><td>{{ kind }}</td><td class="num">{{ r.get("PUBLISHED", 0) }}</td><td class="num">{{ r.get("PENDING_REVIEW", 0) }}</td>
+        <td class="num">{{ r.get("HIDDEN", 0) }}</td><td class="num">{{ r.get("listed", 0) }}</td><td class="num"><strong>{{ r.total }}</strong></td></tr>
+    {% else %}<tr><td colspan="6" class="muted">Thư viện còn trống.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
