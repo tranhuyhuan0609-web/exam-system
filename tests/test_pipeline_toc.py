@@ -409,3 +409,38 @@ def test_questions_gone_after_a_reparse_are_dropped(db):
     rows = {i.external_id: i for i in db(lambda s: s.scalars(select(CrawledQuestion)))}
     assert "trac-nghiem-bai-3-ham-so#mu2" not in rows  # the old reading is gone, not left "rejected" in the list
     assert rows["trac-nghiem-bai-3-ham-so#tr1"].question_type.value == "TRUE_FALSE"
+
+
+def test_a_better_parse_that_finds_the_answer_takes_the_question_again(db):
+    config = SiteConfig.model_validate(
+        {
+            "site_id": "vietjack",
+            "name": "v",
+            "base_url": "https://vietjack.com",
+            "parser": "vietjack_quiz",
+            "seeds": [{"url": "https://vietjack.com/x"}],
+            "follow": [{"pattern": "x"}],
+        }
+    )
+    db(lambda s: _add_site(s, config))
+    url = "https://vietjack.com/toan-11-kn/trac-nghiem-bai-3-ham-so.jsp"
+    deps = SilverDeps(
+        store=MemoryRawStore(),
+        storage=get_storage(),
+        bronze_storage=get_bronze_storage(),
+        downloader=MemoryDownloader(),
+    )
+    # The first parse missed the answer (same text, same options); a later one finds it.
+    no_answer = VJ_TOAN.replace("<strong>Đáp án đúng là: A</strong>", "<strong>Xem lời giải</strong>", 1)
+    statuses = []
+    for html, digest in ((no_answer, "a"), (VJ_TOAN, "b")):
+        doc = RawDocument(
+            doc_id("vietjack", url, digest), "vietjack", url, "html", datetime.now(UTC), digest, html=html
+        )
+        db(lambda s, d=doc: ingest_document(s, deps, d))
+        first = db(lambda s: s.scalar(select(CrawledQuestion).where(CrawledQuestion.external_id.endswith("#mu1"))))
+        statuses.append((first.status, first.issues))
+    assert statuses[0] == (CrawlItemStatus.NEEDS_REVIEW, ["Không tìm thấy đáp án."])
+    assert "Không tìm thấy đáp án." not in statuses[1][1]  # taken again: the answer is there now
+    first = db(lambda s: s.scalar(select(CrawledQuestion).where(CrawledQuestion.external_id.endswith("#mu1"))))
+    assert [c["is_correct"] for c in first.choices][0] is True

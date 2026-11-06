@@ -50,10 +50,18 @@ class Content:
     images: list[ImageRef] = field(default_factory=list)
 
 
+def _underline(el) -> bool:
+    """<ins> is both an ad slot (<ins class="…" data-key="…">) and, on some sites, underlining ("ch<ins>o</ins>re"):
+    a bare <ins> with text is underlining."""
+    return not el.attrib and bool("".join(el.itertext()).strip())
+
+
 def _skip(el) -> bool:
     if not isinstance(el.tag, str):
         return True
     tag = etree.QName(el.tag).localname.lower()
+    if tag == "ins" and _underline(el):
+        return False
     if tag in SKIP_TAGS:
         return True
     cls = el.get("class") or ""
@@ -99,6 +107,12 @@ class _Writer:
                 if re.search(r"[^\x00-\x7f]", inner) and not re.search(r"[α-ωΑ-Ω]", inner):
                     script = r"\text{" + script + "}"  # "W_{tỏa}": Vietnamese words stay upright text
                 self.parts.append(("$^{" if tag == "sup" else "$_{") + script + "}$")
+            self.text(el.tail)
+            return
+        if tag in ("u", "ins"):  # underlined letters carry the question in phonetics ("h<u>ea</u>d"): kept
+            inner = "".join(el.itertext())
+            if inner.strip():
+                self.parts.append(r"$\underline{\text{" + _latex_escape(inner) + "}}$")
             self.text(el.tail)
             return
         if tag == "img":

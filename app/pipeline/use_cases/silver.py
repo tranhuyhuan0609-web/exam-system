@@ -8,6 +8,7 @@ raw.exam.ingestion {doc_id}
 """
 
 import hashlib
+import json
 import logging
 import re
 from collections import Counter
@@ -144,6 +145,20 @@ def _place_figures(item: CrawledQuestion) -> None:
             item.issues = [*item.issues, "Lời giải gốc có hình minh hoạ (không đưa vào)."]
 
 
+def _fingerprint(parsed: ParsedQuestion) -> str:
+    """Everything the parse produced — text, options, answers, solution, problems found. A better parser that now
+    finds an answer (or a solution) changes it, so the question is taken again; the text alone would not."""
+    payload = {
+        "type": parsed.question_type,
+        "content": parsed.content,
+        "choices": [[c.get("content"), bool(c.get("is_correct"))] for c in parsed.choices],
+        "answers": parsed.accepted_answers or [],
+        "explanation": parsed.explanation or "",
+        "issues": parsed.issues,
+    }
+    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+
+
 async def ingest_document(session: AsyncSession, deps: SilverDeps, doc: RawDocument) -> list[CrawledQuestion]:
     config = await _config(session, doc.site_id)
     if doc.kind != "html":
@@ -184,7 +199,8 @@ async def _upsert(
 ) -> CrawledQuestion | None:
     if parsed.question_type not in QuestionType.__members__:
         return None
-    source_hash = content_hash(parsed.question_type, parsed.content, (c["content"] for c in parsed.choices))
+    text_hash = content_hash(parsed.question_type, parsed.content, (c["content"] for c in parsed.choices))
+    source_hash = _fingerprint(parsed)
     item = await session.scalar(
         select(CrawledQuestion).where(
             CrawledQuestion.site_id == doc.site_id, CrawledQuestion.external_id == parsed.external_id
@@ -220,7 +236,7 @@ async def _upsert(
         parsed.difficulty if parsed.difficulty in Difficulty.__members__ else config.default_difficulty
     )
     item.source_hash = source_hash
-    item.content_hash = source_hash
+    item.content_hash = text_hash
     item.issues = [*parsed.issues, *image_issues]
     item.ai_tries = 0
     item.similarity = None
@@ -468,7 +484,7 @@ async def advance(
         same_item = await session.scalar(
             select(CrawledQuestion.question_id)
             .where(
-                CrawledQuestion.source_hash == item.source_hash,
+                CrawledQuestion.content_hash == item.content_hash,  # same text and options, whatever the solution
                 CrawledQuestion.id != item.id,
                 CrawledQuestion.status == CrawlItemStatus.PUBLISHED,
             )
@@ -667,7 +683,10 @@ async def reprocess(session: AsyncSession, deps: SilverDeps, item: CrawledQuesti
 async def reparse_site(session: AsyncSession, deps: SilverDeps, site_id: str) -> int:
     """Medallion payoff: run the (improved) parser over every Bronze document again, without crawling."""
     count = 0
+    config = await _config(session, site_id)
     async for doc in deps.store.iter_site(site_id):
-        if doc.kind == "html":
+        rule = config.rule_for(doc.url)
+        # Bronze also keeps listings and seed indexes; only question pages are parsed (as for a crawl)
+        if doc.kind == "html" and rule is not None and rule.kind == "detail":
             count += len(await ingest_document(session, deps, doc))
     return count

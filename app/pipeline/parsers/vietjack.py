@@ -24,10 +24,28 @@ from app.pipeline.domain.models import ParsedPage, ParsedQuestion
 from app.pipeline.parsers.base import Images, document, letter_choices, page_title, register, text_of, tf_choices
 
 _PART = re.compile(r"^Phần\s+[IVX]+\b", re.I)
-_QUESTION = re.compile(r"^(Câu\s*\d+|Câu hỏi|Bài\s*\d+)\s*[:.]", re.I)
+_QUESTION = re.compile(r"^(Câu\s*\d+|Câu hỏi|Bài\s*\d+|Question\s*\d+)\s*[:.]", re.I)
+_ENGLISH = re.compile(r"^Question\s*\d+", re.I)  # English quizzes: a passage / an instruction leads a group
+_INSTRUCTION = re.compile(  # "Read the following passage …", also after "Questions 11-15."
+    r"^(?:questions?\s*\d+\s*(?:[-–]\s*\d+)?\s*[.:]\s*)?"
+    r"(read|mark|choose|find|select|fill|complete|rewrite|look|listen|indicate|circle|match|put|give|write|use)\b",
+    re.I,
+)
+
+
+_NOISE = re.compile(r"^(quảng cáo|trắc nghiệm online)$", re.I)  # labels between questions, not passage text
+
+
+def _from_instruction(blocks: list) -> list:
+    """The blocks from the last instruction on ("Read the following passage …" and the passage); [] if there is
+    none — page headers and the "Quảng cáo" label between two questions are not a new passage."""
+    starts = [i for i, el in enumerate(blocks) if _INSTRUCTION.match(text_of(el))]
+    return blocks[starts[-1] :] if starts else []
+
+
 _OPTION = re.compile(r"^([A-D])\s*[.)]\s*")
 _INLINE_OPTIONS = re.compile(r"(?:^|\s)([A-D])\s*\.\s+")
-_MC_ANSWER = re.compile(r"Đáp án(?: đúng)?(?: là)?\s*:?\s*([A-D])\b")
+_MC_ANSWER = re.compile(r"(?i:đáp án)(?: đúng)?(?: là)?\s*:?\s*([A-D])\b")  # also "Chọn đáp án: C"
 _SA_ANSWER = re.compile(r"^(?:Đáp (?:án|số)|Trả lời)\s*:?\s*(.+?)\s*\.?$")
 _STATEMENT = re.compile(r"^([a-d])\s*\)\s*")
 _TF_KEY = re.compile(r"\b([a-d])\s*\)\s*[-–:]?\s*(Đúng|Sai|Đ|S)\b", re.I)
@@ -48,7 +66,9 @@ def _tag(el) -> str:
 
 
 def _is_ad(el) -> bool:
-    return "ads_" in (el.get("class") or "") or _tag(el) in ("script", "ins", "style")
+    if _tag(el) == "ins":  # an ad slot has attributes; a bare <ins> with text is underlining
+        return bool(el.attrib) or not text_of(el)
+    return "ads_" in (el.get("class") or "") or _tag(el) in ("script", "style")
 
 
 @dataclass
@@ -59,6 +79,8 @@ class _Draft:
     options: list = field(default_factory=list)
     table: object | None = None
     answer: object | None = None  # the toggle <section>
+    context: list = field(default_factory=list)  # the passage / instruction shared by a group of questions
+    answer_end: int | None = None  # the answer's blocks stop here: the next passage was nested inside it
 
 
 def _content_root(doc):
@@ -74,6 +96,8 @@ def _drafts(root) -> list[_Draft]:
     part = "MULTIPLE_CHOICE"
     counters: dict[str, int] = {}
     current: _Draft | None = None
+    between: list = []  # blocks after an answer and before the next question: a new passage or instruction
+    group: list = []  # the passage / instruction of the questions being read
     for el in root:
         if not isinstance(el.tag, str) or _is_ad(el):
             continue
@@ -83,14 +107,26 @@ def _drafts(root) -> list[_Draft]:
             current = None
             continue
         if tag == "p" and _QUESTION.match(text):
+            if fresh := _from_instruction(between):
+                group = fresh
+            between = []
             counters[part] = counters.get(part, 0) + 1
-            current = _Draft(part, counters[part], stem=[el])
+            current = _Draft(part, counters[part], stem=[el], context=group if _ENGLISH.match(text) else [])
             drafts.append(current)
             continue
         if current is None:
+            if tag in ("p", "div", "figure", "center", "table", "h2", "h3", "h4") and text and not _NOISE.match(text):
+                between.append(el)  # "Read the following passage …", the passage itself, "Mark the letter …"
             continue
         if tag == "section" and "toggle" in (el.get("class") or ""):
             current.answer = el
+            if current.stem and _ENGLISH.match(text_of(current.stem[0])):
+                # Some pages nest the next group's instruction and passage inside this answer: cut them out
+                inside = _toggle_blocks(el)
+                starts = [i for i, b in enumerate(inside) if _INSTRUCTION.match(text_of(b))]
+                if starts:
+                    current.answer_end = starts[0]
+                    between = inside[starts[0] :]
             current = None  # the answer closes the question
         elif tag == "table" and current.part == "TRUE_FALSE" and current.table is None:
             current.table = el
@@ -137,10 +173,17 @@ def _build(draft: _Draft, url: str, slug: str) -> ParsedQuestion:
     images = Images(url)
     stem = images.convert(draft.stem)
     stem = _QUESTION.sub("", stem, count=1).strip()
+    if draft.context:  # a reading question carries its passage (and the instruction): it is read on its own
+        context = images.convert(draft.context).strip()
+        number = re.search(r"\d+", text_of(draft.stem[0]))
+        if not stem and number and f"({number.group(0)})" in context:
+            # a gap in a cloze passage: "Question 11." alone, the blank "(11) ____" is in the passage
+            stem = f"Chọn đáp án đúng cho chỗ trống ({number.group(0)})."
+        stem = f"{context}\n\n{stem}".strip()  # alone, the instruction is the question ("Choose the word …")
     q = ParsedQuestion(
         external_id=f"{slug}#{draft.part[:2].lower()}{draft.number}", question_type=draft.part, content=stem
     )
-    answer_blocks = _toggle_blocks(draft.answer) if draft.answer is not None else []
+    answer_blocks = _toggle_blocks(draft.answer)[: draft.answer_end] if draft.answer is not None else []
     if draft.answer is None:
         q.issues.append("Không tìm thấy phần đáp án.")
 
