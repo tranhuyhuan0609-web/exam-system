@@ -65,6 +65,8 @@ def test_openalex_pages_follow_the_cursor_and_file_papers_by_field(monkeypatch):
     monkeypatch.setenv("OPENALEX_API_KEY", "k")  # with a key: cursor paging, no 10,000 limit
     keyed = FakeHttp({"results": [work], "meta": {"next_cursor": "c2"}})
     assert asyncio.run(openalex(keyed, item, None))[1] == "c2" and keyed.calls[0][1]["cursor"] == "*"
+    last_page = FakeHttp({"results": [work], "meta": {}})  # page 50 read before the key: a cursor from the top
+    assert asyncio.run(openalex(last_page, item, "p:50"))[1] == "*"
 
 
 def test_a_work_found_by_two_sources_is_kept_once_and_listed_with_its_link(db, make_user):

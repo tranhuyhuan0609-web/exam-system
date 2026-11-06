@@ -184,7 +184,10 @@ async def openalex(http: Http, item, state: str | None) -> tuple[list[OpenRecord
     if not data.get("results"):
         return records, None
     if page:
-        return records, f"p:{page + 1}" if page < OPENALEX_PAGES_WITHOUT_KEY else None
+        if page < OPENALEX_PAGES_WITHOUT_KEY:
+            return records, f"p:{page + 1}"
+        # a key since: on past the 10,000 with a cursor from the top (the works already kept are skipped)
+        return records, "*" if key else None
     cursor = (data.get("meta") or {}).get("next_cursor")
     return records, cursor or None
 
