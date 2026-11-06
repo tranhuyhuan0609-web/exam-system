@@ -31,40 +31,78 @@ PAGE_SIZE = 100
 LibraryUser = Annotated[User, Depends(require_user)]  # any account; reading limits for free ones
 
 
+# The library's sections: what a document is, then its folders (grade, subject, field …) inside.
+SECTIONS = {
+    "sach": ("📘 Sách", (LibraryKind.BOOK,)),
+    "de-thi": ("📝 Đề thi", (LibraryKind.EXAM, LibraryKind.HSG)),
+    "chuyen-de": ("📒 Chuyên đề", (LibraryKind.TOPIC,)),
+    "bai-bao": ("🔬 Bài báo & nghiên cứu", (LibraryKind.PAPER,)),
+    "khac": ("🗂️ Khác", (LibraryKind.OTHER,)),
+}
+
+
 def _visible(user: User):
-    if user.role == UserRole.ADMIN:  # admins also see documents waiting for review
+    if user.role == UserRole.ADMIN:  # admins also see documents waiting for review, and works without a file yet
         return LibraryDocument.status != LibraryStatus.HIDDEN
-    return LibraryDocument.status == LibraryStatus.PUBLISHED
+    # Read here, in our reader: a work whose file we do not hold is not shown (no links out to other sites)
+    return (LibraryDocument.status == LibraryStatus.PUBLISHED) & (LibraryDocument.storage_key != "")
 
 
 @router.get("/library")
 async def library_home(
-    request: Request, user: LibraryUser, session: SessionDep, folder: str = "", q: str = "", page: int = 1
+    request: Request,
+    user: LibraryUser,
+    session: SessionDep,
+    section: str = "",
+    folder: str = "",
+    q: str = "",
+    page: int = 1,
 ):
-    """One folder (or the search results) at a time, in pages: the open sources bring hundreds of thousands."""
+    """Sections first, then one folder (or the search results) at a time, in pages."""
     visible, current = _visible(user), [part for part in folder.split("/") if part] if folder else []
-    page = max(1, page)
-    query = select(LibraryDocument).where(visible)
+    page, section = max(1, page), section if section in SECTIONS else ""
+    where = [visible]
+    if section:
+        where.append(LibraryDocument.kind.in_(SECTIONS[section][1]))
+    sections = []
+    if not section and not q.strip() and not current:  # the library's front page: its sections
+        counts = dict(
+            (
+                await session.execute(
+                    select(LibraryDocument.kind, func.count()).where(visible).group_by(LibraryDocument.kind)
+                )
+            ).all()
+        )
+        for slug, (label, kinds) in SECTIONS.items():
+            if n := sum(counts.get(kind, 0) for kind in kinds):
+                sections.append((slug, label, n))
+    query = select(LibraryDocument).where(*where)
     if q.strip():
         needle = q.strip().replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
         query = query.where(LibraryDocument.title.ilike(f"%{needle}%"))
     else:
         query = query.where(LibraryDocument.folder_path == current)
-    shown = (
-        await session.scalars(query.order_by(LibraryDocument.title).limit(PAGE_SIZE + 1).offset((page - 1) * PAGE_SIZE))
-    ).all()
+    shown = []
+    if not sections:
+        shown = (
+            await session.scalars(
+                query.order_by(LibraryDocument.title).limit(PAGE_SIZE + 1).offset((page - 1) * PAGE_SIZE)
+            )
+        ).all()
     more, shown = len(shown) > PAGE_SIZE, shown[:PAGE_SIZE]
-    depth = len(current)
-    name = LibraryDocument.folder_path[depth].astext
-    inside = [LibraryDocument.folder_path[i].astext == part for i, part in enumerate(current)]
-    subfolders = (
-        await session.execute(
-            select(name, func.count())
-            .where(visible, func.jsonb_array_length(LibraryDocument.folder_path) > depth, *inside)
-            .group_by(name)
-            .order_by(name)
-        )
-    ).all()
+    subfolders = []
+    if not sections:
+        depth = len(current)
+        name = LibraryDocument.folder_path[depth].astext
+        inside = [LibraryDocument.folder_path[i].astext == part for i, part in enumerate(current)]
+        subfolders = (
+            await session.execute(
+                select(name, func.count())
+                .where(*where, func.jsonb_array_length(LibraryDocument.folder_path) > depth, *inside)
+                .group_by(name)
+                .order_by(name)
+            )
+        ).all()
     total = await session.scalar(select(func.count()).select_from(LibraryDocument).where(visible))
     now = await db_now(session)
     pro = user.has_pro(now)
@@ -75,6 +113,9 @@ async def library_home(
         {
             "user": user,
             "docs": shown,
+            "sections": sections,
+            "section": section,
+            "section_label": SECTIONS[section][0] if section else "",
             "subfolders": [tuple(row) for row in subfolders],
             "current": current,
             "folder": "/".join(current),

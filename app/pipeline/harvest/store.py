@@ -43,8 +43,10 @@ class TriviaPlan(BaseModel):
 class Plan(BaseModel):
     schedule_times: list[str] = ["02:00"]
     pages_per_run: int = 10
-    files_per_run: int = 200
+    files_per_run: int = 200  # open PDFs fetched per batch; batches run all day, between the harvest runs
     max_file_mb: int = 40
+    file_concurrency: int = 6
+    max_storage_gb: float = 100  # open files stop here (disk space)
     sources: dict[str, list[PlanItem]] = Field(default_factory=dict)
     opentrivia: TriviaPlan = TriviaPlan()
 

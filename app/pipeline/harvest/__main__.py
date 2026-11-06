@@ -76,14 +76,19 @@ async def trivia(plan: Plan, states: StateStore, force: bool = False) -> dict:
 
 async def run_all(plan: Plan, states: StateStore) -> None:
     log.info("Harvest: %s", await harvest(plan, states))
-    log.info("Files: %s", await store_files(plan.files_per_run, plan.max_file_mb))
+    log.info("Files: %s", await files_batch(plan))
     try:
         log.info("Open Trivia: %s", await trivia(plan, states))
     except Exception:
         log.exception("Open Trivia failed")
 
 
+async def files_batch(plan: Plan) -> dict:
+    return await store_files(plan.files_per_run, plan.max_file_mb, plan.file_concurrency, plan.max_storage_gb)
+
+
 async def loop() -> None:
+    """Harvest runs at the plan's times; between them, open PDFs are fetched batch after batch."""
     done: set[str] = set()
     while True:
         plan = load_plan()  # edits to the plan apply at the next slot
@@ -101,6 +106,15 @@ async def loop() -> None:
                 finally:
                     await states.close()
                 break
+        else:
+            try:
+                stats = await files_batch(plan)
+            except Exception:
+                log.exception("Fetching files failed")
+                stats = {}
+            if stats.get("stored") or stats.get("failed"):
+                log.info("Files: %s", stats)
+                continue  # more waiting: the next batch at once
         await asyncio.sleep(60)
 
 
@@ -154,7 +168,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "run":
         print(asyncio.run(with_states(lambda s: harvest(plan, s, args.source, args.pages))))
     elif args.command == "files":
-        print(asyncio.run(store_files(args.limit, plan.max_file_mb)))
+        print(asyncio.run(store_files(args.limit, plan.max_file_mb, plan.file_concurrency, plan.max_storage_gb)))
     elif args.command == "trivia":
         print(asyncio.run(with_states(lambda s: trivia(plan, s, args.force))))
     elif args.command == "status":

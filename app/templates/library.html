@@ -1,29 +1,41 @@
 {% extends "base.html" %}
 {% block title %}Thư viện tài liệu · Exam System{% endblock %}
 {% block container_class %}wide{% endblock %}
+{% macro here(extra="") -%}
+  /library?section={{ section }}&folder={{ folder | urlencode }}&q={{ q | urlencode }}{{ extra }}
+{%- endmacro %}
 {% block content %}
 <div class="page-head">
   <h1>📚 Thư viện tài liệu</h1>
   <form method="get" class="row">
-    <input name="q" value="{{ q }}" placeholder="Tìm theo tên tài liệu">
+    {% if section %}<input type="hidden" name="section" value="{{ section }}">{% endif %}
+    <input name="q" value="{{ q }}" placeholder="{{ 'Tìm trong ' ~ section_label if section else 'Tìm theo tên tài liệu' }}">
     <button class="btn btn-outline btn-small">Tìm</button>
   </form>
 </div>
-<p class="muted small">{{ total }} tài liệu · mỗi tài liệu ghi rõ nguồn. Sách và tài liệu chỉ xem trực tuyến; giáo viên gói Pro được tải đề thi.</p>
+<p class="muted small">{{ total }} tài liệu, đọc ngay trên hệ thống · mỗi tài liệu ghi rõ tác giả và nguồn. Sách và tài liệu chỉ xem trực tuyến; giáo viên gói Pro được tải đề thi.</p>
 {% if not pro %}
   <p class="small"><span class="badge {{ 'badge-warn' if reads_left == 0 else '' }}">Hôm nay còn {{ reads_left }}/{{ read_limit }} lượt xem</span>
     Tài khoản miễn phí xem {{ read_limit }} tài liệu mỗi ngày (mở lại tài liệu đã xem trong ngày không tính lượt). <a href="/plans">Nâng cấp Pro</a> để xem không giới hạn.</p>
 {% endif %}
 
+{% if sections %}
+  <div class="library-folders">
+    {% for slug, label, n in sections %}
+      <a class="card library-folder" href="/library?section={{ slug }}"><strong>{{ label }}</strong> <span class="muted small">{{ n }}</span></a>
+    {% endfor %}
+  </div>
+{% else %}
 <nav class="breadcrumb small">
   <a href="/library">Thư viện</a>
-  {% for part in current %} › <a href="/library?folder={{ current[:loop.index] | join('/') | urlencode }}">{{ part }}</a>{% endfor %}
+  {% if section %} › <a href="/library?section={{ section }}">{{ section_label }}</a>{% endif %}
+  {% for part in current %} › <a href="/library?section={{ section }}&folder={{ current[:loop.index] | join('/') | urlencode }}">{{ part }}</a>{% endfor %}
 </nav>
 
 {% if subfolders and not q %}
   <div class="library-folders">
     {% for name, n in subfolders %}
-      <a class="card library-folder" href="/library?folder={{ (current + [name]) | join('/') | urlencode }}">📁 {{ name }} <span class="muted small">{{ n }}</span></a>
+      <a class="card library-folder" href="/library?section={{ section }}&folder={{ (current + [name]) | join('/') | urlencode }}">📁 {{ name }} <span class="muted small">{{ n }}</span></a>
     {% endfor %}
   </div>
 {% endif %}
@@ -35,13 +47,13 @@
     {% for d in docs %}
       <tr>
         <td><strong>{{ d.title }}</strong>{% if d.status != "PUBLISHED" %} <span class="badge badge-warn">Chờ duyệt</span>{% endif %}
+          {% if not d.storage_key %} <span class="badge">Chưa có file</span>{% endif %}
           {% if d.authors or d.year %}<div class="muted small">{{ d.authors or "" }}{% if d.authors and d.year %} · {% endif %}{{ d.year or "" }}</div>{% endif %}
           {% if q %}<div class="muted small">{{ d.folder_path | join(" › ") }}</div>{% endif %}</td>
         <td class="small">{{ KIND_LABELS[d.kind] }}</td>
         <td class="small muted">{{ d.license_note or d.source }}{% if d.source_url and user.role == "ADMIN" %} · <a href="{{ d.source_url }}" target="_blank" rel="noopener noreferrer">gốc</a>{% endif %}</td>
         <td class="row">
-          {% if d.storage_key and d.mime in ("application/pdf", "image/png", "image/jpeg") %}<a class="btn btn-small" href="/library/{{ d.id }}/view" target="_blank" rel="noopener">Xem</a>
-          {% elif not d.storage_key and d.source_url %}<a class="btn btn-outline btn-small" href="{{ d.source_url }}" target="_blank" rel="noopener noreferrer">Đọc tại nguồn ↗</a>{% endif %}
+          {% if d.storage_key and d.mime in ("application/pdf", "image/png", "image/jpeg") %}<a class="btn btn-small" href="/library/{{ d.id }}/view" target="_blank" rel="noopener">Xem</a>{% endif %}
           {% if d.exam_id %}<a class="btn btn-outline btn-small" href="/exams/{{ d.exam_id }}">Làm online</a>{% endif %}
           {% if d.id in downloadable %}<a class="btn btn-outline btn-small" href="/library/{{ d.id }}/download">Tải về</a>{% endif %}
         </td>
@@ -53,10 +65,11 @@
   </table>
   {% if page > 1 or more %}
     <nav class="row small">
-      {% if page > 1 %}<a class="btn btn-outline btn-small" href="/library?folder={{ folder | urlencode }}&q={{ q | urlencode }}&page={{ page - 1 }}">‹ Trang trước</a>{% endif %}
+      {% if page > 1 %}<a class="btn btn-outline btn-small" href="{{ here('&page=' ~ (page - 1)) }}">‹ Trang trước</a>{% endif %}
       <span class="muted">Trang {{ page }}</span>
-      {% if more %}<a class="btn btn-outline btn-small" href="/library?folder={{ folder | urlencode }}&q={{ q | urlencode }}&page={{ page + 1 }}">Trang sau ›</a>{% endif %}
+      {% if more %}<a class="btn btn-outline btn-small" href="{{ here('&page=' ~ (page + 1)) }}">Trang sau ›</a>{% endif %}
     </nav>
   {% endif %}
 </div>
+{% endif %}
 {% endblock %}

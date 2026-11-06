@@ -132,7 +132,9 @@ def _pro(db, email):
 def test_free_accounts_read_a_few_documents_a_day_and_never_download(make_user, db, library, monkeypatch):
     monkeypatch.setattr(get_settings(), "free_docs_per_day", 1)
     student = _login(make_user, "hs@example.com")
-    root = student.get("/library").text
+    front = student.get("/library").text
+    assert "Đề thi" in front and "section=de-thi" in front and "section=sach" not in front  # sections with files
+    root = student.get("/library", params={"section": "de-thi"}).text
     assert (
         "9. FULL ĐỀ THI THPTQG2024" in unicodedata.normalize("NFC", root) and "Khối 10" not in root
     )  # pending: hidden

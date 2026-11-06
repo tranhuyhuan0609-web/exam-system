@@ -5,7 +5,7 @@ import json
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.main import app
 from app.models import LibraryDocument, LibraryKind
@@ -34,7 +34,7 @@ def _record(key, source="openalex", title="Giáo dục STEM ở trường phổ 
         source=source,
         title=title,
         kind=LibraryKind.PAPER,
-        folder=["Bài báo & nghiên cứu", "Giáo dục học"],
+        folder=["Giáo dục học"],
         url="https://journal.example/a",
         **extra,
     )
@@ -54,12 +54,12 @@ def test_openalex_pages_follow_the_cursor_and_file_papers_by_field(monkeypatch):
     }
     monkeypatch.setattr(sources, "env", lambda name: "")  # no OPENALEX_API_KEY
     http = FakeHttp({"results": [work], "meta": {"next_cursor": "c2"}}, {"results": [], "meta": {"next_cursor": None}})
-    item = PlanItem(name="vi", folder=["Bài báo & nghiên cứu", "Tiếng Việt"], filter="language:vi", by_field=True)
+    item = PlanItem(name="vi", folder=["Tiếng Việt"], filter="language:vi", by_field=True)
     records, state = asyncio.run(openalex(http, item, None))
     record = records[0]
     assert state == "p:2" and http.calls[0][1]["page"] == 1 and http.calls[0][1]["filter"] == "language:vi"
     assert record.key == "doi:10.1/abc" and record.title == "Dạy học hàm số" and record.file_url.endswith("1.pdf")
-    assert record.folder == ["Bài báo & nghiên cứu", "Tiếng Việt", "Toán học"]
+    assert record.folder == ["Tiếng Việt", "Toán học"]
     assert record.authors.endswith("Tác giả 4 và cộng sự")
     assert asyncio.run(openalex(http, item, "p:2")) == ([], None)  # the last page: the item is done
 
@@ -81,13 +81,23 @@ def test_a_work_found_by_two_sources_is_kept_once_and_listed_with_its_link(db, m
     make_user("hs@example.com")
     student = TestClient(app)
     student.post("/login", data={"email": "hs@example.com", "password": "password123"})
-    home = student.get("/library").text
-    assert "Bài báo &amp; nghiên cứu" in home and '<span class="muted small">2</span>' in home
-    folder = student.get("/library", params={"folder": "Bài báo & nghiên cứu/Giáo dục học"}).text
-    assert "Đọc tại nguồn" in folder and "https://journal.example/a" in folder and "2024" in folder
+    assert "bai-bao" not in student.get("/library").text  # no file held yet: not shown, no link out
+    db(
+        lambda s: s.execute(
+            update(LibraryDocument)
+            .where(LibraryDocument.id == doc.id)
+            .values(storage_key="open/x.pdf", mime="application/pdf")
+        )
+    )
+    front = student.get("/library").text
+    assert "Bài báo &amp; nghiên cứu" in front and "section=bai-bao" in front
+    section = student.get("/library", params={"section": "bai-bao"}).text
+    assert "Giáo dục học" in section
+    folder = student.get("/library", params={"section": "bai-bao", "folder": "Giáo dục học"}).text
+    assert "Giáo dục STEM" in folder and "2024" in folder and "/view" in folder and "journal.example" not in folder
     assert "Giáo dục STEM" in student.get("/library", params={"q": "stem"}).text
     assert "Giáo dục STEM" not in student.get("/library", params={"q": "100%"}).text  # % is not a wildcard
-    assert student.get(f"/library/{doc.id}/view").status_code == 404  # no stored file yet
+    assert "Giáo dục STEM" not in student.get("/library", params={"section": "sach", "q": "stem"}).text
 
 
 def test_open_pdfs_are_stored_and_links_without_a_pdf_are_dropped(db, monkeypatch):

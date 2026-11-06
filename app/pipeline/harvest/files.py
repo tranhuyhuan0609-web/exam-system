@@ -5,11 +5,11 @@ import hashlib
 import logging
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.db import SessionLocal
 from app.infrastructure.storage import get_bronze_storage
-from app.models import LibraryDocument
+from app.models import LibraryDocument, LibraryKind
 from app.pipeline.harvest.sources import USER_AGENT
 
 log = logging.getLogger(__name__)
@@ -48,16 +48,37 @@ async def fetch_pdf(client: httpx.AsyncClient, url: str, max_bytes: int) -> byte
     return bytes(data)
 
 
-async def store_files(limit: int = 200, max_mb: int = 40, concurrency: int = 4) -> dict[str, int]:
-    """PDFs of documents listed with a file_url and no stored file yet. A link that gives no PDF is dropped,
-    so the document stays listed with its link to the source and is not tried again."""
+async def stored_bytes() -> int:
+    """Space taken by the open files (documents from Drive and our typeset PDFs not counted)."""
+    async with SessionLocal() as session:
+        return int(
+            await session.scalar(
+                select(func.coalesce(func.sum(LibraryDocument.size), 0)).where(
+                    LibraryDocument.storage_key.like("open/%")
+                )
+            )
+        )
+
+
+async def store_files(
+    limit: int = 200, max_mb: int = 40, concurrency: int = 4, max_storage_gb: float | None = None
+) -> dict[str, int]:
+    """PDFs of documents listed with a file_url and no stored file yet: Vietnamese works first, then books.
+    A link that gives no PDF is dropped, so the document is not tried again (it stays hidden from readers).
+    Stops at max_storage_gb of open files."""
     stats = {"stored": 0, "failed": 0}
+    if max_storage_gb is not None and await stored_bytes() >= max_storage_gb * 1024**3:
+        return {**stats, "full": 1}
     async with SessionLocal() as session:
         ids = list(
             await session.scalars(
                 select(LibraryDocument.id)
                 .where(LibraryDocument.file_url.is_not(None), LibraryDocument.storage_key == "")
-                .order_by(LibraryDocument.id)
+                .order_by(
+                    (LibraryDocument.language == "vi").desc(),
+                    (LibraryDocument.kind == LibraryKind.BOOK).desc(),
+                    LibraryDocument.id,
+                )
                 .limit(limit)
             )
         )
