@@ -9,7 +9,11 @@
     <button class="btn btn-outline btn-small">Tìm</button>
   </form>
 </div>
-<p class="muted small">{{ total }} tài liệu · dành cho giáo viên gói Pro. Mỗi tài liệu ghi rõ nguồn; chỉ tài liệu được phép mới có nút tải về.</p>
+<p class="muted small">{{ total }} tài liệu · mỗi tài liệu ghi rõ nguồn. Sách và tài liệu chỉ xem trực tuyến; giáo viên gói Pro được tải đề thi.</p>
+{% if not pro %}
+  <p class="small"><span class="badge {{ 'badge-warn' if reads_left == 0 else '' }}">Hôm nay còn {{ reads_left }}/{{ read_limit }} lượt xem</span>
+    Tài khoản miễn phí xem {{ read_limit }} tài liệu mỗi ngày (mở lại tài liệu đã xem trong ngày không tính lượt). <a href="/plans">Nâng cấp Pro</a> để xem không giới hạn.</p>
+{% endif %}
 
 <nav class="breadcrumb small">
   <a href="/library">Thư viện</a>
@@ -33,10 +37,10 @@
         <td><strong>{{ d.title }}</strong>{% if d.status != "PUBLISHED" %} <span class="badge badge-warn">Chờ duyệt</span>{% endif %}
           {% if q %}<div class="muted small">{{ d.folder_path | join(" › ") }}</div>{% endif %}</td>
         <td class="small">{{ KIND_LABELS[d.kind] }}</td>
-        <td class="small muted">{{ d.license_note or d.source }}{% if d.source_url %} · <a href="{{ d.source_url }}" target="_blank" rel="noopener noreferrer">gốc</a>{% endif %}</td>
+        <td class="small muted">{{ d.license_note or d.source }}{% if d.source_url and user.role == "ADMIN" %} · <a href="{{ d.source_url }}" target="_blank" rel="noopener noreferrer">gốc</a>{% endif %}</td>
         <td class="row">
           {% if d.mime in ("application/pdf", "image/png", "image/jpeg") %}<a class="btn btn-small" href="/library/{{ d.id }}/view" target="_blank" rel="noopener">Xem</a>{% endif %}
-          {% if d.downloadable or user.role == "ADMIN" %}<a class="btn btn-outline btn-small" href="/library/{{ d.id }}/download">Tải về</a>{% endif %}
+          {% if d.id in downloadable %}<a class="btn btn-outline btn-small" href="/library/{{ d.id }}/download">Tải về</a>{% endif %}
         </td>
       </tr>
     {% else %}

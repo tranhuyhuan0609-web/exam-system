@@ -1,4 +1,4 @@
-"""Library of books and documents for teachers with the Pro plan: browse by folder, read PDFs, download if allowed."""
+"""Library of books and documents: browse by folder, read PDFs, download exam papers. Who may do what: app/plans.py."""
 
 from typing import Annotated
 from urllib.parse import quote
@@ -8,9 +8,11 @@ from fastapi.responses import Response
 from sqlalchemy import select
 
 from app.attempts import db_now
+from app.config import get_settings
 from app.deps import SessionDep, require_user
 from app.infrastructure.storage import get_bronze_storage
 from app.models import LibraryDocument, LibraryKind, LibraryStatus, User, UserRole
+from app.plans import can_download, docs_read_today, open_document
 from app.templating import templates
 
 router = APIRouter()
@@ -24,14 +26,7 @@ KIND_LABELS = {
 }
 INLINE = {"application/pdf", "image/png", "image/jpeg"}
 
-
-async def require_library(request: Request, user: Annotated[User, Depends(require_user)], session: SessionDep) -> User:
-    if user.role == UserRole.ADMIN or (user.role == UserRole.TEACHER and user.has_pro(await db_now(session))):
-        return user
-    raise HTTPException(status.HTTP_403_FORBIDDEN, "Thư viện tài liệu dành cho giáo viên có gói Pro.")
-
-
-LibraryUser = Annotated[User, Depends(require_library)]
+LibraryUser = Annotated[User, Depends(require_user)]  # any account; reading limits for free ones
 
 
 def _visible(user: User):
@@ -54,6 +49,9 @@ async def library_home(request: Request, user: LibraryUser, session: SessionDep,
         if d.folder_path[: len(current)] == current and len(d.folder_path) > len(current):
             name = d.folder_path[len(current)]
             subfolders[name] = subfolders.get(name, 0) + 1
+    now = await db_now(session)
+    pro = user.has_pro(now)
+    limit = get_settings().free_docs_per_day
     return templates.TemplateResponse(
         request,
         "library.html",
@@ -66,6 +64,10 @@ async def library_home(request: Request, user: LibraryUser, session: SessionDep,
             "q": q,
             "KIND_LABELS": KIND_LABELS,
             "total": len(docs),
+            "pro": pro,
+            "reads_left": None if pro else max(0, limit - await docs_read_today(session, user, now)),
+            "read_limit": limit,
+            "downloadable": {d.id for d in shown if can_download(user, d, now)},
         },
     )
 
@@ -91,7 +93,9 @@ async def view_document(user: LibraryUser, session: SessionDep, document_id: int
     """Read in the browser (PDF, images). Other formats can only be downloaded, when allowed."""
     doc = await _document(session, user, document_id)
     if doc.mime not in INLINE:
-        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Định dạng này chỉ tải về được.")
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Định dạng này chưa xem trực tuyến được.")
+    if reason := await open_document(session, user, doc, await db_now(session)):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, reason)
     data = await get_bronze_storage().get(doc.storage_key)
     return Response(
         data,
@@ -107,8 +111,10 @@ async def view_document(user: LibraryUser, session: SessionDep, document_id: int
 @router.get("/library/{document_id:int}/download")
 async def download_document(user: LibraryUser, session: SessionDep, document_id: int):
     doc = await _document(session, user, document_id)
-    if not doc.downloadable and user.role != UserRole.ADMIN:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Tài liệu này chỉ xem trực tuyến, không cho tải về.")
+    if not can_download(user, doc, await db_now(session)):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Chỉ giáo viên gói Pro được tải đề thi; sách và tài liệu chỉ xem trực tuyến."
+        )
     data = await get_bronze_storage().get(doc.storage_key)
     return Response(
         data,

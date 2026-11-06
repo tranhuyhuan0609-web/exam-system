@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 
+from app.config import get_settings
 from app.infrastructure.storage import get_bronze_storage, get_storage
 from app.main import app
 from app.models import Category, ImportJob, LibraryDocument, LibraryKind, LibraryStatus, User, UserRole
@@ -116,28 +117,44 @@ def library(db):
     return {d.title: d.id for d in db(lambda s: s.scalars(select(LibraryDocument)))}
 
 
-def test_library_is_for_teachers_with_pro(make_user, db, library):
-    student = _login(make_user, "hs@example.com")
-    assert student.get("/library").status_code == 403
-    teacher = _login(make_user, "gv@example.com", UserRole.TEACHER)
-    assert teacher.get("/library").status_code == 403  # no Pro yet
-    db(
-        lambda s: s.execute(
-            update(User).where(User.email == "gv@example.com").values(pro_until=func.now() + timedelta(days=30))
-        )
-    )
+def _pro(db, email):
+    db(lambda s: s.execute(update(User).where(User.email == email).values(pro_until=func.now() + timedelta(days=30))))
 
-    root = teacher.get("/library").text
+
+def test_free_accounts_read_a_few_documents_a_day_and_never_download(make_user, db, library, monkeypatch):
+    monkeypatch.setattr(get_settings(), "free_docs_per_day", 1)
+    student = _login(make_user, "hs@example.com")
+    root = student.get("/library").text
     assert (
         "9. FULL ĐỀ THI THPTQG2024" in unicodedata.normalize("NFC", root) and "Khối 10" not in root
     )  # pending: hidden
-    folder = teacher.get("/library", params={"folder": f"{EXAMS}/Môn Toán"}).text
-    assert "Đề Toán mã 101" in folder
-    pdf = teacher.get(f"/library/{library['Đề Toán mã 101']}/view")
+    assert "còn 1/1 lượt xem" in root
+    math, chem = library["Đề Toán mã 101"], library["Đề Hóa học mã 201"]
+    pdf = student.get(f"/library/{math}/view")
     assert pdf.status_code == 200 and pdf.headers["content-type"] == "application/pdf"
     assert pdf.headers["content-disposition"].startswith("inline")
-    assert teacher.get(f"/library/{library['Đề Toán mã 101']}/download").status_code == 200
-    assert teacher.get(f"/library/{library['Chuyên đề hàm số']}/view").status_code == 404  # waiting for review
+    assert student.get(f"/library/{math}/view").status_code == 200  # the same document again: no new read
+    assert student.get(f"/library/{chem}/view").status_code == 403  # daily limit reached
+    assert student.get(f"/library/{math}/download").status_code == 403  # downloadable exam, but a student
+    assert student.get(f"/library/{library['Chuyên đề hàm số']}/view").status_code == 404  # waiting for review
+
+    _pro(db, "hs@example.com")  # student Pro: unlimited reading, still no downloads
+    assert student.get(f"/library/{chem}/view").status_code == 200
+    assert student.get(f"/library/{math}/download").status_code == 403
+    assert "Tải về" not in student.get("/library", params={"folder": f"{EXAMS}/Môn Toán"}).text
+
+
+def test_teacher_pro_downloads_exam_papers_but_not_books(admin_client, make_user, db, library):
+    teacher = _login(make_user, "gv@example.com", UserRole.TEACHER)
+    math = library["Đề Toán mã 101"]
+    assert teacher.get(f"/library/{math}/download").status_code == 403  # no Pro yet
+    _pro(db, "gv@example.com")
+    assert teacher.get(f"/library/{math}/download").status_code == 200
+    assert "Tải về" in teacher.get("/library", params={"folder": f"{EXAMS}/Môn Toán"}).text
+    admin_client.post("/admin/library/bulk", data={"ids": [str(math)], "action": "kind:BOOK"})
+    assert teacher.get(f"/library/{math}/download").status_code == 403  # books: read online only
+    assert teacher.get(f"/library/{math}/view").status_code == 200
+    assert admin_client.get(f"/library/{math}/download").status_code == 200  # admins: everything
 
 
 def test_admin_reviews_and_restricts_downloads(admin_client, make_user, db, library):
