@@ -22,15 +22,18 @@ from typing import Any
 
 from app.ai.figures import crop_figure
 from app.ai.normalize import thumbnail_bytes, to_page_images
-from app.ai.provider import AIProvider, AIQuotaExhausted, FigureImage, PageImage
+from app.ai.provider import AIError, AIProvider, AIQuotaExhausted, FigureImage, PageImage
 from app.ai.schemas import ExtractedQuestion, Solution
 from app.infrastructure.storage import Storage
 from app.question_rules import extract_number
 
 log = logging.getLogger(__name__)
 
-EXTRACT_CHUNK_PAGES = 3  # pages per vision call (+1 following page as context for split questions)
-SOLVE_BATCH = 6  # questions per solving call
+# Free tiers limit requests per DAY, not tokens: as few calls as possible. A whole exam (up to 8 pages) is read
+# in one call and up to 25 questions are solved in one; a call that fails (cut-off or broken answer) is split.
+EXTRACT_CHUNK_PAGES = 8  # pages per vision call (+1 following page as context for split questions)
+SOLVE_BATCH = 25  # questions per solving call
+MIN_SOLVE_BATCH = 3
 
 FLAG_LABELS = {
     "unsupported_type": "Câu tự luận chưa dùng được trong đề (chỉ hỗ trợ trắc nghiệm, đúng/sai, trả lời ngắn).",
@@ -68,14 +71,13 @@ def _same_question(a: ExtractedQuestion, b: ExtractedQuestion) -> bool:
     return a.number == b.number and a.content[:60] == b.content[:60]
 
 
-def _chunks(pages: list[Path]) -> list[list[PageImage]]:
+def _chunks(pages: list[Path], size: int = EXTRACT_CHUNK_PAGES) -> list[list[PageImage]]:
     groups = []
-    for start in range(0, len(pages), EXTRACT_CHUNK_PAGES):
+    for start in range(0, len(pages), size):
         chunk = [
-            PageImage(number=start + i + 1, png=thumbnail_bytes(p))
-            for i, p in enumerate(pages[start : start + EXTRACT_CHUNK_PAGES])
+            PageImage(number=start + i + 1, png=thumbnail_bytes(p)) for i, p in enumerate(pages[start : start + size])
         ]
-        following = start + EXTRACT_CHUNK_PAGES
+        following = start + size
         if following < len(pages):
             chunk.append(PageImage(number=following + 1, png=thumbnail_bytes(pages[following]), context_only=True))
         groups.append(chunk)
@@ -138,6 +140,45 @@ def normalize_draft(draft: dict[str, Any]) -> dict[str, Any]:
     return d
 
 
+async def _extract(provider: AIProvider, chunk: list[PageImage]) -> list[ExtractedQuestion]:
+    """Read the pages in one call; if that fails (a cut-off or broken answer), read each half separately."""
+    try:
+        return await provider.extract(chunk)
+    except AIQuotaExhausted:
+        raise
+    except AIError:
+        real = [p for p in chunk if not p.context_only]
+        if len(real) < 2:
+            raise
+        log.warning("Reading %s pages at once failed: reading them in two halves", len(real))
+        half = len(real) // 2
+        first = [*real[:half], PageImage(number=real[half].number, png=real[half].png, context_only=True)]
+        return [
+            *await _extract(provider, first),
+            *await _extract(provider, [*real[half:], *[p for p in chunk if p.context_only]]),
+        ]
+
+
+async def _solve(
+    provider: AIProvider, questions: list[ExtractedQuestion], figures: list[FigureImage]
+) -> list[Solution]:
+    """Solve the batch in one call; if that fails, solve each half separately (down to a few questions)."""
+    try:
+        return await provider.solve(questions, figures)
+    except AIQuotaExhausted:
+        raise
+    except AIError:
+        if len(questions) < 2 * MIN_SOLVE_BATCH:
+            raise
+        half = len(questions) // 2
+        log.warning("Solving %s questions at once failed: solving them in two halves", len(questions))
+        parts = []
+        for group in (questions[:half], questions[half:]):
+            numbers = {q.number for q in group}
+            parts += await _solve(provider, group, [f for f in figures if f.question_number in numbers])
+        return parts
+
+
 async def run_pipeline(
     *,
     job_id: int,
@@ -167,7 +208,7 @@ async def run_pipeline(
         for i, chunk in enumerate(chunks):
             first, last = chunk[0].number, max(p.number for p in chunk if not p.context_only)
             await progress(f"AI đang đọc trang {first}–{last} / {len(pages)}…", i, len(chunks))
-            for q in await provider.extract(chunk):
+            for q in await _extract(provider, chunk):
                 if not 1 <= q.page <= len(pages):
                     q.page = first
                 if not any(_same_question(q, seen) for seen in extracted):
@@ -201,7 +242,7 @@ async def run_pipeline(
             )
             figures = [FigureImage(extracted[i].number, figure_bytes[i]) for i in indexes if i in figure_bytes]
             try:
-                answers = await provider.solve(questions, figures)
+                answers = await _solve(provider, questions, figures)
             except AIQuotaExhausted:  # the whole job waits for tomorrow's quota rather than half-solved drafts
                 raise
             except Exception:  # keep the extracted questions even if solving one batch fails

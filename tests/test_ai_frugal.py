@@ -188,3 +188,28 @@ def test_latex_with_single_backslashes_in_a_json_answer_is_repaired():
     raw = r'{"x": "$\sqrt{16} + \frac{1}{2}$, $\Delta$ và \\alpha, xuống dòng\n"}'
     value = json.loads(_loose_json(raw))["x"]
     assert repair_latex(value) == "$\\sqrt{16} + \\frac{1}{2}$, $\\Delta$ và \\alpha, xuống dòng\n"
+
+
+def test_the_same_pages_and_questions_are_not_sent_twice():
+    from app.ai.cache import MemoryCache
+    from app.ai.provider import PageImage
+
+    class Reader(InnerReader):
+        async def solve(self, questions, figures):
+            self.solved.append([q.number for q in questions])
+            return [_solution(q.number, "C") for q in questions]
+
+    inner, cache = Reader(), MemoryCache()
+    pages = [PageImage(number=1, png=b"page-1"), PageImage(number=2, png=b"page-2")]
+    first = FrugalProvider(inner, None, [], [], cache=cache)
+    asyncio.run(first.extract(pages))
+    question = _q(1, "Tính $2^3$.", ["$6$", "$8$", "$9$", "$10$"])
+    asyncio.run(first.solve([question], []))
+    assert inner.read == 1 and inner.solved == [[1]]
+
+    again = FrugalProvider(inner, None, [], [], cache=cache)  # the same file imported again, another day
+    assert [q.content for q in asyncio.run(again.extract(pages))] == ["Gemini đọc"]
+    renumbered = _q(7, "Tính $2^3$.", ["$6$", "$8$", "$9$", "$10$"])  # same question, another number
+    answers = asyncio.run(again.solve([renumbered], []))
+    assert [(a.number, a.correct_label) for a in answers] == [(7, "C")]
+    assert inner.read == 1 and inner.solved == [[1]] and again.cached == 3  # 2 pages + 1 question

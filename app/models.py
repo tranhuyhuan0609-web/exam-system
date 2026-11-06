@@ -536,3 +536,15 @@ class AnswerKey(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (UniqueConstraint("category_id", "code", name="uq_answer_keys_category_code"),)
+
+
+class AICache(Base):
+    """AI answers keyed by the SHA-256 of what was sent (page images, or a question with its figure, and the
+    prompt): the same file imported again, or a question already solved, costs no AI call (app/ai/cache.py)."""
+
+    __tablename__ = "ai_cache"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))  # "extract" | "solve"
+    value: Mapped[Any] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

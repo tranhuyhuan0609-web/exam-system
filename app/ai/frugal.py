@@ -20,6 +20,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.cache import digest
 from app.ai.provider import EXTRACT_PROMPT, SOLVE_PROMPT, AIProvider, EssayItem, FigureImage, PageImage, _json_block
 from app.ai.schemas import EssayGrade, ExtractedQuestion, ExtractionResult, Solution, SolveResult
 from app.domain.latex import repair_latex
@@ -97,9 +98,11 @@ class ChatModel:
         daily_limit: int = 0,
         vision: bool = False,
         min_interval: float = 0.0,
+        batch_size: int = 25,
     ):
         self.name, self.model, self.daily_limit, self.usage = name, model, daily_limit, usage
         self.vision, self.min_interval, self.gone = vision, min_interval, False
+        self.batch_size = batch_size  # questions per call: free tiers also limit tokens per minute
         self._url = base_url.rstrip("/") + "/chat/completions"
         self._headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
@@ -201,17 +204,30 @@ class FrugalProvider:
         lookup: Lookup | None = None,
         text_solvers: list[ChatModel] = (),
         readers: list[ChatModel] = (),
+        cache=None,
     ):
-        self.inner, self.lookup = inner, lookup
+        self.inner, self.lookup, self.cache = inner, lookup, cache
         self.text_solvers, self.readers = list(text_solvers), list(readers)
         self._used: set[str] = set()
         self.reused = 0  # questions answered from the bank (for the job's stage line)
+        self.cached = 0  # pages and questions answered from the cache
 
     @property
     def models_used(self) -> set[str]:
         return self.inner.models_used | self._used
 
     async def extract(self, pages: list[PageImage]) -> list[ExtractedQuestion]:
+        key = digest("extract", EXTRACT_PROMPT, *(f"{p.number}|{p.context_only}".encode() + p.png for p in pages))
+        if self.cache and (hit := await self.cache.get(key)) is not None:
+            self.cached += len(pages)
+            self._used.add("bộ nhớ đệm")
+            return [ExtractedQuestion.model_validate(q) for q in hit]
+        questions = await self._extract(pages)
+        if self.cache and questions:
+            await self.cache.put(key, "extract", [q.model_dump(mode="json") for q in questions])
+        return questions
+
+    async def _extract(self, pages: list[PageImage]) -> list[ExtractedQuestion]:
         for reader in self.readers:
             if not await reader.available():
                 continue
@@ -235,27 +251,41 @@ class FrugalProvider:
         for solver in solvers:
             if not todo or not await solver.available():
                 continue
-            numbers = {questions[i].number for i in todo}
-            try:
-                answers = await solver.solve(
-                    [questions[i] for i in todo], [f for f in figures if f.question_number in numbers]
-                )
-            except (httpx.HTTPError, ValueError, KeyError, IndexError) as exc:  # out of quota, bad JSON: next one
-                log.warning("%s:%s could not solve: %s", solver.name, solver.model, exc)
-                continue
-            by_number = {a.number: a for a in answers}
-            for i in todo:
-                if (answer := by_number.get(questions[i].number)) is not None:
-                    solved[i] = answer
-            self._used.add(f"{solver.name}:{solver.model}")
+            for start in range(0, len(todo), solver.batch_size):
+                group = todo[start : start + solver.batch_size]
+                numbers = {questions[i].number for i in group}
+                try:
+                    answers = await solver.solve(
+                        [questions[i] for i in group], [f for f in figures if f.question_number in numbers]
+                    )
+                except (httpx.HTTPError, ValueError, KeyError, IndexError) as exc:  # out of quota, bad JSON
+                    log.warning("%s:%s could not solve: %s", solver.name, solver.model, exc)
+                    break  # the rest goes to the next solver
+                by_number = {a.number: a for a in answers}
+                for i in group:
+                    if (answer := by_number.get(questions[i].number)) is not None:
+                        solved[i] = answer
+                self._used.add(f"{solver.name}:{solver.model}")
             todo = [i for i in todo if i not in solved]
         return todo
+
+    def _solve_key(self, q: ExtractedQuestion, figures: list[FigureImage]) -> str:
+        figure = next((f.png for f in figures if f.question_number == q.number), b"")
+        payload = q.model_dump(include={"type", "content", "choices"}, mode="json")
+        return digest("solve", SOLVE_PROMPT, json.dumps(payload, ensure_ascii=False, sort_keys=True), figure)
 
     async def solve(self, questions: list[ExtractedQuestion], figures: list[FigureImage]) -> list[Solution]:
         solved: dict[int, Solution] = await self.lookup(questions) if self.lookup else {}
         if solved:
             self.reused += len(solved)
             self._used.add("ngân hàng câu hỏi")
+        keys = {i: self._solve_key(q, figures) for i, q in enumerate(questions)} if self.cache else {}
+        for i, key in keys.items():
+            if i not in solved and (hit := await self.cache.get(key)) is not None:
+                solved[i] = Solution.model_validate({**hit, "number": questions[i].number})
+                self.cached += 1
+                self._used.add("bộ nhớ đệm")
+        fresh = set(range(len(questions))) - set(solved)
         with_figure = {f.question_number for f in figures}
         text_only = [i for i, q in enumerate(questions) if i not in solved and q.number not in with_figure]
         await self._try(self.text_solvers, questions, text_only, [], solved)
@@ -273,4 +303,6 @@ class FrugalProvider:
                 answer = by_number.get(questions[i].number) or (answers[position] if complete else None)
                 if answer is not None:
                     solved[i] = answer
+        for i in fresh & set(solved) if self.cache else ():  # remembered for the next time the same question comes
+            await self.cache.put(keys[i], "solve", solved[i].model_dump(mode="json"))
         return [solved[i] for i in range(len(questions)) if i in solved]
