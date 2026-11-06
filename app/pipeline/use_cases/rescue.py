@@ -105,6 +105,26 @@ def _images_in(text: str | None) -> bool:
     return bool(re.search(_PLACEHOLDER, text or ""))
 
 
+# What a question asks: a question mark, an asking word, or a stem that ends in "là", "bằng", ":" …
+_ASKS = re.compile(
+    r"\?|[:…]\s*$|(?:^|\s)(là|bằng|gồm|thuộc|có|tính|tìm|chọn|xác định|giải|chứng minh|viết|nêu|so sánh"
+    r"|giải thích|bao nhiêu|mấy|nào|gì|đâu|sao)\s*\.?\s*$|^(tính|tìm|chọn|giải|chứng minh|xác định|viết|nêu|cho)\s",
+    re.I,
+)
+
+
+def is_a_question(item: CrawledQuestion) -> bool:
+    """False for a lesson or chapter title read as a question (a table of contents): the model would make up
+    a question from it."""
+    text = re.sub(_PLACEHOLDER, "", item.content or "").strip()
+    return bool(item.choices) or len(text.split()) >= 12 or bool(_ASKS.search(text))
+
+
+def options_in_a_picture(item: CrawledQuestion) -> bool:
+    """No options read but pictures with the question: the options are most likely one picture (formulas)."""
+    return not item.choices and bool(item.images) and item.question_type != QuestionType.ESSAY
+
+
 def drop_solution_images(item: CrawledQuestion) -> str | None:
     """ "ok" when only the solution held formula pictures (dropped), PENDING_AI when the stem or options hold some,
     None when the solution is mostly a picture."""
@@ -123,7 +143,7 @@ def drop_solution_images(item: CrawledQuestion) -> str | None:
 async def rescue_waiting(session: AsyncSession, models, limit: int = 20) -> dict[str, int]:
     """One pass over the questions waiting for review. `models`: chat models (app.ai.frugal.ChatModel), tried in
     order for the missing answers. Returns what happened. Items ready again are left READY for the caller."""
-    stats = {"pictures_dropped": 0, "back_to_ai": 0, "completed": 0, "unchanged": 0}
+    stats = {"pictures_dropped": 0, "back_to_ai": 0, "completed": 0, "unchanged": 0, "not_a_question": 0}
     items = (
         await session.scalars(
             select(CrawledQuestion).where(CrawledQuestion.status == CrawlItemStatus.NEEDS_REVIEW).limit(500)
@@ -141,6 +161,14 @@ async def rescue_waiting(session: AsyncSession, models, limit: int = 20) -> dict
             if outcome == "ok":
                 stats["pictures_dropped"] += 1
         if ANSWER_ISSUES & set(item.issues):
+            if not is_a_question(item):
+                item.status = CrawlItemStatus.REJECTED
+                stats["not_a_question"] += 1
+                continue
+            if options_in_a_picture(item):  # a text model cannot see them: one that reads pictures
+                item.status, item.ai_tries = CrawlItemStatus.PENDING_AI, 0
+                stats["back_to_ai"] += 1
+                continue
             to_complete.append(item)
         _ready_if_clean(item)
     for start in range(0, min(len(to_complete), limit), GROUP):

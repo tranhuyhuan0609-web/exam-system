@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<script>window.mathDone = true;</script>
+<style>
+  body { font-family: "Times New Roman", "Liberation Serif", "Noto Serif", serif; font-size: 12pt; line-height: 1.4; color: #000; }
+  .cover { height: 250mm; display: flex; flex-direction: column; justify-content: center; text-align: center; break-after: page; }
+  .cover .brand { letter-spacing: 3px; font-size: 12pt; text-transform: uppercase; }
+  .cover h1 { font-size: 24pt; margin: 16mm 0 6mm; text-transform: uppercase; line-height: 1.25; }
+  .cover .sub { font-style: italic; }
+  h2 { text-transform: uppercase; font-size: 14pt; }
+  ol { padding-left: 18px; }
+  li { margin-bottom: 8px; break-inside: avoid; }
+  .meta { font-size: 10.5pt; color: #333; }
+  .page { float: right; font-weight: bold; }
+  .note { font-size: 10pt; font-style: italic; margin-top: 10mm; }
+</style>
+</head>
+<body>
+<section class="cover">
+  <div class="brand">Exam System · Tủ sách nghiên cứu</div>
+  <h1>{{ title }}</h1>
+  <div class="sub">{{ papers | length }} bài báo khoa học truy cập mở · {{ date }}</div>
+</section>
+<h2>Mục lục</h2>
+<ol>
+  {% for p in papers %}
+    <li>{% if starts %}<span class="page">{{ starts[loop.index0] }}</span>{% endif %}<b>{{ p.title }}</b>
+      <div class="meta">{{ p.authors or "Không rõ tác giả" }}{% if p.year %} · {{ p.year }}{% endif %}</div>
+      <div class="meta">{{ p.license_note or "" }}{% if p.source_file_id and p.source_file_id.startswith("doi:") %} · DOI {{ p.source_file_id[4:] }}{% endif %}</div></li>
+  {% endfor %}
+</ol>
+<p class="note">Các bài được in nguyên văn theo bản truy cập mở của tác giả và nhà xuất bản, giữ nguyên giấy phép của từng bài.</p>
+</body>
+</html>

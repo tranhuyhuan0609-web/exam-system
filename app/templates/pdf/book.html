@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+        onload="renderMathInElement(document.body, {delimiters: [
+          {left: '$$', right: '$$', display: true}, {left: '\[', right: '\]', display: true},
+          {left: '$', right: '$', display: false}, {left: '\(', right: '\)', display: false}],
+          throwOnError: false}); window.mathDone = true;"></script>
+<style>
+  body { font-family: "Times New Roman", "Liberation Serif", "Noto Serif", serif; font-size: 12.5pt; line-height: 1.4; color: #000; }
+  .cover { height: 250mm; display: flex; flex-direction: column; justify-content: center; text-align: center; break-after: page; }
+  .cover .brand { letter-spacing: 3px; font-size: 12pt; text-transform: uppercase; }
+  .cover h1 { font-size: 26pt; margin: 18mm 0 6mm; text-transform: uppercase; line-height: 1.25; }
+  .cover .sub { font-style: italic; }
+  .cover .foot { margin-top: 40mm; font-size: 11pt; }
+  .toc { break-after: page; }
+  .toc h2, h1.chapter { text-transform: uppercase; }
+  .toc ol { line-height: 1.9; }
+  h1.chapter { font-size: 15pt; text-align: center; margin: 0 0 8mm; break-before: page; }
+  h2 { font-size: 12.5pt; margin: 14px 0 6px; }
+  h2.key { text-align: center; text-transform: uppercase; margin-top: 10mm; break-before: page; }
+  .question { margin: 0 0 8px; break-inside: avoid; }
+  .question .stem { white-space: pre-wrap; }
+  .question b.label { margin-right: 4px; }
+  .choices { display: grid; gap: 2px 12px; margin: 2px 0 0 14px; }
+  .choices.c4 { grid-template-columns: repeat(4, 1fr); }
+  .choices.c2 { grid-template-columns: repeat(2, 1fr); }
+  .choices.c1 { grid-template-columns: 1fr; }
+  .choices b { margin-right: 4px; }
+  figure { margin: 4px 0; text-align: center; }
+  figure img { max-width: 70%; max-height: 220px; }
+  table.key { border-collapse: collapse; margin: 4px 0 12px; }
+  table.key td { border: 1px solid #000; padding: 2px 8px; text-align: center; min-width: 22px; }
+  .solution { white-space: pre-wrap; margin: 2px 0 10px 14px; }
+  .colophon { break-before: page; font-size: 11pt; }
+</style>
+</head>
+<body>
+<section class="cover">
+  <div class="brand">Exam System · Tủ sách ôn luyện</div>
+  <h1>{{ title }}</h1>
+  <div class="sub">{{ total }} câu hỏi · có đáp án và lời giải chi tiết</div>
+  <div class="foot">Biên soạn tự động từ ngân hàng câu hỏi Exam System · {{ date }}</div>
+</section>
+
+<section class="toc">
+  <h2>Mục lục</h2>
+  <ol>{% for chapter, parts in chapters %}<li>{{ chapter.name }} <span style="color:#555">({{ chapter.count }} câu)</span></li>{% endfor %}</ol>
+</section>
+
+{% for chapter, parts in chapters %}
+  <h1 class="chapter">{{ chapter.name }}</h1>
+  {% for part in parts %}
+    <h2>{{ part.title }}</h2>
+    {% for q in part.questions %}
+      <div class="question">
+        <div class="stem"><b class="label">Câu {{ q.number }}.</b>{{ q.content }}</div>
+        {% if q.figure %}<figure><img src="{{ q.figure }}" alt=""></figure>{% endif %}
+        {% if q.kind == "TRUE_FALSE" %}
+          <div class="choices c1">{% for c in q.choices %}<div><b>{{ "abcdef"[loop.index0] }})</b>{{ c }}</div>{% endfor %}</div>
+        {% elif q.choices %}
+          <div class="choices c{{ q.columns }}">{% for c in q.choices %}<div><b>{{ "ABCDEF"[loop.index0] }}.</b>{{ c }}</div>{% endfor %}</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  {% endfor %}
+
+  <h2 class="key">Đáp án và lời giải – {{ chapter.name }}</h2>
+  {% for part in parts %}
+    <h2>{{ part.title }}</h2>
+    {% for row in part.questions | batch(10) %}
+      <table class="key">
+        <tr>{% for q in row %}<td><b>{{ q.number }}</b></td>{% endfor %}</tr>
+        <tr>{% for q in row %}<td>{{ q.answer }}</td>{% endfor %}</tr>
+      </table>
+    {% endfor %}
+    {% for q in part.questions if q.explanation %}
+      <div class="question"><b>Câu {{ q.number }}.</b>{% if q.kind != "TRUE_FALSE" %} Đáp án: <b>{{ q.answer }}</b>{% endif %}
+        <div class="solution">{{ q.explanation }}</div></div>
+    {% endfor %}
+  {% endfor %}
+{% endfor %}
+
+<section class="colophon">
+  <h2>Về cuốn sách này</h2>
+  <p>Sách được Exam System dàn trang tự động từ ngân hàng câu hỏi, sắp xếp theo mục lục chương trình; sách được in lại khi ngân hàng có thêm câu hỏi.</p>
+  {% if sources %}<p>Câu hỏi được tổng hợp và biên tập từ các nguồn: {{ sources | join(", ") }}.</p>{% endif %}
+</section>
+</body>
+</html>

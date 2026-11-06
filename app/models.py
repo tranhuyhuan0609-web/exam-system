@@ -462,6 +462,7 @@ class LibraryKind(StrEnum):
     TOPIC = "TOPIC"  # chuyên đề, tài liệu ôn tập
     EXAM = "EXAM"  # đề thi, đề kiểm tra
     HSG = "HSG"  # đề / tài liệu học sinh giỏi
+    PAPER = "PAPER"  # bài báo, luận văn, nghiên cứu (open access)
     OTHER = "OTHER"
 
 
@@ -487,8 +488,13 @@ class LibraryDocument(Base):
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
     source: Mapped[str] = mapped_column(String(50))  # e.g. "drive:thptqg2026", "upload"
     source_file_id: Mapped[str | None] = mapped_column(String(200), unique=True)  # Drive file id
-    source_url: Mapped[str | None] = mapped_column(String(500))
+    source_url: Mapped[str | None] = mapped_column(String(1000))  # where to read it at the source
     checksum: Mapped[str | None] = mapped_column(String(64))  # Drive md5 / our sha256: re-download only on change
+    # Open sources (app/pipeline/harvest): the open file to fetch into storage, and what a card shows.
+    file_url: Mapped[str | None] = mapped_column(String(1000))
+    authors: Mapped[str | None] = mapped_column(String(500))
+    year: Mapped[int | None] = mapped_column(Integer)
+    language: Mapped[str | None] = mapped_column(String(10))
     storage_key: Mapped[str] = mapped_column(String(300))  # in the bronze-raw bucket
     mime: Mapped[str] = mapped_column(String(120))
     size: Mapped[int] = mapped_column(Integer, default=0)
