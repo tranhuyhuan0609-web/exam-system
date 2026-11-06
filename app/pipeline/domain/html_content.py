@@ -95,12 +95,18 @@ class _Writer:
         if tag in ("sup", "sub"):
             inner = " ".join("".join(el.itertext()).split())
             if inner:
-                self.parts.append(("$^{" if tag == "sup" else "$_{") + _latex_escape(inner) + "}$")
+                script = _latex_escape(inner)
+                if re.search(r"[^\x00-\x7f]", inner) and not re.search(r"[α-ωΑ-Ω]", inner):
+                    script = r"\text{" + script + "}"  # "W_{tỏa}": Vietnamese words stay upright text
+                self.parts.append(("$^{" if tag == "sup" else "$_{") + script + "}$")
             self.text(el.tail)
             return
         if tag == "img":
             src = el.get("data-src") or el.get("src") or ""
-            if src and not src.startswith("data:"):
+            latex = latex_alt(el.get("alt") or "")
+            if latex:  # formula image whose alt text is its LaTeX source (MathType exports): no AI needed
+                self.parts.append(f"${latex}$")
+            elif src and not src.startswith("data:"):
                 self.images.append(
                     ImageRef(
                         urljoin(self.base_url, src), el.get("alt") or "", _int(el.get("width")), _int(el.get("height"))
@@ -130,6 +136,19 @@ class _Writer:
         lines = [" ".join(line.split()) for line in raw.split("\n")]
         text = "\n".join(line for line in lines if line)
         return Content(text, self.images)
+
+
+_LATEX_HINT = re.compile(r"\\[a-zA-Z]+|[\^_]\{|[\^_][0-9a-zA-Z]")
+
+
+def latex_alt(alt: str) -> str | None:
+    """The alt text when it is LaTeX (e.g. "_{1}^{2}\textrm{D} + n"), not a caption like "hình 1"."""
+    alt = " ".join(alt.split())
+    if not alt or len(alt) > 400 or not _LATEX_HINT.search(alt):
+        return None
+    if re.search(r"[À-ỹ]{2,}", alt) and r"\text" not in alt:  # Vietnamese words: a caption, not a formula
+        return None
+    return alt.strip("$ ")
 
 
 def _latex_escape(value: str) -> str:

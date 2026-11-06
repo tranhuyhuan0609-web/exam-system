@@ -36,6 +36,10 @@ class EventBus(Protocol):
     async def publish(self, topic: str, value: dict[str, Any], key: str | None = None) -> None: ...
 
 
+class AIUnavailable(Exception):
+    """No AI provider can take requests now (quota, overload): waiting questions stay as they are."""
+
+
 @dataclass
 class EnrichItem:
     """One crawled question sent to the AI: texts use [[img:N]] for the images attached in `images`."""
@@ -57,6 +61,8 @@ class EnrichResult:
     explanation: str
     explanation_written: bool  # the AI wrote the solution (the source had none)
     difficulty: str | None = None
+    provider: str = ""  # which AI answered (gemini, groq, openrouter)
+    answer_ok: bool | None = None  # False: the AI thinks the source's answer key is wrong
 
 
 class Enricher(Protocol):

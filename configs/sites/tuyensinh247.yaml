@@ -1,0 +1,115 @@
+# Tuyensinh247 — luyện chuyên đề ôn thi THPT (Vật lí, Toán). robots.txt allows these pages (it forbids /learning/).
+# Topic pages list 10 questions per page with ids only; the question pages (bai-tap-<id>.html) carry the answer,
+# the method and the full solution, a level label (Nhận biết…) and formulas as images with LaTeX alt text.
+# Content follows the pre-2018 THPT programme, so it gets its own "Ôn thi THPT" roots in our table of contents.
+site_id: tuyensinh247
+name: Tuyensinh247
+enabled: true
+base_url: https://tuyensinh247.com
+parser: tuyensinh247_question
+schedule_times: ["05:00"]
+refresh_days: 60
+max_pages: 200
+respect_robots: true
+auto_publish: true
+auto_toc: true
+default_difficulty: UNDERSTANDING
+rate_limit:
+  delay_sec: 3
+  timeout_sec: 20
+  retries: 2
+  concurrency: 1
+seeds:
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dao-dong-co-hoc-tq2.html
+    label: Ôn thi THPT Vật lí – Dao động cơ học
+    root: Ôn thi THPT – Vật lí
+    chapter: Dao động cơ học
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dao-dong-co-hoc-tq2-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-song-co-va-song-am-tq33.html
+    label: Ôn thi THPT Vật lí – Sóng cơ và sóng âm
+    root: Ôn thi THPT – Vật lí
+    chapter: Sóng cơ và sóng âm
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-song-co-va-song-am-tq33-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dong-dien-xoay-chieu-tq4.html
+    label: Ôn thi THPT Vật lí – Dòng điện xoay chiều
+    root: Ôn thi THPT – Vật lí
+    chapter: Dòng điện xoay chiều
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dong-dien-xoay-chieu-tq4-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dao-dong-va-song-dien-tu-tq3.html
+    label: Ôn thi THPT Vật lí – Dao động và sóng điện từ
+    root: Ôn thi THPT – Vật lí
+    chapter: Dao động và sóng điện từ
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dao-dong-va-song-dien-tu-tq3-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-song-anh-sang-tq1.html
+    label: Ôn thi THPT Vật lí – Sóng ánh sáng
+    root: Ôn thi THPT – Vật lí
+    chapter: Sóng ánh sáng
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-song-anh-sang-tq1-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-luong-tu-anh-sang-tq5.html
+    label: Ôn thi THPT Vật lí – Lượng tử ánh sáng
+    root: Ôn thi THPT – Vật lí
+    chapter: Lượng tử ánh sáng
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-luong-tu-anh-sang-tq5-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-vat-ly-hat-nhan-tq6.html
+    label: Ôn thi THPT Vật lí – Vật lý hạt nhân
+    root: Ôn thi THPT – Vật lí
+    chapter: Vật lý hạt nhân
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-vat-ly-hat-nhan-tq6-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-co-hoc-vat-ran-tq34.html
+    label: Ôn thi THPT Vật lí – Cơ học vật rắn
+    root: Ôn thi THPT – Vật lí
+    chapter: Cơ học vật rắn
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-co-hoc-vat-ran-tq34-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-ham-so-va-cac-bai-toan-lien-quan-tq7.html
+    label: Ôn thi THPT Toán – Hàm số và các bài toán liên quan
+    root: Ôn thi THPT – Toán
+    chapter: Hàm số và các bài toán liên quan
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-ham-so-va-cac-bai-toan-lien-quan-tq7-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-phuong-trinh-bat-pt-va-he-pt-mu-va-logarit-tq66.html
+    label: Ôn thi THPT Toán – Phương trình, bất phương trình mũ và logarit
+    root: Ôn thi THPT – Toán
+    chapter: Phương trình, bất phương trình mũ và logarit
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-phuong-trinh-bat-pt-va-he-pt-mu-va-logarit-tq66-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-nguyen-ham-tich-phan-va-ung-dung-tq9.html
+    label: Ôn thi THPT Toán – Nguyên hàm, tích phân và ứng dụng
+    root: Ôn thi THPT – Toán
+    chapter: Nguyên hàm, tích phân và ứng dụng
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-nguyen-ham-tich-phan-va-ung-dung-tq9-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-so-phuc-tq10.html
+    label: Ôn thi THPT Toán – Số phức
+    root: Ôn thi THPT – Toán
+    chapter: Số phức
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-so-phuc-tq10-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-hinh-hoc-khong-gian-tq12.html
+    label: Ôn thi THPT Toán – Hình học không gian
+    root: Ôn thi THPT – Toán
+    chapter: Hình học không gian
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-hinh-hoc-khong-gian-tq12-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-hinh-giai-tich-phang-tq11.html
+    label: Ôn thi THPT Toán – Hình giải tích phẳng
+    root: Ôn thi THPT – Toán
+    chapter: Hình giải tích phẳng
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-hinh-giai-tich-phang-tq11-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-to-hop-xac-suat-tq13.html
+    label: Ôn thi THPT Toán – Tổ hợp – xác suất
+    root: Ôn thi THPT – Toán
+    chapter: Tổ hợp – xác suất
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-to-hop-xac-suat-tq13-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-phuong-trinh-he-phuong-trinh-bat-phuong-trinh-luong-giac-tq78.html
+    label: Ôn thi THPT Toán – Phương trình lượng giác
+    root: Ôn thi THPT – Toán
+    chapter: Phương trình lượng giác
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-phuong-trinh-he-phuong-trinh-bat-phuong-trinh-luong-giac-tq78-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-phuong-trinh-bat-pt-va-he-pt-dai-so-tq8.html
+    label: Ôn thi THPT Toán – Phương trình, bất phương trình, hệ đại số
+    root: Ôn thi THPT – Toán
+    chapter: Phương trình, bất phương trình, hệ đại số
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-phuong-trinh-bat-pt-va-he-pt-dai-so-tq8-
+follow:
+  - pattern: '^https://tuyensinh247\.com/luyen-chuyen-de-[a-z0-9-]+-tq\d+-page\d+\.html$'
+    kind: listing
+    strip_query: true
+  - pattern: '^https://tuyensinh247\.com/bai-tap-\d+\.html$'
+    kind: detail
+    extract: 'checkOption\((\d+),'   # each question's options call checkOption(<id>, …)
+    url: 'https://tuyensinh247.com/bai-tap-{id}.html'

@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from app.config import get_settings
 from app.deps import AdminUser, SessionDep
 from app.models import (
+    AIUsage,
     Category,
     CrawledQuestion,
     CrawlerSite,
@@ -183,6 +184,17 @@ async def crawler_stats(request: Request, user: AdminUser, session: SessionDep):
             .limit(14)
         )
     ).all()
+    usage = (
+        (await session.execute(select(AIUsage).order_by(AIUsage.day.desc(), AIUsage.provider).limit(21)))
+        .scalars()
+        .all()
+    )
+    settings = get_settings()
+    providers = [
+        ("gemini", bool(settings.gemini_api_key)),
+        ("groq", bool(settings.groq_api_key and settings.groq_model)),
+        ("openrouter", bool(settings.openrouter_api_key and settings.openrouter_model)),
+    ]
     return templates.TemplateResponse(
         request,
         "admin/crawler_stats.html",
@@ -194,6 +206,9 @@ async def crawler_stats(request: Request, user: AdminUser, session: SessionDep):
             "daily": list(reversed(daily)),
             "STATUS_LABELS": STATUS_LABELS,
             "total": len(items),
+            "usage": usage,
+            "providers": providers,
+            "limits": settings.ai_daily_limit_map,
         },
     )
 

@@ -42,6 +42,35 @@ class Settings(BaseSettings):
     crawler_user_agent: str = "ExamSystemCrawler/0.1"
     gemini_embedding_model: str = "gemini-embedding-001"
     semantic_duplicate_threshold: float = 0.92  # cosine similarity at which a crawled question is a duplicate
+    # AI fallbacks for crawled questions when Gemini is out of quota (OpenAI-compatible APIs, free tiers).
+    groq_api_key: str = ""
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    openrouter_api_key: str = ""
+    openrouter_model: str = ""  # pick a ":free" model on openrouter.ai/models
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # Calls per provider and day (0 = no limit of ours; the provider still has its own).
+    ai_daily_limits: str = "gemini:55,groq:900,openrouter:45"  # Gemini free tier: ~20/day per model
+
+    # Questions per AI call: Groq's free tier allows ~8K tokens a minute, so its batches are small.
+    ai_batch_sizes: str = "gemini:15,groq:6,openrouter:8"
+
+    @property
+    def ai_batch_size_map(self) -> dict[str, int]:
+        return self._pairs(self.ai_batch_sizes)
+
+    @property
+    def ai_daily_limit_map(self) -> dict[str, int]:
+        return self._pairs(self.ai_daily_limits)
+
+    @staticmethod
+    def _pairs(value: str) -> dict[str, int]:
+        out = {}
+        for part in value.split(","):
+            name, _, number = part.partition(":")
+            if name.strip() and number.strip().isdigit():
+                out[name.strip()] = int(number)
+        return out
 
     @property
     def gemini_model_list(self) -> list[str]:
