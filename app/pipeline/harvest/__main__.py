@@ -5,7 +5,8 @@
     python -m app.pipeline.harvest files --limit 500       # store open PDFs of listed works
     python -m app.pipeline.harvest trivia [--force]        # Open Trivia DB -> question bank (via Silver)
     python -m app.pipeline.harvest status
-    python -m app.pipeline.harvest books [--only "Vật lí 10"]   # our books from the bank + anthologies
+    python -m app.pipeline.harvest anthologies              # reports of a field from open papers
+    python -m app.pipeline.harvest books [--only "Vật lí 10"]   # admin: review books from the question bank
     python -m app.pipeline.harvest loop                    # run at the plan's schedule_times (Vietnam time)
 
 Each run continues where the last one stopped (cursors in MongoDB harvest_state). Optional keys in .env:
@@ -83,21 +84,25 @@ async def run_all(plan: Plan, states: StateStore) -> None:
     except Exception:
         log.exception("Open Trivia failed")
     try:
-        log.info("Books: %s / anthologies: %s", *await bind())
+        log.info("Anthologies: %s", await anthologies())
     except Exception:
-        log.exception("Binding books failed")
+        log.exception("Binding anthologies failed")
 
 
-async def bind(only: str | None = None) -> tuple[dict, dict]:
-    """Our books from the question bank (printed again when their questions change), then new anthologies."""
-    from app.application.books import compile_books
+async def anthologies() -> dict:
+    """Reports of one field (Giáo dục học, Toán học …) bound from open papers, twenty at a time."""
     from app.pipeline.harvest.anthologies import compile_anthologies
 
     async with SessionLocal() as session:
-        books = await compile_books(session, only=only)
+        return await compile_anthologies(session)
+
+
+async def books(only: str | None = None) -> dict:
+    """Review books typeset from the question bank: run by an admin, not on a schedule."""
+    from app.application.books import compile_books
+
     async with SessionLocal() as session:
-        anthologies = await compile_anthologies(session)
-    return books, anthologies
+        return await compile_books(session, only=only)
 
 
 async def files_batch(plan: Plan) -> dict:
@@ -169,8 +174,9 @@ def main(argv: list[str] | None = None) -> None:
     tr = sub.add_parser("trivia")
     tr.add_argument("--force", action="store_true", help="also categories done recently")
     sub.add_parser("status")
-    bd = sub.add_parser("books", help="print our books from the question bank, and new anthologies")
+    bd = sub.add_parser("books", help="admin: typeset review books from the question bank")
     bd.add_argument("--only", help="only books whose title contains this")
+    sub.add_parser("anthologies", help="bind new anthologies of open papers (also after each harvest run)")
     sub.add_parser("loop")
     args = parser.parse_args(argv)
     if sys.platform == "win32":  # aiokafka/asyncpg are happiest on the selector loop
@@ -193,7 +199,9 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "status":
         asyncio.run(status())
     elif args.command == "books":
-        print(asyncio.run(bind(args.only)))
+        print(asyncio.run(books(args.only)))
+    elif args.command == "anthologies":
+        print(asyncio.run(anthologies()))
     elif args.command == "loop":
         try:
             asyncio.run(loop())
