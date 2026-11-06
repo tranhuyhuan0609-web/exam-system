@@ -104,7 +104,7 @@ async def _library_split(document_id: int | None) -> None:
     from sqlalchemy import select
 
     from app.db import SessionLocal
-    from app.infrastructure.storage import get_bronze_storage
+    from app.infrastructure.storage import get_bronze_storage, get_storage
     from app.models import LibraryDocument
     from app.pipeline.use_cases.library_split import split_stored
 
@@ -117,7 +117,7 @@ async def _library_split(document_id: int | None) -> None:
         total = 0
         for doc_id in ids:
             doc = await session.get(LibraryDocument, doc_id)
-            parts = await split_stored(session, doc, get_bronze_storage(), settings.soffice_path)
+            parts = await split_stored(session, doc, get_bronze_storage(), get_storage(), settings.soffice_path)
             if parts:
                 print(f"#{doc_id} {doc.title}: {parts} exams")
             total += parts

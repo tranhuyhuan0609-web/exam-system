@@ -1,5 +1,5 @@
 # AI import worker: same app code plus LibreOffice, which renders .docx (MathType, Word shapes) to PDF,
-# and Vietnamese Tesseract data, used to find exam codes on scanned library PDFs.
+# Vietnamese Tesseract data, used to find exam codes on scanned library PDFs, and Chromium for clean PDFs.
 FROM python:3.13-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN apt-get update \
@@ -7,10 +7,13 @@ RUN apt-get update \
         libreoffice-writer-nogui \
         # Metric-compatible replacements for Times New Roman / Arial / Calibri / Cambria used in Vietnamese exams
         fonts-liberation fonts-crosextra-carlito fonts-crosextra-caladea fonts-dejavu \
+        tesseract-ocr-vie \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Headless Chromium (and the system libraries it needs) prints the clean exam PDFs of the library.
+RUN pip install --no-cache-dir -r requirements.txt \
+    && python -m playwright install --with-deps chromium-headless-shell
 COPY app ./app
 ENV SOFFICE_PATH=soffice DATA_DIR=/app/data TESSDATA_DIR=/usr/share/tesseract-ocr/5/tessdata
 CMD ["python", "-m", "app.worker"]

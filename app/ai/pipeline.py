@@ -22,7 +22,7 @@ from typing import Any
 
 from app.ai.figures import crop_figure
 from app.ai.normalize import thumbnail_bytes, to_page_images
-from app.ai.provider import AIProvider, FigureImage, PageImage
+from app.ai.provider import AIProvider, AIQuotaExhausted, FigureImage, PageImage
 from app.ai.schemas import ExtractedQuestion, Solution
 from app.infrastructure.storage import Storage
 from app.question_rules import extract_number
@@ -38,6 +38,7 @@ FLAG_LABELS = {
     "no_solution": "AI chưa giải được câu này — hãy tự chọn đáp án và viết lời giải.",
     "figure_failed": "Câu có hình vẽ nhưng cắt hình không thành công.",
     "duplicate": "Ngân hàng đã có câu giống hệt (cùng nội dung và lựa chọn).",
+    "key_mismatch": "Khác đáp án chính thức của đề: kiểm tra đề bài (AI có thể đã đọc sai) và đáp án.",
 }
 
 Progress = Callable[[str, int, int], Awaitable[None]]
@@ -51,6 +52,7 @@ def page_key(job_id: int, page: int) -> str:
     return f"{pages_prefix(job_id)}page-{page:03d}.png"
 
 
+_QUESTION_LABEL = re.compile(r"^\s*Câu\s*\d+\s*[:.)]\s*", re.IGNORECASE)  # the number is shown by the app
 _TRAILING_DOT_IN_MATH = re.compile(r"\.(\s*\}?\s*\$)$")
 
 
@@ -108,7 +110,7 @@ def _draft(q: ExtractedQuestion, solution: Solution | None, figure: str | None, 
         "number": q.number,
         "page": q.page,
         "type": q.type,
-        "content": q.content.strip(),
+        "content": _QUESTION_LABEL.sub("", q.content.strip(), count=1),
         "choices": choices,
         "correct": correct,
         "truths": truths,
@@ -200,6 +202,8 @@ async def run_pipeline(
             figures = [FigureImage(extracted[i].number, figure_bytes[i]) for i in indexes if i in figure_bytes]
             try:
                 answers = await provider.solve(questions, figures)
+            except AIQuotaExhausted:  # the whole job waits for tomorrow's quota rather than half-solved drafts
+                raise
             except Exception:  # keep the extracted questions even if solving one batch fails
                 log.exception("Solving batch %s of job %s failed", b, job_id)
                 continue
@@ -210,7 +214,7 @@ async def run_pipeline(
                 candidates = by_number.get(extracted[i].number) or []
                 if len(candidates) == 1:
                     solutions[i] = candidates[0]
-                elif position < len(answers):  # duplicate or missing numbers: fall back to order
+                elif len(answers) == len(indexes):  # duplicate numbers in a complete answer: by order
                     solutions[i] = answers[position]
 
         drafts = [

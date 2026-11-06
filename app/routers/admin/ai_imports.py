@@ -11,21 +11,19 @@ from sqlalchemy import select
 
 from app import question_rules as rules
 from app.ai.normalize import SUPPORTED_EXTENSIONS
-from app.ai.pipeline import FLAG_LABELS, normalize_draft, page_key, pages_prefix
+from app.ai.pipeline import FLAG_LABELS, page_key, pages_prefix
+from app.application.ai_publish import create_exam, drafts_of, publish_drafts, publish_problems
+from app.application.library_publish import publish_to_library
 from app.config import get_settings
 from app.deps import AdminUser, SessionDep
 from app.domain.question_hash import hash_of_choices
 from app.infrastructure.storage import StorageError, get_storage
 from app.models import (
     Difficulty,
-    Exam,
-    ExamMode,
-    ExamQuestion,
     ImportJob,
     JobStatus,
     Question,
     QuestionType,
-    SourceType,
 )
 from app.routers.admin.common import clean_text, get_or_404, redirect
 from app.scope import load_categories, resolve_scope, scope_of, scope_options, scope_paths
@@ -37,24 +35,8 @@ MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 TYPE_LABELS = {t.value: label for t, label in rules.TYPE_LABELS.items()}
 
 
-def _publishable(draft: dict) -> list[str]:
-    """Errors preventing a draft from becoming a bank question (empty list = OK)."""
-    if draft.get("question_id"):
-        return ["Đã đưa vào ngân hàng."]
-    if draft.get("type") not in QuestionType.__members__:
-        return [FLAG_LABELS["unsupported_type"]]
-    return rules.validate(
-        draft["type"],
-        draft.get("content", ""),
-        list(draft.get("choices", [])),
-        draft.get("correct"),
-        list(draft.get("truths") or []),
-        list(draft.get("answers") or []),
-    )
-
-
-def _drafts(job: ImportJob) -> list[dict]:
-    return [normalize_draft(d) for d in (job.drafts or [])]
+_publishable = publish_problems
+_drafts = drafts_of
 
 
 async def _job_or_404(session, job_id: int) -> ImportJob:
@@ -233,57 +215,25 @@ async def publish(request: Request, user: AdminUser, session: SessionDep, job_id
     job = await _job_or_404(session, job_id)
     form = await request.form()
     selected = sorted({int(v) for v in form.getlist("selected") if str(v).isdigit()})
-    drafts = _drafts(job)
-    created: list[Question] = []
-    created_at_index: list[int] = []
-    for index in selected:
-        if index >= len(drafts) or _publishable(drafts[index]):
-            continue
-        d = drafts[index]
-        question = Question(
-            root_id=job.root_id,
-            category_id=job.category_id,
-            difficulty=Difficulty(d.get("difficulty") or job.default_difficulty.value),
-            question_type=QuestionType(d["type"]),
-            content=d["content"],
-            choices=rules.build_choices(d["type"], d["choices"], d.get("correct"), d.get("truths")),
-            accepted_answers=d["answers"] if d["type"] == QuestionType.SHORT_ANSWER else None,
-            explanation=d.get("explanation") or None,
-            image_path=d.get("figure"),
-            source_type=SourceType.AI_UPLOAD,
-            is_verified=True,  # an admin reviewed it on this screen
-        )
-        question.content_hash = hash_of_choices(d["type"], question.content, question.choices)
-        created.append(question)
-        created_at_index.append(index)
+    created = await publish_drafts(session, job, selected, verified=True)  # an admin reviewed it on this screen
     if not created:
         flash(request, "Không có câu hợp lệ nào được chọn.", "error")
         return redirect(f"/admin/ai-imports/{job_id}")
-
-    session.add_all(created)
-    await session.flush()
-    for index, question in zip(created_at_index, created, strict=True):
-        drafts[index]["question_id"] = question.id
-    job.drafts = drafts
 
     exam = None
     if form.get("create_exam") == "on":
         title = clean_text(str(form.get("exam_title", "")), 300) or PurePath(job.original_filename).stem[:300]
         minutes = str(form.get("duration_minutes", "")).strip()
-        exam = Exam(
-            root_id=job.root_id,
-            category_id=job.category_id,
+        exam = await create_exam(
+            session,
+            job,
+            created,
             title=title,
-            exam_mode=ExamMode.PRACTICE,
-            duration_seconds=(int(minutes) if minutes.isdigit() and 1 <= int(minutes) <= 600 else 15) * 60,
-            is_published=form.get("publish_exam") == "on",
-            created_by=user.id,
+            minutes=int(minutes) if minutes.isdigit() and 1 <= int(minutes) <= 600 else 15,
+            published=form.get("publish_exam") == "on",
+            user_id=user.id,
         )
-        session.add(exam)
-        await session.flush()
-        session.add_all(
-            ExamQuestion(exam_id=exam.id, question_id=q.id, position=pos) for pos, q in enumerate(created, start=1)
-        )
+        await publish_to_library(session, job, exam)  # a library file: its clean PDFs replace the original
     await session.commit()
     if exam:
         flash(request, f"Đã đưa {len(created)} câu vào ngân hàng và tạo đề “{exam.title}”.")

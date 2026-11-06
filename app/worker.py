@@ -10,23 +10,30 @@ import argparse
 import asyncio
 import logging
 import sys
+import time
 from datetime import timedelta
 
 from sqlalchemy import func, select, update
 
+from app.ai.frugal import ChatModel, FrugalProvider, bank_lookup
 from app.ai.normalize import NormalizeError
 from app.ai.pipeline import run_pipeline
-from app.ai.provider import AIError, AIProvider, GeminiProvider
+from app.ai.provider import AIError, AIProvider, AIQuotaExhausted, GeminiProvider
+from app.application.answer_keys import is_answer_key, read_answer_key_document
 from app.application.essay_grading import grade_pending_essays
+from app.application.library_publish import auto_publish, library_document, recheck_waiting
 from app.attempts import finalize_expired
 from app.config import get_settings
 from app.db import SessionLocal
 from app.infrastructure.storage import StorageError, get_storage
 from app.models import ImportJob, JobStatus
+from app.pipeline.adapters.ai_chain import DbUsage
 
 log = logging.getLogger("app.worker")
 
 POLL_SECONDS = 3
+QUOTA_PAUSE_SECONDS = 30 * 60  # all AI models out of quota: try again later
+_paused_until = 0.0
 AUTO_SUBMIT_SECONDS = 60
 ESSAY_SECONDS = 5
 # A PROCESSING job untouched for this long belongs to a worker that died; put it back in the queue.
@@ -35,7 +42,29 @@ STALE_AFTER = timedelta(minutes=30)
 
 def default_provider() -> AIProvider:
     settings = get_settings()
-    return GeminiProvider(settings.gemini_api_key, settings.gemini_model_list)
+    return GeminiProvider(
+        settings.gemini_api_key,
+        settings.gemini_model_list,
+        extract_models=settings._names(settings.gemini_extract_models),
+        extract_thinking=settings.gemini_extract_thinking,
+    )
+
+
+def chat_models() -> tuple[list[ChatModel], list[ChatModel]]:
+    """(text solvers, vision readers) on free tiers, used before Gemini (app/ai/frugal.py)."""
+    s, usage = get_settings(), DbUsage()
+    limits = s.ai_daily_limit_map
+    text, vision = [], []
+    if s.groq_api_key and s.groq_model:
+        text.append(ChatModel("groq", s.groq_base_url, s.groq_api_key, s.groq_model, usage, limits.get("groq", 0)))
+    if s.openrouter_api_key:
+        common = {"usage": usage, "daily_limit": limits.get("openrouter", 0), "min_interval": s.openrouter_min_interval}
+        key, url = s.openrouter_api_key, s.openrouter_base_url
+        text += [ChatModel("openrouter", url, key, m, **common) for m in s._names(s.openrouter_model)]
+        vision += [
+            ChatModel("openrouter", url, key, m, vision=True, **common) for m in s._names(s.openrouter_vision_models)
+        ]
+    return text, vision
 
 
 async def claim_next() -> int | None:
@@ -79,16 +108,30 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
             await session.commit()
 
         try:
-            provider = provider or default_provider()
-            page_count, drafts = await run_pipeline(
-                job_id=job.id,
-                source_key=job.stored_path,
-                storage=get_storage(),
-                provider=provider,
-                soffice=settings.soffice_path,
-                default_difficulty=job.default_difficulty.value,
-                progress=progress,
-            )
+            if provider is None:  # bank answers and free text models first; Gemini reads the pages
+                text, vision = chat_models()
+                provider = FrugalProvider(default_provider(), await bank_lookup(session, job.root_id), text, vision)
+            doc = await library_document(session, job)
+            codes = None
+            if doc is not None and is_answer_key(doc):  # an answer table, not an exam: read the official answers
+                await progress("AI đang đọc bảng đáp án chính thức…", 0, 1)
+                data = await get_storage().get(job.stored_path)
+                codes = await read_answer_key_document(session, job, doc, data, provider)
+                page_count, drafts = 0, []
+            else:
+                page_count, drafts = await run_pipeline(
+                    job_id=job.id,
+                    source_key=job.stored_path,
+                    storage=get_storage(),
+                    provider=provider,
+                    soffice=settings.soffice_path,
+                    default_difficulty=job.default_difficulty.value,
+                    progress=progress,
+                )
+        except AIQuotaExhausted as exc:  # back in the queue; the loop pauses until quotas may have refilled
+            global _paused_until
+            _paused_until = time.monotonic() + QUOTA_PAUSE_SECONDS
+            job.status, job.error, job.stage = JobStatus.QUEUED, None, f"Chờ quota AI: {exc}"[:200]
         except (NormalizeError, AIError, StorageError) as exc:
             job.status, job.error, job.stage = JobStatus.FAILED, str(exc), "Lỗi"
         except Exception as exc:  # unexpected: keep the worker alive and record what happened
@@ -97,10 +140,23 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
         else:
             job.status, job.page_count, job.drafts = JobStatus.DONE, page_count, drafts
             job.stage = f"Đã đọc {len(drafts)} câu từ {page_count} trang" if drafts else "Không tìm thấy câu hỏi nào"
+            if codes is not None:
+                job.stage = f"Đã đọc đáp án chính thức của {codes} mã đề"
             job.models_used = ", ".join(sorted(provider.models_used))[:200] or None
+            if getattr(provider, "reused", 0):
+                job.stage = f"{job.stage} · {provider.reused} câu lấy đáp án từ ngân hàng"[:200]
         job.finished_at = await session.scalar(select(func.now()))
         await session.commit()
         log.info("Job %s finished: %s", job_id, job.status)
+        if job.status == JobStatus.DONE:
+            try:  # a library file: publish it and typeset clean PDFs when the drafts pass the checks
+                if codes:  # exams of this paper that were waiting for their official answers
+                    await recheck_waiting(session, job.category_id)
+                else:
+                    await auto_publish(session, job)
+            except Exception:  # the drafts stay for the admin's review screen
+                log.exception("Job %s: automatic publication failed", job_id)
+                await session.rollback()
 
 
 async def auto_submit_once(batch: int = 500) -> int:
@@ -147,6 +203,11 @@ async def ai_jobs_loop(once: bool = False) -> None:
     if requeued := await requeue_stale():
         log.info("Requeued %s stale job(s)", requeued)
     while True:
+        if time.monotonic() < _paused_until:  # every AI model is out of quota for now
+            if once:
+                return
+            await asyncio.sleep(POLL_SECONDS)
+            continue
         job_id = await claim_next()
         if job_id is not None:
             log.info("Processing job %s", job_id)

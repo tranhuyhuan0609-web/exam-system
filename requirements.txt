@@ -13,6 +13,7 @@ openpyxl>=3.1
 python-docx>=1.1
 google-genai>=1.0
 pymupdf>=1.24
+playwright>=1.48  # typesets clean exam PDFs (headless Chromium)
 pillow>=10.4
 minio>=7.2
 # Question crawler (app/pipeline)

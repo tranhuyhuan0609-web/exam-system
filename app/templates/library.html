@@ -40,6 +40,7 @@
         <td class="small muted">{{ d.license_note or d.source }}{% if d.source_url and user.role == "ADMIN" %} · <a href="{{ d.source_url }}" target="_blank" rel="noopener noreferrer">gốc</a>{% endif %}</td>
         <td class="row">
           {% if d.mime in ("application/pdf", "image/png", "image/jpeg") %}<a class="btn btn-small" href="/library/{{ d.id }}/view" target="_blank" rel="noopener">Xem</a>{% endif %}
+          {% if d.exam_id %}<a class="btn btn-outline btn-small" href="/exams/{{ d.exam_id }}">Làm online</a>{% endif %}
           {% if d.id in downloadable %}<a class="btn btn-outline btn-small" href="/library/{{ d.id }}/download">Tải về</a>{% endif %}
         </td>
       </tr>

@@ -9,7 +9,16 @@ from typing import Protocol
 
 from pydantic import BaseModel, ValidationError
 
-from app.ai.schemas import EssayGrade, EssayGradeResult, ExtractedQuestion, ExtractionResult, Solution, SolveResult
+from app.ai.schemas import (
+    AnswerKeyResult,
+    EssayGrade,
+    EssayGradeResult,
+    ExtractedQuestion,
+    ExtractionResult,
+    PaperKey,
+    Solution,
+    SolveResult,
+)
 from app.domain.latex import repair_latex
 
 log = logging.getLogger(__name__)
@@ -63,7 +72,11 @@ class AIError(Exception):
     """The model could not produce a usable answer (after retries and fallbacks)."""
 
 
-EXTRACT_PROMPT = """Bạn là chuyên gia số hoá đề thi Vật lí THPT Việt Nam. Các ảnh trên là các trang của một đề thi, \
+class AIQuotaExhausted(AIError):
+    """Every model is out of its daily quota: the job waits and runs again later instead of failing."""
+
+
+EXTRACT_PROMPT = """Bạn là chuyên gia số hoá đề thi Việt Nam (mọi môn, mọi cấp). Các ảnh trên là các trang của một đề thi, \
 mỗi ảnh được đánh dấu bằng nhãn “TRANG n” ngay trước nó.
 
 Nhiệm vụ: trích xuất MỌI câu hỏi bắt đầu trên các trang KHÔNG đánh dấu “chỉ tham khảo”. \
@@ -82,12 +95,19 @@ Dấu thập phân kiểu Việt Nam viết là {,} trong LaTeX.
 - Nếu câu có hình vẽ / đồ thị / sơ đồ mạch, trả figure_bbox bao sát riêng phần hình (không lấy chữ đề bài), \
 theo thang 0–1000 của đúng trang chứa hình, và page là trang chứa câu hỏi."""
 
-SOLVE_PROMPT = """Bạn là giáo viên Vật lí giỏi. Giải từng câu hỏi dưới đây (dữ liệu JSON; ảnh hình vẽ kèm theo được \
+ANSWER_KEY_PROMPT = """Các ảnh trên là BẢNG ĐÁP ÁN chính thức của một đề thi, gồm nhiều mã đề.
+Chép CHÍNH XÁC đáp án của MỌI mã đề có trong bảng, không suy luận, không bỏ sót, không giải lại đề:
+- multiple_choice: đáp án A/B/C/D của câu 1, 2, 3, ... theo đúng thứ tự (phần trắc nghiệm nhiều lựa chọn).
+- true_false: với đề có phần đúng/sai, mỗi câu một chuỗi Đ/S theo ý a, b, c, d (VD: ĐSĐS).
+- short_answer: với đề có phần trả lời ngắn, đáp số từng câu như in trong bảng (VD: 0,5).
+Ô không đọc được thì ghi "?" (không đoán)."""
+
+SOLVE_PROMPT = """Bạn là giáo viên giỏi đúng môn của đề (Toán, Vật lí, Hoá học, ...). Giải từng câu hỏi dưới đây (dữ liệu JSON; ảnh hình vẽ kèm theo được \
 đánh dấu “HÌNH CÂU n”).
 
 Với mỗi câu:
-1. Viết lời giải từng bước bằng tiếng Việt: tóm tắt dữ kiện, đổi đơn vị về SI, viết công thức, thay số.
-2. Dùng công cụ chạy code Python để tính mọi phép tính số (không tính nhẩm), rồi ghi kết quả vào lời giải.
+1. Viết lời giải từng bước bằng tiếng Việt: tóm tắt dữ kiện, (môn tự nhiên) đổi đơn vị về SI, viết công thức, thay số.
+2. Tính cẩn thận mọi phép tính số (dùng công cụ chạy code Python nếu có, không tính nhẩm), rồi ghi kết quả vào lời giải.
 3. So sánh kết quả với các lựa chọn rồi mới chốt correct_label. Nếu không khớp lựa chọn nào, đặt matches_an_option = false \
 và chọn lựa chọn gần nhất.
 4. Câu TRUE_FALSE: xét từng ý a, b, c, d (có tính toán nếu cần), ghi kết luận vào statement_truths theo đúng thứ tự.
@@ -110,7 +130,15 @@ class GeminiProvider:
 
     RETRYABLE = {429, 500, 502, 503, 504}
 
-    def __init__(self, api_key: str, models: list[str], max_rounds: int = 4, base_delay: float = 5.0):
+    def __init__(
+        self,
+        api_key: str,
+        models: list[str],
+        max_rounds: int = 4,
+        base_delay: float = 5.0,
+        extract_models: list[str] | None = None,
+        extract_thinking: str = "",
+    ):
         from google import genai
 
         if not api_key:
@@ -119,21 +147,37 @@ class GeminiProvider:
             raise AIError("Chưa cấu hình GEMINI_MODELS.")
         self._client = genai.Client(api_key=api_key)
         self._models = models
+        # Reading pages is transcription: a cheaper model, thinking little (thinking is billed as output).
+        self._extract_models = extract_models or models
+        self._extract_thinking = extract_thinking
         self._max_rounds = max_rounds
         self._base_delay = base_delay
         self._used: set[str] = set()
+        self._out_for_today: set[str] = set()  # daily free quota used up: not worth retrying today
 
     @property
     def models_used(self) -> set[str]:
         return self._used
 
-    async def _generate(self, contents: list, schema: type[BaseModel], code_execution: bool = False) -> BaseModel:
+    async def _generate(
+        self,
+        contents: list,
+        schema: type[BaseModel],
+        code_execution: bool = False,
+        models: list[str] | None = None,
+        thinking: str = "",
+    ) -> BaseModel:
         from google.genai import errors, types
 
         last_error: Exception | None = None
         for round_no in range(self._max_rounds):
-            for model in self._models:
+            candidates = [m for m in models or self._models if m not in self._out_for_today]
+            if not candidates:
+                raise AIQuotaExhausted("Mọi model Gemini đã hết quota hôm nay; job sẽ chạy lại sau.")
+            for model in candidates:
                 config = types.GenerateContentConfig(temperature=0)
+                if thinking:
+                    config.thinking_config = types.ThinkingConfig(thinking_level=thinking)
                 if code_execution:
                     # Code execution cannot be combined with a response schema on every model, so ask for a
                     # JSON block in the text and validate it ourselves.
@@ -158,8 +202,15 @@ class GeminiProvider:
                     return schema.model_validate_json(_json_block(text))
                 except errors.APIError as exc:
                     last_error = exc
+                    if exc.code == 400 and thinking and "thinking" in str(exc.message).lower():
+                        thinking = ""  # this model has no thinking levels: ask again without
+                        continue
                     if exc.code not in self.RETRYABLE:
                         raise AIError(f"Gemini từ chối yêu cầu ({exc.code}): {exc.message}") from exc
+                    if exc.code == 429 and "perday" in str(exc).replace(" ", "").lower():
+                        self._out_for_today.add(model)
+                        log.warning("Gemini %s: daily quota used up, skipped until the worker restarts", model)
+                        continue
                     log.warning("Gemini %s busy (%s), trying next model", model, exc.code)
                 except (ValidationError, ValueError, IndexError, AttributeError) as exc:
                     last_error = exc
@@ -175,12 +226,26 @@ class GeminiProvider:
             label = f"TRANG {page.number}" + (" (chỉ tham khảo)" if page.context_only else "")
             contents += [label, types.Part.from_bytes(data=page.png, mime_type="image/png")]
         contents.append(EXTRACT_PROMPT)
-        result = await self._generate(contents, ExtractionResult)
+        result = await self._generate(
+            contents, ExtractionResult, models=self._extract_models, thinking=self._extract_thinking
+        )
         for q in result.questions:
             q.content = repair_latex(q.content)
             for c in q.choices:
                 c.content = repair_latex(c.content)
         return result.questions
+
+    async def read_answer_key(self, pages: list[PageImage]) -> list[PaperKey]:
+        """The official answer table of a paper: every code with its answers. Read by the main models (an answer
+        key must be exact; it is the reference the imported exams are checked against)."""
+        from google.genai import types
+
+        contents: list = []
+        for page in pages:
+            contents += [f"TRANG {page.number}", types.Part.from_bytes(data=page.png, mime_type="image/png")]
+        contents.append(ANSWER_KEY_PROMPT)
+        result = await self._generate(contents, AnswerKeyResult)
+        return result.papers
 
     async def solve(self, questions: list[ExtractedQuestion], figures: list[FigureImage]) -> list[Solution]:
         from google.genai import types

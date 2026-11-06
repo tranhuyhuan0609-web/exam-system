@@ -261,3 +261,20 @@ def test_upload_validation_and_access(admin_client, client, make_user, chapter_s
     client.post("/login", data={"email": "hs@example.com", "password": "password123"})
     assert client.get("/admin/ai-imports").status_code == 403
     assert client.get("/admin/ai-imports/1/pages/1.png").status_code == 403
+
+
+def test_a_job_waits_for_quota_instead_of_failing(admin_client, db, chapter_scope, monkeypatch):
+    from app.ai.provider import AIQuotaExhausted
+
+    class OutOfQuota(FakeProvider):
+        async def extract(self, pages):
+            raise AIQuotaExhausted("hết quota")
+
+    monkeypatch.setattr(worker, "_paused_until", 0.0)
+    job_id = int(upload(admin_client, chapter_scope).headers["location"].rsplit("/", 1)[1])
+    asyncio.run(worker.process(job_id, provider=OutOfQuota()))
+    job = db(lambda s: s.get(ImportJob, job_id))
+    assert job.status == JobStatus.QUEUED and job.error is None and "Chờ quota AI" in job.stage
+    assert worker._paused_until > 0  # the loop rests before claiming the next job
+    asyncio.run(worker.ai_jobs_loop(once=True))  # paused: returns without touching the queue
+    assert db(lambda s: s.get(ImportJob, job_id)).status == JobStatus.QUEUED

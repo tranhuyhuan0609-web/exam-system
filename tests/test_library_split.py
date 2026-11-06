@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pymupdf
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.config import get_settings
 from app.infrastructure.storage import get_bronze_storage, get_storage
@@ -120,6 +120,25 @@ def test_admin_splits_a_stored_document_again(admin_client, db):
         "Đề số 1",
         "Đề số 2",
     ]
+    # The parts' AI imports had not started: they are replaced too, one per new part, not added to.
+    jobs = db(lambda s: s.scalars(select(ImportJob)))
+    parts = db(lambda s: s.scalars(select(LibraryDocument).where(LibraryDocument.parent_id == bundle_id)))
+    assert len(jobs) == 2 and {p.import_job_id for p in parts} == {j.id for j in jobs}
+
+
+def test_splitting_a_stored_bundle_replaces_its_waiting_whole_file_import(admin_client, db):
+    db(lambda s: sync_drive(s, SOURCE, BundleDrive(), get_bronze_storage(), MemoryRawStore(), get_storage()))
+
+    async def as_before_splitting_existed(s):  # one import for the whole bundle, no parts
+        bundle = await s.scalar(select(LibraryDocument).where(LibraryDocument.parent_id.is_(None)))
+        await s.execute(delete(LibraryDocument).where(LibraryDocument.parent_id == bundle.id))
+        await s.execute(delete(ImportJob).where(ImportJob.id != bundle.import_job_id))
+        return bundle.id
+
+    bundle_id = db(as_before_splitting_existed)
+    admin_client.post("/admin/library/bulk", data={"ids": [str(bundle_id)], "action": "split"})
+    names = sorted(j.original_filename for j in db(lambda s: s.scalars(select(ImportJob))))
+    assert names == ["Tuyển tập đề Toán – Đề số 1.pdf", "Tuyển tập đề Toán – Đề số 2.pdf"]
 
 
 def _scanned(texts: list[str]) -> bytes:

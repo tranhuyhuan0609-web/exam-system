@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 
 from app.config import get_settings
 from app.deps import AdminUser, SessionDep
-from app.infrastructure.storage import get_bronze_storage
+from app.infrastructure.storage import get_bronze_storage, get_storage
 from app.models import LibraryDocument, LibraryKind, LibraryStatus
 from app.pipeline.use_cases.drive_sync import load_sources
 from app.pipeline.use_cases.library_split import split_stored
@@ -67,7 +67,7 @@ async def library_bulk(request: Request, user: AdminUser, session: SessionDep):
     if action == "split":  # cut bundles into one document per exam
         cut = 0
         for doc in docs:
-            cut += await split_stored(session, doc, get_bronze_storage(), get_settings().soffice_path)
+            cut += await split_stored(session, doc, get_bronze_storage(), get_storage(), get_settings().soffice_path)
         flash(request, f"Đã tách được {cut} đề." if cut else "Không tìm thấy nhiều đề trong các tài liệu đã chọn.")
         return redirect(_back(form))
     for doc in docs:
