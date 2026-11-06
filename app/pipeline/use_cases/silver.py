@@ -43,6 +43,7 @@ from app.pipeline.ports import AIUnavailable, Downloader, Embedder, Enricher, En
 from app.pipeline.use_cases.toc import ensure_path
 
 log = logging.getLogger(__name__)
+INDEX_PAGE = re.compile(r"/index\.(jsp|html?)$|-index\.html$")
 
 _IMG = re.compile(r"\[\[img:(\d+)\]\]")
 _MATH = re.compile(r"\$\$.*?\$\$|\$[^$]*\$|\\\(.*?\\\)|\\\[.*?\\\]", re.S)
@@ -198,6 +199,8 @@ async def _upsert(
     session: AsyncSession, deps: SilverDeps, doc: RawDocument, config: SiteConfig, parsed: ParsedQuestion, title: str
 ) -> CrawledQuestion | None:
     if parsed.question_type not in QuestionType.__members__:
+        return None
+    if not parsed.choices and INDEX_PAGE.search(doc.url):  # a table of contents: lesson titles, no questions
         return None
     text_hash = content_hash(parsed.question_type, parsed.content, (c["content"] for c in parsed.choices))
     source_hash = _fingerprint(parsed)

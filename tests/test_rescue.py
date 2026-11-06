@@ -63,7 +63,14 @@ def test_waiting_questions_are_finished_by_machine(db):
                 ),
                 _item(4, "Thủ đô của Việt Nam là thành phố nào?", ["Không tìm thấy phần đáp án."]),
                 _item(5, "Chứng minh rằng $\\sqrt2$ là số vô tỉ.", ["Không tìm thấy phần đáp án."]),
-                _item(6, "Câu AI trả lời hỏng", ["Không tìm thấy đáp án."]),
+                _item(6, "Câu AI trả lời hỏng là", ["Không tìm thấy đáp án."]),
+                _item(7, "Làm quen với Vật lí", ["Không tìm thấy phần đáp án."]),  # a lesson title (an index page)
+                _item(  # the options are one picture of formulas: a text model would make it an essay
+                    8,
+                    "Tập nghiệm của phương trình sin2x = sinx là",
+                    ["Không tách được các lựa chọn A–D."],
+                    images=[{"n": 0, "key": "figures/crawl/x.png", "src": "https://example.com/x.png"}],
+                ),
             ]
         )
 
@@ -85,11 +92,11 @@ def test_waiting_questions_are_finished_by_machine(db):
                 "type": "ESSAY",
                 "explanation": "Giả sử $\\sqrt2=\\dfrac{p}{q}$ tối giản…",
             },
-            "Câu AI trả lời hỏng": {"type": "MULTIPLE_CHOICE", "choices": ["A"], "correct": 3},
+            "Câu AI trả lời hỏng là": {"type": "MULTIPLE_CHOICE", "choices": ["A"], "correct": 3},
         }
     )
     stats = db(lambda s: rescue_waiting(s, [model]))
-    assert stats == {"pictures_dropped": 1, "back_to_ai": 1, "completed": 3, "unchanged": 1}
+    assert stats == {"pictures_dropped": 1, "back_to_ai": 2, "completed": 3, "unchanged": 1, "not_a_question": 1}
     rows = {r.external_id: r for r in db(lambda s: s.scalars(select(CrawledQuestion)))}
 
     assert rows["q1"].status == CrawlItemStatus.READY and "[[img" not in rows["q1"].explanation
@@ -111,6 +118,8 @@ def test_waiting_questions_are_finished_by_machine(db):
     ]
     assert rows["q5"].question_type == QuestionType.ESSAY and rows["q5"].status == CrawlItemStatus.READY
     assert rows["q6"].status == CrawlItemStatus.NEEDS_REVIEW and rows["q6"].issues == ["Không tìm thấy đáp án."]
+    assert rows["q7"].status == CrawlItemStatus.REJECTED
+    assert rows["q8"].status == CrawlItemStatus.PENDING_AI and rows["q8"].question_type == QuestionType.MULTIPLE_CHOICE
     ids = [r.id for r in (rows["q3"], rows["q4"], rows["q5"], rows["q6"])]
     assert model.asked == [ids[:3], ids[3:]]  # three questions a call (Groq's free tier limits tokens a minute)
 
