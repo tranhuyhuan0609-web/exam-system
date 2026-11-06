@@ -142,6 +142,83 @@ async def create_test(session: AsyncSession, teacher: User, spec: ScheduleSpec, 
     return exam
 
 
+@dataclass
+class MatrixSpec:
+    """A test from a matrix: one rule per row (scope, level, type, count), as read from a teacher's file."""
+
+    title: str
+    root: Category
+    rules: list[MatrixRule]
+    starts_at: datetime | None
+    ends_at: datetime | None
+    minutes: int
+    same_paper: bool = False
+    shuffle: bool = True
+
+
+async def check_matrix(session: AsyncSession, spec: MatrixSpec, now: datetime) -> list[str]:
+    from app.application.paper import availability, validate_rules
+
+    errors = validate_rules(spec.rules)
+    if not spec.title.strip() or len(spec.title) > 300:
+        errors.append("Hãy nhập tên bài kiểm tra (tối đa 300 ký tự).")
+    if any(not rule.scope_key for rule in spec.rules):
+        errors.append("Có dòng chưa chọn mục lục.")
+    elif spec.rules:
+        probe = Exam(root_id=spec.root.id, category_id=spec.root.id)
+        have_counts = await availability(session, probe, spec.rules)
+        for number, (rule, have) in enumerate(zip(spec.rules, have_counts, strict=True), 1):
+            if have is None:
+                errors.append(f"Dòng {number}: mục lục không thuộc môn {spec.root.name}.")
+            elif have < rule.count:
+                errors.append(f"Dòng {number}: ngân hàng chỉ có {have} câu phù hợp (cần {rule.count}).")
+    if not 1 <= spec.minutes <= MAX_MINUTES:
+        errors.append(f"Thời gian làm bài phải từ 1 đến {MAX_MINUTES} phút.")
+    if spec.starts_at is None or spec.ends_at is None:
+        errors.append("Hãy chọn giờ mở và giờ đóng bài.")
+    elif spec.ends_at <= spec.starts_at:
+        errors.append("Giờ đóng phải sau giờ mở.")
+    elif (spec.ends_at - spec.starts_at).total_seconds() < spec.minutes * 60:
+        errors.append("Khoảng từ giờ mở đến giờ đóng ngắn hơn thời gian làm bài.")
+    elif spec.ends_at <= now:
+        errors.append("Giờ đóng đã qua.")
+    return errors
+
+
+async def create_from_matrix(session: AsyncSession, teacher: User, spec: MatrixSpec, now: datetime) -> Exam:
+    if errors := await check_matrix(session, spec, now):
+        raise ScheduleError(" ".join(errors))
+    exam = Exam(
+        exam_mode=ExamMode.SCHEDULED,
+        visibility=ExamVisibility.PRIVATE,
+        is_published=False,
+        max_attempts=1,
+        allow_custom_parts=False,
+        created_by=teacher.id,
+        access_token=new_token(),
+        access_code=new_code(),
+        title=spec.title.strip(),
+        root_id=spec.root.id,
+        category_id=spec.root.id,
+        matrix=[rule.to_json() for rule in spec.rules],
+        available_from=spec.starts_at,
+        available_until=spec.ends_at,
+        duration_seconds=spec.minutes * 60,
+        shuffle_questions=spec.shuffle,
+        shuffle_choices=spec.shuffle,
+        question_source=QuestionSource.FIXED if spec.same_paper else QuestionSource.MATRIX,
+    )
+    totals: dict[str, int] = {}
+    for rule in spec.rules:
+        totals[rule.question_type] = totals.get(rule.question_type, 0) + rule.count
+    exam.description = "Theo ma trận đề · " + describe(totals)
+    session.add(exam)
+    await session.flush()
+    if spec.same_paper:
+        await draw_shared_paper(session, exam)
+    return exam
+
+
 async def attempts_started(session: AsyncSession, exam: Exam) -> int:
     return await session.scalar(select(func.count()).select_from(ExamAttempt).where(ExamAttempt.exam_id == exam.id))
 
