@@ -12,6 +12,7 @@ python -m app.pipeline recheck SIMILAR       # dedup + labelling again for the i
 python -m app.pipeline recheck READY --no-semantic   # publish without the cosine check (embeddings at quota)
 python -m app.pipeline renormalize           # rule-based formula conversion for AI-queued items
 python -m app.pipeline adopt-series "Vật lí 11" "Kết nối tri thức"
+python -m app.pipeline drive-sync thptqg2026 [--max-files 50]   # Google Drive folder -> library
 """
 
 import argparse
@@ -77,6 +78,25 @@ async def _renormalize() -> None:
         print("Questions that were waiting for the AI:", await renormalize_waiting(session, deps))
 
 
+async def _drive_sync(source_id: str, max_files: int | None) -> None:
+    from app.db import SessionLocal
+    from app.infrastructure.storage import get_bronze_storage, get_storage
+    from app.pipeline.adapters.drive import DriveClient
+    from app.pipeline.adapters.mongo import MongoRawStore
+    from app.pipeline.use_cases.drive_sync import load_sources, sync_drive
+
+    settings = get_settings()
+    source = load_sources(settings.drive_configs_dir)[source_id]
+    drive, store = DriveClient(settings.google_drive_api_key), MongoRawStore()
+    try:
+        async with SessionLocal() as session:
+            stats = await sync_drive(session, source, drive, get_bronze_storage(), store, get_storage(), max_files)
+    finally:
+        await drive.close()
+        await store.close()
+    print("Drive sync:", stats)
+
+
 async def _adopt(root: str, series: str) -> None:
     from app.db import SessionLocal
     from app.pipeline.use_cases.toc import adopt_series
@@ -131,6 +151,9 @@ def main(argv: list[str] | None = None) -> None:
     reparse.add_argument("site_id")
     sub.add_parser("embed-questions")
     sub.add_parser("renormalize")
+    drive = sub.add_parser("drive-sync")
+    drive.add_argument("source_id")
+    drive.add_argument("--max-files", type=int)
     adopt = sub.add_parser("adopt-series")
     adopt.add_argument("root")
     adopt.add_argument("series")
@@ -176,6 +199,8 @@ def main(argv: list[str] | None = None) -> None:
         asyncio.run(_reparse(args.site_id))
     elif args.command == "embed-questions":
         asyncio.run(_embed())
+    elif args.command == "drive-sync":
+        asyncio.run(_drive_sync(args.source_id, args.max_files))
     elif args.command == "renormalize":
         asyncio.run(_renormalize())
     elif args.command == "adopt-series":

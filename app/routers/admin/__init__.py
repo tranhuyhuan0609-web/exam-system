@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.deps import require_admin
-from app.routers.admin import ai_imports, categories, crawler, dashboard, exams, imports, questions, users
+from app.routers.admin import ai_imports, categories, crawler, dashboard, exams, imports, library, questions, users
 
 # Every admin route requires an admin; individual handlers still declare AdminUser when they need the user.
 router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
@@ -14,3 +14,4 @@ router.include_router(exams.router)
 router.include_router(ai_imports.router)
 router.include_router(users.router)
 router.include_router(crawler.router)
+router.include_router(library.router)

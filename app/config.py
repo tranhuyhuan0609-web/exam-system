@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     mongo_url: str = "mongodb://localhost:27017"
     mongo_db: str = "exam_bronze"
     crawler_configs_dir: str = "configs/sites"
+    drive_configs_dir: str = "configs/drive"
+    google_drive_api_key: str = ""  # Google Cloud API key restricted to the Drive API (public folders)
     crawler_user_agent: str = "ExamSystemCrawler/0.1"
     gemini_embedding_model: str = "gemini-embedding-001"
     semantic_duplicate_threshold: float = 0.92  # cosine similarity at which a crawled question is a duplicate

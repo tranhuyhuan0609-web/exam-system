@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Thư viện tài liệu · Exam System{% endblock %}
+{% block container_class %}wide{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>📚 Thư viện tài liệu</h1>
+  <form method="get" class="row">
+    <input name="q" value="{{ q }}" placeholder="Tìm theo tên tài liệu">
+    <button class="btn btn-outline btn-small">Tìm</button>
+  </form>
+</div>
+<p class="muted small">{{ total }} tài liệu · dành cho giáo viên gói Pro. Mỗi tài liệu ghi rõ nguồn; chỉ tài liệu được phép mới có nút tải về.</p>
+
+<nav class="breadcrumb small">
+  <a href="/library">Thư viện</a>
+  {% for part in current %} › <a href="/library?folder={{ current[:loop.index] | join('/') | urlencode }}">{{ part }}</a>{% endfor %}
+</nav>
+
+{% if subfolders and not q %}
+  <div class="library-folders">
+    {% for name, n in subfolders %}
+      <a class="card library-folder" href="/library?folder={{ (current + [name]) | join('/') | urlencode }}">📁 {{ name }} <span class="muted small">{{ n }}</span></a>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="card">
+  <table class="table">
+    <thead><tr><th>Tài liệu</th><th>Loại</th><th>Nguồn</th><th></th></tr></thead>
+    <tbody>
+    {% for d in docs %}
+      <tr>
+        <td><strong>{{ d.title }}</strong>{% if d.status != "PUBLISHED" %} <span class="badge badge-warn">Chờ duyệt</span>{% endif %}
+          {% if q %}<div class="muted small">{{ d.folder_path | join(" › ") }}</div>{% endif %}</td>
+        <td class="small">{{ KIND_LABELS[d.kind] }}</td>
+        <td class="small muted">{{ d.license_note or d.source }}{% if d.source_url %} · <a href="{{ d.source_url }}" target="_blank" rel="noopener noreferrer">gốc</a>{% endif %}</td>
+        <td class="row">
+          {% if d.mime in ("application/pdf", "image/png", "image/jpeg") %}<a class="btn btn-small" href="/library/{{ d.id }}/view" target="_blank" rel="noopener">Xem</a>{% endif %}
+          {% if d.downloadable or user.role == "ADMIN" %}<a class="btn btn-outline btn-small" href="/library/{{ d.id }}/download">Tải về</a>{% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="muted">{{ "Không tìm thấy tài liệu nào." if q else ("Chọn một thư mục ở trên." if subfolders else "Thư mục này chưa có tài liệu.") }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

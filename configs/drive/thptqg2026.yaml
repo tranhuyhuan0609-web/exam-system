@@ -1,0 +1,37 @@
+# Thư mục Google Drive công khai "Tailieu @thptqg2026" (kho tài liệu do cộng đồng đóng góp).
+# Only these folders are taken. Rights differ per folder: official exams are published, teachers' contributions
+# wait for an admin to check the source. Textbooks (KHO SÁCH), IELTS and HSK folders are left out on purpose.
+# "targets": files whose path matches also go to the AI exam import (Gemini reads pages: quota permitting).
+source_id: thptqg2026
+name: Tailieu @thptqg2026
+folder_id: 1kYsUS6BtdAH6TTcStJx5AJK4N5DTGJv4
+max_files: 200
+include:
+  - folder: "9. FULL ĐỀ THI THPTQG2024 (BỘ GD&ĐT)"
+    kind: EXAM
+    status: PUBLISHED
+    downloadable: true
+    license_note: Đề thi chính thức của Bộ GD&ĐT, đã công bố công khai
+    targets:
+      - match: 'to[aá]n'
+        category: [Ôn thi THPT – Toán, Đề thi THPT 2024]
+      - match: 'v[aậ]t\s*l[iíyý]|(^|[^a-zà-ỹ])l[ýí]([^a-zà-ỹ]|$)'
+        category: [Ôn thi THPT – Vật lí, Đề thi THPT 2024]
+  - folder: "10. HSG DUYÊN HẢI VÀ ĐBBB 2024"
+    kind: HSG
+    status: PUBLISHED
+    license_note: Đề thi HSG đã công bố
+    targets:
+      - match: 'to[aá]n'
+        category: [Luyện thi HSG, Toán, Duyên hải & ĐBBB 2024]
+      - match: 'v[aậ]t\s*l[iíyý]|(^|[^a-zà-ỹ])l[ýí]([^a-zà-ỹ]|$)'
+        category: [Luyện thi HSG, Vật lí, Duyên hải & ĐBBB 2024]
+  - folder: "1. Khối 10 - Chương trình mới"
+    kind: TOPIC
+    status: PENDING_REVIEW
+  - folder: "2. Khối 11 - Chương trình mới"
+    kind: TOPIC
+    status: PENDING_REVIEW
+  - folder: "3. Khối 12 - Chương trình mới"
+    kind: TOPIC
+    status: PENDING_REVIEW
