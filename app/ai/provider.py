@@ -82,12 +82,12 @@ Dấu thập phân kiểu Việt Nam viết là {,} trong LaTeX.
 - Nếu câu có hình vẽ / đồ thị / sơ đồ mạch, trả figure_bbox bao sát riêng phần hình (không lấy chữ đề bài), \
 theo thang 0–1000 của đúng trang chứa hình, và page là trang chứa câu hỏi."""
 
-SOLVE_PROMPT = """Bạn là giáo viên Vật lí giỏi. Giải từng câu hỏi dưới đây (dữ liệu JSON; ảnh hình vẽ kèm theo được \
+SOLVE_PROMPT = """Bạn là giáo viên giỏi đúng môn của đề (Toán, Vật lí, Hoá học, ...). Giải từng câu hỏi dưới đây (dữ liệu JSON; ảnh hình vẽ kèm theo được \
 đánh dấu “HÌNH CÂU n”).
 
 Với mỗi câu:
-1. Viết lời giải từng bước bằng tiếng Việt: tóm tắt dữ kiện, đổi đơn vị về SI, viết công thức, thay số.
-2. Dùng công cụ chạy code Python để tính mọi phép tính số (không tính nhẩm), rồi ghi kết quả vào lời giải.
+1. Viết lời giải từng bước bằng tiếng Việt: tóm tắt dữ kiện, (môn tự nhiên) đổi đơn vị về SI, viết công thức, thay số.
+2. Tính cẩn thận mọi phép tính số (dùng công cụ chạy code Python nếu có, không tính nhẩm), rồi ghi kết quả vào lời giải.
 3. So sánh kết quả với các lựa chọn rồi mới chốt correct_label. Nếu không khớp lựa chọn nào, đặt matches_an_option = false \
 và chọn lựa chọn gần nhất.
 4. Câu TRUE_FALSE: xét từng ý a, b, c, d (có tính toán nếu cần), ghi kết luận vào statement_truths theo đúng thứ tự.

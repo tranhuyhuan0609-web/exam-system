@@ -14,6 +14,7 @@ from datetime import timedelta
 
 from sqlalchemy import func, select, update
 
+from app.ai.frugal import FrugalProvider, TextSolver, bank_lookup
 from app.ai.normalize import NormalizeError
 from app.ai.pipeline import run_pipeline
 from app.ai.provider import AIError, AIProvider, GeminiProvider
@@ -24,6 +25,7 @@ from app.config import get_settings
 from app.db import SessionLocal
 from app.infrastructure.storage import StorageError, get_storage
 from app.models import ImportJob, JobStatus
+from app.pipeline.adapters.ai_chain import DbUsage
 
 log = logging.getLogger("app.worker")
 
@@ -37,6 +39,30 @@ STALE_AFTER = timedelta(minutes=30)
 def default_provider() -> AIProvider:
     settings = get_settings()
     return GeminiProvider(settings.gemini_api_key, settings.gemini_model_list)
+
+
+def text_solvers() -> list[TextSolver]:
+    """Free-tier text models that solve questions without a figure before Gemini is asked (app/ai/frugal.py)."""
+    settings, usage = get_settings(), DbUsage()
+    limits, solvers = settings.ai_daily_limit_map, []
+    if settings.groq_api_key and settings.groq_model:
+        solvers.append(
+            TextSolver(
+                "groq", settings.groq_base_url, settings.groq_api_key, settings.groq_model, usage, limits.get("groq", 0)
+            )
+        )
+    if settings.openrouter_api_key and settings.openrouter_model:
+        solvers.append(
+            TextSolver(
+                "openrouter",
+                settings.openrouter_base_url,
+                settings.openrouter_api_key,
+                settings.openrouter_model,
+                usage,
+                limits.get("openrouter", 0),
+            )
+        )
+    return solvers
 
 
 async def claim_next() -> int | None:
@@ -80,7 +106,8 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
             await session.commit()
 
         try:
-            provider = provider or default_provider()
+            if provider is None:  # bank answers and free text models first; Gemini reads the pages
+                provider = FrugalProvider(default_provider(), await bank_lookup(session, job.root_id), text_solvers())
             page_count, drafts = await run_pipeline(
                 job_id=job.id,
                 source_key=job.stored_path,
@@ -99,6 +126,8 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
             job.status, job.page_count, job.drafts = JobStatus.DONE, page_count, drafts
             job.stage = f"Đã đọc {len(drafts)} câu từ {page_count} trang" if drafts else "Không tìm thấy câu hỏi nào"
             job.models_used = ", ".join(sorted(provider.models_used))[:200] or None
+            if getattr(provider, "reused", 0):
+                job.stage = f"{job.stage} · {provider.reused} câu lấy đáp án từ ngân hàng"[:200]
         job.finished_at = await session.scalar(select(func.now()))
         await session.commit()
         log.info("Job %s finished: %s", job_id, job.status)

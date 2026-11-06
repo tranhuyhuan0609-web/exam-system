@@ -210,7 +210,7 @@ async def run_pipeline(
                 candidates = by_number.get(extracted[i].number) or []
                 if len(candidates) == 1:
                     solutions[i] = candidates[0]
-                elif position < len(answers):  # duplicate or missing numbers: fall back to order
+                elif len(answers) == len(indexes):  # duplicate numbers in a complete answer: by order
                     solutions[i] = answers[position]
 
         drafts = [

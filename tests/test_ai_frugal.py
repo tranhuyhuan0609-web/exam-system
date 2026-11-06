@@ -1,0 +1,116 @@
+"""Gemini quota saving in the AI import: answers from the bank first, free text models second, Gemini last."""
+
+import asyncio
+
+import httpx
+
+from app.ai.frugal import FrugalProvider, TextSolver, bank_lookup
+from app.ai.provider import FigureImage
+from app.ai.schemas import ExtractedChoice, ExtractedQuestion, Solution
+from app.application.categories import create_category
+from app.models import Difficulty, Question, QuestionType
+
+
+def _q(number: int, content: str, choices: list[str], kind: str = "MULTIPLE_CHOICE") -> ExtractedQuestion:
+    return ExtractedQuestion(
+        number=number,
+        page=1,
+        type=kind,
+        content=content,
+        choices=[ExtractedChoice(label="ABCD"[i], content=c) for i, c in enumerate(choices)],
+    )
+
+
+def _solution(number: int, label: str = "A") -> Solution:
+    return Solution(
+        number=number,
+        step_by_step_solution=f"giải câu {number}",
+        final_value="",
+        matches_an_option=True,
+        correct_label=label,
+        short_answer=None,
+        difficulty="UNDERSTANDING",
+    )
+
+
+class Inner:
+    models_used = {"gemini-x"}
+
+    def __init__(self):
+        self.solved: list[list[int]] = []
+        self.figures: list[list[int]] = []
+
+    async def solve(self, questions, figures):
+        self.solved.append([q.number for q in questions])
+        self.figures.append([f.question_number for f in figures])
+        return [_solution(q.number, "D") for q in questions]
+
+
+class FakeText(TextSolver):
+    def __init__(self, fail: bool = False):
+        super().__init__("groq", "http://x", "k", "gpt-oss")
+        self.fail, self.solved = fail, []
+
+    async def solve(self, questions):
+        self.solved.append([q.number for q in questions])
+        if self.fail:
+            raise httpx.HTTPError("429")
+        return [_solution(q.number, "B") for q in questions]
+
+
+def _bank(db):
+    async def make(s):
+        subject = await create_category(s, "Toán", slug="toan")
+        s.add(
+            Question(
+                root_id=subject.id,
+                category_id=subject.id,
+                difficulty=Difficulty.APPLICATION,
+                question_type=QuestionType.MULTIPLE_CHOICE,
+                content="Giá trị cực đại của hàm số $y = x^3 - 3x$ bằng",
+                choices=[
+                    {"id": "a", "content": "$-2$", "is_correct": False},
+                    {"id": "b", "content": "$2$", "is_correct": True},
+                    {"id": "c", "content": "$0$", "is_correct": False},
+                    {"id": "d", "content": "$1$", "is_correct": False},
+                ],
+                explanation="Lời giải trong ngân hàng",
+                is_verified=True,
+            )
+        )
+        await s.flush()
+        return subject.id
+
+    return db(make)
+
+
+def test_another_code_of_the_same_paper_is_answered_from_the_bank_text_models_then_gemini(db):
+    root_id = _bank(db)
+    lookup = db(lambda s: bank_lookup(s, root_id))
+    inner, text = Inner(), FakeText()
+    provider = FrugalProvider(inner, lookup, [text])
+    questions = [
+        # the bank's question in another code: options in another order, so the answer is now C
+        _q(1, "Giá trị cực đại của hàm số  $y = x^3 - 3x$ bằng.", ["$1$", "$0$", "$2$", "$-2$"]),
+        _q(2, "Tính $1 + 1$.", ["$1$", "$2$", "$3$", "$4$"]),  # no figure: a text model
+        _q(3, "Dựa vào hình vẽ, tìm $x$.", ["$1$", "$2$", "$3$", "$4$"]),  # a figure: Gemini
+    ]
+    answers = asyncio.run(provider.solve(questions, [FigureImage(3, b"png")]))
+    assert [(a.number, a.correct_label) for a in answers] == [(1, "C"), (2, "B"), (3, "D")]
+    assert answers[0].step_by_step_solution == "Lời giải trong ngân hàng" and answers[0].difficulty == "APPLICATION"
+    assert text.solved == [[2]] and inner.solved == [[3]] and inner.figures == [[3]]
+    assert provider.reused == 1 and "groq:gpt-oss" in provider.models_used
+
+
+def test_gemini_takes_over_when_text_models_are_out_of_quota(db):
+    inner, text = Inner(), FakeText(fail=True)
+    provider = FrugalProvider(inner, None, [text])
+    answers = asyncio.run(provider.solve([_q(1, "Tính $2 \\cdot 3$.", ["$5$", "$6$", "$7$", "$8$"])], []))
+    assert [a.correct_label for a in answers] == ["D"] and text.solved == [[1]] and inner.solved == [[1]]
+
+
+def test_different_options_are_not_taken_from_the_bank(db):
+    root_id = _bank(db)
+    lookup = db(lambda s: bank_lookup(s, root_id))
+    same_text_other_options = _q(1, "Giá trị cực đại của hàm số $y = x^3 - 3x$ bằng", ["$3$", "$4$", "$5$", "$6$"])
+    assert asyncio.run(lookup([same_text_other_options])) == {}
