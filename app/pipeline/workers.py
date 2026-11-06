@@ -12,7 +12,7 @@ from app.db import SessionLocal
 from app.infrastructure.storage import get_bronze_storage, get_storage
 from app.models import CrawlerSite, CrawlRun, CrawlRunStatus
 from app.pipeline.domain.models import SiteConfig
-from app.pipeline.ports import DLQ_TOPIC, RAW_TOPIC, AIUnavailable
+from app.pipeline.ports import DLQ_TOPIC, LIBRARY_TOPIC, RAW_TOPIC, AIUnavailable
 from app.pipeline.use_cases.silver import SilverDeps, ai_sweep, backfill_embeddings, ingest_document, retry_ready
 
 log = logging.getLogger(__name__)
@@ -89,6 +89,82 @@ async def run_silver(stop: asyncio.Event | None = None) -> None:
     )
 
 
+# ---------------------------------------------------------------- library (Drive files)
+
+
+async def handle_library_event(event: dict) -> None:
+    from app.pipeline.use_cases.drive_sync import ingest_library_event, load_sources
+
+    settings = get_settings()
+    source = load_sources(settings.drive_configs_dir).get(event["source_id"])
+    if source is None:
+        log.warning("Library event for unknown Drive source %s", event["source_id"])
+        return
+    async with SessionLocal() as session:
+        await ingest_library_event(session, event, source, get_bronze_storage(), get_storage(), settings.soffice_path)
+
+
+async def run_library(stop: asyncio.Event | None = None) -> None:
+    """raw.library.ingestion -> library documents (+ split, answer tables, AI import jobs)."""
+    from app.pipeline.adapters.kafka import KafkaBus, consume
+
+    bus = await KafkaBus().start()
+
+    async def to_dlq(event: dict, error: str) -> None:
+        await bus.publish(DLQ_TOPIC, {"stage": "library", "event": event, "error": error})
+
+    await consume(LIBRARY_TOPIC, "library", handle_library_event, on_error=to_dlq, stop=stop)
+
+
+async def drive_crawl_once(source, bus, drive_factory=None) -> dict:
+    """One run of a Drive source: fetch into Bronze and announce each file on Kafka."""
+    from app.pipeline.adapters.drive import DriveClient
+    from app.pipeline.adapters.mongo import MongoRawStore
+    from app.pipeline.use_cases.drive_sync import crawl_drive, known_in
+
+    drive = (drive_factory or (lambda: DriveClient(get_settings().google_drive_api_key)))()
+    store = MongoRawStore()
+
+    async def emit(event: dict) -> None:
+        await bus.publish(LIBRARY_TOPIC, event, key=event["file_id"])
+
+    try:
+        async with SessionLocal() as session:
+            return await crawl_drive(source, drive, get_bronze_storage(), store, emit, known_in(session))
+    finally:
+        await drive.close()
+        await store.close()
+
+
+async def run_drive_schedule(poll_seconds: int = 60, stop: asyncio.Event | None = None) -> None:
+    """Every Drive source in configs/drive runs every `every_hours`; a run fetches at most `max_files` files and
+    stops at Google's block page, so a large folder is taken a little at a time, never waiting for the AI."""
+    from app.pipeline.adapters.kafka import KafkaBus
+    from app.pipeline.use_cases.drive_sync import load_sources
+
+    settings = get_settings()
+    if not settings.google_drive_api_key:
+        log.info("No GOOGLE_DRIVE_API_KEY: Drive sources are not crawled")
+        return
+    bus = await KafkaBus().start()
+    next_run: dict[str, datetime] = {}
+    while not (stop and stop.is_set()):
+        now = datetime.now(UTC)
+        for source in load_sources(settings.drive_configs_dir).values():
+            if next_run.get(source.source_id, now) > now:
+                continue
+            try:
+                stats = await drive_crawl_once(source, bus)
+                log.info("Drive %s: %s", source.source_id, stats)
+                # More files waiting and not blocked: come back soon; otherwise after the usual interval.
+                wait = timedelta(minutes=20) if stats.get("more") and not stats.get("blocked") else None
+            except Exception:  # noqa: BLE001 - a bad run must not stop the schedule
+                log.exception("Drive %s run failed", source.source_id)
+                wait = None
+            next_run[source.source_id] = datetime.now(UTC) + (wait or timedelta(hours=source.every_hours))
+        await asyncio.sleep(poll_seconds)
+
+
 # ---------------------------------------------------------------- DLQ
 
 
@@ -155,6 +231,11 @@ async def _next_run() -> int | None:
 
 
 async def run_scheduler(poll_seconds: int = 20) -> None:
+    """Website crawls (one at a time, in subprocesses) and Drive sources, side by side."""
+    await asyncio.gather(_run_site_schedule(poll_seconds), run_drive_schedule())
+
+
+async def _run_site_schedule(poll_seconds: int = 20) -> None:
     log.info("Crawler scheduler started")
     while True:
         run_id = await _next_run()

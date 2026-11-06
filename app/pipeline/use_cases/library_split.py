@@ -145,7 +145,7 @@ async def queue_import(
 async def split_stored(session: AsyncSession, doc: LibraryDocument, bronze, storage, soffice: str) -> int:
     """Split a document already in the library (admin button, `library-split` command). If the AI import of the
     whole bundle has not started yet, it is replaced by one import per exam."""
-    if doc.parent_id is not None:
+    if doc.parent_id is not None or not doc.storage_key:  # a part, or a book listed without its file
         return 0
     # Imports still waiting for the worker: the bundle's own, and those of the parts about to be replaced.
     children = select(LibraryDocument.import_job_id).where(LibraryDocument.parent_id == doc.id)

@@ -15,5 +15,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
     && python -m playwright install --with-deps chromium-headless-shell
 COPY app ./app
+# Drive sources (configs/drive), read by the library consumer that runs on this image
+COPY configs ./configs
 ENV SOFFICE_PATH=soffice DATA_DIR=/app/data TESSDATA_DIR=/usr/share/tesseract-ocr/5/tessdata
 CMD ["python", "-m", "app.worker"]

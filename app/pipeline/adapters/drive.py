@@ -32,6 +32,11 @@ class DriveFile:
     mime: str
     size: int = 0
     md5: str | None = None
+    modified: str = ""  # RFC 3339; Google Docs have no md5, so their version is this
+
+    @property
+    def version(self) -> str:
+        return self.md5 or (f"mtime:{self.modified}" if self.modified else "")
 
     @property
     def is_folder(self) -> bool:
@@ -87,7 +92,7 @@ class DriveClient:
         while True:
             params = {
                 "q": f"'{folder_id}' in parents and trashed = false",
-                "fields": "nextPageToken, files(id, name, mimeType, size, md5Checksum)",
+                "fields": "nextPageToken, files(id, name, mimeType, size, md5Checksum, modifiedTime)",
                 "pageSize": 1000,
                 "supportsAllDrives": "true",
                 "includeItemsFromAllDrives": "true",
@@ -96,7 +101,14 @@ class DriveClient:
                 params["pageToken"] = token
             data = (await self._get(API, params)).json()
             files += [
-                DriveFile(f["id"], f["name"], f["mimeType"], int(f.get("size") or 0), f.get("md5Checksum"))
+                DriveFile(
+                    f["id"],
+                    f["name"],
+                    f["mimeType"],
+                    int(f.get("size") or 0),
+                    f.get("md5Checksum"),
+                    f.get("modifiedTime", ""),
+                )
                 for f in data.get("files", [])
             ]
             token = data.get("nextPageToken")

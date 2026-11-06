@@ -5,6 +5,7 @@ python -m app.pipeline crawl loigiaihay [--max-pages 20] [--force]
 python -m app.pipeline scheduler             # runs queued (admin "Chạy ngay") and scheduled crawls
 python -m app.pipeline silver                # raw.exam.ingestion -> crawled_questions -> questions
 python -m app.pipeline dlq                   # dead letters -> MongoDB dlq_events
+python -m app.pipeline library               # raw.library.ingestion (Drive files) -> library, AI import jobs
 python -m app.pipeline replay-dlq [--limit 100]
 python -m app.pipeline reparse loigiaihay    # Bronze -> Silver again, without crawling
 python -m app.pipeline embed-questions       # backfill embeddings of existing questions (semantic dedup)
@@ -172,6 +173,7 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("scheduler")
     sub.add_parser("silver")
     sub.add_parser("dlq")
+    sub.add_parser("library")
     replay = sub.add_parser("replay-dlq")
     replay.add_argument("--limit", type=int, default=100)
     reparse = sub.add_parser("reparse")
@@ -216,6 +218,10 @@ def main(argv: list[str] | None = None) -> None:
         from app.pipeline.workers import run_silver
 
         asyncio.run(run_silver())
+    elif args.command == "library":
+        from app.pipeline.workers import run_library
+
+        asyncio.run(run_library())
     elif args.command == "dlq":
         from app.pipeline.workers import run_dlq
 

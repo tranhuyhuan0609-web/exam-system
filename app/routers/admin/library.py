@@ -72,6 +72,8 @@ async def library_bulk(request: Request, user: AdminUser, session: SessionDep):
         return redirect(_back(form))
     for doc in docs:
         if action == "publish":
+            if not doc.storage_key:  # listed only (copyrighted book): there is no file to publish
+                continue
             doc.status = LibraryStatus.PUBLISHED
         elif action == "hide":
             doc.status = LibraryStatus.HIDDEN
