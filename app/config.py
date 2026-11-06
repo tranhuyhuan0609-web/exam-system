@@ -58,9 +58,10 @@ class Settings(BaseSettings):
     groq_base_url: str = "https://api.groq.com/openai/v1"
     openrouter_api_key: str = ""
     openrouter_model: str = ""  # text models, tried in order: ":free" ones on openrouter.ai/models
-    # Models that read images (exam pages, figures), tried in order before Gemini. Free lists change: a model
-    # that disappears is skipped.
-    openrouter_vision_models: str = "google/gemma-4-31b-it:free,nvidia/nemotron-3.5-super-vl:free"
+    # Models that read images (exam pages, figures), tried in order before Gemini. Off by default: in a trial
+    # a free model misread a scanned question ("phần ảo" as "phần thực"). Free lists change; a model that
+    # disappears is skipped. E.g. "google/gemma-4-31b-it:free,nvidia/nemotron-3.5-super-vl:free".
+    openrouter_vision_models: str = ""
     openrouter_min_interval: float = 3.2  # seconds between calls: free models allow 20 a minute
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     # Calls per provider and day (0 = no limit of ours; the provider still has its own).

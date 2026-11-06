@@ -496,9 +496,7 @@ class LibraryDocument(Base):
     license_note: Mapped[str | None] = mapped_column(String(300))
     import_job_id: Mapped[int | None] = mapped_column(ForeignKey("import_jobs.id", ondelete="SET NULL"))
     # One exam cut out of a bundle (app/pipeline/use_cases/library_split.py): the bundle and its pages (1-based).
-    parent_id: Mapped[int | None] = mapped_column(
-        ForeignKey("library_documents.id", ondelete="CASCADE"), index=True
-    )
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("library_documents.id", ondelete="CASCADE"), index=True)
     page_from: Mapped[int | None] = mapped_column(Integer)
     page_to: Mapped[int | None] = mapped_column(Integer)
     # A clean PDF we typeset from imported questions (app/application/library_publish.py): the online exam it
@@ -520,3 +518,21 @@ class LibraryView(Base):
     day: Mapped[date] = mapped_column(Date)
 
     __table_args__ = (UniqueConstraint("user_id", "day", "document_id", name="uq_library_views_user_day_doc"),)
+
+
+class AnswerKey(Base):
+    """The official answers of one paper code (e.g. Toán 2024, mã đề 101), read from the answer table published
+    with the exam (app/application/answer_keys.py). Exams imported from the library are checked against it
+    before they are published automatically."""
+
+    __tablename__ = "answer_keys"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"))
+    code: Mapped[str] = mapped_column(String(10))
+    # {"multiple_choice": ["B", ...], "true_false": ["ĐSĐS", ...], "short_answer": ["0,5", ...]}, in paper order
+    answers: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    source_document_id: Mapped[int | None] = mapped_column(ForeignKey("library_documents.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("category_id", "code", name="uq_answer_keys_category_code"),)

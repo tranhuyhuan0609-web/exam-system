@@ -9,7 +9,16 @@ from typing import Protocol
 
 from pydantic import BaseModel, ValidationError
 
-from app.ai.schemas import EssayGrade, EssayGradeResult, ExtractedQuestion, ExtractionResult, Solution, SolveResult
+from app.ai.schemas import (
+    AnswerKeyResult,
+    EssayGrade,
+    EssayGradeResult,
+    ExtractedQuestion,
+    ExtractionResult,
+    PaperKey,
+    Solution,
+    SolveResult,
+)
 from app.domain.latex import repair_latex
 
 log = logging.getLogger(__name__)
@@ -85,6 +94,13 @@ Dấu thập phân kiểu Việt Nam viết là {,} trong LaTeX.
 - Câu có các ý a), b), c), d) đúng/sai: type = TRUE_FALSE, đưa từng ý vào choices với nhãn A, B, C, D.
 - Nếu câu có hình vẽ / đồ thị / sơ đồ mạch, trả figure_bbox bao sát riêng phần hình (không lấy chữ đề bài), \
 theo thang 0–1000 của đúng trang chứa hình, và page là trang chứa câu hỏi."""
+
+ANSWER_KEY_PROMPT = """Các ảnh trên là BẢNG ĐÁP ÁN chính thức của một đề thi, gồm nhiều mã đề.
+Chép CHÍNH XÁC đáp án của MỌI mã đề có trong bảng, không suy luận, không bỏ sót, không giải lại đề:
+- multiple_choice: đáp án A/B/C/D của câu 1, 2, 3, ... theo đúng thứ tự (phần trắc nghiệm nhiều lựa chọn).
+- true_false: với đề có phần đúng/sai, mỗi câu một chuỗi Đ/S theo ý a, b, c, d (VD: ĐSĐS).
+- short_answer: với đề có phần trả lời ngắn, đáp số từng câu như in trong bảng (VD: 0,5).
+Ô không đọc được thì ghi "?" (không đoán)."""
 
 SOLVE_PROMPT = """Bạn là giáo viên giỏi đúng môn của đề (Toán, Vật lí, Hoá học, ...). Giải từng câu hỏi dưới đây (dữ liệu JSON; ảnh hình vẽ kèm theo được \
 đánh dấu “HÌNH CÂU n”).
@@ -218,6 +234,18 @@ class GeminiProvider:
             for c in q.choices:
                 c.content = repair_latex(c.content)
         return result.questions
+
+    async def read_answer_key(self, pages: list[PageImage]) -> list[PaperKey]:
+        """The official answer table of a paper: every code with its answers. Read by the main models (an answer
+        key must be exact; it is the reference the imported exams are checked against)."""
+        from google.genai import types
+
+        contents: list = []
+        for page in pages:
+            contents += [f"TRANG {page.number}", types.Part.from_bytes(data=page.png, mime_type="image/png")]
+        contents.append(ANSWER_KEY_PROMPT)
+        result = await self._generate(contents, AnswerKeyResult)
+        return result.papers
 
     async def solve(self, questions: list[ExtractedQuestion], figures: list[FigureImage]) -> list[Solution]:
         from google.genai import types

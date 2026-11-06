@@ -19,8 +19,9 @@ from app.ai.frugal import ChatModel, FrugalProvider, bank_lookup
 from app.ai.normalize import NormalizeError
 from app.ai.pipeline import run_pipeline
 from app.ai.provider import AIError, AIProvider, AIQuotaExhausted, GeminiProvider
+from app.application.answer_keys import is_answer_key, read_answer_key_document
 from app.application.essay_grading import grade_pending_essays
-from app.application.library_publish import auto_publish
+from app.application.library_publish import auto_publish, library_document, recheck_waiting
 from app.attempts import finalize_expired
 from app.config import get_settings
 from app.db import SessionLocal
@@ -110,15 +111,23 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
             if provider is None:  # bank answers and free text models first; Gemini reads the pages
                 text, vision = chat_models()
                 provider = FrugalProvider(default_provider(), await bank_lookup(session, job.root_id), text, vision)
-            page_count, drafts = await run_pipeline(
-                job_id=job.id,
-                source_key=job.stored_path,
-                storage=get_storage(),
-                provider=provider,
-                soffice=settings.soffice_path,
-                default_difficulty=job.default_difficulty.value,
-                progress=progress,
-            )
+            doc = await library_document(session, job)
+            codes = None
+            if doc is not None and is_answer_key(doc):  # an answer table, not an exam: read the official answers
+                await progress("AI đang đọc bảng đáp án chính thức…", 0, 1)
+                data = await get_storage().get(job.stored_path)
+                codes = await read_answer_key_document(session, job, doc, data, provider)
+                page_count, drafts = 0, []
+            else:
+                page_count, drafts = await run_pipeline(
+                    job_id=job.id,
+                    source_key=job.stored_path,
+                    storage=get_storage(),
+                    provider=provider,
+                    soffice=settings.soffice_path,
+                    default_difficulty=job.default_difficulty.value,
+                    progress=progress,
+                )
         except AIQuotaExhausted as exc:  # back in the queue; the loop pauses until quotas may have refilled
             global _paused_until
             _paused_until = time.monotonic() + QUOTA_PAUSE_SECONDS
@@ -131,6 +140,8 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
         else:
             job.status, job.page_count, job.drafts = JobStatus.DONE, page_count, drafts
             job.stage = f"Đã đọc {len(drafts)} câu từ {page_count} trang" if drafts else "Không tìm thấy câu hỏi nào"
+            if codes is not None:
+                job.stage = f"Đã đọc đáp án chính thức của {codes} mã đề"
             job.models_used = ", ".join(sorted(provider.models_used))[:200] or None
             if getattr(provider, "reused", 0):
                 job.stage = f"{job.stage} · {provider.reused} câu lấy đáp án từ ngân hàng"[:200]
@@ -139,7 +150,10 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
         log.info("Job %s finished: %s", job_id, job.status)
         if job.status == JobStatus.DONE:
             try:  # a library file: publish it and typeset clean PDFs when the drafts pass the checks
-                await auto_publish(session, job)
+                if codes:  # exams of this paper that were waiting for their official answers
+                    await recheck_waiting(session, job.category_id)
+                else:
+                    await auto_publish(session, job)
             except Exception:  # the drafts stay for the admin's review screen
                 log.exception("Job %s: automatic publication failed", job_id)
                 await session.rollback()

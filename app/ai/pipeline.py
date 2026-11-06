@@ -38,6 +38,7 @@ FLAG_LABELS = {
     "no_solution": "AI chưa giải được câu này — hãy tự chọn đáp án và viết lời giải.",
     "figure_failed": "Câu có hình vẽ nhưng cắt hình không thành công.",
     "duplicate": "Ngân hàng đã có câu giống hệt (cùng nội dung và lựa chọn).",
+    "key_mismatch": "Khác đáp án chính thức của đề: kiểm tra đề bài (AI có thể đã đọc sai) và đáp án.",
 }
 
 Progress = Callable[[str, int, int], Awaitable[None]]
@@ -51,6 +52,7 @@ def page_key(job_id: int, page: int) -> str:
     return f"{pages_prefix(job_id)}page-{page:03d}.png"
 
 
+_QUESTION_LABEL = re.compile(r"^\s*Câu\s*\d+\s*[:.)]\s*", re.IGNORECASE)  # the number is shown by the app
 _TRAILING_DOT_IN_MATH = re.compile(r"\.(\s*\}?\s*\$)$")
 
 
@@ -108,7 +110,7 @@ def _draft(q: ExtractedQuestion, solution: Solution | None, figure: str | None, 
         "number": q.number,
         "page": q.page,
         "type": q.type,
-        "content": q.content.strip(),
+        "content": _QUESTION_LABEL.sub("", q.content.strip(), count=1),
         "choices": choices,
         "correct": correct,
         "truths": truths,

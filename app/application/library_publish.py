@@ -1,11 +1,12 @@
 """Library file → AI import → bank questions + online exam + clean PDFs that replace the original.
 
-When the worker finishes the AI import of a library file (one exam, often cut from a bundle), and every draft
-passed the automatic checks, the questions go to the bank, an exam is created for practice online, and two
-PDFs are typeset from the questions — the paper and the solutions — without the logos, links and banners
-of the file it came from. They take the original's place in the library (same folder, status, rights);
-the original stays for admins only. A file whose drafts need a human waits in the review screen, and the
-same PDFs are made when an admin publishes it there with an exam.
+When the worker finishes the AI import of a library file (one exam, often cut from a bundle), every draft
+passed the automatic checks, and every answer agrees with the official answer key (application/answer_keys.py),
+the questions go to the bank, an exam is created for practice online, and two PDFs are typeset from the
+questions — the paper and the solutions — without the logos, links and banners of the file it came from.
+They take the original's place in the library (same folder, status, rights); the original stays for admins
+only. A file whose drafts need a human waits in the review screen, and the same PDFs are made when an admin
+publishes it there with an exam.
 
 The PDFs keep one line naming where the exam comes from (the document's licence note): the questions are the
 exam author's; the worked solutions are ours (solved by the AI import).
@@ -18,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.ai_publish import create_exam, drafts_of, publish_drafts, publish_problems
+from app.application.answer_keys import compare, official_answers
 from app.application.exam_pdf import PdfError, Renderer, build_parts, chromium_pdf, exam_html
 from app.infrastructure.storage import get_bronze_storage, get_storage
 from app.models import (
@@ -25,6 +27,7 @@ from app.models import (
     Exam,
     ExamQuestion,
     ImportJob,
+    JobStatus,
     LibraryDocument,
     LibraryStatus,
     Question,
@@ -96,11 +99,20 @@ async def auto_publish(session: AsyncSession, job: ImportJob, render: Renderer |
     drafts = drafts_of(job)
     if doc is None or any(d.get("question_id") for d in drafts):
         return None
-    if reason := auto_problems(drafts):
+    reason = auto_problems(drafts)
+    if reason is None:  # a misread question still passes the checks above: the official answers decide
+        answers = await official_answers(session, job, doc)
+        if answers is None:
+            reason = "chưa có đáp án chính thức để đối chiếu"
+        elif problems := compare(drafts, answers):
+            job.drafts = drafts  # the disagreeing drafts are marked for the review screen
+            more = f" (và {len(problems) - 1} chỗ khác)" if len(problems) > 1 else ""
+            reason = f"lệch đáp án chính thức – {problems[0]}{more}"
+    if reason:
         job.stage = f"{job.stage or ''} · Chờ admin duyệt: {reason}"[:200]
         await session.commit()
         return None
-    # The checks above stand in for the admin's review, as for crawled questions.
+    # The checks above and the official answers stand in for the admin's review.
     questions = await publish_drafts(session, job, list(range(len(drafts))), verified=True, reuse_duplicates=True)
     subject, _ = await _names(session, job)
     exam = await create_exam(
@@ -117,6 +129,19 @@ async def auto_publish(session: AsyncSession, job: ImportJob, render: Renderer |
     await publish_to_library(session, job, exam, render)
     await session.commit()
     return exam
+
+
+async def recheck_waiting(session: AsyncSession, category_id: int, render: Renderer | None = None) -> int:
+    """Once the official answers of a paper are known, try again the imports of that paper that were waiting."""
+    jobs = await session.scalars(
+        select(ImportJob).where(ImportJob.category_id == category_id, ImportJob.status == JobStatus.DONE)
+    )
+    published = 0
+    for job in list(jobs):
+        if job.drafts and not any(d.get("question_id") for d in job.drafts):
+            job.stage = (job.stage or "").split(" · Chờ admin duyệt")[0]
+            published += await auto_publish(session, job, render) is not None
+    return published
 
 
 async def publish_to_library(

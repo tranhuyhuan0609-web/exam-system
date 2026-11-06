@@ -228,6 +228,9 @@ class FrugalProvider:
     async def grade_essays(self, items: list[EssayItem]) -> list[EssayGrade]:
         return await self.inner.grade_essays(items)
 
+    async def read_answer_key(self, pages: list[PageImage]):
+        return await self.inner.read_answer_key(pages)  # the reference for every check: Gemini only
+
     async def _try(self, solvers: list[ChatModel], questions, todo: list[int], figures, solved: dict) -> list[int]:
         for solver in solvers:
             if not todo or not await solver.available():

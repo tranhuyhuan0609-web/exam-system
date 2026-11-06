@@ -83,3 +83,21 @@ class EssayGrade(BaseModel):
 
 class EssayGradeResult(BaseModel):
     grades: list[EssayGrade]
+
+
+class PaperKey(BaseModel):
+    code: str = Field(description="Mã đề như in trong bảng (VD: 101, 0102)")
+    multiple_choice: list[ChoiceLabel] = Field(
+        default_factory=list, description="Đáp án trắc nghiệm nhiều lựa chọn theo thứ tự câu 1, 2, 3, ... (phần I)"
+    )
+    true_false: list[str] = Field(
+        default_factory=list,
+        description="Phần đúng/sai: mỗi câu một chuỗi Đ/S theo thứ tự ý a, b, c, d (VD: ĐSĐS); rỗng nếu không có",
+    )
+    short_answer: list[str] = Field(
+        default_factory=list, description="Phần trả lời ngắn: đáp số từng câu theo thứ tự (VD: 0,5); rỗng nếu không có"
+    )
+
+
+class AnswerKeyResult(BaseModel):
+    papers: list[PaperKey] = Field(description="Mỗi mã đề có trong bảng đáp án")

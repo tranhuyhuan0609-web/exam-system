@@ -13,6 +13,7 @@ from app.application.exam_pdf import PrintedPart, PrintedQuestion, chromium_pdf,
 from app.application.library_publish import auto_publish
 from app.infrastructure.storage import get_bronze_storage
 from app.models import (
+    AnswerKey,
     Difficulty,
     Exam,
     ImportJob,
@@ -53,9 +54,16 @@ class FakePrinter:
         return b"%PDF-1.4 fake"
 
 
-def _library_import(db, drafts, file_id="x-101"):
+def _library_import(db, drafts, file_id="x-101", official: list[str] | None = None):
+    """A library exam ("Mã đề 101") and its import; `official` = the paper's official answers (default: the
+    drafts' own answers, i.e. they agree), [] = no answer key."""
+
     async def make(s):
         category = await ensure_path(s, ["Ôn thi THPT – Toán", "Đề thi THPT 2024"])
+        answers = ["ABCD"[d["correct"]] for d in drafts] if official is None else official
+        known = await s.scalar(select(AnswerKey).where(AnswerKey.category_id == category.id, AnswerKey.code == "101"))
+        if answers and known is None:
+            s.add(AnswerKey(category_id=category.id, code="101", answers={"multiple_choice": answers}))
         job = ImportJob(
             original_filename="Mã đề 101.pdf",
             stored_path="raw/x.pdf",
@@ -152,6 +160,23 @@ def test_imports_that_need_a_human_wait_for_the_admin(db):
 
     short_job, _, _ = _library_import(db, [_draft(1), _draft(2)], file_id="x-102")
     assert _publish(db, short_job, FakePrinter()) is None  # two questions: not a whole exam
+
+
+def test_without_official_answers_or_when_they_differ_the_admin_decides(db):
+    no_key, _, _ = _library_import(db, [_draft(n) for n in range(1, 7)], official=[])
+    assert _publish(db, no_key, FakePrinter()) is None
+    assert "chưa có đáp án chính thức" in db(lambda s: s.get(ImportJob, no_key)).stage
+
+
+def test_an_answer_that_differs_from_the_official_key_is_marked_for_review(db):
+    # The AI read question 1 wrongly ("phần thực" for "phần ảo"), solved what it read: B; the key says C.
+    job_id, _, part_id = _library_import(db, [_draft(n) for n in range(1, 7)], official=["C"] + ["B"] * 5)
+    assert _publish(db, job_id, FakePrinter()) is None
+    job = db(lambda s: s.get(ImportJob, job_id))
+    assert "lệch đáp án chính thức – Phần trắc nghiệm câu 1: AI B, đáp án chính thức C" in job.stage
+    assert "key_mismatch" in job.drafts[0]["flags"] and job.drafts[0]["official"] == "C"
+    assert "key_mismatch" not in job.drafts[1]["flags"]
+    assert db(lambda s: s.get(LibraryDocument, part_id)).status == LibraryStatus.PUBLISHED  # nothing replaced
 
 
 def test_the_same_questions_in_another_code_reuse_the_bank(db):
