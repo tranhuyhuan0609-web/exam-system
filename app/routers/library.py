@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.attempts import db_now
 from app.config import get_settings
@@ -22,10 +22,12 @@ KIND_LABELS = {
     LibraryKind.TOPIC: "Chuyên đề / tài liệu",
     LibraryKind.EXAM: "Đề thi",
     LibraryKind.HSG: "Học sinh giỏi",
+    LibraryKind.PAPER: "Bài báo / nghiên cứu",
     LibraryKind.OTHER: "Khác",
 }
 INLINE = {"application/pdf", "image/png", "image/jpeg"}
 
+PAGE_SIZE = 100
 LibraryUser = Annotated[User, Depends(require_user)]  # any account; reading limits for free ones
 
 
@@ -36,19 +38,34 @@ def _visible(user: User):
 
 
 @router.get("/library")
-async def library_home(request: Request, user: LibraryUser, session: SessionDep, folder: str = "", q: str = ""):
-    docs = (await session.scalars(select(LibraryDocument).where(_visible(user)).order_by(LibraryDocument.title))).all()
-    current = [part for part in folder.split("/") if part] if folder else []
+async def library_home(
+    request: Request, user: LibraryUser, session: SessionDep, folder: str = "", q: str = "", page: int = 1
+):
+    """One folder (or the search results) at a time, in pages: the open sources bring hundreds of thousands."""
+    visible, current = _visible(user), [part for part in folder.split("/") if part] if folder else []
+    page = max(1, page)
+    query = select(LibraryDocument).where(visible)
     if q.strip():
-        needle = q.strip().casefold()
-        shown = [d for d in docs if needle in d.title.casefold()]
+        needle = q.strip().replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+        query = query.where(LibraryDocument.title.ilike(f"%{needle}%"))
     else:
-        shown = [d for d in docs if d.folder_path == current]
-    subfolders: dict[str, int] = {}
-    for d in docs:
-        if d.folder_path[: len(current)] == current and len(d.folder_path) > len(current):
-            name = d.folder_path[len(current)]
-            subfolders[name] = subfolders.get(name, 0) + 1
+        query = query.where(LibraryDocument.folder_path == current)
+    shown = (
+        await session.scalars(query.order_by(LibraryDocument.title).limit(PAGE_SIZE + 1).offset((page - 1) * PAGE_SIZE))
+    ).all()
+    more, shown = len(shown) > PAGE_SIZE, shown[:PAGE_SIZE]
+    depth = len(current)
+    name = LibraryDocument.folder_path[depth].astext
+    inside = [LibraryDocument.folder_path[i].astext == part for i, part in enumerate(current)]
+    subfolders = (
+        await session.execute(
+            select(name, func.count())
+            .where(visible, func.jsonb_array_length(LibraryDocument.folder_path) > depth, *inside)
+            .group_by(name)
+            .order_by(name)
+        )
+    ).all()
+    total = await session.scalar(select(func.count()).select_from(LibraryDocument).where(visible))
     now = await db_now(session)
     pro = user.has_pro(now)
     limit = get_settings().free_docs_per_day
@@ -58,12 +75,14 @@ async def library_home(request: Request, user: LibraryUser, session: SessionDep,
         {
             "user": user,
             "docs": shown,
-            "subfolders": sorted(subfolders.items()),
+            "subfolders": [tuple(row) for row in subfolders],
             "current": current,
             "folder": "/".join(current),
             "q": q,
+            "page": page,
+            "more": more,
             "KIND_LABELS": KIND_LABELS,
-            "total": len(docs),
+            "total": total,
             "pro": pro,
             "reads_left": None if pro else max(0, limit - await docs_read_today(session, user, now)),
             "read_limit": limit,

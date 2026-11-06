@@ -212,49 +212,6 @@ async def _embed(batch: int = 100) -> None:
     print("Done:", total)
 
 
-async def _crawl_academic(source: str, query: str, subject: str, limit: int) -> None:
-    from app.db import SessionLocal
-    from app.pipeline.adapters.mongo import MongoRawStore
-    from app.pipeline.use_cases.academic_crawl import (
-        crawl_gutendex,
-        crawl_openalex,
-        crawl_openlibrary,
-        crawl_semanticscholar,
-        ingest_academic_items,
-    )
-
-    items = []
-    print(f"Crawling academic sources (source={source}, query='{query}', limit={limit})...")
-
-    if source in ("all", "openalex"):
-        alex = await crawl_openalex(query, subject=subject, limit=limit)
-        print(f"  [OpenAlex] Scraped {len(alex)} papers")
-        items.extend(alex)
-
-    if source in ("all", "openlibrary"):
-        ol = await crawl_openlibrary(query, subject=subject, limit=limit)
-        print(f"  [OpenLibrary] Scraped {len(ol)} books")
-        items.extend(ol)
-
-    if source in ("all", "gutendex"):
-        guten = await crawl_gutendex(query, subject=subject, limit=limit)
-        print(f"  [Gutendex] Scraped {len(guten)} texts")
-        items.extend(guten)
-
-    if source in ("all", "semanticscholar"):
-        ss = await crawl_semanticscholar(query, subject=subject, limit=limit)
-        print(f"  [SemanticScholar] Scraped {len(ss)} papers")
-        items.extend(ss)
-
-    store = MongoRawStore()
-    try:
-        async with SessionLocal() as session:
-            stats = await ingest_academic_items(session, store, items)
-            print(f"Ingested into Library: {stats['new']} new, {stats['existing']} already existed.")
-    finally:
-        await store.close()
-
-
 def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     parser = argparse.ArgumentParser(prog="python -m app.pipeline")
@@ -291,11 +248,6 @@ def main(argv: list[str] | None = None) -> None:
     recheck = sub.add_parser("recheck")
     recheck.add_argument("status", choices=["SIMILAR", "NEEDS_REVIEW", "READY", "DUPLICATE"])
     recheck.add_argument("--no-semantic", action="store_true", help="skip the embedding (cosine) duplicate check")
-    acad = sub.add_parser("crawl-academic")
-    acad.add_argument("--source", choices=["all", "openalex", "openlibrary", "gutendex", "semanticscholar"], default="all")
-    acad.add_argument("--query", default="mathematics")
-    acad.add_argument("--subject", default="Toán học & Khoa học")
-    acad.add_argument("--limit", type=int, default=15)
     args = parser.parse_args(argv)
 
     if sys.platform == "win32" and args.command != "crawl":  # aiokafka/asyncpg are happiest on the selector loop
@@ -355,8 +307,6 @@ def main(argv: list[str] | None = None) -> None:
         asyncio.run(_adopt(args.root, args.series))
     elif args.command == "recheck":
         asyncio.run(_recheck(args.status, args.no_semantic))
-    elif args.command == "crawl-academic":
-        asyncio.run(_crawl_academic(args.source, args.query, args.subject, args.limit))
 
 
 if __name__ == "__main__":

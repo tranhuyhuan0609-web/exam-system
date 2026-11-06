@@ -1,0 +1,494 @@
+# Open sources harvested into the library and the question bank: python -m app.pipeline.harvest (see its docstring).
+# Each plan item keeps a cursor in MongoDB (harvest_state): every run reads `pages` more pages and goes on next time.
+# OpenAlex pages hold 200 works, Semantic Scholar 1000, Crossref 500, Open Library 100, Gutendex 32.
+# Without OPENALEX_API_KEY OpenAlex shares ~1000 requests a day per IP; with a free key (openalex.org/settings/api)
+# raise pages_per_run. files_per_run open PDFs are stored per run (the others stay listed with a link).
+schedule_times:
+- 01:30
+- 09:30
+- '17:30'
+pages_per_run: 10
+files_per_run: 300
+max_file_mb: 40
+sources:
+  openalex:
+  - name: tieng-viet
+    folder:
+    - Bài báo & nghiên cứu
+    - Tiếng Việt
+    filter: language:vi,is_oa:true
+    by_field: true
+    pages: 25
+  - name: giao-duc
+    folder:
+    - Bài báo & nghiên cứu
+    - Giáo dục học
+    filter: is_oa:true,has_content.pdf:true,primary_topic.subfield.id:3304
+    pages: 20
+  - name: viet-nam
+    folder:
+    - Bài báo & nghiên cứu
+    - Nghiên cứu về Việt Nam
+    filter: is_oa:true,has_content.pdf:true,authorships.countries:VN
+    by_field: true
+    pages: 20
+  - name: field-26
+    folder:
+    - Bài báo & nghiên cứu
+    - Toán học
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:26
+  - name: field-31
+    folder:
+    - Bài báo & nghiên cứu
+    - Vật lí & Thiên văn
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:31
+  - name: field-16
+    folder:
+    - Bài báo & nghiên cứu
+    - Hoá học
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:16
+  - name: field-13
+    folder:
+    - Bài báo & nghiên cứu
+    - Hoá sinh & Di truyền
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:13
+  - name: field-11
+    folder:
+    - Bài báo & nghiên cứu
+    - Nông nghiệp & Sinh học
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:11
+  - name: field-17
+    folder:
+    - Bài báo & nghiên cứu
+    - Khoa học máy tính
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:17
+  - name: field-19
+    folder:
+    - Bài báo & nghiên cứu
+    - Khoa học Trái Đất
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:19
+  - name: field-23
+    folder:
+    - Bài báo & nghiên cứu
+    - Khoa học môi trường
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:23
+  - name: field-12
+    folder:
+    - Bài báo & nghiên cứu
+    - Nghệ thuật & Nhân văn
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:12
+  - name: field-20
+    folder:
+    - Bài báo & nghiên cứu
+    - Kinh tế học
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:20
+  - name: field-32
+    folder:
+    - Bài báo & nghiên cứu
+    - Tâm lí học
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:32
+  - name: field-22
+    folder:
+    - Bài báo & nghiên cứu
+    - Kỹ thuật
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:22
+  - name: field-25
+    folder:
+    - Bài báo & nghiên cứu
+    - Khoa học vật liệu
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:25
+  - name: field-21
+    folder:
+    - Bài báo & nghiên cứu
+    - Năng lượng
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:21
+  - name: field-14
+    folder:
+    - Bài báo & nghiên cứu
+    - Kinh doanh & Quản trị
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:14
+  - name: field-18
+    folder:
+    - Bài báo & nghiên cứu
+    - Khoa học quyết định
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:18
+  - name: field-15
+    folder:
+    - Bài báo & nghiên cứu
+    - Kỹ thuật hoá học
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:15
+  - name: field-27
+    folder:
+    - Bài báo & nghiên cứu
+    - Y học
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:27
+  - name: field-28
+    folder:
+    - Bài báo & nghiên cứu
+    - Thần kinh học
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:28
+  - name: field-24
+    folder:
+    - Bài báo & nghiên cứu
+    - Miễn dịch & Vi sinh
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:24
+  - name: field-30
+    folder:
+    - Bài báo & nghiên cứu
+    - Dược học
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:30
+  - name: field-36
+    folder:
+    - Bài báo & nghiên cứu
+    - Khoa học sức khoẻ
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:36
+  - name: field-29
+    folder:
+    - Bài báo & nghiên cứu
+    - Điều dưỡng
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:29
+  - name: field-34
+    folder:
+    - Bài báo & nghiên cứu
+    - Thú y
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:34
+  - name: field-35
+    folder:
+    - Bài báo & nghiên cứu
+    - Nha khoa
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:35
+  - name: field-33
+    folder:
+    - Bài báo & nghiên cứu
+    - Khoa học xã hội
+    filter: is_oa:true,has_content.pdf:true,primary_topic.field.id:33
+  semanticscholar:
+  - name: mathematics
+    folder:
+    - Bài báo & nghiên cứu
+    - Toán học
+    search: education | learning | teaching | review
+    filter: fieldsOfStudy=Mathematics
+    pages: 3
+  - name: physics
+    folder:
+    - Bài báo & nghiên cứu
+    - Vật lí & Thiên văn
+    search: education | learning | teaching | review
+    filter: fieldsOfStudy=Physics
+    pages: 3
+  - name: chemistry
+    folder:
+    - Bài báo & nghiên cứu
+    - Hoá học
+    search: education | learning | teaching | review
+    filter: fieldsOfStudy=Chemistry
+    pages: 3
+  - name: biology
+    folder:
+    - Bài báo & nghiên cứu
+    - Sinh học
+    search: education | learning | teaching | review
+    filter: fieldsOfStudy=Biology
+    pages: 3
+  - name: computer-science
+    folder:
+    - Bài báo & nghiên cứu
+    - Khoa học máy tính
+    search: education | learning | teaching | review
+    filter: fieldsOfStudy=Computer Science
+    pages: 3
+  - name: education
+    folder:
+    - Bài báo & nghiên cứu
+    - Giáo dục học
+    search: education | learning | teaching | review
+    filter: fieldsOfStudy=Education
+    pages: 3
+  - name: history
+    folder:
+    - Bài báo & nghiên cứu
+    - Lịch sử
+    search: education | learning | teaching | review
+    filter: fieldsOfStudy=History
+    pages: 3
+  - name: geography
+    folder:
+    - Bài báo & nghiên cứu
+    - Địa lí
+    search: education | learning | teaching | review
+    filter: fieldsOfStudy=Geography
+    pages: 3
+  - name: linguistics
+    folder:
+    - Bài báo & nghiên cứu
+    - Ngôn ngữ học
+    search: education | learning | teaching | review
+    filter: fieldsOfStudy=Linguistics
+    pages: 3
+  - name: economics
+    folder:
+    - Bài báo & nghiên cứu
+    - Kinh tế học
+    search: education | learning | teaching | review
+    filter: fieldsOfStudy=Economics
+    pages: 3
+  - name: philosophy
+    folder:
+    - Bài báo & nghiên cứu
+    - Triết học
+    search: education | learning | teaching | review
+    filter: fieldsOfStudy=Philosophy
+    pages: 3
+  crossref:
+  - name: giao-duc
+    folder:
+    - Bài báo & nghiên cứu
+    - Giáo dục học
+    search: education teaching learning students
+    pages: 4
+  - name: toan
+    folder:
+    - Bài báo & nghiên cứu
+    - Toán học
+    search: mathematics education
+    pages: 4
+  - name: vat-li
+    folder:
+    - Bài báo & nghiên cứu
+    - Vật lí & Thiên văn
+    search: physics education
+    pages: 4
+  - name: hoa
+    folder:
+    - Bài báo & nghiên cứu
+    - Hoá học
+    search: chemistry education
+    pages: 4
+  - name: sinh
+    folder:
+    - Bài báo & nghiên cứu
+    - Sinh học
+    search: biology education
+    pages: 4
+  - name: tin
+    folder:
+    - Bài báo & nghiên cứu
+    - Khoa học máy tính
+    search: computer science education programming
+    pages: 4
+  - name: ngon-ngu
+    folder:
+    - Bài báo & nghiên cứu
+    - Ngôn ngữ học
+    search: English language teaching
+    pages: 4
+  openlibrary:
+  - name: mathematics
+    folder:
+    - Sách mở
+    - Open Library
+    - Toán học
+    search: subject:"mathematics"
+  - name: physics
+    folder:
+    - Sách mở
+    - Open Library
+    - Vật lí
+    search: subject:"physics"
+  - name: chemistry
+    folder:
+    - Sách mở
+    - Open Library
+    - Hoá học
+    search: subject:"chemistry"
+  - name: biology
+    folder:
+    - Sách mở
+    - Open Library
+    - Sinh học
+    search: subject:"biology"
+  - name: history
+    folder:
+    - Sách mở
+    - Open Library
+    - Lịch sử
+    search: subject:"history"
+  - name: geography
+    folder:
+    - Sách mở
+    - Open Library
+    - Địa lí
+    search: subject:"geography"
+  - name: literature
+    folder:
+    - Sách mở
+    - Open Library
+    - Văn học
+    search: subject:"literature"
+  - name: english-language
+    folder:
+    - Sách mở
+    - Open Library
+    - Tiếng Anh
+    search: subject:"english language"
+  - name: computer-science
+    folder:
+    - Sách mở
+    - Open Library
+    - Tin học
+    search: subject:"computer science"
+  - name: economics
+    folder:
+    - Sách mở
+    - Open Library
+    - Kinh tế học
+    search: subject:"economics"
+  - name: philosophy
+    folder:
+    - Sách mở
+    - Open Library
+    - Triết học
+    search: subject:"philosophy"
+  - name: education
+    folder:
+    - Sách mở
+    - Open Library
+    - Giáo dục học
+    search: subject:"education"
+  - name: astronomy
+    folder:
+    - Sách mở
+    - Open Library
+    - Thiên văn học
+    search: subject:"astronomy"
+  - name: psychology
+    folder:
+    - Sách mở
+    - Open Library
+    - Tâm lí học
+    search: subject:"psychology"
+  - name: music
+    folder:
+    - Sách mở
+    - Open Library
+    - Âm nhạc
+    search: subject:"music"
+  - name: art
+    folder:
+    - Sách mở
+    - Open Library
+    - Mĩ thuật
+    search: subject:"art"
+  gutendex:
+  - name: mathematics
+    folder:
+    - Sách mở
+    - Project Gutenberg
+    - Toán học
+    search: mathematics
+  - name: physics
+    folder:
+    - Sách mở
+    - Project Gutenberg
+    - Vật lí
+    search: physics
+  - name: chemistry
+    folder:
+    - Sách mở
+    - Project Gutenberg
+    - Hoá học
+    search: chemistry
+  - name: biology
+    folder:
+    - Sách mở
+    - Project Gutenberg
+    - Sinh học
+    search: biology
+  - name: history
+    folder:
+    - Sách mở
+    - Project Gutenberg
+    - Lịch sử
+    search: history
+  - name: geography
+    folder:
+    - Sách mở
+    - Project Gutenberg
+    - Địa lí
+    search: geography
+  - name: literature
+    folder:
+    - Sách mở
+    - Project Gutenberg
+    - Văn học
+    search: literature
+  - name: english-language
+    folder:
+    - Sách mở
+    - Project Gutenberg
+    - Tiếng Anh
+    search: english language
+  - name: computer-science
+    folder:
+    - Sách mở
+    - Project Gutenberg
+    - Tin học
+    search: computer science
+  - name: economics
+    folder:
+    - Sách mở
+    - Project Gutenberg
+    - Kinh tế học
+    search: economics
+  - name: philosophy
+    folder:
+    - Sách mở
+    - Project Gutenberg
+    - Triết học
+    search: philosophy
+  - name: education
+    folder:
+    - Sách mở
+    - Project Gutenberg
+    - Giáo dục học
+    search: education
+  - name: astronomy
+    folder:
+    - Sách mở
+    - Project Gutenberg
+    - Thiên văn học
+    search: astronomy
+  - name: psychology
+    folder:
+    - Sách mở
+    - Project Gutenberg
+    - Tâm lí học
+    search: psychology
+  - name: music
+    folder:
+    - Sách mở
+    - Project Gutenberg
+    - Âm nhạc
+    search: music
+  - name: art
+    folder:
+    - Sách mở
+    - Project Gutenberg
+    - Mĩ thuật
+    search: art
+opentrivia:
+  root: Ngân hàng trắc nghiệm quốc tế
+  refresh_days: 30
+  categories:
+    9: Kiến thức chung
+    17: Khoa học tự nhiên
+    18: Tin học
+    19: Toán học
+    22: Địa lí
+    23: Lịch sử
+    24: Chính trị
+    25: Nghệ thuật
+    27: Động vật
+    20: Thần thoại
+    10: Sách & Văn học

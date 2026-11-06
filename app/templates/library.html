@@ -35,11 +35,13 @@
     {% for d in docs %}
       <tr>
         <td><strong>{{ d.title }}</strong>{% if d.status != "PUBLISHED" %} <span class="badge badge-warn">Chờ duyệt</span>{% endif %}
+          {% if d.authors or d.year %}<div class="muted small">{{ d.authors or "" }}{% if d.authors and d.year %} · {% endif %}{{ d.year or "" }}</div>{% endif %}
           {% if q %}<div class="muted small">{{ d.folder_path | join(" › ") }}</div>{% endif %}</td>
         <td class="small">{{ KIND_LABELS[d.kind] }}</td>
         <td class="small muted">{{ d.license_note or d.source }}{% if d.source_url and user.role == "ADMIN" %} · <a href="{{ d.source_url }}" target="_blank" rel="noopener noreferrer">gốc</a>{% endif %}</td>
         <td class="row">
-          {% if d.mime in ("application/pdf", "image/png", "image/jpeg") %}<a class="btn btn-small" href="/library/{{ d.id }}/view" target="_blank" rel="noopener">Xem</a>{% endif %}
+          {% if d.storage_key and d.mime in ("application/pdf", "image/png", "image/jpeg") %}<a class="btn btn-small" href="/library/{{ d.id }}/view" target="_blank" rel="noopener">Xem</a>
+          {% elif not d.storage_key and d.source_url %}<a class="btn btn-outline btn-small" href="{{ d.source_url }}" target="_blank" rel="noopener noreferrer">Đọc tại nguồn ↗</a>{% endif %}
           {% if d.exam_id %}<a class="btn btn-outline btn-small" href="/exams/{{ d.exam_id }}">Làm online</a>{% endif %}
           {% if d.id in downloadable %}<a class="btn btn-outline btn-small" href="/library/{{ d.id }}/download">Tải về</a>{% endif %}
         </td>
@@ -49,5 +51,12 @@
     {% endfor %}
     </tbody>
   </table>
+  {% if page > 1 or more %}
+    <nav class="row small">
+      {% if page > 1 %}<a class="btn btn-outline btn-small" href="/library?folder={{ folder | urlencode }}&q={{ q | urlencode }}&page={{ page - 1 }}">‹ Trang trước</a>{% endif %}
+      <span class="muted">Trang {{ page }}</span>
+      {% if more %}<a class="btn btn-outline btn-small" href="/library?folder={{ folder | urlencode }}&q={{ q | urlencode }}&page={{ page + 1 }}">Trang sau ›</a>{% endif %}
+    </nav>
+  {% endif %}
 </div>
 {% endblock %}

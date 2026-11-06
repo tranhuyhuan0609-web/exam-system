@@ -1,6 +1,8 @@
 site_id: opentrivia
 name: Open Trivia Database
-enabled: true
+# Fed by the harvester (python -m app.pipeline.harvest trivia, every category in full with a session token);
+# the crawler would only fetch the same random 50 questions again.
+enabled: false
 base_url: https://opentdb.com
 parser: opentrivia_quiz
 schedule_times:
