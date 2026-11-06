@@ -248,7 +248,7 @@ def test_known_free_providers_need_only_a_key(monkeypatch):
         monkeypatch.setenv(key, value)
     providers = {p.name: p for p in Settings().extra_providers}
     assert sorted(providers) == ["cerebras", "cloudflare", "mistral"]
-    assert providers["mistral"].base_url == "https://api.mistral.ai/v1" and providers["mistral"].vision_models
+    assert providers["mistral"].base_url == "https://api.mistral.ai/v1" and not providers["mistral"].vision_models
     assert providers["cerebras"].models == ["qwen-3-235b"]
     assert "/accounts/acc1/" in providers["cloudflare"].base_url
     assert providers["mistral"].headers["Authorization"] == "Bearer m"

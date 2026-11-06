@@ -8,12 +8,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Model names change often: the defaults are a starting point; `python -m app.ai.check` lists what a key can use,
 # and <NAME>_MODELS / <NAME>_VISION_MODELS override them. A model a provider no longer serves is skipped.
 PRESETS: dict[str, dict[str, str]] = {
-    "mistral": {
-        "base_url": "https://api.mistral.ai/v1",
-        "models": "mistral-small-latest",
-        "vision_models": "mistral-small-latest",
-    },
-    "cerebras": {"base_url": "https://api.cerebras.ai/v1", "models": "gpt-oss-120b,llama-3.3-70b"},
+    # Free "Experiment" plan: small/medium are often rate limited, ministral-8b answers (MISTRAL_VISION_MODELS:
+    # e.g. pixtral-12b-latest reads images; off by default, free readers misread scans)
+    "mistral": {"base_url": "https://api.mistral.ai/v1", "models": "mistral-small-latest,mistral-medium-latest"},
+    "cerebras": {"base_url": "https://api.cerebras.ai/v1", "models": "gpt-oss-120b,qwen-3.8-27b"},
     "sambanova": {"base_url": "https://api.sambanova.ai/v1", "models": "Meta-Llama-3.3-70B-Instruct"},
     "nvidia": {"base_url": "https://integrate.api.nvidia.com/v1", "models": "openai/gpt-oss-120b"},
     "cohere": {"base_url": "https://api.cohere.ai/compatibility/v1", "models": "command-a-03-2025"},
