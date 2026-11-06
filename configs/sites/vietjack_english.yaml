@@ -7,9 +7,9 @@ name: VietJack – Tiếng Anh
 enabled: true
 base_url: https://vietjack.com
 parser: vietjack_quiz
-schedule_times: ["04:30"]
+schedule_times: ["06:30", "14:30", "22:30"]
 refresh_days: 30
-max_pages: 300
+max_pages: 600
 respect_robots: true
 auto_publish: true
 auto_toc: true

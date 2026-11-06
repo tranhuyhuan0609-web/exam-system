@@ -1,4 +1,6 @@
-# Tuyensinh247 — luyện chuyên đề ôn thi THPT (Vật lí, Toán). robots.txt allows these pages (it forbids /learning/).
+# Tuyensinh247 — luyện chuyên đề ôn thi THPT (Vật lí, Toán, Hoá học, Sinh học, Tiếng Anh) and ôn thi vào 10 (Toán,
+# Tiếng Anh, Vật lí, Hoá học); Ngữ văn has no multiple choice. Hubs: luyen-thi-dai-hoc-mon-x-ct<id>.html (the id
+# alone matters). robots.txt allows these pages (it forbids /learning/).
 # Topic pages list 10 questions per page with ids only; the question pages (bai-tap-<id>.html) carry the answer,
 # the method and the full solution, a level label (Nhận biết…) and formulas as images with LaTeX alt text.
 # Content follows the pre-2018 THPT programme, so it gets its own "Ôn thi THPT" roots in our table of contents.
@@ -7,9 +9,9 @@ name: Tuyensinh247
 enabled: true
 base_url: https://tuyensinh247.com
 parser: tuyensinh247_question
-schedule_times: ["05:00"]
+schedule_times: ["05:00", "13:00", "21:00"]
 refresh_days: 60
-max_pages: 200
+max_pages: 1500           # per run: ~90 topics, 10 questions a listing page
 respect_robots: true
 auto_publish: true
 auto_toc: true
@@ -105,6 +107,376 @@ seeds:
     root: Ôn thi THPT – Toán
     chapter: Phương trình, bất phương trình, hệ đại số
     scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-phuong-trinh-bat-pt-va-he-pt-dai-so-tq8-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-hinh-giai-tich-trong-khong-gian-tq199.html
+    label: Ôn thi THPT – Toán – Hình giải tích trong không gian
+    root: Ôn thi THPT – Toán
+    chapter: Hình giải tích trong không gian
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-hinh-giai-tich-trong-khong-gian-tq199-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-bat-dang-thuc-gia-tri-lon-nhat-va-nho-nhat-tq77.html
+    label: Ôn thi THPT – Toán – Bất Đẳng thức, Giá trị lớn nhất và nhỏ nhất
+    root: Ôn thi THPT – Toán
+    chapter: Bất Đẳng thức, Giá trị lớn nhất và nhỏ nhất
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-bat-dang-thuc-gia-tri-lon-nhat-va-nho-nhat-tq77-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-este-lipit-xa-phong-tq16.html
+    label: Ôn thi THPT – Hoá học – Este - Lipit - Xà phòng
+    root: Ôn thi THPT – Hoá học
+    chapter: Este - Lipit - Xà phòng
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-este-lipit-xa-phong-tq16-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dan-xuat-halogen-ancol-phenol-ete-tq15.html
+    label: Ôn thi THPT – Hoá học – Dẫn xuất Halogen - Ancol - Phenol - ete
+    root: Ôn thi THPT – Hoá học
+    chapter: Dẫn xuất Halogen - Ancol - Phenol - ete
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dan-xuat-halogen-ancol-phenol-ete-tq15-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-andehit-xeton-axit-cacboxylic-tq36.html
+    label: Ôn thi THPT – Hoá học – Anđehit – Xeton – Axit cacboxylic
+    root: Ôn thi THPT – Hoá học
+    chapter: Anđehit – Xeton – Axit cacboxylic
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-andehit-xeton-axit-cacboxylic-tq36-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-cacbohidrat-tq17.html
+    label: Ôn thi THPT – Hoá học – Cacbohidrat
+    root: Ôn thi THPT – Hoá học
+    chapter: Cacbohidrat
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-cacbohidrat-tq17-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-amin-amino-axit-va-protein-tq18.html
+    label: Ôn thi THPT – Hoá học – Amin, Amino Axit và Protein
+    root: Ôn thi THPT – Hoá học
+    chapter: Amin, Amino Axit và Protein
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-amin-amino-axit-va-protein-tq18-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-polime-va-vat-lieu-polime-tq19.html
+    label: Ôn thi THPT – Hoá học – Polime và Vật liệu Polime
+    root: Ôn thi THPT – Hoá học
+    chapter: Polime và Vật liệu Polime
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-polime-va-vat-lieu-polime-tq19-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dai-cuong-ve-hoa-hoc-huu-co-va-hidrocacbon-tq193.html
+    label: Ôn thi THPT – Hoá học – Đại cương về hóa học hữu cơ và hiđrocacbon
+    root: Ôn thi THPT – Hoá học
+    chapter: Đại cương về hóa học hữu cơ và hiđrocacbon
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dai-cuong-ve-hoa-hoc-huu-co-va-hidrocacbon-tq193-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-tong-hop-cac-phuong-phap-giai-nhanh-tq198.html
+    label: Ôn thi THPT – Hoá học – Tổng hợp các phương pháp giải nhanh
+    root: Ôn thi THPT – Hoá học
+    chapter: Tổng hợp các phương pháp giải nhanh
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-tong-hop-cac-phuong-phap-giai-nhanh-tq198-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dai-cuong-ve-kim-loai-tq20.html
+    label: Ôn thi THPT – Hoá học – Đại cương về kim loại
+    root: Ôn thi THPT – Hoá học
+    chapter: Đại cương về kim loại
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dai-cuong-ve-kim-loai-tq20-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-kim-loai-kiem-kiem-tho-va-nhom-tq21.html
+    label: Ôn thi THPT – Hoá học – Kim loại kiềm, kiềm thổ và nhôm
+    root: Ôn thi THPT – Hoá học
+    chapter: Kim loại kiềm, kiềm thổ và nhôm
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-kim-loai-kiem-kiem-tho-va-nhom-tq21-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-sat-crom-dong-tq22.html
+    label: Ôn thi THPT – Hoá học – Sắt -Crom - Đồng.
+    root: Ôn thi THPT – Hoá học
+    chapter: Sắt -Crom - Đồng.
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-sat-crom-dong-tq22-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-nhan-biet-phan-biet-tinh-che-tach-tq38.html
+    label: Ôn thi THPT – Hoá học – Nhận biết - Phân biệt -Tinh chế - Tách
+    root: Ôn thi THPT – Hoá học
+    chapter: Nhận biết - Phân biệt -Tinh chế - Tách
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-nhan-biet-phan-biet-tinh-che-tach-tq38-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-cau-tao-nguyen-tu-bang-tuan-hoan-tq43.html
+    label: Ôn thi THPT – Hoá học – Cấu tạo nguyên tử - Bảng tuần hoàn
+    root: Ôn thi THPT – Hoá học
+    chapter: Cấu tạo nguyên tử - Bảng tuần hoàn
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-cau-tao-nguyen-tu-bang-tuan-hoan-tq43-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-lien-ket-hoa-hoc-tq195.html
+    label: Ôn thi THPT – Hoá học – Liên kết hoá học
+    root: Ôn thi THPT – Hoá học
+    chapter: Liên kết hoá học
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-lien-ket-hoa-hoc-tq195-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-phan-ung-oxi-hoa-khu-tq196.html
+    label: Ôn thi THPT – Hoá học – Phản ứng oxi hoá khử
+    root: Ôn thi THPT – Hoá học
+    chapter: Phản ứng oxi hoá khử
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-phan-ung-oxi-hoa-khu-tq196-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-su-dien-li-tq44.html
+    label: Ôn thi THPT – Hoá học – Sự điện li
+    root: Ôn thi THPT – Hoá học
+    chapter: Sự điện li
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-su-dien-li-tq44-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-toc-do-phan-ung-va-can-bang-hoa-hoc-tq42.html
+    label: Ôn thi THPT – Hoá học – Tốc độ phản ứng và cân bằng hóa học
+    root: Ôn thi THPT – Hoá học
+    chapter: Tốc độ phản ứng và cân bằng hóa học
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-toc-do-phan-ung-va-can-bang-hoa-hoc-tq42-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-phi-kim-tq41.html
+    label: Ôn thi THPT – Hoá học – Phi kim
+    root: Ôn thi THPT – Hoá học
+    chapter: Phi kim
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-phi-kim-tq41-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-axit-bazo-va-muoi-tq37.html
+    label: Ôn thi THPT – Hoá học – Axit, Bazơ và Muối
+    root: Ôn thi THPT – Hoá học
+    chapter: Axit, Bazơ và Muối
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-axit-bazo-va-muoi-tq37-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-tong-hop-hoa-hoc-huu-co-tq197.html
+    label: Ôn thi THPT – Hoá học – Tổng hợp hoá học hữu cơ
+    root: Ôn thi THPT – Hoá học
+    chapter: Tổng hợp hoá học hữu cơ
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-tong-hop-hoa-hoc-huu-co-tq197-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-ly-thuyet-tong-hop-tq45.html
+    label: Ôn thi THPT – Hoá học – Lý thuyết tổng hợp
+    root: Ôn thi THPT – Hoá học
+    chapter: Lý thuyết tổng hợp
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-ly-thuyet-tong-hop-tq45-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-vat-chat-di-truyen-cap-do-phan-tu-tq23.html
+    label: Ôn thi THPT – Sinh học – Vật chất di truyền cấp độ phân tử
+    root: Ôn thi THPT – Sinh học
+    chapter: Vật chất di truyền cấp độ phân tử
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-vat-chat-di-truyen-cap-do-phan-tu-tq23-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-co-che-di-truyen-cap-do-phan-tu-tq212.html
+    label: Ôn thi THPT – Sinh học – Cơ chế di truyền cấp độ phân tử
+    root: Ôn thi THPT – Sinh học
+    chapter: Cơ chế di truyền cấp độ phân tử
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-co-che-di-truyen-cap-do-phan-tu-tq212-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-co-che-bien-di-cap-do-phan-tu-tq219.html
+    label: Ôn thi THPT – Sinh học – Cơ chế biến dị cấp độ phân tử
+    root: Ôn thi THPT – Sinh học
+    chapter: Cơ chế biến dị cấp độ phân tử
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-co-che-bien-di-cap-do-phan-tu-tq219-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-vat-chat-di-truyen-va-co-che-di-truyen-cap-do-te-bao-tq213.html
+    label: Ôn thi THPT – Sinh học – Vật chất di truyền và cơ chế di truyền cấp độ tế bào
+    root: Ôn thi THPT – Sinh học
+    chapter: Vật chất di truyền và cơ chế di truyền cấp độ tế bào
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-vat-chat-di-truyen-va-co-che-di-truyen-cap-do-te-bao-tq213-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-co-che-bien-di-cap-do-te-bao-tq214.html
+    label: Ôn thi THPT – Sinh học – Cơ chế biến dị cấp độ tế bào
+    root: Ôn thi THPT – Sinh học
+    chapter: Cơ chế biến dị cấp độ tế bào
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-co-che-bien-di-cap-do-te-bao-tq214-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-di-truyen-menden-tq24.html
+    label: Ôn thi THPT – Sinh học – Di truyền Menđen
+    root: Ôn thi THPT – Sinh học
+    chapter: Di truyền Menđen
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-di-truyen-menden-tq24-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-di-truyen-tuong-tac-gen-tq215.html
+    label: Ôn thi THPT – Sinh học – Di truyền tương tác gen
+    root: Ôn thi THPT – Sinh học
+    chapter: Di truyền tương tác gen
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-di-truyen-tuong-tac-gen-tq215-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-di-truyen-lien-ket-gen-va-hoan-vi-gen-tq216.html
+    label: Ôn thi THPT – Sinh học – Di truyền liên kết gen và hoán vị gen
+    root: Ôn thi THPT – Sinh học
+    chapter: Di truyền liên kết gen và hoán vị gen
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-di-truyen-lien-ket-gen-va-hoan-vi-gen-tq216-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-di-truyen-lien-ket-gioi-tinh-te-bao-chat-va-gen-da-hieu-tq217.html
+    label: Ôn thi THPT – Sinh học – Di truyền liên kết giới tính – tế bào chất và gen đa hiệu
+    root: Ôn thi THPT – Sinh học
+    chapter: Di truyền liên kết giới tính – tế bào chất và gen đa hiệu
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-di-truyen-lien-ket-gioi-tinh-te-bao-chat-va-gen-da-hieu-tq217-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-tong-hop-quy-luat-di-truyen-tq218.html
+    label: Ôn thi THPT – Sinh học – Tổng hợp quy luât di truyền
+    root: Ôn thi THPT – Sinh học
+    chapter: Tổng hợp quy luât di truyền
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-tong-hop-quy-luat-di-truyen-tq218-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-di-truyen-hoc-quan-the-tq25.html
+    label: Ôn thi THPT – Sinh học – Di truyền học quần thể
+    root: Ôn thi THPT – Sinh học
+    chapter: Di truyền học quần thể
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-di-truyen-hoc-quan-the-tq25-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-ung-dung-di-truyen-hoc-vao-chon-giong-tq26.html
+    label: Ôn thi THPT – Sinh học – Ứng dụng di truyền học vào chọn giống
+    root: Ôn thi THPT – Sinh học
+    chapter: Ứng dụng di truyền học vào chọn giống
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-ung-dung-di-truyen-hoc-vao-chon-giong-tq26-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-di-truyen-hoc-nguoi-tq27.html
+    label: Ôn thi THPT – Sinh học – Di truyền học người
+    root: Ôn thi THPT – Sinh học
+    chapter: Di truyền học người
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-di-truyen-hoc-nguoi-tq27-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-bang-chung-va-co-che-tien-hoa-tq28.html
+    label: Ôn thi THPT – Sinh học – Bằng chứng và cơ chế tiến hóa
+    root: Ôn thi THPT – Sinh học
+    chapter: Bằng chứng và cơ chế tiến hóa
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-bang-chung-va-co-che-tien-hoa-tq28-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-phat-sinh-su-song-va-phat-sinh-loai-nguoi-tq29.html
+    label: Ôn thi THPT – Sinh học – Phát sinh sự sống và phát sinh loài người
+    root: Ôn thi THPT – Sinh học
+    chapter: Phát sinh sự sống và phát sinh loài người
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-phat-sinh-su-song-va-phat-sinh-loai-nguoi-tq29-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-sinh-thai-hoc-quan-the-tq30.html
+    label: Ôn thi THPT – Sinh học – Sinh thái học cá thế và quần thể
+    root: Ôn thi THPT – Sinh học
+    chapter: Sinh thái học cá thế và quần thể
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-sinh-thai-hoc-quan-the-tq30-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-sinh-thai-hoc-quan-xa-tq31.html
+    label: Ôn thi THPT – Sinh học – Sinh thái học quần xã
+    root: Ôn thi THPT – Sinh học
+    chapter: Sinh thái học quần xã
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-sinh-thai-hoc-quan-xa-tq31-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-sinh-thai-hoc-he-sinh-thai-tq32.html
+    label: Ôn thi THPT – Sinh học – Sinh thái học hệ sinh thái
+    root: Ôn thi THPT – Sinh học
+    chapter: Sinh thái học hệ sinh thái
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-sinh-thai-hoc-he-sinh-thai-tq32-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-cac-loai-cau-cac-loai-menh-de-trong-tieng-anh-tq48.html
+    label: Ôn thi THPT – Tiếng Anh – Các loại câu, các loại mệnh đề trong Tiếng Anh
+    root: Ôn thi THPT – Tiếng Anh
+    chapter: Các loại câu, các loại mệnh đề trong Tiếng Anh
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-cac-loai-cau-cac-loai-menh-de-trong-tieng-anh-tq48-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-tim-tu-dong-nghia-trai-nghia-tq61.html
+    label: Ôn thi THPT – Tiếng Anh – Tìm từ đồng nghĩa, trái nghĩa
+    root: Ôn thi THPT – Tiếng Anh
+    chapter: Tìm từ đồng nghĩa, trái nghĩa
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-tim-tu-dong-nghia-trai-nghia-tq61-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-tim-loi-sai-lop-12-tq64.html
+    label: Ôn thi THPT – Tiếng Anh – Dạng bài Tìm lỗi sai lớp 12
+    root: Ôn thi THPT – Tiếng Anh
+    chapter: Dạng bài Tìm lỗi sai lớp 12
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-tim-loi-sai-lop-12-tq64-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-doc-hieu-lop-12-tq62.html
+    label: Ôn thi THPT – Tiếng Anh – Dạng bài Đọc hiểu lớp 12
+    root: Ôn thi THPT – Tiếng Anh
+    chapter: Dạng bài Đọc hiểu lớp 12
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-doc-hieu-lop-12-tq62-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-dien-tu-vao-cau-lop-12-tq60.html
+    label: Ôn thi THPT – Tiếng Anh – Dạng bài Điền từ vào câu lớp 12
+    root: Ôn thi THPT – Tiếng Anh
+    chapter: Dạng bài Điền từ vào câu lớp 12
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-dien-tu-vao-cau-lop-12-tq60-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-dien-tu-vao-doan-van-lop-12-tq63.html
+    label: Ôn thi THPT – Tiếng Anh – Dạng bài Điền từ vào đoạn văn lớp 12
+    root: Ôn thi THPT – Tiếng Anh
+    chapter: Dạng bài Điền từ vào đoạn văn lớp 12
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-dien-tu-vao-doan-van-lop-12-tq63-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-ngu-am-trong-am-va-ngu-dong-vi-tq49.html
+    label: Ôn thi THPT – Tiếng Anh – Ngữ âm, Trọng âm và Ngữ đồng vị
+    root: Ôn thi THPT – Tiếng Anh
+    chapter: Ngữ âm, Trọng âm và Ngữ đồng vị
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-ngu-am-trong-am-va-ngu-dong-vi-tq49-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-can-bac-hai-can-bac-ba-tq67.html
+    label: Ôn thi vào 10 – Toán – Căn bậc hai - Căn bậc ba
+    root: Ôn thi vào 10 – Toán
+    chapter: Căn bậc hai - Căn bậc ba
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-can-bac-hai-can-bac-ba-tq67-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-ham-so-bac-nhat-tq69.html
+    label: Ôn thi vào 10 – Toán – Hàm số bậc nhất
+    root: Ôn thi vào 10 – Toán
+    chapter: Hàm số bậc nhất
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-ham-so-bac-nhat-tq69-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-he-hai-phuong-trinh-bac-nhat-hai-an-tq70.html
+    label: Ôn thi vào 10 – Toán – Hệ hai phương trình bậc nhất hai ẩn
+    root: Ôn thi vào 10 – Toán
+    chapter: Hệ hai phương trình bậc nhất hai ẩn
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-he-hai-phuong-trinh-bac-nhat-hai-an-tq70-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-ham-so-yax2-a-0-phuong-trinh-bac-hai-mot-an-tq72.html
+    label: Ôn thi vào 10 – Toán – Hàm số y=ax2 (a ≠ 0), Phương trình bậc hai một ẩn
+    root: Ôn thi vào 10 – Toán
+    chapter: Hàm số y=ax2 (a ≠ 0), Phương trình bậc hai một ẩn
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-ham-so-yax2-a-0-phuong-trinh-bac-hai-mot-an-tq72-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-he-thuc-luong-trong-tam-giac-vuong-tq73.html
+    label: Ôn thi vào 10 – Toán – Hệ thức lượng trong tam giác vuông
+    root: Ôn thi vào 10 – Toán
+    chapter: Hệ thức lượng trong tam giác vuông
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-he-thuc-luong-trong-tam-giac-vuong-tq73-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-duong-tron-tq74.html
+    label: Ôn thi vào 10 – Toán – Đường tròn
+    root: Ôn thi vào 10 – Toán
+    chapter: Đường tròn
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-duong-tron-tq74-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-goc-voi-duong-tron-tq75.html
+    label: Ôn thi vào 10 – Toán – Góc với đường tròn
+    root: Ôn thi vào 10 – Toán
+    chapter: Góc với đường tròn
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-goc-voi-duong-tron-tq75-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-bat-dang-thuc-gia-tri-lon-nhat-va-nho-nhat-tq192.html
+    label: Ôn thi vào 10 – Toán – Bất Đẳng thức, Giá trị lớn nhất và nhỏ nhất
+    root: Ôn thi vào 10 – Toán
+    chapter: Bất Đẳng thức, Giá trị lớn nhất và nhỏ nhất
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-bat-dang-thuc-gia-tri-lon-nhat-va-nho-nhat-tq192-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-ngu-am-trong-am-va-ngu-dong-vi-tq90.html
+    label: Ôn thi vào 10 – Tiếng Anh – Dạng bài Ngữ âm, Trọng âm và Ngữ đồng vị
+    root: Ôn thi vào 10 – Tiếng Anh
+    chapter: Dạng bài Ngữ âm, Trọng âm và Ngữ đồng vị
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-ngu-am-trong-am-va-ngu-dong-vi-tq90-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-dien-tu-vao-cau-lop-10-tq91.html
+    label: Ôn thi vào 10 – Tiếng Anh – Dạng bài Điền từ vào câu lớp 10
+    root: Ôn thi vào 10 – Tiếng Anh
+    chapter: Dạng bài Điền từ vào câu lớp 10
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-dien-tu-vao-cau-lop-10-tq91-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-dien-tu-vao-doan-van-lop-10-tq92.html
+    label: Ôn thi vào 10 – Tiếng Anh – Dạng bài Điền từ vào đoạn văn lớp 10
+    root: Ôn thi vào 10 – Tiếng Anh
+    chapter: Dạng bài Điền từ vào đoạn văn lớp 10
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-dien-tu-vao-doan-van-lop-10-tq92-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-doc-hieu-lop-10-tq93.html
+    label: Ôn thi vào 10 – Tiếng Anh – Dạng bài Đọc hiểu lớp 10
+    root: Ôn thi vào 10 – Tiếng Anh
+    chapter: Dạng bài Đọc hiểu lớp 10
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-doc-hieu-lop-10-tq93-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-tim-loi-sai-lop-10-tq94.html
+    label: Ôn thi vào 10 – Tiếng Anh – Dạng bài Tìm lỗi sai lớp 10
+    root: Ôn thi vào 10 – Tiếng Anh
+    chapter: Dạng bài Tìm lỗi sai lớp 10
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-tim-loi-sai-lop-10-tq94-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-viet-lai-cau-tq95.html
+    label: Ôn thi vào 10 – Tiếng Anh – Dạng bài Viết lại câu
+    root: Ôn thi vào 10 – Tiếng Anh
+    chapter: Dạng bài Viết lại câu
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-viet-lai-cau-tq95-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-chia-dong-tu-tq180.html
+    label: Ôn thi vào 10 – Tiếng Anh – Dạng bài chia động từ
+    root: Ôn thi vào 10 – Tiếng Anh
+    chapter: Dạng bài chia động từ
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dang-bai-chia-dong-tu-tq180-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-bien-doi-dang-dung-cua-tu-tq181.html
+    label: Ôn thi vào 10 – Tiếng Anh – Biến đổi dạng đúng của từ
+    root: Ôn thi vào 10 – Tiếng Anh
+    chapter: Biến đổi dạng đúng của từ
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-bien-doi-dang-dung-cua-tu-tq181-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dang-dat-cau-hoi-cho-phan-gach-chan-tq182.html
+    label: Ôn thi vào 10 – Tiếng Anh – Dạng đặt câu hỏi cho phần gạch chân
+    root: Ôn thi vào 10 – Tiếng Anh
+    chapter: Dạng đặt câu hỏi cho phần gạch chân
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dang-dat-cau-hoi-cho-phan-gach-chan-tq182-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-co-hoc-tq85.html
+    label: Ôn thi vào 10 – Vật lí – Cơ học
+    root: Ôn thi vào 10 – Vật lí
+    chapter: Cơ học
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-co-hoc-tq85-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-nhiet-hoc-tq86.html
+    label: Ôn thi vào 10 – Vật lí – Nhiệt học
+    root: Ôn thi vào 10 – Vật lí
+    chapter: Nhiệt học
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-nhiet-hoc-tq86-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dien-dien-tu-hoc-tq87.html
+    label: Ôn thi vào 10 – Vật lí – Điện - Điện từ học
+    root: Ôn thi vào 10 – Vật lí
+    chapter: Điện - Điện từ học
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dien-dien-tu-hoc-tq87-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-quang-hoc-tq88.html
+    label: Ôn thi vào 10 – Vật lí – Quang học
+    root: Ôn thi vào 10 – Vật lí
+    chapter: Quang học
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-quang-hoc-tq88-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-su-bao-ton-va-chuyen-hoa-nang-luong-tq89.html
+    label: Ôn thi vào 10 – Vật lí – Sự bảo tồn và chuyển hóa năng lượng
+    root: Ôn thi vào 10 – Vật lí
+    chapter: Sự bảo tồn và chuyển hóa năng lượng
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-su-bao-ton-va-chuyen-hoa-nang-luong-tq89-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-cac-loai-hop-chat-vo-co-tq79.html
+    label: Ôn thi vào 10 – Hoá học – Các loại hợp chất vô cơ
+    root: Ôn thi vào 10 – Hoá học
+    chapter: Các loại hợp chất vô cơ
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-cac-loai-hop-chat-vo-co-tq79-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-kim-loai-tq80.html
+    label: Ôn thi vào 10 – Hoá học – Kim loại
+    root: Ôn thi vào 10 – Hoá học
+    chapter: Kim loại
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-kim-loai-tq80-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-hidrocacbon-nhien-lieu-tq82.html
+    label: Ôn thi vào 10 – Hoá học – Hidrocacbon, nhiên liệu
+    root: Ôn thi vào 10 – Hoá học
+    chapter: Hidrocacbon, nhiên liệu
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-hidrocacbon-nhien-lieu-tq82-
+  - url: https://tuyensinh247.com/luyen-chuyen-de-dan-xuat-cua-hidrocacbon-polime-tq83.html
+    label: Ôn thi vào 10 – Hoá học – Dẫn xuất của hidrocacbon, polime
+    root: Ôn thi vào 10 – Hoá học
+    chapter: Dẫn xuất của hidrocacbon, polime
+    scope_prefix: https://tuyensinh247.com/luyen-chuyen-de-dan-xuat-cua-hidrocacbon-polime-tq83-
 follow:
   - pattern: '^https://tuyensinh247\.com/luyen-chuyen-de-[a-z0-9-]+-tq\d+-page\d+\.html$'
     kind: listing

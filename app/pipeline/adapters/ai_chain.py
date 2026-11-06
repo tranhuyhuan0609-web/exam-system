@@ -93,10 +93,12 @@ def _parse(items: list[EnrichItem], raw: str) -> list[EnrichResult]:
 class OpenAICompatEnricher:
     """Chat-completions providers (Groq, OpenRouter): text only, JSON answer validated like Gemini's."""
 
-    def __init__(self, name: str, base_url: str, api_key: str, model: str, timeout: float = 120):
+    def __init__(
+        self, name: str, base_url: str, api_key: str, model: str, timeout: float = 120, headers: dict | None = None
+    ):
         self.name, self.model, self.vision = name, model, False
         self._url = base_url.rstrip("/") + "/chat/completions"
-        self._headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        self._headers = headers or {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         self._timeout = timeout
 
     async def enrich(self, items: list[EnrichItem]) -> list[EnrichResult]:
@@ -244,4 +246,15 @@ def build_chain():
                 sizes.get("openrouter", 8),
             )
         )
+    for provider in settings.extra_providers:  # AI_PROVIDERS in .env
+        for model in provider.models:
+            members.append(
+                (
+                    OpenAICompatEnricher(
+                        provider.name, provider.base_url, provider.api_key, model, headers=provider.headers
+                    ),
+                    limits.get(provider.name, 0),
+                    sizes.get(provider.name, 8),
+                )
+            )
     return ChainEnricher(members, DbUsage()) if members else None

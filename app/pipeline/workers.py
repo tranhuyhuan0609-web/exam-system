@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import subprocess
 import sys
 import time
 from datetime import UTC, datetime, timedelta, timezone
@@ -253,7 +254,21 @@ async def _next_run() -> int | None:
 
 async def run_scheduler(poll_seconds: int = 20) -> None:
     """Website crawls (one at a time, in subprocesses) and Drive sources, side by side."""
+    if closed := await _close_interrupted_runs():
+        log.info("Closed %s crawl run(s) interrupted by an earlier stop", closed)
     await asyncio.gather(_run_site_schedule(poll_seconds), run_drive_schedule())
+
+
+async def _close_interrupted_runs() -> int:
+    """Runs left RUNNING by a scheduler that stopped (machine off, session closed): marked failed, so the next
+    scheduled run starts; pages already fetched are skipped by the next crawl anyway."""
+    async with SessionLocal() as session:
+        runs = (await session.scalars(select(CrawlRun).where(CrawlRun.status == CrawlRunStatus.RUNNING))).all()
+        for run in runs:
+            run.status, run.error = CrawlRunStatus.FAILED, "interrupted: the scheduler stopped during the run"
+            run.finished_at = datetime.now(UTC)
+        await session.commit()
+        return len(runs)
 
 
 async def _run_site_schedule(poll_seconds: int = 20) -> None:
@@ -267,10 +282,10 @@ async def _run_site_schedule(poll_seconds: int = 20) -> None:
             run = await session.get(CrawlRun, run_id)
             site_id = run.site_id
         log.info("Starting crawl run %s (%s)", run_id, site_id)
-        process = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "app.pipeline", "crawl", site_id, "--run-id", str(run_id)
-        )
-        await process.wait()
+        # A thread waits on a plain subprocess: asyncio subprocesses need the Proactor loop, not available on
+        # Windows with the selector loop the database driver uses (Docker / Linux would be fine either way).
+        command = [sys.executable, "-m", "app.pipeline", "crawl", site_id, "--run-id", str(run_id)]
+        process = await asyncio.to_thread(subprocess.run, command, check=False)
         if process.returncode:
             async with SessionLocal() as session:
                 run = await session.get(CrawlRun, run_id)

@@ -7,9 +7,9 @@ name: VietJack
 enabled: true
 base_url: https://vietjack.com
 parser: vietjack_quiz
-schedule_times: ["03:30"]
+schedule_times: ["03:30", "11:30", "19:30"]
 refresh_days: 30
-max_pages: 800            # per run (118 books: their tables of contents come first); later runs skip pages fetched within refresh_days, so a book fills up over days
+max_pages: 1500           # per run (118 books: their tables of contents come first)
 respect_robots: true      # vietjack.com has no robots.txt (404): everything allowed, the delay still applies
 auto_publish: true
 auto_toc: true
