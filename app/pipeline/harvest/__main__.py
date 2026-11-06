@@ -33,6 +33,9 @@ VN = timezone(timedelta(hours=7))
 
 async def harvest(plan: Plan, states: StateStore, source: str | None = None, pages: int | None = None) -> dict:
     totals: dict[str, int] = {}
+    if not plan.library_sources:
+        log.info("Papers and open books are paused (library_sources: false in configs/open_sources.yaml)")
+        return totals
     for name, items in plan.sources.items():
         if source and name != source or name not in CLIENTS:
             continue
@@ -77,14 +80,16 @@ async def trivia(plan: Plan, states: StateStore, force: bool = False) -> dict:
 
 
 async def run_all(plan: Plan, states: StateStore) -> None:
-    log.info("Harvest: %s", await harvest(plan, states))
-    log.info("Files: %s", await files_batch(plan))
+    if plan.library_sources:
+        log.info("Harvest: %s", await harvest(plan, states))
+        log.info("Files: %s", await files_batch(plan))
     try:
         log.info("Open Trivia: %s", await trivia(plan, states))
     except Exception:
         log.exception("Open Trivia failed")
     try:
-        log.info("Anthologies: %s", await anthologies())
+        if plan.library_sources:
+            log.info("Anthologies: %s", await anthologies())
     except Exception:
         log.exception("Binding anthologies failed")
 
@@ -106,6 +111,8 @@ async def books(only: str | None = None) -> dict:
 
 
 async def files_batch(plan: Plan) -> dict:
+    if not plan.library_sources:
+        return {}
     return await store_files(plan.files_per_run, plan.max_file_mb, plan.file_concurrency, plan.max_storage_gb)
 
 
