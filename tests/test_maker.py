@@ -180,3 +180,46 @@ def test_free_teachers_have_a_few_matrices_a_day(db, make_user, monkeypatch):
     assert "Hôm nay còn 0 lượt" in teacher.get("/teacher/make").text
     wrong = teacher.post("/teacher/make/matrix", data={"root_id": root}, files={"file": ("m.txt", b"x", "text/plain")})
     assert wrong.status_code == 200  # back to the form with a message
+
+
+def _rows_form(root, kinematics, **extra):
+    return {
+        "root_id": root,
+        "row_count": 1,
+        "topic_0": "Động học",
+        "scope_0": f"c:{kinematics}",
+        "level_0": "RECOGNITION",
+        "type_0": "MULTIPLE_CHOICE",
+        "count_0": 3,
+        "title": "Luyện tập Động học",
+        "minutes": 15,
+        "shuffle": "1",
+        **extra,
+    }
+
+
+def test_admins_publish_on_the_site_and_teachers_keep_their_tests_to_themselves(db, admin_client, make_user):
+    root, kinematics, _ = _bank(db)
+    public = admin_client.post(
+        "/teacher/make/matrix/create", data=_rows_form(root, kinematics, publish="public"), follow_redirects=False
+    )
+    assert public.status_code == 303 and public.headers["location"].startswith("/admin/exams/")
+    exam = db(lambda s: s.scalar(select(Exam)))
+    assert (exam.visibility.value, exam.exam_mode.value, exam.is_published) == ("PUBLIC", "PRACTICE", True)
+    assert exam.access_code is None and exam.available_until is None and exam.max_attempts is None
+
+    teacher = _teacher(make_user)
+    forbidden = teacher.post("/teacher/make/matrix/create", data=_rows_form(root, kinematics, publish="public"))
+    assert forbidden.status_code == 403
+    own = teacher.post(
+        "/teacher/make/matrix/create",
+        data=_rows_form(root, kinematics, starts_at="2030-01-01T08:00", ends_at="2030-01-01T09:00"),
+        follow_redirects=False,
+    )
+    test_id = int(own.headers["location"].rsplit("/", 1)[1])
+    make_user("gv2@example.com", role=UserRole.TEACHER)
+    other = TestClient(app)
+    other.post("/login", data={"email": "gv2@example.com", "password": "password123"})
+    assert other.get(f"/teacher/tests/{test_id}").status_code == 404  # only its teacher sees it
+    assert "Luyện tập Động học" not in other.get("/teacher").text
+    assert "Luyện tập Động học" in teacher.get("/teacher").text

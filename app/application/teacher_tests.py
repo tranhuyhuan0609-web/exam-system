@@ -154,6 +154,7 @@ class MatrixSpec:
     minutes: int
     same_paper: bool = False
     shuffle: bool = True
+    public: bool = False  # admins: listed on the site, any student starts it at once (no schedule, link or code)
 
 
 async def check_matrix(session: AsyncSession, spec: MatrixSpec, now: datetime) -> list[str]:
@@ -174,6 +175,8 @@ async def check_matrix(session: AsyncSession, spec: MatrixSpec, now: datetime) -
                 errors.append(f"Dòng {number}: ngân hàng chỉ có {have} câu phù hợp (cần {rule.count}).")
     if not 1 <= spec.minutes <= MAX_MINUTES:
         errors.append(f"Thời gian làm bài phải từ 1 đến {MAX_MINUTES} phút.")
+    if spec.public:
+        return errors
     if spec.starts_at is None or spec.ends_at is None:
         errors.append("Hãy chọn giờ mở và giờ đóng bài.")
     elif spec.ends_at <= spec.starts_at:
@@ -208,6 +211,14 @@ async def create_from_matrix(session: AsyncSession, teacher: User, spec: MatrixS
         shuffle_choices=spec.shuffle,
         question_source=QuestionSource.FIXED if spec.same_paper else QuestionSource.MATRIX,
     )
+    if spec.public:  # a practice exam on the site: no window, no link or code, attempts unlimited
+        exam.exam_mode, exam.visibility, exam.is_published, exam.max_attempts = (
+            ExamMode.PRACTICE,
+            ExamVisibility.PUBLIC,
+            True,
+            None,
+        )
+        exam.access_token = exam.access_code = exam.available_from = exam.available_until = None
     totals: dict[str, int] = {}
     for rule in spec.rules:
         totals[rule.question_type] = totals.get(rule.question_type, 0) + rule.count

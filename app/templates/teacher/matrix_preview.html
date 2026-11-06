@@ -36,9 +36,18 @@
   <label>Tên bài kiểm tra
     <input name="title" value="{{ values.title }}" required maxlength="300">
   </label>
+  {% if user.role == "ADMIN" %}
+    <fieldset class="mt">
+      <legend>Đăng ở đâu</legend>
+      <label class="check"><input type="radio" name="publish" value="public" {{ 'checked' if values.public }}>
+        Đăng lên web <span class="muted small">(hiện trong danh sách đề, học sinh vào làm ngay, không cần link hay mã)</span></label>
+      <label class="check"><input type="radio" name="publish" value="private" {{ 'checked' if not values.public }}>
+        Bài kiểm tra riêng <span class="muted small">(link + mã, có giờ mở và giờ đóng)</span></label>
+    </fieldset>
+  {% endif %}
   <div class="grid-3 mt">
-    <label>Giờ mở bài <input type="datetime-local" name="starts_at" value="{{ values.starts_at | local_input }}" required></label>
-    <label>Giờ đóng bài <input type="datetime-local" name="ends_at" value="{{ values.ends_at | local_input }}" required></label>
+    <label class="schedule">Giờ mở bài <input type="datetime-local" name="starts_at" value="{{ values.starts_at | local_input }}" required></label>
+    <label class="schedule">Giờ đóng bài <input type="datetime-local" name="ends_at" value="{{ values.ends_at | local_input }}" required></label>
     <label>Thời gian làm bài (phút) <input type="number" name="minutes" min="1" max="300" value="{{ values.minutes }}" required></label>
   </div>
   <fieldset class="mt">
@@ -67,8 +76,16 @@
       });
       summary.textContent = `Tổng ${total} câu`;
     }
-    form.addEventListener("input", update);
+    function schedule() {  // a public exam has no window
+      const pub = form.querySelector("[name=publish][value=public]");
+      form.querySelectorAll("label.schedule").forEach((label) => {
+        label.hidden = !!(pub && pub.checked);
+        label.querySelector("input").required = !(pub && pub.checked);
+      });
+    }
+    form.addEventListener("input", () => { update(); schedule(); });
     update();
+    schedule();
   })();
 </script>
 {% endblock %}

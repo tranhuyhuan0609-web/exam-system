@@ -14,7 +14,7 @@ from app.application.paper import MatrixRule, availability
 from app.application.teacher_tests import MatrixSpec, ScheduleError, create_from_matrix
 from app.attempts import db_now
 from app.deps import SessionDep
-from app.models import Category, Exam
+from app.models import Category, Exam, UserRole
 from app.pipeline.adapters.ai_chain import DbUsage
 from app.plans import FREE_MATRICES_PER_DAY
 from app.routers.admin.common import redirect
@@ -130,6 +130,7 @@ async def upload_matrix(request: Request, user: TeacherUser, session: SessionDep
         "minutes": minutes,
         "same_paper": False,
         "shuffle": True,
+        "public": False,
     }
     return await _preview(request, session, user, root, found.rows, values)
 
@@ -162,6 +163,7 @@ def _values(form) -> dict[str, Any]:
         "minutes": _int(form.get("minutes")),
         "same_paper": form.get("same_paper") == "1",
         "shuffle": form.get("shuffle") == "1",
+        "public": form.get("publish") == "public",
     }
 
 
@@ -181,11 +183,17 @@ async def create_matrix_test(request: Request, user: TeacherUser, session: Sessi
         minutes=values["minutes"],
         same_paper=values["same_paper"],
         shuffle=values["shuffle"],
+        public=values["public"],
     )
+    if spec.public and user.role != UserRole.ADMIN:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Chỉ quản trị viên đăng đề công khai lên web.")
     try:
         exam = await create_from_matrix(session, user, spec, await db_now(session))
     except ScheduleError as exc:
         return await _preview(request, session, user, root, rows, values, error=str(exc))
     await session.commit()
+    if spec.public:
+        flash(request, "Đã đăng đề lên web: học sinh vào làm được ngay.")
+        return redirect(f"/admin/exams/{exam.id}")
     flash(request, "Đã tạo bài kiểm tra theo ma trận. Gửi link và mã bên dưới cho học sinh.")
     return redirect(f"/teacher/tests/{exam.id}")
