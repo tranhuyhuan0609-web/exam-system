@@ -14,7 +14,7 @@ from app.infrastructure.storage import get_bronze_storage, get_storage
 from app.models import CrawlerSite, CrawlRun, CrawlRunStatus
 from app.pipeline.domain.models import SiteConfig
 from app.pipeline.ports import DLQ_TOPIC, LIBRARY_TOPIC, RAW_TOPIC, AIUnavailable
-from app.pipeline.use_cases.rescue import rescue_waiting
+from app.pipeline.use_cases.rescue import place_uncategorised, rescue_waiting
 from app.pipeline.use_cases.silver import SilverDeps, ai_sweep, backfill_embeddings, ingest_document, retry_ready
 
 log = logging.getLogger(__name__)
@@ -93,8 +93,11 @@ async def run_silver(stop: asyncio.Event | None = None) -> None:
                         await backfill_embeddings(session, deps)
                     if time.monotonic() >= next_rescue:  # and finish what waits for review, when a machine can
                         next_rescue = time.monotonic() + RESCUE_EVERY
+                        models = rescue_models()
                         async with SessionLocal() as session:
-                            log.info("Rescue: %s", await rescue_waiting(session, rescue_models()))
+                            log.info("Rescue: %s", await rescue_waiting(session, models))
+                        async with SessionLocal() as session:
+                            log.info("Placed: %s", await place_uncategorised(session, models))
                 pause = 1 if handled else 15
             except AIUnavailable:
                 pause = 120  # quota / overload: wait for it to recover

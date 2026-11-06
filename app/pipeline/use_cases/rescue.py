@@ -177,3 +177,119 @@ async def _ask(models, group: list[CrawledQuestion]) -> tuple[list[Rescued], str
         except Exception as exc:  # noqa: BLE001 - quota, network: the next model
             log.warning("%s could not rescue: %s", model.name, exc)
     return [], ""
+
+
+# ---------------------------------------------------------------- questions without a place in the table of contents
+
+NO_CATEGORY = "Chưa gắn được chương/bài."
+PLACE_PROMPT = """Bạn xếp câu hỏi vào mục lục sách giáo khoa Việt Nam (chương trình 2018). Cho một trang nguồn \
+(tiêu đề, URL, vài câu hỏi mẫu) và mục lục hiện có của môn đó, hãy trả về vị trí của trang:
+- root: "<Môn> <lớp>" như mục lục hiện có (VD: "Vật lí 11", "Toán 10").
+- series: bộ sách (Kết nối tri thức / Chân trời sáng tạo / Cánh diều); "" nếu không rõ.
+- chapter: tên chương ĐÚNG như mục lục hiện có nếu bài thuộc chương đã có; nếu chưa có thì viết tên chương chuẩn của \
+SGK (VD: "Chương 1: Dao động").
+- lesson: "Bài N: <tên bài ĐẦY ĐỦ chuẩn của SGK, có dấu, không rút gọn>" (lấy số bài từ tiêu đề/URL; URL thường \
+chứa tên bài không dấu, VD "bai-5-dong-nang-the-nang-su-chuyen-hoa-nang-luong" -> "Bài 5: Động năng. Thế năng. Sự \
+chuyển hoá năng lượng trong dao động điều hoà"); dùng đúng tên đã có nếu bài đã có.
+Không chắc chắn thì đặt confident = false. Trả về DUY NHẤT một JSON: \
+{"root": "...", "series": "...", "chapter": "...", "lesson": "...", "confident": true}"""
+
+
+class Place(BaseModel):
+    root: str
+    series: str = ""
+    chapter: str
+    lesson: str
+    confident: bool = True
+
+
+async def _toc_of(session: AsyncSession, root_name: str) -> list[str]:
+    from app.models import Category
+
+    root = await session.scalar(select(Category).where(Category.parent_id.is_(None), Category.name.ilike(root_name)))
+    if root is None:
+        return []
+    rows = (await session.scalars(select(Category).where(Category.path.like(f"{root.path}%")))).all()
+    by_id = {c.id: c for c in rows}
+
+    def path(c) -> str:
+        names = []
+        while c is not None:
+            names.append(c.name)
+            c = by_id.get(c.parent_id)
+        return " › ".join(reversed(names))
+
+    return sorted(path(c) for c in rows if c.depth >= 2)[:120]
+
+
+_ROOT_HINT = re.compile(
+    r"(toán|vật lí|vật lý|vat-li|toan|hoá học|hóa học|hoa-hoc|sinh học|sinh|tiếng anh|lịch sử|địa lí)[\s-]*(\d{1,2})",
+    re.I,
+)
+_ROOT_NAMES = {"toan": "Toán", "vat-li": "Vật lí", "vật lý": "Vật lí", "hoa-hoc": "Hoá học", "hóa học": "Hoá học"}
+
+
+def _root_guess(text: str) -> str | None:
+    found = _ROOT_HINT.search(text)
+    if not found:
+        return None
+    subject = found.group(1).lower()
+    return f"{_ROOT_NAMES.get(subject, subject.capitalize())} {found.group(2)}"
+
+
+async def place_uncategorised(session: AsyncSession, models) -> dict[str, int]:
+    """Pages whose questions have no place in our table of contents (crawled before auto_toc): a text model
+    reads the page title, URL and a few questions, with the subject's current table of contents, and names the
+    root › series › chapter › lesson; the page is mapped there and its questions go on to the bank."""
+    from app.models import CrawlCategoryMap
+    from app.pipeline.use_cases.toc import ensure_path
+
+    stats = {"pages": 0, "placed": 0, "unsure": 0}
+    items = (
+        await session.scalars(
+            select(CrawledQuestion).where(
+                CrawledQuestion.status == CrawlItemStatus.NEEDS_REVIEW,
+                CrawledQuestion.issues.contains([NO_CATEGORY]),
+            )
+        )
+    ).all()
+    pages: dict[tuple[str, str], list[CrawledQuestion]] = {}
+    for item in items:
+        pages.setdefault((item.site_id, item.source_url), []).append(item)
+    for (site_id, url), questions in pages.items():
+        stats["pages"] += 1
+        title = questions[0].source_title or ""
+        root_hint = _root_guess(f"{title} {url}")
+        user = json.dumps(
+            {
+                "title": title,
+                "url": url,
+                "questions": [q.content[:300] for q in questions[:4]],
+                "current_table_of_contents": await _toc_of(session, root_hint) if root_hint else [],
+            },
+            ensure_ascii=False,
+        )
+        place = None
+        for model in models:
+            if not await model.available():
+                continue
+            try:
+                place = Place.model_validate_json(await model.ask_json(PLACE_PROMPT, user, 1))
+                break
+            except Exception as exc:  # noqa: BLE001 - unusable answer, quota: the next model
+                log.warning("%s could not place %s: %s", model.name, url, exc)
+        if place is None or not place.confident or not (place.root and place.chapter and place.lesson):
+            stats["unsure"] += 1
+            continue
+        target = await ensure_path(session, [place.root, place.series, place.chapter, place.lesson])
+        if await session.get(CrawlCategoryMap, (site_id, url)) is None:
+            session.add(
+                CrawlCategoryMap(site_id=site_id, source_url=url, category_id=target.id, source_title=title[:500])
+            )
+        for q in questions:
+            q.issues = [i for i in q.issues if i != NO_CATEGORY]
+            _ready_if_clean(q)
+            stats["placed"] += 1
+        await session.flush()
+    await session.commit()
+    return stats

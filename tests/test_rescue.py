@@ -113,3 +113,46 @@ def test_waiting_questions_are_finished_by_machine(db):
     assert rows["q6"].status == CrawlItemStatus.NEEDS_REVIEW and rows["q6"].issues == ["Không tìm thấy đáp án."]
     ids = [r.id for r in (rows["q3"], rows["q4"], rows["q5"], rows["q6"])]
     assert model.asked == [ids[:3], ids[3:]]  # three questions a call (Groq's free tier limits tokens a minute)
+
+
+def test_pages_without_a_place_are_mapped_into_the_table_of_contents(db):
+    from app.models import Category, CrawlCategoryMap
+    from app.pipeline.use_cases.rescue import NO_CATEGORY, place_uncategorised
+
+    class Placer(FakeModel):
+        async def ask_json(self, system, user, items=1):
+            page = json.loads(user)
+            self.asked.append(page["url"])
+            if "bai-9" in page["url"]:
+                return json.dumps({"root": "Vật lí 11", "chapter": "?", "lesson": "?", "confident": False})
+            return json.dumps(
+                {
+                    "root": "Vật lí 11",
+                    "series": "Kết nối tri thức",
+                    "chapter": "Chương 1: Dao động",
+                    "lesson": "Bài 5: Động năng. Thế năng. Sự chuyển hoá năng lượng trong dao động điều hoà",
+                    "confident": True,
+                }
+            )
+
+    async def seed(s):
+        s.add(CrawlerSite(site_id="demo", name="Demo", config={}))
+        await s.flush()
+        for n, url in (
+            (1, "https://x/vat-li-11-bai-5"),
+            (2, "https://x/vat-li-11-bai-5"),
+            (3, "https://x/vat-li-11-bai-9"),
+        ):
+            item = _item(n, f"Câu {n}", [NO_CATEGORY])
+            item.source_url, item.source_title = url, "Trắc nghiệm vật lí 11 bài 5 kết nối tri thức"
+            s.add(item)
+
+    db(seed)
+    model = Placer({})
+    stats = db(lambda s: place_uncategorised(s, [model]))
+    assert stats == {"pages": 2, "placed": 2, "unsure": 1} and len(model.asked) == 2  # one call per page
+    mapped = db(lambda s: s.scalar(select(CrawlCategoryMap)))
+    lesson = db(lambda s: s.get(Category, mapped.category_id))
+    assert mapped.source_url == "https://x/vat-li-11-bai-5" and lesson.name.startswith("Bài 5: Động năng")
+    rows = {r.external_id: r for r in db(lambda s: s.scalars(select(CrawledQuestion)))}
+    assert rows["q1"].status == CrawlItemStatus.READY and rows["q3"].issues == [NO_CATEGORY]  # unsure: it waits

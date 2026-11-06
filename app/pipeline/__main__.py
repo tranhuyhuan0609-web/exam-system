@@ -107,11 +107,14 @@ async def _drive_sync(source_id: str, max_files: int | None) -> None:
 
 async def _rescue(limit: int) -> None:
     from app.db import SessionLocal
-    from app.pipeline.use_cases.rescue import rescue_waiting
+    from app.pipeline.use_cases.rescue import place_uncategorised, rescue_waiting
     from app.pipeline.workers import rescue_models
 
+    models = rescue_models()
     async with SessionLocal() as session:
-        print("Rescue:", await rescue_waiting(session, rescue_models(), limit))
+        print("Rescue:", await rescue_waiting(session, models, limit))
+    async with SessionLocal() as session:
+        print("Placed in the table of contents:", await place_uncategorised(session, models))
 
 
 async def _fix_text() -> None:
