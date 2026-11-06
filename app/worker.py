@@ -23,6 +23,7 @@ from app.ai.provider import AIError, AIProvider, AIQuotaExhausted, GeminiProvide
 from app.application.answer_keys import is_answer_key, read_answer_key_document
 from app.application.essay_grading import grade_pending_essays
 from app.application.library_publish import auto_publish, library_document, recheck_waiting
+from app.application.similar import make_variants
 from app.attempts import finalize_expired
 from app.config import get_settings
 from app.db import SessionLocal
@@ -102,7 +103,7 @@ async def claim_next() -> int | None:
         job_id = await session.scalar(
             select(ImportJob.id)
             .where(ImportJob.status == JobStatus.QUEUED)
-            .order_by(ImportJob.id)
+            .order_by((ImportJob.purpose == "SIMILAR").desc(), ImportJob.id)  # a teacher waits: first
             .with_for_update(skip_locked=True)
             .limit(1)
         )
@@ -159,6 +160,13 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
                     default_difficulty=job.default_difficulty.value,
                     progress=progress,
                 )
+                if job.purpose == "SIMILAR":  # a teacher's paper: similar papers, nothing for the bank
+                    text, _ = chat_models()
+                    try:
+                        gemini = default_provider()
+                    except AIError:
+                        gemini = None
+                    job.variants = await make_variants(drafts, job.versions, text, gemini, progress)
         except AIQuotaExhausted as exc:  # back in the queue; the loop pauses until quotas may have refilled
             global _paused_until
             _paused_until = time.monotonic() + QUOTA_PAUSE_SECONDS
@@ -173,6 +181,8 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
             job.stage = f"Đã đọc {len(drafts)} câu từ {page_count} trang" if drafts else "Không tìm thấy câu hỏi nào"
             if codes is not None:
                 job.stage = f"Đã đọc đáp án chính thức của {codes} mã đề"
+            if job.purpose == "SIMILAR":
+                job.stage = f"Đã viết {len(job.variants)} câu cho {job.versions} đề tương tự từ {len(drafts)} câu"
             job.models_used = ", ".join(sorted(provider.models_used))[:200] or None
             if getattr(provider, "reused", 0):
                 job.stage = f"{job.stage} · {provider.reused} câu lấy đáp án từ ngân hàng"[:200]
@@ -181,7 +191,7 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
         job.finished_at = await session.scalar(select(func.now()))
         await session.commit()
         log.info("Job %s finished: %s", job_id, job.status)
-        if job.status == JobStatus.DONE:
+        if job.status == JobStatus.DONE and job.purpose != "SIMILAR":
             try:  # a library file: publish it and typeset clean PDFs when the drafts pass the checks
                 if codes:  # exams of this paper that were waiting for their official answers
                     await recheck_waiting(session, job.category_id)

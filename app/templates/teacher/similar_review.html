@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Đề tương tự · Exam System{% endblock %}
+{% block container_class %}wide{% endblock %}
+{% block head %}{% if job.status in ("QUEUED", "PROCESSING") %}<meta http-equiv="refresh" content="6">{% endif %}{% endblock %}
+{% block content %}
+<p><a href="/teacher/make">← Tạo đề</a></p>
+<h1>Đề tương tự – {{ job.original_filename }}</h1>
+<p class="muted">{{ root.name }} · {{ job.versions }} đề tương tự</p>
+
+{% if job.status in ("QUEUED", "PROCESSING") %}
+  <div class="card">
+    <p><strong>{{ job.stage or "Đang chờ…" }}</strong></p>
+    {% if job.progress_total %}<progress max="{{ job.progress_total }}" value="{{ job.progress_done }}" style="width:100%"></progress>{% endif %}
+    <p class="muted small">Trang tự cập nhật. AI đọc đề, viết câu tương tự rồi giải lại để kiểm tra; đề dài có thể mất vài phút
+      (lâu hơn khi các model AI miễn phí đang bận).</p>
+  </div>
+{% elif job.status == "FAILED" %}
+  <div class="alert">Không xử lý được file: {{ job.error }}</div>
+{% elif not variants %}
+  <div class="alert">AI không đọc được câu hỏi nào trong file này{% if job.stage %} ({{ job.stage }}){% endif %}.</div>
+{% else %}
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+  <p class="muted">Kiểm tra từng câu: <span class="badge badge-warn">Cần xem</span> là câu AI giải lại ra đáp án khác hoặc chưa hợp lệ;
+    <span class="badge">Giữ nguyên câu gốc</span> là câu có hình vẽ. Sửa trực tiếp trong ô, đánh dấu “Bỏ” với câu không dùng.</p>
+  <form method="post" action="/teacher/make/similar/{{ job.id }}/create" class="similar-form">
+    {% for version in versions %}
+      <div class="card mt">
+        <h2><label class="check"><input type="checkbox" name="version" value="{{ version }}" checked> Đề {{ version }}</label></h2>
+        {% for k, d in variants if d.version == version %}
+          <div class="similar-q {{ 'needs-look' if 'check_mismatch' in d.flags or 'invalid' in d.flags }}">
+            <div class="row small">
+              <strong>Câu {{ loop.index }}</strong>
+              <span class="muted">(từ câu {{ d.of }} của đề gốc · {{ TYPE_LABELS[d.type] }}{% if d.difficulty %} · {{ DIFFICULTY_LABELS[d.difficulty] }}{% endif %})</span>
+              {% if d.checked %}<span class="badge">AI giải lại: khớp</span>{% endif %}
+              {% if 'check_mismatch' in d.flags %}<span class="badge badge-warn">Cần xem: AI giải lại ra {{ d.check_answer }}</span>{% endif %}
+              {% if 'invalid' in d.flags %}<span class="badge badge-warn">Cần xem: câu chưa hợp lệ</span>{% endif %}
+              {% if 'kept_original' in d.flags %}<span class="badge">Giữ nguyên câu gốc</span>{% endif %}
+              <label class="check"><input type="checkbox" name="q{{ k }}_drop" value="1"> Bỏ</label>
+            </div>
+            <div class="q-render">{{ d.content }}</div>
+            {% if d.figure %}<img class="q-figure small-figure" src="{{ media_url(d.figure) }}" alt="Hình vẽ">{% endif %}
+            <textarea name="q{{ k }}_content" rows="3">{{ d.content }}</textarea>
+            {% if d.type == "MULTIPLE_CHOICE" %}
+              {% for c in d.choices %}
+                <label class="check"><input type="radio" name="q{{ k }}_correct" value="{{ loop.index0 }}" {{ 'checked' if d.correct == loop.index0 }}>
+                  <b>{{ "ABCDEF"[loop.index0] }}.</b> <input name="q{{ k }}_choice{{ loop.index0 }}" value="{{ c }}" style="width:80%"></label>
+              {% endfor %}
+            {% elif d.type == "TRUE_FALSE" %}
+              {% for c in d.choices %}
+                <label class="check"><b>{{ "abcdef"[loop.index0] }})</b> <input name="q{{ k }}_choice{{ loop.index0 }}" value="{{ c }}" style="width:70%">
+                  <select name="q{{ k }}_truth{{ loop.index0 }}"><option value="1" {{ 'selected' if d.truths[loop.index0] }}>Đúng</option><option value="0" {{ 'selected' if not d.truths[loop.index0] }}>Sai</option></select></label>
+              {% endfor %}
+            {% elif d.type == "SHORT_ANSWER" %}
+              <label>Đáp số <input name="q{{ k }}_answer" value="{{ (d.answers or [''])[0] }}" style="width:10em"></label>
+            {% endif %}
+            <label class="small">Lời giải {% if d.type == "ESSAY" %}(đáp án mẫu){% endif %}
+              <textarea name="q{{ k }}_explanation" rows="3">{{ d.explanation }}</textarea></label>
+          </div>
+        {% endfor %}
+      </div>
+    {% endfor %}
+
+    <div class="card mt">
+      <label>Tên bài kiểm tra <input name="title" value="{{ values.title }}" required maxlength="280"></label>
+      <p class="hint">Giao nhiều đề thì mỗi đề thành một bài riêng (“… – Đề 1”, “… – Đề 2”), mỗi bài có link và mã riêng.</p>
+      {% if user.role == "ADMIN" %}
+        <fieldset class="mt">
+          <legend>Đăng ở đâu</legend>
+          <label class="check"><input type="radio" name="publish" value="public" {{ 'checked' if values.public }}> Đăng lên web <span class="muted small">(học sinh làm ngay)</span></label>
+          <label class="check"><input type="radio" name="publish" value="private" {{ 'checked' if not values.public }}> Bài kiểm tra riêng <span class="muted small">(link + mã)</span></label>
+        </fieldset>
+      {% endif %}
+      <div class="grid-3 mt">
+        <label class="schedule">Giờ mở bài <input type="datetime-local" name="starts_at" value="{{ values.starts_at | local_input }}" required></label>
+        <label class="schedule">Giờ đóng bài <input type="datetime-local" name="ends_at" value="{{ values.ends_at | local_input }}" required></label>
+        <label>Thời gian làm bài (phút) <input type="number" name="minutes" min="1" max="300" value="{{ values.minutes }}" required></label>
+      </div>
+      <label class="check"><input type="checkbox" name="shuffle" value="1" {{ 'checked' if values.shuffle }}> Đảo thứ tự câu và đáp án</label>
+      <button class="btn mt">Giao đề</button>
+    </div>
+  </form>
+  <style>
+    .similar-q { border-top: 1px solid #e5e7eb; padding: 10px 0; }
+    .similar-q.needs-look { background: #fff7e6; }
+    .similar-q textarea { width: 100%; }
+    .q-render { margin: 4px 0; white-space: pre-wrap; }
+  </style>
+  <script>
+    (() => {
+      const form = document.querySelector(".similar-form");
+      function schedule() {
+        const pub = form.querySelector("[name=publish][value=public]");
+        form.querySelectorAll("label.schedule").forEach((label) => {
+          label.hidden = !!(pub && pub.checked);
+          label.querySelector("input").required = !(pub && pub.checked);
+        });
+      }
+      form.addEventListener("input", schedule);
+      schedule();
+    })();
+  </script>
+{% endif %}
+{% endblock %}

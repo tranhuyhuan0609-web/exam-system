@@ -345,6 +345,11 @@ class ImportJob(Base):
     default_difficulty: Mapped[Difficulty] = mapped_column(_enum(Difficulty, "difficulty"))
     # Draft questions produced by the pipeline and edited during review (see app/ai/pipeline.py).
     drafts: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, server_default="[]")
+    # "BANK": questions for the bank (admin, library). "SIMILAR": a teacher's paper, read only to write `versions`
+    # similar papers (`variants`: drafts with "version" and "of"), reviewed by that teacher, never in the bank.
+    purpose: Mapped[str] = mapped_column(String(20), default="BANK", server_default="BANK")
+    versions: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    variants: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, server_default="[]")
     error: Mapped[str | None] = mapped_column(Text)
     models_used: Mapped[str | None] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

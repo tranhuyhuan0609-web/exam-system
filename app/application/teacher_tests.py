@@ -230,6 +230,54 @@ async def create_from_matrix(session: AsyncSession, teacher: User, spec: MatrixS
     return exam
 
 
+async def create_fixed_test(
+    session: AsyncSession, teacher: User, spec: MatrixSpec, question_ids: list[int], now: datetime
+) -> Exam:
+    """A test of the given questions in that order (similar papers): private with link and code, or (admins)
+    public on the site. `spec.rules` is unused."""
+    errors = [
+        e for e in await check_matrix(session, MatrixSpec(**{**spec.__dict__, "rules": []}), now) if "Ma trận" not in e
+    ]
+    if not question_ids:
+        errors.append("Đề cần ít nhất 1 câu hỏi.")
+    if errors:
+        raise ScheduleError(" ".join(errors))
+    exam = Exam(
+        exam_mode=ExamMode.SCHEDULED,
+        visibility=ExamVisibility.PRIVATE,
+        is_published=False,
+        max_attempts=1,
+        allow_custom_parts=False,
+        created_by=teacher.id,
+        access_token=new_token(),
+        access_code=new_code(),
+        title=spec.title.strip(),
+        root_id=spec.root.id,
+        category_id=spec.root.id,
+        available_from=spec.starts_at,
+        available_until=spec.ends_at,
+        duration_seconds=spec.minutes * 60,
+        shuffle_questions=spec.shuffle,
+        shuffle_choices=spec.shuffle,
+        question_source=QuestionSource.FIXED,
+        description=f"Đề tương tự · {len(question_ids)} câu",
+    )
+    if spec.public:
+        exam.exam_mode, exam.visibility, exam.is_published, exam.max_attempts = (
+            ExamMode.PRACTICE,
+            ExamVisibility.PUBLIC,
+            True,
+            None,
+        )
+        exam.access_token = exam.access_code = exam.available_from = exam.available_until = None
+    session.add(exam)
+    await session.flush()
+    for position, question_id in enumerate(question_ids, start=1):
+        session.add(ExamQuestion(exam_id=exam.id, question_id=question_id, position=position))
+    await session.flush()
+    return exam
+
+
 async def attempts_started(session: AsyncSession, exam: Exam) -> int:
     return await session.scalar(select(func.count()).select_from(ExamAttempt).where(ExamAttempt.exam_id == exam.id))
 
