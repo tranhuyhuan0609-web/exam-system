@@ -77,7 +77,7 @@ def test_drive_sync_takes_chosen_folders_and_queues_ai_import_for_targets(db):
     stats, store = _sync(db, drive)
     assert stats == {
         "new": 3,
-        "updated": 0,
+        "indexed": 0,
         "unchanged": 0,
         "skipped": 1,
         "failed": 0,
@@ -106,7 +106,7 @@ def test_drive_sync_takes_chosen_folders_and_queues_ai_import_for_targets(db):
     db(lambda s: s.execute(update(LibraryDocument).values(downloadable=False)))
     drive.tree["f-math"][0].md5 = "m3-new"
     stats, _ = _sync(db, drive)
-    assert stats["updated"] == 2 and db(lambda s: s.scalar(select(func.count()).select_from(ImportJob))) == 1
+    assert stats["new"] == 2 and db(lambda s: s.scalar(select(func.count()).select_from(ImportJob))) == 1
     assert not db(
         lambda s: s.scalar(select(LibraryDocument).where(LibraryDocument.source_file_id == "x-math"))
     ).downloadable
@@ -194,3 +194,44 @@ def test_drive_sync_stops_when_google_blocks_automated_downloads(db):
     stats, _ = _sync(db, drive)
     assert stats["blocked"] == 1 and len(drive.downloads) == 1  # no hammering after the first refusal
     assert db(lambda s: s.scalar(select(func.count()).select_from(LibraryDocument))) == 0
+
+
+BOOKS = DriveSource.model_validate(
+    {
+        "source_id": "demo",
+        "name": "Demo",
+        "folder_id": "root",
+        "max_files": 1,
+        "include": [
+            {"folder": "8. KHO SÁCH CHƯƠNG TRÌNH MỚI", "kind": "BOOK", "index_only": True},
+            {"folder": "9. FULL ĐỀ THI THPTQG2024 (BỘ GD&ĐT)", "kind": "EXAM", "status": "PUBLISHED"},
+        ],
+    }
+)
+
+
+def test_copyrighted_books_are_listed_never_copied_and_crawling_goes_on_without_the_consumer(admin_client, db):
+    from app.pipeline.use_cases.drive_sync import crawl_drive, ingest_library_event
+
+    drive, events = FakeDrive(), []
+
+    async def emit(event):  # what goes to Kafka (raw.library.ingestion)
+        events.append(event)
+
+    async def nothing_known(file_id):
+        return None
+
+    store = MemoryRawStore()
+    stats = asyncio.run(crawl_drive(BOOKS, drive, get_bronze_storage(), store, emit, nothing_known, pause=0))
+    assert stats["indexed"] == 1 and stats["new"] == 1 and stats["more"] == 1  # one download per run here
+    book = next(e for e in events if e["index_only"])
+    assert book["name"] == "SGK Toán 10.pdf" and "storage_key" not in book and "x-book" not in drive.downloads
+
+    for event in events:  # the library consumer, later and independently
+        db(lambda s, e=event: ingest_library_event(s, e, BOOKS, get_bronze_storage(), get_storage()))
+    listed = db(lambda s: s.scalar(select(LibraryDocument).where(LibraryDocument.source_file_id == "x-book")))
+    assert listed.status == LibraryStatus.HIDDEN and listed.storage_key == "" and "bản quyền" in listed.license_note
+    admin_client.post("/admin/library/bulk", data={"ids": [str(listed.id)], "action": "publish"})
+    assert db(lambda s: s.get(LibraryDocument, listed.id)).status == LibraryStatus.HIDDEN  # no file to publish
+    assert admin_client.get(f"/library/{listed.id}/view").status_code == 404
+    assert "chỉ mục lục" in admin_client.get("/admin/library", params={"status": "HIDDEN"}).text

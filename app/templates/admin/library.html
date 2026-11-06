@@ -32,8 +32,8 @@
       {% for d in docs %}
         <tr>
           <td><input type="checkbox" name="ids" value="{{ d.id }}"></td>
-          <td><strong>{{ d.title }}</strong>{% if d.parent_id %} <span class="badge">trang {{ d.page_from }}–{{ d.page_to }}</span>{% endif %}
-            <div class="small">{% if d.mime == "application/pdf" %}<a href="/library/{{ d.id }}/view" target="_blank" rel="noopener">xem</a> · {% endif %}<a href="{{ d.source_url }}" target="_blank" rel="noopener noreferrer">gốc trên Drive</a>
+          <td><strong>{{ d.title }}</strong>{% if d.parent_id %} <span class="badge">trang {{ d.page_from }}–{{ d.page_to }}</span>{% endif %}{% if not d.storage_key %} <span class="badge badge-warn" title="Sách có bản quyền: chỉ lưu tên và link, không sao chép file">chỉ mục lục</span>{% endif %}
+            <div class="small">{% if d.mime == "application/pdf" and d.storage_key %}<a href="/library/{{ d.id }}/view" target="_blank" rel="noopener">xem</a> · {% endif %}<a href="{{ d.source_url }}" target="_blank" rel="noopener noreferrer">gốc trên Drive</a>
               {% if d.import_job_id %} · <a href="/admin/ai-imports/{{ d.import_job_id }}">AI nhập đề #{{ d.import_job_id }}</a>{% endif %}</div></td>
           <td class="small muted">{{ d.folder_path | join(" › ") }}</td>
           <td class="small">{{ KIND_LABELS[d.kind] }}</td>

@@ -74,7 +74,7 @@ async def library_home(request: Request, user: LibraryUser, session: SessionDep,
 
 async def _document(session, user: User, document_id: int) -> LibraryDocument:
     doc = await session.get(LibraryDocument, document_id)
-    if doc is None or doc.status == LibraryStatus.HIDDEN:
+    if doc is None or doc.status == LibraryStatus.HIDDEN or not doc.storage_key:  # no key: listed only
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tài liệu.")
     if doc.status != LibraryStatus.PUBLISHED and user.role != UserRole.ADMIN:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy tài liệu.")

@@ -10,6 +10,7 @@ from app.pipeline.domain.models import RawDocument
 
 RAW_TOPIC = "raw.exam.ingestion"
 DLQ_TOPIC = "raw.exam.ingestion.dlq"
+LIBRARY_TOPIC = "raw.library.ingestion"  # Drive files fetched into Bronze, for the library consumer
 
 
 class RawStore(Protocol):

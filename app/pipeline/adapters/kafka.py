@@ -12,7 +12,7 @@ from aiokafka.admin import AIOKafkaAdminClient, NewTopic
 from aiokafka.errors import TopicAlreadyExistsError
 
 from app.config import get_settings
-from app.pipeline.ports import DLQ_TOPIC, RAW_TOPIC
+from app.pipeline.ports import DLQ_TOPIC, LIBRARY_TOPIC, RAW_TOPIC
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ async def ensure_topics(bootstrap: str | None = None, partitions: int = 3) -> No
         existing = set(await admin.list_topics())
         wanted = [
             NewTopic(name, num_partitions=partitions, replication_factor=1)
-            for name in (RAW_TOPIC, DLQ_TOPIC)
+            for name in (RAW_TOPIC, DLQ_TOPIC, LIBRARY_TOPIC)
             if name not in existing
         ]
         if wanted:

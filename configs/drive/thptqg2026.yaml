@@ -1,11 +1,15 @@
 # Thư mục Google Drive công khai "Tailieu @thptqg2026" (kho tài liệu do cộng đồng đóng góp).
-# Only these folders are taken. Rights differ per folder: official exams are published, teachers' contributions
-# wait for an admin to check the source. Textbooks (KHO SÁCH), IELTS and HSK folders are left out on purpose.
+# Rights differ per folder: official exams are published, teachers' contributions wait for an admin to check the
+# source. Textbooks (KHO SÁCH), IELTS and HSK books are copyrighted: only listed (index_only), never copied.
 # "targets": files whose path matches also go to the AI exam import (Gemini reads pages: quota permitting).
+# The scheduler takes `max_files` files per run, every `every_hours` (sooner while files are left): Google blocks
+# bursts of automated downloads, so a large folder comes in a little at a time.
 source_id: thptqg2026
 name: Tailieu @thptqg2026
 folder_id: 1kYsUS6BtdAH6TTcStJx5AJK4N5DTGJv4
-max_files: 200
+max_files: 30
+every_hours: 3
+download_delay: 3
 include:
   - folder: "9. FULL ĐỀ THI THPTQG2024 (BỘ GD&ĐT)"
     kind: EXAM
@@ -17,6 +21,18 @@ include:
         category: [Ôn thi THPT – Toán, Đề thi THPT 2024]
       - match: 'v[aậ]t\s*l[iíyý]|(^|[^a-zà-ỹ])l[ýí]([^a-zà-ỹ]|$)'
         category: [Ôn thi THPT – Vật lí, Đề thi THPT 2024]
+      - match: 'h[oóòọ]a\s*h[oọ]c|(^|[^a-zà-ỹ])h[oóòọ]a([^a-zà-ỹ]|$)'
+        category: [Ôn thi THPT – Hoá học, Đề thi THPT 2024]
+      - match: 'sinh\s*h[oọ]c|(^|[^a-zà-ỹ])sinh([^a-zà-ỹ]|$)'
+        category: [Ôn thi THPT – Sinh học, Đề thi THPT 2024]
+      - match: 'l[iị]ch\s*s[uử]|(^|[^a-zà-ỹ])s[uử]([^a-zà-ỹ]|$)'
+        category: [Ôn thi THPT – Lịch sử, Đề thi THPT 2024]
+      - match: '[đd][iị]a\s*l[iíý]|(^|[^a-zà-ỹ])[đd][iị]a([^a-zà-ỹ]|$)'
+        category: [Ôn thi THPT – Địa lí, Đề thi THPT 2024]
+      - match: 'gdcd|gi[aá]o\s*d[uụ]c\s*c[oô]ng\s*d[aâ]n|ktpl|kinh\s*t[eế]\s*(v[aà]\s*)?ph[aá]p\s*lu[aậ]t'
+        category: [Ôn thi THPT – GDKT&PL, Đề thi THPT 2024]
+      - match: 'ti[eế]ng\s*anh|(^|[^a-zà-ỹ])anh([^a-zà-ỹ]|$)'
+        category: [Ôn thi THPT – Tiếng Anh, Đề thi THPT 2024]
   - folder: "10. HSG DUYÊN HẢI VÀ ĐBBB 2024"
     kind: HSG
     status: PUBLISHED
@@ -35,3 +51,26 @@ include:
   - folder: "3. Khối 12 - Chương trình mới"
     kind: TOPIC
     status: PENDING_REVIEW
+  - folder: "4. Khối 12 - Chương trình cũ"
+    kind: TOPIC
+    status: PENDING_REVIEW
+  - folder: "0. ĐẠI HỌC"
+    kind: TOPIC
+    status: PENDING_REVIEW
+  - folder: "5. ĐGNL - ĐGTD (đóng góp vào thư mục này)"
+    kind: EXAM
+    status: PENDING_REVIEW
+    license_note: Đề ĐGNL/ĐGTD do cộng đồng đóng góp, cần kiểm tra nguồn
+  - folder: "0. ĐÓNG GÓP TÀI LIỆU TẠI ĐÂY"
+    kind: OTHER
+    status: PENDING_REVIEW
+    license_note: Tài liệu cộng đồng đóng góp, cần kiểm tra nguồn và bản quyền
+  - folder: "8. KHO SÁCH CHƯƠNG TRÌNH MỚI"
+    kind: BOOK
+    index_only: true
+  - folder: "6. TÀI LIỆU IELTS (đóng góp vào thư mục này)"
+    kind: BOOK
+    index_only: true
+  - folder: "7. TÀI LIỆU HSK (đóng góp vào thư mục này)"
+    kind: BOOK
+    index_only: true

@@ -108,6 +108,14 @@ services:
   crawler-dlq:
     <<: *pipeline
     command: python -m app.pipeline dlq
+  # Drive files announced by the scheduler -> library (split into exams with OCR, answer tables, AI import jobs).
+  # Runs on the worker image: Tesseract and LibreOffice.
+  crawler-library:
+    <<: *pipeline
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    command: python -m app.pipeline library
 
 volumes:
   pgdata17:
