@@ -1,0 +1,59 @@
+site_id: opentrivia
+name: Open Trivia Database
+enabled: true
+base_url: https://opentdb.com
+parser: opentrivia_quiz
+schedule_times:
+- 03:00
+refresh_days: 15
+max_pages: 50
+respect_robots: true
+auto_publish: true
+auto_toc: true
+default_difficulty: UNDERSTANDING
+rate_limit:
+  delay_sec: 2
+  timeout_sec: 20
+  retries: 2
+  concurrency: 1
+toc:
+  scope:
+  - //body
+seeds:
+- url: https://opentdb.com/api.php?amount=50&category=19
+  label: Toán học – Open Trivia DB
+  root: Ngân hàng trắc nghiệm quốc tế
+  series: Open Trivia DB
+  chapter: Toán học
+- url: https://opentdb.com/api.php?amount=50&category=17
+  label: Khoa học tự nhiên – Open Trivia DB
+  root: Ngân hàng trắc nghiệm quốc tế
+  series: Open Trivia DB
+  chapter: Khoa học tự nhiên
+- url: https://opentdb.com/api.php?amount=50&category=18
+  label: Tin học & Máy tính – Open Trivia DB
+  root: Ngân hàng trắc nghiệm quốc tế
+  series: Open Trivia DB
+  chapter: Tin học
+- url: https://opentdb.com/api.php?amount=50&category=22
+  label: Địa lí – Open Trivia DB
+  root: Ngân hàng trắc nghiệm quốc tế
+  series: Open Trivia DB
+  chapter: Địa lí
+- url: https://opentdb.com/api.php?amount=50&category=23
+  label: Lịch sử – Open Trivia DB
+  root: Ngân hàng trắc nghiệm quốc tế
+  series: Open Trivia DB
+  chapter: Lịch sử
+- url: https://opentdb.com/api.php?amount=50&category=9
+  label: Kiến thức chung – Open Trivia DB
+  root: Ngân hàng trắc nghiệm quốc tế
+  series: Open Trivia DB
+  chapter: Kiến thức chung
+follow:
+- pattern: ^https://opentdb\.com/api\.php\?.*$
+  kind: detail
+categories:
+- pattern: .*
+  root: Ngân hàng trắc nghiệm quốc tế
+

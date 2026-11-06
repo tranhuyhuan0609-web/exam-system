@@ -40,9 +40,11 @@ class QuestionSpider(scrapy.Spider):
                 "seed_chapter": seed.chapter,
                 "chapter": seed.chapter,
             }
+            rule = self.site.rule_for(seed.url)
+            callback = self.parse_detail if (rule and rule.kind == "detail") else self.parse_listing
             yield scrapy.Request(
                 seed.url,
-                callback=self.parse_listing,
+                callback=callback,
                 errback=self.on_error,
                 cb_kwargs={"context": context},
                 dont_filter=True,
@@ -114,12 +116,19 @@ class QuestionSpider(scrapy.Spider):
                 yield request
 
     def _page(self, response, role: str, context: dict) -> dict:
+        title = ""
+        try:
+            title = " ".join((response.css("title::text").get() or "").split())
+        except Exception:
+            title = ""
+        if not title:
+            title = context.get("label", "")
         return {
             "kind": "html",
             "role": role,
             "url": response.url,
             "body": response.text,
-            "title": " ".join((response.css("title::text").get() or "").split()),
+            "title": title,
             "label": context.get("label", ""),
             "context": {k: v for k, v in context.items() if k not in ("label", "prefix", "seed_chapter") and v},
         }
