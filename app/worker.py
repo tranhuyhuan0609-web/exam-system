@@ -18,6 +18,7 @@ from app.ai.normalize import NormalizeError
 from app.ai.pipeline import run_pipeline
 from app.ai.provider import AIError, AIProvider, GeminiProvider
 from app.application.essay_grading import grade_pending_essays
+from app.application.library_publish import auto_publish
 from app.attempts import finalize_expired
 from app.config import get_settings
 from app.db import SessionLocal
@@ -101,6 +102,12 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
         job.finished_at = await session.scalar(select(func.now()))
         await session.commit()
         log.info("Job %s finished: %s", job_id, job.status)
+        if job.status == JobStatus.DONE:
+            try:  # a library file: publish it and typeset clean PDFs when the drafts pass the checks
+                await auto_publish(session, job)
+            except Exception:  # the drafts stay for the admin's review screen
+                log.exception("Job %s: automatic publication failed", job_id)
+                await session.rollback()
 
 
 async def auto_submit_once(batch: int = 500) -> int:

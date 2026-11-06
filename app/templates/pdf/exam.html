@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+        onload="renderMathInElement(document.body, {delimiters: [
+          {left: '$$', right: '$$', display: true}, {left: '\\[', right: '\\]', display: true},
+          {left: '$', right: '$', display: false}, {left: '\\(', right: '\\)', display: false}],
+          throwOnError: false}); window.mathDone = true;"></script>
+<style>
+  body { font-family: "Times New Roman", "Liberation Serif", "Noto Serif", serif; font-size: 12.5pt; line-height: 1.4; color: #000; }
+  header { display: grid; grid-template-columns: 1fr 1.6fr; gap: 12px; text-align: center; margin-bottom: 10px; }
+  header .left { font-weight: bold; }
+  header .right .title { font-weight: bold; font-size: 13.5pt; text-transform: uppercase; }
+  header .muted, .source { font-style: italic; font-size: 11pt; }
+  .candidate { margin: 6px 0 12px; }
+  h2 { font-size: 12.5pt; margin: 14px 0 6px; text-transform: uppercase; }
+  .question { margin: 0 0 8px; break-inside: avoid; }
+  .question .stem { white-space: pre-wrap; }
+  .question b.label { margin-right: 4px; }
+  .choices { display: grid; gap: 2px 12px; margin: 2px 0 0 14px; }
+  .choices.c4 { grid-template-columns: repeat(4, 1fr); }
+  .choices.c2 { grid-template-columns: repeat(2, 1fr); }
+  .choices.c1 { grid-template-columns: 1fr; }
+  .choices b { margin-right: 4px; }
+  figure { margin: 4px 0; text-align: center; }
+  figure img { max-width: 70%; max-height: 220px; }
+  .end { text-align: center; font-weight: bold; margin-top: 18px; }
+  table.key { border-collapse: collapse; margin: 4px 0 12px; }
+  table.key td { border: 1px solid #000; padding: 2px 8px; text-align: center; min-width: 22px; }
+  .solution { white-space: pre-wrap; margin: 2px 0 10px 14px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="left">{{ subtitle }}<div class="muted">{{ "LỜI GIẢI THAM KHẢO" if solutions else "ĐỀ THI" }}</div></div>
+  <div class="right">
+    <div class="title">{{ title }}</div>
+    {% if not solutions %}<div class="muted">Thời gian làm bài: {{ minutes }} phút, không kể thời gian phát đề</div>{% endif %}
+    <div class="source">{{ source }}</div>
+  </div>
+</header>
+{% if not solutions %}
+  <div class="candidate">Họ, tên thí sinh: ...................................................... Số báo danh: ............................</div>
+{% endif %}
+
+{% if solutions %}
+  <h2>Đáp án</h2>
+  {% for part in parts %}
+    {% if parts | length > 1 %}<div><b>{{ part.title }}</b></div>{% endif %}
+    {% for row in part.questions | batch(10) %}
+      <table class="key">
+        <tr>{% for q in row %}<td><b>{{ q.number }}</b></td>{% endfor %}</tr>
+        <tr>{% for q in row %}<td>{{ q.answer }}</td>{% endfor %}</tr>
+      </table>
+    {% endfor %}
+  {% endfor %}
+  <h2>Lời giải chi tiết</h2>
+{% endif %}
+
+{% for part in parts %}
+  <h2>{{ part.title }}</h2>
+  {% for q in part.questions %}
+    <div class="question">
+      <div class="stem"><b class="label">Câu {{ q.number }}.</b>{{ q.content }}</div>
+      {% if q.figure %}<figure><img src="{{ q.figure }}" alt=""></figure>{% endif %}
+      {% if q.kind == "TRUE_FALSE" %}
+        <div class="choices c1">{% for c in q.choices %}<div><b>{{ "abcdef"[loop.index0] }})</b>{{ c }}{% if solutions %} — <b>{{ "Đúng" if q.truths[loop.index0] else "Sai" }}</b>{% endif %}</div>{% endfor %}</div>
+      {% elif q.choices %}
+        <div class="choices c{{ q.columns }}">{% for c in q.choices %}<div><b>{{ "ABCDEF"[loop.index0] }}.</b>{{ c }}</div>{% endfor %}</div>
+      {% endif %}
+      {% if solutions %}
+        {% if q.kind != "TRUE_FALSE" %}<div><b>Đáp án: {{ q.answer }}</b></div>{% endif %}
+        {% if q.explanation %}<div class="solution">{{ q.explanation }}</div>{% endif %}
+      {% endif %}
+    </div>
+  {% endfor %}
+{% endfor %}
+<div class="end">— HẾT —</div>
+</body>
+</html>

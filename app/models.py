@@ -501,6 +501,10 @@ class LibraryDocument(Base):
     )
     page_from: Mapped[int | None] = mapped_column(Integer)
     page_to: Mapped[int | None] = mapped_column(Integer)
+    # A clean PDF we typeset from imported questions (app/application/library_publish.py): the online exam it
+    # prints and the original file it replaces (which then stays visible to admins only).
+    exam_id: Mapped[int | None] = mapped_column(ForeignKey("exams.id", ondelete="SET NULL"))
+    origin_id: Mapped[int | None] = mapped_column(ForeignKey("library_documents.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
