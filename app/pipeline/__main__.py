@@ -12,6 +12,7 @@ python -m app.pipeline embed-questions       # backfill embeddings of existing q
 python -m app.pipeline recheck SIMILAR       # dedup + labelling again for the items in a status
 python -m app.pipeline recheck READY --no-semantic   # publish without the cosine check (embeddings at quota)
 python -m app.pipeline renormalize           # rule-based formula conversion for AI-queued items
+python -m app.pipeline drop-stale            # delete old readings left as rejected by earlier reparses
 python -m app.pipeline adopt-series "Vật lí 11" "Kết nối tri thức"
 python -m app.pipeline drive-sync thptqg2026 [--max-files 50]   # Google Drive folder -> library
 python -m app.pipeline library-split [--id 12]                 # cut stored bundles into one exam each
@@ -101,6 +102,23 @@ async def _drive_sync(source_id: str, max_files: int | None) -> None:
     print("Drive sync:", stats)
 
 
+async def _drop_stale() -> None:
+    from sqlalchemy import delete
+
+    from app.db import SessionLocal
+    from app.models import CrawledQuestion
+    from app.pipeline.use_cases.silver import STALE
+
+    async with SessionLocal() as session:
+        result = await session.execute(
+            delete(CrawledQuestion).where(
+                CrawledQuestion.question_id.is_(None), CrawledQuestion.issues.contains([STALE])
+            )
+        )
+        await session.commit()
+    print(f"Deleted {result.rowcount} old readings no longer on their source page")
+
+
 async def _library_split(document_id: int | None) -> None:
     from sqlalchemy import select
 
@@ -180,6 +198,7 @@ def main(argv: list[str] | None = None) -> None:
     reparse.add_argument("site_id")
     sub.add_parser("embed-questions")
     sub.add_parser("renormalize")
+    sub.add_parser("drop-stale")
     drive = sub.add_parser("drive-sync")
     drive.add_argument("source_id")
     drive.add_argument("--max-files", type=int)
@@ -238,6 +257,8 @@ def main(argv: list[str] | None = None) -> None:
         asyncio.run(_drive_sync(args.source_id, args.max_files))
     elif args.command == "library-split":
         asyncio.run(_library_split(args.id))
+    elif args.command == "drop-stale":
+        asyncio.run(_drop_stale())
     elif args.command == "renormalize":
         asyncio.run(_renormalize())
     elif args.command == "adopt-series":

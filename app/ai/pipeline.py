@@ -12,6 +12,7 @@ A draft is a plain dict stored in ImportJob.drafts and edited during review:
     }
 """
 
+import asyncio
 import logging
 import re
 import secrets
@@ -21,16 +22,20 @@ from pathlib import Path
 from typing import Any
 
 from app.ai.figures import crop_figure
-from app.ai.normalize import thumbnail_bytes, to_page_images
-from app.ai.provider import AIProvider, AIQuotaExhausted, FigureImage, PageImage
+from app.ai.local_text import read_locally
+from app.ai.normalize import NormalizeError, thumbnail_bytes, to_page_images
+from app.ai.provider import AIError, AIProvider, AIQuotaExhausted, FigureImage, PageImage
 from app.ai.schemas import ExtractedQuestion, Solution
 from app.infrastructure.storage import Storage
 from app.question_rules import extract_number
 
 log = logging.getLogger(__name__)
 
-EXTRACT_CHUNK_PAGES = 3  # pages per vision call (+1 following page as context for split questions)
-SOLVE_BATCH = 6  # questions per solving call
+# Free tiers limit requests per DAY, not tokens: as few calls as possible. A whole exam (up to 8 pages) is read
+# in one call and up to 25 questions are solved in one; a call that fails (cut-off or broken answer) is split.
+EXTRACT_CHUNK_PAGES = 8  # pages per vision call (+1 following page as context for split questions)
+SOLVE_BATCH = 25  # questions per solving call
+MIN_SOLVE_BATCH = 3
 
 FLAG_LABELS = {
     "unsupported_type": "Câu tự luận chưa dùng được trong đề (chỉ hỗ trợ trắc nghiệm, đúng/sai, trả lời ngắn).",
@@ -68,14 +73,13 @@ def _same_question(a: ExtractedQuestion, b: ExtractedQuestion) -> bool:
     return a.number == b.number and a.content[:60] == b.content[:60]
 
 
-def _chunks(pages: list[Path]) -> list[list[PageImage]]:
+def _chunks(pages: list[Path], size: int = EXTRACT_CHUNK_PAGES) -> list[list[PageImage]]:
     groups = []
-    for start in range(0, len(pages), EXTRACT_CHUNK_PAGES):
+    for start in range(0, len(pages), size):
         chunk = [
-            PageImage(number=start + i + 1, png=thumbnail_bytes(p))
-            for i, p in enumerate(pages[start : start + EXTRACT_CHUNK_PAGES])
+            PageImage(number=start + i + 1, png=thumbnail_bytes(p)) for i, p in enumerate(pages[start : start + size])
         ]
-        following = start + EXTRACT_CHUNK_PAGES
+        following = start + size
         if following < len(pages):
             chunk.append(PageImage(number=following + 1, png=thumbnail_bytes(pages[following]), context_only=True))
         groups.append(chunk)
@@ -138,6 +142,59 @@ def normalize_draft(draft: dict[str, Any]) -> dict[str, Any]:
     return d
 
 
+def _printed_answer(draft: dict[str, Any], label: str) -> None:
+    """The answer printed in the file (answer table, underlined or highlighted option) wins; when the AI found
+    another one, the draft is marked so that an admin looks at it."""
+    index = "ABCD".index(label)
+    if index >= len(draft["choices"]):
+        return
+    if draft["correct"] is not None and draft["correct"] != index:
+        draft["flags"] = [*draft["flags"], "key_mismatch"]
+        draft["official"] = label
+    else:
+        draft["flags"] = [f for f in draft["flags"] if f != "no_match"]  # the file settles it
+    draft["correct"] = index
+
+
+async def _extract(provider: AIProvider, chunk: list[PageImage]) -> list[ExtractedQuestion]:
+    """Read the pages in one call; if that fails (a cut-off or broken answer), read each half separately."""
+    try:
+        return await provider.extract(chunk)
+    except AIQuotaExhausted:
+        raise
+    except AIError:
+        real = [p for p in chunk if not p.context_only]
+        if len(real) < 2:
+            raise
+        log.warning("Reading %s pages at once failed: reading them in two halves", len(real))
+        half = len(real) // 2
+        first = [*real[:half], PageImage(number=real[half].number, png=real[half].png, context_only=True)]
+        return [
+            *await _extract(provider, first),
+            *await _extract(provider, [*real[half:], *[p for p in chunk if p.context_only]]),
+        ]
+
+
+async def _solve(
+    provider: AIProvider, questions: list[ExtractedQuestion], figures: list[FigureImage]
+) -> list[Solution]:
+    """Solve the batch in one call; if that fails, solve each half separately (down to a few questions)."""
+    try:
+        return await provider.solve(questions, figures)
+    except AIQuotaExhausted:
+        raise
+    except AIError:
+        if len(questions) < 2 * MIN_SOLVE_BATCH:
+            raise
+        half = len(questions) // 2
+        log.warning("Solving %s questions at once failed: solving them in two halves", len(questions))
+        parts = []
+        for group in (questions[:half], questions[half:]):
+            numbers = {q.number for q in group}
+            parts += await _solve(provider, group, [f for f in figures if f.question_number in numbers])
+        return parts
+
+
 async def run_pipeline(
     *,
     job_id: int,
@@ -158,16 +215,33 @@ async def run_pipeline(
         await progress("Đang chuyển file thành ảnh từng trang…", 0, 1)
         source = work / ("source" + Path(source_key).suffix.lower())
         source.write_bytes(await storage.get(source_key))
-        pages, geometries = await to_page_images(source, work / "pages", soffice)
+        # Word files and PDFs with a text layer are read on this machine when that works: no AI call to read them.
+        local = await asyncio.to_thread(read_locally, source)
+        try:
+            pages, geometries = await to_page_images(source, work / "pages", soffice)
+        except NormalizeError:
+            if local is None:
+                raise
+            pages, geometries = [], []  # no LibreOffice here: the text is enough, only the review images are missing
         for number, page in enumerate(pages, start=1):
             await storage.put(page_key(job_id, number), page.read_bytes(), "image/png")
 
-        chunks = _chunks(pages)
         extracted: list[ExtractedQuestion] = []
+        figure_keys: dict[int, str] = {}
+        figure_bytes: dict[int, bytes] = {}
+        failed: set[int] = set()
+        if local is not None:
+            await progress(f"Đã đọc {len(local.questions)} câu trực tiếp từ file (không cần AI đọc trang)…", 0, 1)
+            extracted = local.questions
+            for index, png in local.figures.items():
+                key = f"figures/{job_id}-{index + 1}-{secrets.token_hex(6)}.png"
+                await storage.put(key, png, "image/png")
+                figure_bytes[index], figure_keys[index] = png, key
+        chunks = [] if local is not None else _chunks(pages)
         for i, chunk in enumerate(chunks):
             first, last = chunk[0].number, max(p.number for p in chunk if not p.context_only)
             await progress(f"AI đang đọc trang {first}–{last} / {len(pages)}…", i, len(chunks))
-            for q in await provider.extract(chunk):
+            for q in await _extract(provider, chunk):
                 if not 1 <= q.page <= len(pages):
                     q.page = first
                 if not any(_same_question(q, seen) for seen in extracted):
@@ -175,11 +249,8 @@ async def run_pipeline(
         if not extracted:
             return len(pages), []
 
-        figure_keys: dict[int, str] = {}
-        figure_bytes: dict[int, bytes] = {}
-        failed: set[int] = set()
         for index, q in enumerate(extracted):
-            if q.figure_bbox is None:
+            if q.figure_bbox is None or not pages:
                 continue
             crop = work / "figures" / f"{index + 1}.png"
             if crop_figure(pages[q.page - 1], q.figure_bbox, crop, geometries[q.page - 1]):
@@ -201,7 +272,7 @@ async def run_pipeline(
             )
             figures = [FigureImage(extracted[i].number, figure_bytes[i]) for i in indexes if i in figure_bytes]
             try:
-                answers = await provider.solve(questions, figures)
+                answers = await _solve(provider, questions, figures)
             except AIQuotaExhausted:  # the whole job waits for tomorrow's quota rather than half-solved drafts
                 raise
             except Exception:  # keep the extracted questions even if solving one batch fails
@@ -221,5 +292,7 @@ async def run_pipeline(
             _draft(q, solutions.get(i), figure_keys.get(i), i in failed, default_difficulty)
             for i, q in enumerate(extracted)
         ]
+        for index, label in (local.answers if local else {}).items():
+            _printed_answer(drafts[index], label)
         await progress("Hoàn tất", 1, 1)
         return len(pages), drafts

@@ -11,6 +11,7 @@ python-multipart>=0.0.9
 email-validator>=2.2
 openpyxl>=3.1
 python-docx>=1.1
+pypandoc-binary>=1.13  # pandoc bundled: Word files (text + Equation objects) read locally as Markdown + LaTeX
 google-genai>=1.0
 pymupdf>=1.24
 playwright>=1.48  # typesets clean exam PDFs (headless Chromium)

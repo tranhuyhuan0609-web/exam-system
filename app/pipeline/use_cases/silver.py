@@ -10,6 +10,7 @@ raw.exam.ingestion {doc_id}
 import hashlib
 import logging
 import re
+from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from difflib import SequenceMatcher
@@ -156,7 +157,9 @@ async def ingest_document(session: AsyncSession, deps: SilverDeps, doc: RawDocum
         if item is not None:
             items.append(item)
     # Questions an earlier (worse) parse found on this page but the current one does not, e.g. a true/false
-    # question once read as multiple choice under another id: drop them unless they are already in the bank.
+    # question once read as multiple choice under another id: the current parse has them under their new id, so
+    # the old reading is deleted — it used to stay as "rejected" and showed up, broken, in the review list.
+    # Those already in the bank are kept (their question stays linked).
     current = {parsed.external_id for parsed in page.questions}
     for stale in (
         await session.scalars(
@@ -164,13 +167,12 @@ async def ingest_document(session: AsyncSession, deps: SilverDeps, doc: RawDocum
                 CrawledQuestion.site_id == doc.site_id,
                 CrawledQuestion.source_url == doc.url,
                 CrawledQuestion.status != CrawlItemStatus.PUBLISHED,
-                CrawledQuestion.status != CrawlItemStatus.REJECTED,
+                CrawledQuestion.question_id.is_(None),
             )
         )
     ).all():
         if stale.external_id not in current:
-            stale.status = CrawlItemStatus.REJECTED
-            stale.issues = [*stale.issues, STALE]
+            await session.delete(stale)
     await session.flush()
     await advance_many(session, deps, items)  # embeddings unavailable: they stay READY (retry_ready)
     await session.commit()
@@ -403,9 +405,26 @@ def _answer_key(q: CrawledQuestion | Question) -> tuple:
     return tuple(sorted(normalize_text(c["content"]) for c in q.choices or [] if c.get("is_correct")))
 
 
+_DIGITS = re.compile(r"\d+")
+
+
+def _numbers(q: CrawledQuestion | Question) -> Counter:
+    """Runs of digits in the stem and the options. Separators are ignored, so "6{,}10^{5}" and "6.10^{5}" match."""
+    text = " ".join([q.content or "", *(c.get("content", "") for c in q.choices or [])])
+    return Counter(_DIGITS.findall(text))
+
+
+def numbers_changed(a: CrawledQuestion | Question, b: CrawledQuestion | Question) -> bool:
+    """Each has a number the other lacks: a number was replaced ("40 proton" / "19 proton"). A number present on
+    one side only is a wording difference ("một năm" / "1 năm"), not another exercise."""
+    first, second = _numbers(a), _numbers(b)
+    return bool(first - second) and bool(second - first)
+
+
 def same_question(a: CrawledQuestion | Question, b: CrawledQuestion | Question) -> bool:
-    """Confirmation of a cosine candidate: same type, nearly the same stem, same correct answer."""
-    if a.question_type != b.question_type:
+    """Confirmation of a cosine candidate: same type, nearly the same stem, same numbers, same correct answer.
+    A question with other numbers ("40 proton" / "19 proton") is another exercise, however close the wording."""
+    if a.question_type != b.question_type or numbers_changed(a, b):
         return False
     ratio = SequenceMatcher(None, normalize_text(a.content), normalize_text(b.content)).ratio()
     return ratio >= TEXT_RATIO and _answer_key(a) == _answer_key(b)

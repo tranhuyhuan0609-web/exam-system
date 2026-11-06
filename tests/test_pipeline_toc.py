@@ -407,5 +407,5 @@ def test_questions_gone_after_a_reparse_are_dropped(db):
         )
         db(lambda s, d=doc: ingest_document(s, deps, d))
     rows = {i.external_id: i for i in db(lambda s: s.scalars(select(CrawledQuestion)))}
-    assert rows["trac-nghiem-bai-3-ham-so#mu2"].status == CrawlItemStatus.REJECTED
+    assert "trac-nghiem-bai-3-ham-so#mu2" not in rows  # the old reading is gone, not left "rejected" in the list
     assert rows["trac-nghiem-bai-3-ham-so#tr1"].question_type.value == "TRUE_FALSE"

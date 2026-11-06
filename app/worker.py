@@ -15,6 +15,7 @@ from datetime import timedelta
 
 from sqlalchemy import func, select, update
 
+from app.ai.cache import DbCache
 from app.ai.frugal import ChatModel, FrugalProvider, bank_lookup
 from app.ai.normalize import NormalizeError
 from app.ai.pipeline import run_pipeline
@@ -53,12 +54,27 @@ def default_provider() -> AIProvider:
 def chat_models() -> tuple[list[ChatModel], list[ChatModel]]:
     """(text solvers, vision readers) on free tiers, used before Gemini (app/ai/frugal.py)."""
     s, usage = get_settings(), DbUsage()
-    limits = s.ai_daily_limit_map
+    limits, sizes = s.ai_daily_limit_map, s.ai_batch_size_map
     text, vision = [], []
     if s.groq_api_key and s.groq_model:
-        text.append(ChatModel("groq", s.groq_base_url, s.groq_api_key, s.groq_model, usage, limits.get("groq", 0)))
+        text.append(
+            ChatModel(
+                "groq",
+                s.groq_base_url,
+                s.groq_api_key,
+                s.groq_model,
+                usage,
+                limits.get("groq", 0),
+                batch_size=sizes.get("groq", 6),
+            )
+        )
     if s.openrouter_api_key:
-        common = {"usage": usage, "daily_limit": limits.get("openrouter", 0), "min_interval": s.openrouter_min_interval}
+        common = {
+            "usage": usage,
+            "daily_limit": limits.get("openrouter", 0),
+            "min_interval": s.openrouter_min_interval,
+            "batch_size": sizes.get("openrouter", 8),
+        }
         key, url = s.openrouter_api_key, s.openrouter_base_url
         text += [ChatModel("openrouter", url, key, m, **common) for m in s._names(s.openrouter_model)]
         vision += [
@@ -110,7 +126,8 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
         try:
             if provider is None:  # bank answers and free text models first; Gemini reads the pages
                 text, vision = chat_models()
-                provider = FrugalProvider(default_provider(), await bank_lookup(session, job.root_id), text, vision)
+                lookup = await bank_lookup(session, job.root_id)
+                provider = FrugalProvider(default_provider(), lookup, text, vision, cache=DbCache())
             doc = await library_document(session, job)
             codes = None
             if doc is not None and is_answer_key(doc):  # an answer table, not an exam: read the official answers
@@ -145,6 +162,8 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
             job.models_used = ", ".join(sorted(provider.models_used))[:200] or None
             if getattr(provider, "reused", 0):
                 job.stage = f"{job.stage} · {provider.reused} câu lấy đáp án từ ngân hàng"[:200]
+            if getattr(provider, "cached", 0):
+                job.stage = f"{job.stage} · {provider.cached} phần lấy từ bộ nhớ đệm"[:200]
         job.finished_at = await session.scalar(select(func.now()))
         await session.commit()
         log.info("Job %s finished: %s", job_id, job.status)

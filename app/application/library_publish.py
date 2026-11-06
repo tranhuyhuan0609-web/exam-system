@@ -41,6 +41,7 @@ BLOCKING_FLAGS = {
     "no_solution": "AI chưa giải được",
     "figure_failed": "chưa cắt được hình",
     "unsupported_type": "có câu tự luận",
+    "key_mismatch": "AI giải khác đáp án in trong file",
 }
 
 

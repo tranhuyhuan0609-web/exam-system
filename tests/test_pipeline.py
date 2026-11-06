@@ -365,6 +365,17 @@ def test_semantic_candidates_need_the_same_answer():
     assert same_question(
         q("Cho vật dao động điều hoà. Li độ đạt giá trị cực tiểu khi vật qua vị trí:", "Biên âm."), base
     )
+    # Only the numbers change: another exercise, even with the same wording and the same answer text.
+    proton = q("Một nguyên tử có 40 proton. Hạt nào có số lượng bằng số proton?", "electron")
+    assert not same_question(q("Một nguyên tử có 19 proton. Hạt nào có số lượng bằng số proton?", "electron"), proton)
+    fraction = q(r"Tính $\dfrac{3}{5}+\dfrac{1}{5}$", "đáp số khác 1")
+    assert not same_question(q(r"Tính $\dfrac{3}{5}+\dfrac{2}{5}$", "đáp số khác 1"), fraction)
+    assert same_question(q("Một nguyên tử có 40 proton . Hạt nào có số lượng bằng số proton", "Electron."), proton)
+    # The same numbers written differently, or a number word written as a digit: still the same question.
+    power = q("Nhà máy có công suất $P = 6.10^{5}$ kW, hiệu suất 20%, hoạt động trong 1 năm", "4616 kg")
+    assert same_question(
+        q("Nhà máy có công suất $P = 6{,}10^{5}$ kW, hiệu suất 20%, hoạt động trong một năm", "4616 kg"), power
+    )
 
 
 def test_ai_normalises_and_writes_missing_solutions(db, physics):

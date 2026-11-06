@@ -175,7 +175,8 @@ class GeminiProvider:
             if not candidates:
                 raise AIQuotaExhausted("Mọi model Gemini đã hết quota hôm nay; job sẽ chạy lại sau.")
             for model in candidates:
-                config = types.GenerateContentConfig(temperature=0)
+                # A whole exam in one answer: room for it (a cut-off answer is split and asked again by the pipeline)
+                config = types.GenerateContentConfig(temperature=0, max_output_tokens=65536)
                 if thinking:
                     config.thinking_config = types.ThinkingConfig(thinking_level=thinking)
                 if code_execution:

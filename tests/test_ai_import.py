@@ -278,3 +278,21 @@ def test_a_job_waits_for_quota_instead_of_failing(admin_client, db, chapter_scop
     assert worker._paused_until > 0  # the loop rests before claiming the next job
     asyncio.run(worker.ai_jobs_loop(once=True))  # paused: returns without touching the queue
     assert db(lambda s: s.get(ImportJob, job_id)).status == JobStatus.QUEUED
+
+
+def test_a_whole_exam_is_read_in_one_call_and_split_only_when_that_fails(tmp_path):
+    from app.ai.pipeline import _extract
+    from app.ai.provider import PageImage
+
+    class Picky(FakeProvider):
+        async def extract(self, pages):
+            self.extract_calls.append(pages)
+            if len([p for p in pages if not p.context_only]) > 2:
+                raise AIError("cut-off answer")
+            return [mcq(pages[0].number, page=pages[0].number)]
+
+    provider = Picky()
+    pages = [PageImage(number=n, png=b"p") for n in range(1, 5)]
+    questions = asyncio.run(_extract(provider, pages))
+    assert [len(c) for c in provider.extract_calls] == [4, 3, 2]  # whole, then halves (with a context page)
+    assert [q.number for q in questions] == [1, 3]
