@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import subprocess
 import sys
 import time
 from datetime import UTC, datetime, timedelta, timezone
@@ -267,10 +268,10 @@ async def _run_site_schedule(poll_seconds: int = 20) -> None:
             run = await session.get(CrawlRun, run_id)
             site_id = run.site_id
         log.info("Starting crawl run %s (%s)", run_id, site_id)
-        process = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "app.pipeline", "crawl", site_id, "--run-id", str(run_id)
-        )
-        await process.wait()
+        # A thread waits on a plain subprocess: asyncio subprocesses need the Proactor loop, not available on
+        # Windows with the selector loop the database driver uses (Docker / Linux would be fine either way).
+        command = [sys.executable, "-m", "app.pipeline", "crawl", site_id, "--run-id", str(run_id)]
+        process = await asyncio.to_thread(subprocess.run, command, check=False)
         if process.returncode:
             async with SessionLocal() as session:
                 run = await session.get(CrawlRun, run_id)

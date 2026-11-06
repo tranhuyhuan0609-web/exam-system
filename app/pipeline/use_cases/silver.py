@@ -457,9 +457,15 @@ async def advance_many(session: AsyncSession, deps: SilverDeps, items: list[Craw
         try:
             embedded = await deps.embedder.embed([_embedding_text(i) for i in ready])
         except Exception as exc:  # noqa: BLE001 - quota / outage
-            log.warning("Embeddings unavailable, %s questions wait: %s", len(ready), exc)
-            return False
-        vectors = {i.id: v for i, v in zip(ready, embedded, strict=True)}
+            if not get_settings().semantic_dedup_optional:
+                log.warning("Embeddings unavailable, %s questions wait: %s", len(ready), exc)
+                return False
+            # A large crawl outruns the free embedding quota: exact (SHA-256) dedup only, so the bank keeps
+            # growing; backfill_embeddings adds the vectors later, when the quota allows.
+            log.warning("Embeddings unavailable, %s questions go on with exact dedup only: %s", len(ready), exc)
+            embedded = None
+        if embedded is not None:
+            vectors = {i.id: v for i, v in zip(ready, embedded, strict=True)}
     for item in ready:
         await advance(
             session, deps, item, await _config(session, item.site_id), vector=vectors.get(item.id), embedded=True

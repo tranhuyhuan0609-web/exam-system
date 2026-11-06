@@ -1,4 +1,5 @@
-# HOC247 — đề thi giữa học kì Toán và Vật lí 10–12. robots.txt forbids /lam-bai-thi/ and /bat-dau-lam-bai/ (the
+# HOC247 — đề thi giữa kì và học kì, lớp 6–12, mọi môn có đề (Ngữ văn: tự luận). Seeds found from the site's
+# own menus (3 indexes per subject and grade, ~4,800 exams). robots.txt forbids /lam-bai-thi/ and /bat-dau-lam-bai/ (the
 # online test pages): we only read the exam pages and the question pages, which it allows.
 # Question pages show the answer key and solution; some keys are wrong, so verify_answers has the AI re-check them.
 site_id: hoc247
@@ -6,14 +7,14 @@ name: HOC247
 enabled: true
 base_url: https://hoc247.net
 parser: hoc247_question
-schedule_times: ["04:30"]
+schedule_times: ["00:30", "04:30", "08:30", "12:30", "16:30", "20:30"]  # large crawl: every 4 h
 refresh_days: 60
-max_pages: 200            # one exam = 1 page + ~40 question pages
+max_pages: 2000           # per run (~100 min at 3 s a page); one exam = 1 page + ~40 question pages
 respect_robots: true
 auto_publish: true
 auto_toc: true
 verify_answers: true
-verify_ratio: 0.2       # check 1 question in 5 (saves AI quota); doubtful keys go to review
+verify_ratio: 0.1       # check 1 question in 10 (AI quota at this volume); doubtful keys go to review
 default_difficulty: UNDERSTANDING
 rate_limit:
   delay_sec: 3
@@ -23,54 +24,1206 @@ rate_limit:
 toc:
   scope: ["//ul[contains(@class, 'dsch')]", "//div[contains(@class, 'box-content')]"]
 seeds:
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-6-mon-cong-nghe-index.html
+    label: Công nghệ 6 – Đề thi giữa học kì 1 (11 đề)
+    root: Công nghệ 6
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-6-mon-cong-nghe-index.html
+    label: Công nghệ 6 – Đề thi giữa học kì 2 (14 đề)
+    root: Công nghệ 6
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-6-mon-cong-nghe-index.html
+    label: Công nghệ 6 – Đề thi học kì 1 (18 đề)
+    root: Công nghệ 6
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-6-mon-cong-nghe-index.html
+    label: Công nghệ 6 – Đề thi học kì 2 (23 đề)
+    root: Công nghệ 6
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-6-mon-dia-ly-index.html
+    label: Địa lí 6 – Đề thi giữa học kì 1 (6 đề)
+    root: Địa lí 6
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-6-mon-dia-ly-index.html
+    label: Địa lí 6 – Đề thi giữa học kì 2 (8 đề)
+    root: Địa lí 6
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-6-mon-dia-ly-index.html
+    label: Địa lí 6 – Đề thi học kì 1 (6 đề)
+    root: Địa lí 6
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-6-mon-dia-ly-index.html
+    label: Địa lí 6 – Đề thi học kì 2 (7 đề)
+    root: Địa lí 6
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-6-mon-gdcd-index.html
+    label: GDCD 6 – Đề thi giữa học kì 1 (10 đề)
+    root: GDCD 6
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-6-mon-gdcd-index.html
+    label: GDCD 6 – Đề thi giữa học kì 2 (8 đề)
+    root: GDCD 6
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-6-mon-gdcd-index.html
+    label: GDCD 6 – Đề thi học kì 1 (18 đề)
+    root: GDCD 6
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-6-mon-gdcd-index.html
+    label: GDCD 6 – Đề thi học kì 2 (19 đề)
+    root: GDCD 6
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-6-mon-khoa-hoc-tu-nhien-index.html
+    label: Khoa học tự nhiên 6 – Đề thi giữa học kì 1 (6 đề)
+    root: Khoa học tự nhiên 6
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-6-mon-khoa-hoc-tu-nhien-index.html
+    label: Khoa học tự nhiên 6 – Đề thi giữa học kì 2 (6 đề)
+    root: Khoa học tự nhiên 6
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-6-mon-khoa-hoc-tu-nhien-index.html
+    label: Khoa học tự nhiên 6 – Đề thi học kì 1 (20 đề)
+    root: Khoa học tự nhiên 6
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-6-mon-khoa-hoc-tu-nhien-index.html
+    label: Khoa học tự nhiên 6 – Đề thi học kì 2 (19 đề)
+    root: Khoa học tự nhiên 6
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-6-mon-lich-su-index.html
+    label: Lịch sử 6 – Đề thi giữa học kì 1 (3 đề)
+    root: Lịch sử 6
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-6-mon-lich-su-index.html
+    label: Lịch sử 6 – Đề thi học kì 2 (2 đề)
+    root: Lịch sử 6
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-6-mon-lich-su-va-dia-li-index.html
+    label: Lịch sử và Địa lí 6 – Đề thi giữa học kì 1 (14 đề)
+    root: Lịch sử và Địa lí 6
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-6-mon-lich-su-va-dia-li-index.html
+    label: Lịch sử và Địa lí 6 – Đề thi giữa học kì 2 (6 đề)
+    root: Lịch sử và Địa lí 6
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-6-mon-lich-su-va-dia-li-index.html
+    label: Lịch sử và Địa lí 6 – Đề thi học kì 1 (17 đề)
+    root: Lịch sử và Địa lí 6
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-6-mon-lich-su-va-dia-li-index.html
+    label: Lịch sử và Địa lí 6 – Đề thi học kì 2 (11 đề)
+    root: Lịch sử và Địa lí 6
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-6-mon-ngu-van-index.html
+    label: Ngữ văn 6 – Đề thi giữa học kì 1 (4 đề)
+    root: Ngữ văn 6
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-6-mon-sinh-index.html
+    label: Sinh học 6 – Đề thi giữa học kì 2 (9 đề)
+    root: Sinh học 6
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-6-mon-sinh-index.html
+    label: Sinh học 6 – Đề thi học kì 1 (10 đề)
+    root: Sinh học 6
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-6-mon-sinh-index.html
+    label: Sinh học 6 – Đề thi học kì 2 (21 đề)
+    root: Sinh học 6
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-6-mon-tieng-anh-index.html
+    label: Tiếng Anh 6 – Đề thi giữa học kì 1 (17 đề)
+    root: Tiếng Anh 6
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-6-mon-tieng-anh-index.html
+    label: Tiếng Anh 6 – Đề thi giữa học kì 2 (6 đề)
+    root: Tiếng Anh 6
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-6-mon-tieng-anh-index.html
+    label: Tiếng Anh 6 – Đề thi học kì 1 (21 đề)
+    root: Tiếng Anh 6
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-6-mon-tieng-anh-index.html
+    label: Tiếng Anh 6 – Đề thi học kì 2 (21 đề)
+    root: Tiếng Anh 6
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-6-mon-tin-hoc-index.html
+    label: Tin học 6 – Đề thi giữa học kì 1 (7 đề)
+    root: Tin học 6
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-6-mon-tin-hoc-index.html
+    label: Tin học 6 – Đề thi giữa học kì 2 (5 đề)
+    root: Tin học 6
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-6-mon-tin-hoc-index.html
+    label: Tin học 6 – Đề thi học kì 1 (14 đề)
+    root: Tin học 6
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-6-mon-tin-hoc-index.html
+    label: Tin học 6 – Đề thi học kì 2 (8 đề)
+    root: Tin học 6
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-6-mon-toan-index.html
+    label: Toán 6 – Đề thi giữa học kì 1 (20 đề)
+    root: Toán 6
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-6-mon-toan-index.html
+    label: Toán 6 – Đề thi giữa học kì 2 (14 đề)
+    root: Toán 6
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-6-mon-toan-index.html
+    label: Toán 6 – Đề thi học kì 1 (22 đề)
+    root: Toán 6
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-6-mon-toan-index.html
+    label: Toán 6 – Đề thi học kì 2 (28 đề)
+    root: Toán 6
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-6-mon-vat-ly-index.html
+    label: Vật lí 6 – Đề thi giữa học kì 1 (2 đề)
+    root: Vật lí 6
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-6-mon-vat-ly-index.html
+    label: Vật lí 6 – Đề thi giữa học kì 2 (16 đề)
+    root: Vật lí 6
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-6-mon-vat-ly-index.html
+    label: Vật lí 6 – Đề thi học kì 1 (2 đề)
+    root: Vật lí 6
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-6-mon-vat-ly-index.html
+    label: Vật lí 6 – Đề thi học kì 2 (22 đề)
+    root: Vật lí 6
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-7-mon-cong-nghe-index.html
+    label: Công nghệ 7 – Đề thi giữa học kì 1 (15 đề)
+    root: Công nghệ 7
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-7-mon-cong-nghe-index.html
+    label: Công nghệ 7 – Đề thi giữa học kì 2 (11 đề)
+    root: Công nghệ 7
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-7-mon-cong-nghe-index.html
+    label: Công nghệ 7 – Đề thi học kì 1 (13 đề)
+    root: Công nghệ 7
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-7-mon-cong-nghe-index.html
+    label: Công nghệ 7 – Đề thi học kì 2 (19 đề)
+    root: Công nghệ 7
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-7-mon-dia-index.html
+    label: Địa lí 7 – Đề thi giữa học kì 1 (11 đề)
+    root: Địa lí 7
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-7-mon-dia-index.html
+    label: Địa lí 7 – Đề thi giữa học kì 2 (10 đề)
+    root: Địa lí 7
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-7-mon-dia-index.html
+    label: Địa lí 7 – Đề thi học kì 1 (8 đề)
+    root: Địa lí 7
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-7-mon-dia-index.html
+    label: Địa lí 7 – Đề thi học kì 2 (12 đề)
+    root: Địa lí 7
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-7-mon-gdcd-index.html
+    label: GDCD 7 – Đề thi giữa học kì 1 (9 đề)
+    root: GDCD 7
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-7-mon-gdcd-index.html
+    label: GDCD 7 – Đề thi giữa học kì 2 (3 đề)
+    root: GDCD 7
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-7-mon-gdcd-index.html
+    label: GDCD 7 – Đề thi học kì 1 (12 đề)
+    root: GDCD 7
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-7-mon-gdcd-index.html
+    label: GDCD 7 – Đề thi học kì 2 (16 đề)
+    root: GDCD 7
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-7-mon-khoa-hoc-tu-nhien-index.html
+    label: Khoa học tự nhiên 7 – Đề thi giữa học kì 1 (6 đề)
+    root: Khoa học tự nhiên 7
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-7-mon-khoa-hoc-tu-nhien-index.html
+    label: Khoa học tự nhiên 7 – Đề thi học kì 1 (9 đề)
+    root: Khoa học tự nhiên 7
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-7-mon-khoa-hoc-tu-nhien-index.html
+    label: Khoa học tự nhiên 7 – Đề thi học kì 2 (9 đề)
+    root: Khoa học tự nhiên 7
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-7-mon-lich-su-index.html
+    label: Lịch sử 7 – Đề thi giữa học kì 1 (10 đề)
+    root: Lịch sử 7
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-7-mon-lich-su-index.html
+    label: Lịch sử 7 – Đề thi giữa học kì 2 (5 đề)
+    root: Lịch sử 7
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-7-mon-lich-su-index.html
+    label: Lịch sử 7 – Đề thi học kì 1 (8 đề)
+    root: Lịch sử 7
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-7-mon-lich-su-index.html
+    label: Lịch sử 7 – Đề thi học kì 2 (5 đề)
+    root: Lịch sử 7
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-7-mon-lich-su-va-dia-li-index.html
+    label: Lịch sử và Địa lí 7 – Đề thi giữa học kì 1 (7 đề)
+    root: Lịch sử và Địa lí 7
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-7-mon-lich-su-va-dia-li-index.html
+    label: Lịch sử và Địa lí 7 – Đề thi học kì 1 (4 đề)
+    root: Lịch sử và Địa lí 7
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-7-mon-lich-su-va-dia-li-index.html
+    label: Lịch sử và Địa lí 7 – Đề thi học kì 2 (2 đề)
+    root: Lịch sử và Địa lí 7
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-7-mon-ngu-van-index.html
+    label: Ngữ văn 7 – Đề thi giữa học kì 1 (4 đề)
+    root: Ngữ văn 7
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-7-mon-sinh-index.html
+    label: Sinh học 7 – Đề thi giữa học kì 1 (16 đề)
+    root: Sinh học 7
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-7-mon-sinh-index.html
+    label: Sinh học 7 – Đề thi giữa học kì 2 (10 đề)
+    root: Sinh học 7
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-7-mon-sinh-index.html
+    label: Sinh học 7 – Đề thi học kì 1 (11 đề)
+    root: Sinh học 7
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-7-mon-sinh-index.html
+    label: Sinh học 7 – Đề thi học kì 2 (18 đề)
+    root: Sinh học 7
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-7-mon-tieng-anh-index.html
+    label: Tiếng Anh 7 – Đề thi giữa học kì 1 (18 đề)
+    root: Tiếng Anh 7
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-7-mon-tieng-anh-index.html
+    label: Tiếng Anh 7 – Đề thi giữa học kì 2 (2 đề)
+    root: Tiếng Anh 7
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-7-mon-tieng-anh-index.html
+    label: Tiếng Anh 7 – Đề thi học kì 1 (15 đề)
+    root: Tiếng Anh 7
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-7-mon-tieng-anh-index.html
+    label: Tiếng Anh 7 – Đề thi học kì 2 (21 đề)
+    root: Tiếng Anh 7
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-7-mon-tin-hoc-index.html
+    label: Tin học 7 – Đề thi giữa học kì 1 (8 đề)
+    root: Tin học 7
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-7-mon-tin-hoc-index.html
+    label: Tin học 7 – Đề thi giữa học kì 2 (5 đề)
+    root: Tin học 7
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-7-mon-tin-hoc-index.html
+    label: Tin học 7 – Đề thi học kì 1 (16 đề)
+    root: Tin học 7
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-7-mon-tin-hoc-index.html
+    label: Tin học 7 – Đề thi học kì 2 (7 đề)
+    root: Tin học 7
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-7-mon-toan-index.html
+    label: Toán 7 – Đề thi giữa học kì 1 (18 đề)
+    root: Toán 7
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-7-mon-toan-index.html
+    label: Toán 7 – Đề thi giữa học kì 2 (10 đề)
+    root: Toán 7
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-7-mon-toan-index.html
+    label: Toán 7 – Đề thi học kì 1 (12 đề)
+    root: Toán 7
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-7-mon-toan-index.html
+    label: Toán 7 – Đề thi học kì 2 (24 đề)
+    root: Toán 7
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-7-mon-vat-ly-index.html
+    label: Vật lí 7 – Đề thi giữa học kì 1 (9 đề)
+    root: Vật lí 7
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-7-mon-vat-ly-index.html
+    label: Vật lí 7 – Đề thi giữa học kì 2 (16 đề)
+    root: Vật lí 7
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-7-mon-vat-ly-index.html
+    label: Vật lí 7 – Đề thi học kì 1 (7 đề)
+    root: Vật lí 7
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-7-mon-vat-ly-index.html
+    label: Vật lí 7 – Đề thi học kì 2 (26 đề)
+    root: Vật lí 7
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-8-mon-cong-nghe-index.html
+    label: Công nghệ 8 – Đề thi giữa học kì 1 (14 đề)
+    root: Công nghệ 8
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-8-mon-cong-nghe-index.html
+    label: Công nghệ 8 – Đề thi giữa học kì 2 (11 đề)
+    root: Công nghệ 8
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-8-mon-cong-nghe-index.html
+    label: Công nghệ 8 – Đề thi học kì 1 (14 đề)
+    root: Công nghệ 8
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-8-mon-cong-nghe-index.html
+    label: Công nghệ 8 – Đề thi học kì 2 (18 đề)
+    root: Công nghệ 8
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-8-mon-dia-index.html
+    label: Địa lí 8 – Đề thi giữa học kì 1 (16 đề)
+    root: Địa lí 8
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-8-mon-dia-index.html
+    label: Địa lí 8 – Đề thi giữa học kì 2 (10 đề)
+    root: Địa lí 8
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-8-mon-dia-index.html
+    label: Địa lí 8 – Đề thi học kì 1 (13 đề)
+    root: Địa lí 8
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-8-mon-dia-index.html
+    label: Địa lí 8 – Đề thi học kì 2 (14 đề)
+    root: Địa lí 8
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-8-mon-gdcd-index.html
+    label: GDCD 8 – Đề thi giữa học kì 1 (11 đề)
+    root: GDCD 8
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-8-mon-gdcd-index.html
+    label: GDCD 8 – Đề thi giữa học kì 2 (5 đề)
+    root: GDCD 8
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-8-mon-gdcd-index.html
+    label: GDCD 8 – Đề thi học kì 1 (12 đề)
+    root: GDCD 8
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-8-mon-gdcd-index.html
+    label: GDCD 8 – Đề thi học kì 2 (16 đề)
+    root: GDCD 8
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-8-mon-hoa-index.html
+    label: Hoá học 8 – Đề thi giữa học kì 2 (14 đề)
+    root: Hoá học 8
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-8-mon-lich-su-index.html
+    label: Lịch sử 8 – Đề thi giữa học kì 1 (16 đề)
+    root: Lịch sử 8
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-8-mon-lich-su-index.html
+    label: Lịch sử 8 – Đề thi giữa học kì 2 (5 đề)
+    root: Lịch sử 8
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-8-mon-lich-su-index.html
+    label: Lịch sử 8 – Đề thi học kì 1 (17 đề)
+    root: Lịch sử 8
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-8-mon-lich-su-va-dia-li-index.html
+    label: Lịch sử và Địa lí 8 – Đề thi giữa học kì 1 (2 đề)
+    root: Lịch sử và Địa lí 8
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-8-mon-lich-su-va-dia-li-index.html
+    label: Lịch sử và Địa lí 8 – Đề thi học kì 2 (1 đề)
+    root: Lịch sử và Địa lí 8
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-8-mon-ngu-van-index.html
+    label: Ngữ văn 8 – Đề thi giữa học kì 1 (3 đề)
+    root: Ngữ văn 8
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-8-mon-ngu-van-index.html
+    label: Ngữ văn 8 – Đề thi giữa học kì 2 (4 đề)
+    root: Ngữ văn 8
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-8-mon-ngu-van-index.html
+    label: Ngữ văn 8 – Đề thi học kì 1 (4 đề)
+    root: Ngữ văn 8
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-8-mon-ngu-van-index.html
+    label: Ngữ văn 8 – Đề thi học kì 2 (4 đề)
+    root: Ngữ văn 8
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-8-mon-sinh-index.html
+    label: Sinh học 8 – Đề thi giữa học kì 1 (21 đề)
+    root: Sinh học 8
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-8-mon-sinh-index.html
+    label: Sinh học 8 – Đề thi giữa học kì 2 (15 đề)
+    root: Sinh học 8
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-8-mon-sinh-index.html
+    label: Sinh học 8 – Đề thi học kì 1 (15 đề)
+    root: Sinh học 8
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-8-mon-sinh-index.html
+    label: Sinh học 8 – Đề thi học kì 2 (27 đề)
+    root: Sinh học 8
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-8-mon-tieng-anh-index.html
+    label: Tiếng Anh 8 – Đề thi giữa học kì 1 (19 đề)
+    root: Tiếng Anh 8
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-8-mon-tieng-anh-index.html
+    label: Tiếng Anh 8 – Đề thi giữa học kì 2 (5 đề)
+    root: Tiếng Anh 8
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-8-mon-tieng-anh-index.html
+    label: Tiếng Anh 8 – Đề thi học kì 1 (15 đề)
+    root: Tiếng Anh 8
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-8-mon-tieng-anh-index.html
+    label: Tiếng Anh 8 – Đề thi học kì 2 (20 đề)
+    root: Tiếng Anh 8
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-8-mon-tin-hoc-index.html
+    label: Tin học 8 – Đề thi giữa học kì 1 (7 đề)
+    root: Tin học 8
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-8-mon-tin-hoc-index.html
+    label: Tin học 8 – Đề thi giữa học kì 2 (4 đề)
+    root: Tin học 8
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-8-mon-tin-hoc-index.html
+    label: Tin học 8 – Đề thi học kì 1 (11 đề)
+    root: Tin học 8
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-8-mon-tin-hoc-index.html
+    label: Tin học 8 – Đề thi học kì 2 (6 đề)
+    root: Tin học 8
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-8-mon-toan-index.html
+    label: Toán 8 – Đề thi giữa học kì 1 (17 đề)
+    root: Toán 8
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-8-mon-toan-index.html
+    label: Toán 8 – Đề thi giữa học kì 2 (7 đề)
+    root: Toán 8
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-8-mon-toan-index.html
+    label: Toán 8 – Đề thi học kì 1 (8 đề)
+    root: Toán 8
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-8-mon-toan-index.html
+    label: Toán 8 – Đề thi học kì 2 (34 đề)
+    root: Toán 8
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-8-mon-vat-ly-index.html
+    label: Vật lí 8 – Đề thi giữa học kì 1 (12 đề)
+    root: Vật lí 8
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-8-mon-vat-ly-index.html
+    label: Vật lí 8 – Đề thi giữa học kì 2 (24 đề)
+    root: Vật lí 8
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-8-mon-vat-ly-index.html
+    label: Vật lí 8 – Đề thi học kì 1 (12 đề)
+    root: Vật lí 8
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-8-mon-vat-ly-index.html
+    label: Vật lí 8 – Đề thi học kì 2 (33 đề)
+    root: Vật lí 8
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-9-mon-cong-nghe-index.html
+    label: Công nghệ 9 – Đề thi giữa học kì 1 (15 đề)
+    root: Công nghệ 9
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-9-mon-cong-nghe-index.html
+    label: Công nghệ 9 – Đề thi giữa học kì 2 (8 đề)
+    root: Công nghệ 9
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-9-mon-cong-nghe-index.html
+    label: Công nghệ 9 – Đề thi học kì 1 (10 đề)
+    root: Công nghệ 9
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-9-mon-cong-nghe-index.html
+    label: Công nghệ 9 – Đề thi học kì 2 (17 đề)
+    root: Công nghệ 9
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-9-mon-dia-index.html
+    label: Địa lí 9 – Đề thi giữa học kì 1 (17 đề)
+    root: Địa lí 9
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-9-mon-dia-index.html
+    label: Địa lí 9 – Đề thi giữa học kì 2 (11 đề)
+    root: Địa lí 9
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-9-mon-dia-index.html
+    label: Địa lí 9 – Đề thi học kì 1 (13 đề)
+    root: Địa lí 9
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-9-mon-dia-index.html
+    label: Địa lí 9 – Đề thi học kì 2 (15 đề)
+    root: Địa lí 9
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-9-mon-gdcd-index.html
+    label: GDCD 9 – Đề thi giữa học kì 1 (11 đề)
+    root: GDCD 9
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-9-mon-gdcd-index.html
+    label: GDCD 9 – Đề thi giữa học kì 2 (7 đề)
+    root: GDCD 9
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-9-mon-gdcd-index.html
+    label: GDCD 9 – Đề thi học kì 1 (13 đề)
+    root: GDCD 9
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-9-mon-gdcd-index.html
+    label: GDCD 9 – Đề thi học kì 2 (19 đề)
+    root: GDCD 9
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-9-mon-hoa-index.html
+    label: Hoá học 9 – Đề thi giữa học kì 1 (21 đề)
+    root: Hoá học 9
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-9-mon-hoa-index.html
+    label: Hoá học 9 – Đề thi giữa học kì 2 (19 đề)
+    root: Hoá học 9
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-9-mon-hoa-index.html
+    label: Hoá học 9 – Đề thi học kì 1 (17 đề)
+    root: Hoá học 9
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-9-mon-hoa-index.html
+    label: Hoá học 9 – Đề thi học kì 2 (33 đề)
+    root: Hoá học 9
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-9-mon-lich-su-index.html
+    label: Lịch sử 9 – Đề thi giữa học kì 1 (16 đề)
+    root: Lịch sử 9
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-9-mon-lich-su-index.html
+    label: Lịch sử 9 – Đề thi giữa học kì 2 (5 đề)
+    root: Lịch sử 9
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-9-mon-lich-su-index.html
+    label: Lịch sử 9 – Đề thi học kì 1 (20 đề)
+    root: Lịch sử 9
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-9-mon-lich-su-index.html
+    label: Lịch sử 9 – Đề thi học kì 2 (9 đề)
+    root: Lịch sử 9
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-9-mon-ngu-van-index.html
+    label: Ngữ văn 9 – Đề thi giữa học kì 1 (4 đề)
+    root: Ngữ văn 9
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-9-mon-ngu-van-index.html
+    label: Ngữ văn 9 – Đề thi giữa học kì 2 (4 đề)
+    root: Ngữ văn 9
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-9-mon-ngu-van-index.html
+    label: Ngữ văn 9 – Đề thi học kì 1 (4 đề)
+    root: Ngữ văn 9
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-9-mon-ngu-van-index.html
+    label: Ngữ văn 9 – Đề thi học kì 2 (8 đề)
+    root: Ngữ văn 9
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-9-mon-sinh-index.html
+    label: Sinh học 9 – Đề thi giữa học kì 1 (22 đề)
+    root: Sinh học 9
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-9-mon-sinh-index.html
+    label: Sinh học 9 – Đề thi giữa học kì 2 (11 đề)
+    root: Sinh học 9
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-9-mon-sinh-index.html
+    label: Sinh học 9 – Đề thi học kì 1 (14 đề)
+    root: Sinh học 9
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-9-mon-sinh-index.html
+    label: Sinh học 9 – Đề thi học kì 2 (30 đề)
+    root: Sinh học 9
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-9-mon-tieng-anh-index.html
+    label: Tiếng Anh 9 – Đề thi giữa học kì 1 (25 đề)
+    root: Tiếng Anh 9
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-9-mon-tieng-anh-index.html
+    label: Tiếng Anh 9 – Đề thi giữa học kì 2 (7 đề)
+    root: Tiếng Anh 9
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-9-mon-tieng-anh-index.html
+    label: Tiếng Anh 9 – Đề thi học kì 1 (14 đề)
+    root: Tiếng Anh 9
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-9-mon-tieng-anh-index.html
+    label: Tiếng Anh 9 – Đề thi học kì 2 (19 đề)
+    root: Tiếng Anh 9
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-9-mon-tin-hoc-index.html
+    label: Tin học 9 – Đề thi giữa học kì 1 (7 đề)
+    root: Tin học 9
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-9-mon-tin-hoc-index.html
+    label: Tin học 9 – Đề thi giữa học kì 2 (4 đề)
+    root: Tin học 9
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-9-mon-tin-hoc-index.html
+    label: Tin học 9 – Đề thi học kì 1 (14 đề)
+    root: Tin học 9
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-9-mon-tin-hoc-index.html
+    label: Tin học 9 – Đề thi học kì 2 (8 đề)
+    root: Tin học 9
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-9-mon-toan-index.html
+    label: Toán 9 – Đề thi giữa học kì 1 (13 đề)
+    root: Toán 9
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-9-mon-toan-index.html
+    label: Toán 9 – Đề thi giữa học kì 2 (6 đề)
+    root: Toán 9
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-9-mon-toan-index.html
+    label: Toán 9 – Đề thi học kì 1 (12 đề)
+    root: Toán 9
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-9-mon-toan-index.html
+    label: Toán 9 – Đề thi học kì 2 (19 đề)
+    root: Toán 9
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-9-mon-vat-ly-index.html
+    label: Vật lí 9 – Đề thi giữa học kì 1 (12 đề)
+    root: Vật lí 9
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-9-mon-vat-ly-index.html
+    label: Vật lí 9 – Đề thi giữa học kì 2 (26 đề)
+    root: Vật lí 9
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-9-mon-vat-ly-index.html
+    label: Vật lí 9 – Đề thi học kì 1 (12 đề)
+    root: Vật lí 9
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-9-mon-vat-ly-index.html
+    label: Vật lí 9 – Đề thi học kì 2 (25 đề)
+    root: Vật lí 9
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-10-mon-cong-nghe-index.html
+    label: Công nghệ 10 – Đề thi giữa học kì 1 (23 đề)
+    root: Công nghệ 10
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-10-mon-cong-nghe-index.html
+    label: Công nghệ 10 – Đề thi giữa học kì 2 (16 đề)
+    root: Công nghệ 10
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-10-mon-cong-nghe-index.html
+    label: Công nghệ 10 – Đề thi học kì 1 (21 đề)
+    root: Công nghệ 10
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-10-mon-cong-nghe-index.html
+    label: Công nghệ 10 – Đề thi học kì 2 (19 đề)
+    root: Công nghệ 10
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-10-mon-dia-index.html
+    label: Địa lí 10 – Đề thi giữa học kì 1 (19 đề)
+    root: Địa lí 10
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-10-mon-dia-index.html
+    label: Địa lí 10 – Đề thi giữa học kì 2 (12 đề)
+    root: Địa lí 10
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-10-mon-dia-index.html
+    label: Địa lí 10 – Đề thi học kì 1 (21 đề)
+    root: Địa lí 10
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-10-mon-dia-index.html
+    label: Địa lí 10 – Đề thi học kì 2 (16 đề)
+    root: Địa lí 10
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-10-mon-gdcd-index.html
+    label: GDCD 10 – Đề thi giữa học kì 1 (8 đề)
+    root: GDCD 10
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-10-mon-gdcd-index.html
+    label: GDCD 10 – Đề thi giữa học kì 2 (12 đề)
+    root: GDCD 10
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-10-mon-gdcd-index.html
+    label: GDCD 10 – Đề thi học kì 1 (18 đề)
+    root: GDCD 10
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-10-mon-gdcd-index.html
+    label: GDCD 10 – Đề thi học kì 2 (12 đề)
+    root: GDCD 10
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-10-mon-giao-duc-kinh-te-va-phap-luat-index.html
+    label: GDKT&PL 10 – Đề thi học kì 1 (9 đề)
+    root: GDKT&PL 10
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-10-mon-giao-duc-kinh-te-va-phap-luat-index.html
+    label: GDKT&PL 10 – Đề thi học kì 2 (4 đề)
+    root: GDKT&PL 10
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-10-mon-hoa-index.html
+    label: Hoá học 10 – Đề thi giữa học kì 1 (38 đề)
+    root: Hoá học 10
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-10-mon-hoa-index.html
+    label: Hoá học 10 – Đề thi giữa học kì 2 (29 đề)
+    root: Hoá học 10
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-10-mon-hoa-index.html
+    label: Hoá học 10 – Đề thi học kì 1 (26 đề)
+    root: Hoá học 10
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-10-mon-hoa-index.html
+    label: Hoá học 10 – Đề thi học kì 2 (26 đề)
+    root: Hoá học 10
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-10-mon-lich-su-index.html
+    label: Lịch sử 10 – Đề thi giữa học kì 1 (11 đề)
+    root: Lịch sử 10
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-10-mon-lich-su-index.html
+    label: Lịch sử 10 – Đề thi giữa học kì 2 (5 đề)
+    root: Lịch sử 10
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-10-mon-lich-su-index.html
+    label: Lịch sử 10 – Đề thi học kì 1 (16 đề)
+    root: Lịch sử 10
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-10-mon-lich-su-index.html
+    label: Lịch sử 10 – Đề thi học kì 2 (9 đề)
+    root: Lịch sử 10
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-10-mon-ngu-van-index.html
+    label: Ngữ văn 10 – Đề thi giữa học kì 1 (6 đề)
+    root: Ngữ văn 10
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-10-mon-sinh-index.html
+    label: Sinh học 10 – Đề thi giữa học kì 1 (25 đề)
+    root: Sinh học 10
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-10-mon-sinh-index.html
+    label: Sinh học 10 – Đề thi giữa học kì 2 (25 đề)
+    root: Sinh học 10
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-10-mon-sinh-index.html
+    label: Sinh học 10 – Đề thi học kì 2 (34 đề)
+    root: Sinh học 10
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-10-mon-tieng-anh-index.html
+    label: Tiếng Anh 10 – Đề thi giữa học kì 1 (23 đề)
+    root: Tiếng Anh 10
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-10-mon-tieng-anh-index.html
+    label: Tiếng Anh 10 – Đề thi giữa học kì 2 (17 đề)
+    root: Tiếng Anh 10
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-10-mon-tieng-anh-index.html
+    label: Tiếng Anh 10 – Đề thi học kì 1 (27 đề)
+    root: Tiếng Anh 10
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-10-mon-tieng-anh-index.html
+    label: Tiếng Anh 10 – Đề thi học kì 2 (26 đề)
+    root: Tiếng Anh 10
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-10-mon-tin-hoc-index.html
+    label: Tin học 10 – Đề thi giữa học kì 1 (9 đề)
+    root: Tin học 10
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-10-mon-tin-hoc-index.html
+    label: Tin học 10 – Đề thi giữa học kì 2 (6 đề)
+    root: Tin học 10
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-10-mon-tin-hoc-index.html
+    label: Tin học 10 – Đề thi học kì 1 (17 đề)
+    root: Tin học 10
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-10-mon-tin-hoc-index.html
+    label: Tin học 10 – Đề thi học kì 2 (18 đề)
+    root: Tin học 10
+    chapter: Đề thi học kì 2
   - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-10-mon-toan-index.html
-    label: Toán 10 – Đề thi giữa học kì 1
+    label: Toán 10 – Đề thi giữa học kì 1 (22 đề)
     root: Toán 10
     chapter: Đề thi giữa học kì 1
   - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-10-mon-toan-index.html
-    label: Toán 10 – Đề thi giữa học kì 2
+    label: Toán 10 – Đề thi giữa học kì 2 (12 đề)
     root: Toán 10
     chapter: Đề thi giữa học kì 2
-  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-11-mon-toan-index.html
-    label: Toán 11 – Đề thi giữa học kì 1
-    root: Toán 11
-    chapter: Đề thi giữa học kì 1
-  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-11-mon-toan-index.html
-    label: Toán 11 – Đề thi giữa học kì 2
-    root: Toán 11
-    chapter: Đề thi giữa học kì 2
-  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-12-mon-toan-index.html
-    label: Toán 12 – Đề thi giữa học kì 1
-    root: Toán 12
-    chapter: Đề thi giữa học kì 1
-  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-12-mon-toan-index.html
-    label: Toán 12 – Đề thi giữa học kì 2
-    root: Toán 12
-    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-10-mon-toan-index.html
+    label: Toán 10 – Đề thi học kì 1 (35 đề)
+    root: Toán 10
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-10-mon-toan-index.html
+    label: Toán 10 – Đề thi học kì 2 (31 đề)
+    root: Toán 10
+    chapter: Đề thi học kì 2
   - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-10-mon-vat-ly-index.html
-    label: Vật lí 10 – Đề thi giữa học kì 1
+    label: Vật lí 10 – Đề thi giữa học kì 1 (27 đề)
     root: Vật lí 10
     chapter: Đề thi giữa học kì 1
   - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-10-mon-vat-ly-index.html
-    label: Vật lí 10 – Đề thi giữa học kì 2
+    label: Vật lí 10 – Đề thi giữa học kì 2 (20 đề)
     root: Vật lí 10
     chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-10-mon-vat-ly-index.html
+    label: Vật lí 10 – Đề thi học kì 1 (22 đề)
+    root: Vật lí 10
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-10-mon-vat-ly-index.html
+    label: Vật lí 10 – Đề thi học kì 2 (23 đề)
+    root: Vật lí 10
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-11-mon-cong-nghe-index.html
+    label: Công nghệ 11 – Đề thi giữa học kì 1 (20 đề)
+    root: Công nghệ 11
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-11-mon-cong-nghe-index.html
+    label: Công nghệ 11 – Đề thi giữa học kì 2 (14 đề)
+    root: Công nghệ 11
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-11-mon-cong-nghe-index.html
+    label: Công nghệ 11 – Đề thi học kì 1 (19 đề)
+    root: Công nghệ 11
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-11-mon-cong-nghe-index.html
+    label: Công nghệ 11 – Đề thi học kì 2 (19 đề)
+    root: Công nghệ 11
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-11-mon-dia-index.html
+    label: Địa lí 11 – Đề thi giữa học kì 1 (18 đề)
+    root: Địa lí 11
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-11-mon-dia-index.html
+    label: Địa lí 11 – Đề thi giữa học kì 2 (11 đề)
+    root: Địa lí 11
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-11-mon-dia-index.html
+    label: Địa lí 11 – Đề thi học kì 1 (19 đề)
+    root: Địa lí 11
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-11-mon-dia-index.html
+    label: Địa lí 11 – Đề thi học kì 2 (16 đề)
+    root: Địa lí 11
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-11-mon-gdcd-index.html
+    label: GDCD 11 – Đề thi giữa học kì 1 (14 đề)
+    root: GDCD 11
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-11-mon-gdcd-index.html
+    label: GDCD 11 – Đề thi giữa học kì 2 (16 đề)
+    root: GDCD 11
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-11-mon-gdcd-index.html
+    label: GDCD 11 – Đề thi học kì 1 (15 đề)
+    root: GDCD 11
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-11-mon-gdcd-index.html
+    label: GDCD 11 – Đề thi học kì 2 (17 đề)
+    root: GDCD 11
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-11-mon-giao-duc-kinh-te-va-phap-luat-index.html
+    label: GDKT&PL 11 – Đề thi học kì 2 (3 đề)
+    root: GDKT&PL 11
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-11-mon-hoa-index.html
+    label: Hoá học 11 – Đề thi giữa học kì 1 (38 đề)
+    root: Hoá học 11
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-11-mon-hoa-index.html
+    label: Hoá học 11 – Đề thi giữa học kì 2 (26 đề)
+    root: Hoá học 11
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-11-mon-hoa-index.html
+    label: Hoá học 11 – Đề thi học kì 1 (25 đề)
+    root: Hoá học 11
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-11-mon-hoa-index.html
+    label: Hoá học 11 – Đề thi học kì 2 (27 đề)
+    root: Hoá học 11
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-11-mon-lich-su-index.html
+    label: Lịch sử 11 – Đề thi giữa học kì 1 (18 đề)
+    root: Lịch sử 11
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-11-mon-lich-su-index.html
+    label: Lịch sử 11 – Đề thi giữa học kì 2 (5 đề)
+    root: Lịch sử 11
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-11-mon-ngu-van-index.html
+    label: Ngữ văn 11 – Đề thi giữa học kì 1 (11 đề)
+    root: Ngữ văn 11
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-11-mon-ngu-van-index.html
+    label: Ngữ văn 11 – Đề thi giữa học kì 2 (10 đề)
+    root: Ngữ văn 11
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-11-mon-ngu-van-index.html
+    label: Ngữ văn 11 – Đề thi học kì 1 (3 đề)
+    root: Ngữ văn 11
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-11-mon-ngu-van-index.html
+    label: Ngữ văn 11 – Đề thi học kì 2 (21 đề)
+    root: Ngữ văn 11
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-11-mon-sinh-index.html
+    label: Sinh học 11 – Đề thi giữa học kì 1 (24 đề)
+    root: Sinh học 11
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-11-mon-sinh-index.html
+    label: Sinh học 11 – Đề thi giữa học kì 2 (27 đề)
+    root: Sinh học 11
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-11-mon-sinh-index.html
+    label: Sinh học 11 – Đề thi học kì 1 (21 đề)
+    root: Sinh học 11
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-11-mon-sinh-index.html
+    label: Sinh học 11 – Đề thi học kì 2 (26 đề)
+    root: Sinh học 11
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-11-mon-tieng-anh-index.html
+    label: Tiếng Anh 11 – Đề thi giữa học kì 1 (29 đề)
+    root: Tiếng Anh 11
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-11-mon-tieng-anh-index.html
+    label: Tiếng Anh 11 – Đề thi giữa học kì 2 (13 đề)
+    root: Tiếng Anh 11
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-11-mon-tieng-anh-index.html
+    label: Tiếng Anh 11 – Đề thi học kì 1 (22 đề)
+    root: Tiếng Anh 11
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-11-mon-tieng-anh-index.html
+    label: Tiếng Anh 11 – Đề thi học kì 2 (28 đề)
+    root: Tiếng Anh 11
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-11-mon-tin-hoc-index.html
+    label: Tin học 11 – Đề thi giữa học kì 1 (9 đề)
+    root: Tin học 11
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-11-mon-tin-hoc-index.html
+    label: Tin học 11 – Đề thi giữa học kì 2 (7 đề)
+    root: Tin học 11
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-11-mon-tin-hoc-index.html
+    label: Tin học 11 – Đề thi học kì 1 (15 đề)
+    root: Tin học 11
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-11-mon-tin-hoc-index.html
+    label: Tin học 11 – Đề thi học kì 2 (12 đề)
+    root: Tin học 11
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-11-mon-toan-index.html
+    label: Toán 11 – Đề thi giữa học kì 1 (28 đề)
+    root: Toán 11
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-11-mon-toan-index.html
+    label: Toán 11 – Đề thi giữa học kì 2 (29 đề)
+    root: Toán 11
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-11-mon-toan-index.html
+    label: Toán 11 – Đề thi học kì 1 (30 đề)
+    root: Toán 11
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-11-mon-toan-index.html
+    label: Toán 11 – Đề thi học kì 2 (29 đề)
+    root: Toán 11
+    chapter: Đề thi học kì 2
   - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-11-mon-vat-ly-index.html
-    label: Vật lí 11 – Đề thi giữa học kì 1
+    label: Vật lí 11 – Đề thi giữa học kì 1 (29 đề)
     root: Vật lí 11
     chapter: Đề thi giữa học kì 1
   - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-11-mon-vat-ly-index.html
-    label: Vật lí 11 – Đề thi giữa học kì 2
+    label: Vật lí 11 – Đề thi giữa học kì 2 (15 đề)
     root: Vật lí 11
     chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-11-mon-vat-ly-index.html
+    label: Vật lí 11 – Đề thi học kì 1 (18 đề)
+    root: Vật lí 11
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-11-mon-vat-ly-index.html
+    label: Vật lí 11 – Đề thi học kì 2 (20 đề)
+    root: Vật lí 11
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-12-mon-cong-nghe-index.html
+    label: Công nghệ 12 – Đề thi giữa học kì 1 (18 đề)
+    root: Công nghệ 12
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-12-mon-cong-nghe-index.html
+    label: Công nghệ 12 – Đề thi giữa học kì 2 (8 đề)
+    root: Công nghệ 12
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-12-mon-cong-nghe-index.html
+    label: Công nghệ 12 – Đề thi học kì 1 (18 đề)
+    root: Công nghệ 12
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-12-mon-cong-nghe-index.html
+    label: Công nghệ 12 – Đề thi học kì 2 (21 đề)
+    root: Công nghệ 12
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-12-mon-dia-ly-index.html
+    label: Địa lí 12 – Đề thi giữa học kì 1 (21 đề)
+    root: Địa lí 12
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-12-mon-dia-ly-index.html
+    label: Địa lí 12 – Đề thi giữa học kì 2 (11 đề)
+    root: Địa lí 12
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-12-mon-dia-ly-index.html
+    label: Địa lí 12 – Đề thi học kì 1 (22 đề)
+    root: Địa lí 12
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-12-mon-dia-ly-index.html
+    label: Địa lí 12 – Đề thi học kì 2 (33 đề)
+    root: Địa lí 12
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-12-mon-gdcd-index.html
+    label: GDCD 12 – Đề thi giữa học kì 1 (15 đề)
+    root: GDCD 12
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-12-mon-gdcd-index.html
+    label: GDCD 12 – Đề thi giữa học kì 2 (17 đề)
+    root: GDCD 12
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-12-mon-gdcd-index.html
+    label: GDCD 12 – Đề thi học kì 1 (23 đề)
+    root: GDCD 12
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-12-mon-gdcd-index.html
+    label: GDCD 12 – Đề thi học kì 2 (38 đề)
+    root: GDCD 12
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-12-mon-hoa-index.html
+    label: Hoá học 12 – Đề thi giữa học kì 1 (49 đề)
+    root: Hoá học 12
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-12-mon-hoa-index.html
+    label: Hoá học 12 – Đề thi giữa học kì 2 (9 đề)
+    root: Hoá học 12
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-12-mon-hoa-index.html
+    label: Hoá học 12 – Đề thi học kì 1 (36 đề)
+    root: Hoá học 12
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-12-mon-hoa-index.html
+    label: Hoá học 12 – Đề thi học kì 2 (46 đề)
+    root: Hoá học 12
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-12-mon-lich-su-index.html
+    label: Lịch sử 12 – Đề thi giữa học kì 1 (17 đề)
+    root: Lịch sử 12
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-12-mon-lich-su-index.html
+    label: Lịch sử 12 – Đề thi giữa học kì 2 (9 đề)
+    root: Lịch sử 12
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-12-mon-lich-su-index.html
+    label: Lịch sử 12 – Đề thi học kì 1 (26 đề)
+    root: Lịch sử 12
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-12-mon-lich-su-index.html
+    label: Lịch sử 12 – Đề thi học kì 2 (28 đề)
+    root: Lịch sử 12
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-12-mon-ngu-van-index.html
+    label: Ngữ văn 12 – Đề thi giữa học kì 1 (9 đề)
+    root: Ngữ văn 12
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-12-mon-ngu-van-index.html
+    label: Ngữ văn 12 – Đề thi giữa học kì 2 (10 đề)
+    root: Ngữ văn 12
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-12-mon-ngu-van-index.html
+    label: Ngữ văn 12 – Đề thi học kì 1 (4 đề)
+    root: Ngữ văn 12
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-12-mon-ngu-van-index.html
+    label: Ngữ văn 12 – Đề thi học kì 2 (27 đề)
+    root: Ngữ văn 12
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-12-mon-sinh-index.html
+    label: Sinh học 12 – Đề thi giữa học kì 1 (38 đề)
+    root: Sinh học 12
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-12-mon-sinh-index.html
+    label: Sinh học 12 – Đề thi giữa học kì 2 (23 đề)
+    root: Sinh học 12
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-12-mon-sinh-index.html
+    label: Sinh học 12 – Đề thi học kì 1 (27 đề)
+    root: Sinh học 12
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-12-mon-sinh-index.html
+    label: Sinh học 12 – Đề thi học kì 2 (41 đề)
+    root: Sinh học 12
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-12-mon-tieng-anh-index.html
+    label: Tiếng Anh 12 – Đề thi giữa học kì 1 (38 đề)
+    root: Tiếng Anh 12
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-12-mon-tieng-anh-index.html
+    label: Tiếng Anh 12 – Đề thi giữa học kì 2 (16 đề)
+    root: Tiếng Anh 12
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-12-mon-tieng-anh-index.html
+    label: Tiếng Anh 12 – Đề thi học kì 1 (30 đề)
+    root: Tiếng Anh 12
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-12-mon-tieng-anh-index.html
+    label: Tiếng Anh 12 – Đề thi học kì 2 (29 đề)
+    root: Tiếng Anh 12
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-12-mon-tin-hoc-index.html
+    label: Tin học 12 – Đề thi giữa học kì 1 (9 đề)
+    root: Tin học 12
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-12-mon-tin-hoc-index.html
+    label: Tin học 12 – Đề thi giữa học kì 2 (7 đề)
+    root: Tin học 12
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-12-mon-tin-hoc-index.html
+    label: Tin học 12 – Đề thi học kì 1 (14 đề)
+    root: Tin học 12
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-12-mon-tin-hoc-index.html
+    label: Tin học 12 – Đề thi học kì 2 (15 đề)
+    root: Tin học 12
+    chapter: Đề thi học kì 2
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-12-mon-toan-index.html
+    label: Toán 12 – Đề thi giữa học kì 1 (18 đề)
+    root: Toán 12
+    chapter: Đề thi giữa học kì 1
+  - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-12-mon-toan-index.html
+    label: Toán 12 – Đề thi giữa học kì 2 (47 đề)
+    root: Toán 12
+    chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-12-mon-toan-index.html
+    label: Toán 12 – Đề thi học kì 1 (31 đề)
+    root: Toán 12
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-12-mon-toan-index.html
+    label: Toán 12 – Đề thi học kì 2 (36 đề)
+    root: Toán 12
+    chapter: Đề thi học kì 2
   - url: https://hoc247.net/de-thi-giua-hoc-ki-1-lop-12-mon-vat-ly-index.html
-    label: Vật lí 12 – Đề thi giữa học kì 1
+    label: Vật lí 12 – Đề thi giữa học kì 1 (41 đề)
     root: Vật lí 12
     chapter: Đề thi giữa học kì 1
   - url: https://hoc247.net/de-thi-giua-hoc-ki-2-lop-12-mon-vat-ly-index.html
-    label: Vật lí 12 – Đề thi giữa học kì 2
+    label: Vật lí 12 – Đề thi giữa học kì 2 (20 đề)
     root: Vật lí 12
     chapter: Đề thi giữa học kì 2
+  - url: https://hoc247.net/de-thi-hoc-ki-1-lop-12-mon-vat-ly-index.html
+    label: Vật lí 12 – Đề thi học kì 1 (26 đề)
+    root: Vật lí 12
+    chapter: Đề thi học kì 1
+  - url: https://hoc247.net/de-thi-hoc-ki-2-lop-12-mon-vat-ly-index.html
+    label: Vật lí 12 – Đề thi học kì 2 (28 đề)
+    root: Vật lí 12
+    chapter: Đề thi học kì 2
 follow:
   - pattern: '^https://hoc247\.net/de-thi-[a-z0-9-]+-ktdt\d+\.html$'
     kind: listing

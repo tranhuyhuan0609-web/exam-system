@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     crawler_user_agent: str = "ExamSystemCrawler/0.1"
     gemini_embedding_model: str = "gemini-embedding-001"
     semantic_duplicate_threshold: float = 0.92  # cosine similarity at which a crawled question is a duplicate
+    # Embeddings at quota (large crawls): publish with exact dedup only instead of waiting; vectors come later
+    semantic_dedup_optional: bool = True
     # AI fallbacks for crawled questions when Gemini is out of quota (OpenAI-compatible APIs, free tiers).
     groq_api_key: str = ""
     groq_model: str = "openai/gpt-oss-120b"

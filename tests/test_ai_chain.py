@@ -8,6 +8,7 @@ import httpx
 import pytest
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.infrastructure.storage import get_bronze_storage, get_storage
 from app.models import CrawledQuestion, CrawlerSite, CrawlItemStatus
 from app.pipeline.adapters.ai_chain import ChainEnricher, MemoryUsage, OpenAICompatEnricher
@@ -97,7 +98,9 @@ def test_openai_compatible_adapter_parses_json_and_maps_errors(monkeypatch):
     assert seen[0] == ("https://api.groq.com/openai/v1/chat/completions", "some-model", {"type": "json_object"})
 
 
-def test_embedding_outage_keeps_questions_ready_until_it_returns(db):
+def test_embedding_outage_keeps_questions_ready_until_it_returns(db, monkeypatch):
+    monkeypatch.setattr(get_settings(), "semantic_dedup_optional", False)  # strict mode: wait for the vectors
+
     class FlakyEmbedder:
         down = True
         calls = 0
@@ -277,3 +280,41 @@ def test_idle_backfill_embeds_questions_published_without_one(db):
     )
     assert db(lambda s: backfill_embeddings(s, deps)) == 3 and embedder.calls == 1
     assert db(lambda s: backfill_embeddings(s, deps)) == 0
+
+
+def test_a_large_crawl_does_not_wait_for_embeddings(db):
+    """Default: embeddings at quota do not hold questions back; exact dedup only, vectors are added later."""
+
+    class DownEmbedder:
+        async def embed(self, texts):
+            raise RuntimeError("429 RESOURCE_EXHAUSTED")
+
+    async def setup(s):
+        await make_tree(s, {"Vật lí 11": {"Chương 1: Dao động": {"Bài 1: Dao động điều hoà": {}}}})
+        config = SiteConfig.model_validate(
+            {
+                "site_id": "loigiaihay",
+                "name": "l",
+                "base_url": "https://loigiaihay.com",
+                "parser": "loigiaihay_quiz",
+                "seeds": [{"url": "https://loigiaihay.com/x"}],
+                "follow": [{"pattern": "x"}],
+                "categories": [{"pattern": "trac-nghiem", "root": "Vật lí 11", "lesson": r"bài\s*(\d+)"}],
+            }
+        )
+        s.add(CrawlerSite(site_id="loigiaihay", name="l", config=config.model_dump(mode="json")))
+
+    db(setup)
+    deps = SilverDeps(
+        store=MemoryRawStore(),
+        storage=get_storage(),
+        bronze_storage=get_bronze_storage(),
+        downloader=MemoryDownloader(),
+        embedder=DownEmbedder(),
+    )
+    doc = RawDocument(
+        doc_id("loigiaihay", LGH_URL, "h"), "loigiaihay", LGH_URL, "html", datetime.now(UTC), "h", html=LGH_PAGE
+    )
+    db(lambda s: ingest_document(s, deps, doc))
+    assert CrawlItemStatus.READY not in set(db(lambda s: s.scalars(select(CrawledQuestion.status))))
+    assert CrawlItemStatus.PUBLISHED in set(db(lambda s: s.scalars(select(CrawledQuestion.status))))

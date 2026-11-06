@@ -1,6 +1,6 @@
 """Admin: library documents imported from Google Drive — review rights, publish/hide, allow downloads, sync."""
 
-import asyncio
+import subprocess
 import sys
 
 from fastapi import APIRouter, Request
@@ -98,6 +98,6 @@ async def library_sync(request: Request, user: AdminUser, source_id: str):
         flash(request, "Chưa có GOOGLE_DRIVE_API_KEY trong .env.", "error")
         return redirect("/admin/library")
     # Runs in its own process (long download); results appear on this page as files arrive.
-    await asyncio.create_subprocess_exec(sys.executable, "-m", "app.pipeline", "drive-sync", source_id)
+    subprocess.Popen([sys.executable, "-m", "app.pipeline", "drive-sync", source_id])  # noqa: S603 - fixed argv
     flash(request, f"Đang đồng bộ “{sources[source_id].name}” từ Google Drive. Tải lại trang sau ít phút.")
     return redirect("/admin/library")
