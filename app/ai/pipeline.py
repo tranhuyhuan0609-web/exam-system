@@ -12,6 +12,7 @@ A draft is a plain dict stored in ImportJob.drafts and edited during review:
     }
 """
 
+import asyncio
 import logging
 import re
 import secrets
@@ -21,7 +22,8 @@ from pathlib import Path
 from typing import Any
 
 from app.ai.figures import crop_figure
-from app.ai.normalize import thumbnail_bytes, to_page_images
+from app.ai.local_text import read_locally
+from app.ai.normalize import NormalizeError, thumbnail_bytes, to_page_images
 from app.ai.provider import AIError, AIProvider, AIQuotaExhausted, FigureImage, PageImage
 from app.ai.schemas import ExtractedQuestion, Solution
 from app.infrastructure.storage import Storage
@@ -140,6 +142,20 @@ def normalize_draft(draft: dict[str, Any]) -> dict[str, Any]:
     return d
 
 
+def _printed_answer(draft: dict[str, Any], label: str) -> None:
+    """The answer printed in the file (answer table, underlined or highlighted option) wins; when the AI found
+    another one, the draft is marked so that an admin looks at it."""
+    index = "ABCD".index(label)
+    if index >= len(draft["choices"]):
+        return
+    if draft["correct"] is not None and draft["correct"] != index:
+        draft["flags"] = [*draft["flags"], "key_mismatch"]
+        draft["official"] = label
+    else:
+        draft["flags"] = [f for f in draft["flags"] if f != "no_match"]  # the file settles it
+    draft["correct"] = index
+
+
 async def _extract(provider: AIProvider, chunk: list[PageImage]) -> list[ExtractedQuestion]:
     """Read the pages in one call; if that fails (a cut-off or broken answer), read each half separately."""
     try:
@@ -199,12 +215,29 @@ async def run_pipeline(
         await progress("Đang chuyển file thành ảnh từng trang…", 0, 1)
         source = work / ("source" + Path(source_key).suffix.lower())
         source.write_bytes(await storage.get(source_key))
-        pages, geometries = await to_page_images(source, work / "pages", soffice)
+        # Word files and PDFs with a text layer are read on this machine when that works: no AI call to read them.
+        local = await asyncio.to_thread(read_locally, source)
+        try:
+            pages, geometries = await to_page_images(source, work / "pages", soffice)
+        except NormalizeError:
+            if local is None:
+                raise
+            pages, geometries = [], []  # no LibreOffice here: the text is enough, only the review images are missing
         for number, page in enumerate(pages, start=1):
             await storage.put(page_key(job_id, number), page.read_bytes(), "image/png")
 
-        chunks = _chunks(pages)
         extracted: list[ExtractedQuestion] = []
+        figure_keys: dict[int, str] = {}
+        figure_bytes: dict[int, bytes] = {}
+        failed: set[int] = set()
+        if local is not None:
+            await progress(f"Đã đọc {len(local.questions)} câu trực tiếp từ file (không cần AI đọc trang)…", 0, 1)
+            extracted = local.questions
+            for index, png in local.figures.items():
+                key = f"figures/{job_id}-{index + 1}-{secrets.token_hex(6)}.png"
+                await storage.put(key, png, "image/png")
+                figure_bytes[index], figure_keys[index] = png, key
+        chunks = [] if local is not None else _chunks(pages)
         for i, chunk in enumerate(chunks):
             first, last = chunk[0].number, max(p.number for p in chunk if not p.context_only)
             await progress(f"AI đang đọc trang {first}–{last} / {len(pages)}…", i, len(chunks))
@@ -216,11 +249,8 @@ async def run_pipeline(
         if not extracted:
             return len(pages), []
 
-        figure_keys: dict[int, str] = {}
-        figure_bytes: dict[int, bytes] = {}
-        failed: set[int] = set()
         for index, q in enumerate(extracted):
-            if q.figure_bbox is None:
+            if q.figure_bbox is None or not pages:
                 continue
             crop = work / "figures" / f"{index + 1}.png"
             if crop_figure(pages[q.page - 1], q.figure_bbox, crop, geometries[q.page - 1]):
@@ -262,5 +292,7 @@ async def run_pipeline(
             _draft(q, solutions.get(i), figure_keys.get(i), i in failed, default_difficulty)
             for i, q in enumerate(extracted)
         ]
+        for index, label in (local.answers if local else {}).items():
+            _printed_answer(drafts[index], label)
         await progress("Hoàn tất", 1, 1)
         return len(pages), drafts
