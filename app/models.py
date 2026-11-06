@@ -495,6 +495,12 @@ class LibraryDocument(Base):
     downloadable: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     license_note: Mapped[str | None] = mapped_column(String(300))
     import_job_id: Mapped[int | None] = mapped_column(ForeignKey("import_jobs.id", ondelete="SET NULL"))
+    # One exam cut out of a bundle (app/pipeline/use_cases/library_split.py): the bundle and its pages (1-based).
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("library_documents.id", ondelete="CASCADE"), index=True
+    )
+    page_from: Mapped[int | None] = mapped_column(Integer)
+    page_to: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

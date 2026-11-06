@@ -75,7 +75,15 @@ def _sync(db, drive):
 def test_drive_sync_takes_chosen_folders_and_queues_ai_import_for_targets(db):
     drive = FakeDrive()
     stats, store = _sync(db, drive)
-    assert stats == {"new": 3, "updated": 0, "unchanged": 0, "skipped": 1, "failed": 0, "import_jobs": 1}
+    assert stats == {
+        "new": 3,
+        "updated": 0,
+        "unchanged": 0,
+        "skipped": 1,
+        "failed": 0,
+        "import_jobs": 1,
+        "split_parts": 0,
+    }
     docs = {d.title: d for d in db(lambda s: s.scalars(select(LibraryDocument)))}
     assert set(docs) == {"Đề Toán mã 101", "Đề Hóa học mã 201", "Chuyên đề hàm số"}  # no textbook, no zip
     math = docs["Đề Toán mã 101"]

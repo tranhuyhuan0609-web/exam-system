@@ -1,4 +1,5 @@
-# AI import worker: same app code plus LibreOffice, which renders .docx (MathType, Word shapes) to PDF.
+# AI import worker: same app code plus LibreOffice, which renders .docx (MathType, Word shapes) to PDF,
+# and Vietnamese Tesseract data, used to find exam codes on scanned library PDFs.
 FROM python:3.13-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN apt-get update \
@@ -11,5 +12,5 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
-ENV SOFFICE_PATH=soffice DATA_DIR=/app/data
+ENV SOFFICE_PATH=soffice DATA_DIR=/app/data TESSDATA_DIR=/usr/share/tesseract-ocr/5/tessdata
 CMD ["python", "-m", "app.worker"]
