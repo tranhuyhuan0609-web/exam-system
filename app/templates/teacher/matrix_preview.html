@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Ma trận đề · Exam System{% endblock %}
+{% block container_class %}wide{% endblock %}
+{% block content %}
+<p><a href="/teacher/make">← Tải ma trận khác</a></p>
+<h1>Ma trận đề – {{ root.name }}</h1>
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+<p class="muted">Kiểm tra từng dòng AI đã đọc: mục lục, mức độ, dạng câu và số câu. Cột “Ngân hàng” là số câu phù hợp
+  hiện có; dòng thiếu câu được tô đỏ.</p>
+
+<form method="post" action="/teacher/make/matrix/create" class="card" id="matrix-form">
+  <input type="hidden" name="root_id" value="{{ root.id }}">
+  <input type="hidden" name="row_count" value="{{ rows | length }}">
+  <table class="table">
+    <thead><tr><th>Chủ đề (theo ma trận)</th><th>Mục lục</th><th>Mức độ</th><th>Dạng câu</th><th>Số câu</th><th>Ngân hàng</th><th>Bỏ</th></tr></thead>
+    <tbody>
+    {% for row, have in rows %}
+      {% set i = loop.index0 %}
+      <tr class="{{ 'is-short' if have is not none and have < row.count }}" data-have="{{ have if have is not none else 0 }}">
+        <td class="small">{{ row.topic }}<input type="hidden" name="topic_{{ i }}" value="{{ row.topic }}">
+          {% if not row.scope_key %}<div><span class="badge badge-warn">Chưa khớp mục lục: cả môn</span></div>{% endif %}</td>
+        <td><select name="scope_{{ i }}">
+          {% for o in options %}<option value="{{ o.key }}" {{ 'selected' if o.key == row.scope_key or (not row.scope_key and loop.first) }}>{{ o.label }}</option>{% endfor %}
+        </select></td>
+        <td><select name="level_{{ i }}">{% for lv in levels %}<option value="{{ lv }}" {{ 'selected' if lv == row.level }}>{{ DIFFICULTY_LABELS[lv] }}</option>{% endfor %}</select></td>
+        <td><select name="type_{{ i }}">{% for t in types %}<option value="{{ t }}" {{ 'selected' if t == row.question_type }}>{{ TYPE_LABELS[t] }}</option>{% endfor %}</select></td>
+        <td><input type="number" name="count_{{ i }}" value="{{ row.count }}" min="1" max="200" style="width:5em"></td>
+        <td class="small">{{ have if have is not none else "—" }}</td>
+        <td><input type="checkbox" name="drop_{{ i }}" value="1"></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint">Đổi mục lục, mức độ hoặc dạng câu thì số câu trong ngân hàng được kiểm tra lại khi bấm tạo.</p>
+
+  <label>Tên bài kiểm tra
+    <input name="title" value="{{ values.title }}" required maxlength="300">
+  </label>
+  {% if user.role == "ADMIN" %}
+    <fieldset class="mt">
+      <legend>Đăng ở đâu</legend>
+      <label class="check"><input type="radio" name="publish" value="public" {{ 'checked' if values.public }}>
+        Đăng lên web <span class="muted small">(hiện trong danh sách đề, học sinh vào làm ngay, không cần link hay mã)</span></label>
+      <label class="check"><input type="radio" name="publish" value="private" {{ 'checked' if not values.public }}>
+        Bài kiểm tra riêng <span class="muted small">(link + mã, có giờ mở và giờ đóng)</span></label>
+    </fieldset>
+  {% endif %}
+  <div class="grid-3 mt">
+    <label class="schedule">Giờ mở bài <input type="datetime-local" name="starts_at" value="{{ values.starts_at | local_input }}" required></label>
+    <label class="schedule">Giờ đóng bài <input type="datetime-local" name="ends_at" value="{{ values.ends_at | local_input }}" required></label>
+    <label>Thời gian làm bài (phút) <input type="number" name="minutes" min="1" max="300" value="{{ values.minutes }}" required></label>
+  </div>
+  <fieldset class="mt">
+    <legend>Đề</legend>
+    <label class="check"><input type="radio" name="same_paper" value="0" {{ 'checked' if not values.same_paper }}>
+      Mỗi học sinh một đề ngẫu nhiên theo ma trận <span class="muted small">(chống chép bài)</span></label>
+    <label class="check"><input type="radio" name="same_paper" value="1" {{ 'checked' if values.same_paper }}>
+      Cả lớp chung một đề <span class="muted small">(bốc đề ngay, xem trước và bốc lại được)</span></label>
+    <label class="check"><input type="checkbox" name="shuffle" value="1" {{ 'checked' if values.shuffle }}>
+      Đảo thứ tự câu trong từng phần và đảo đáp án A/B/C/D</label>
+  </fieldset>
+  <p class="quiz-summary" id="matrix-summary"></p>
+  <button class="btn">Tạo bài kiểm tra</button>
+</form>
+<style>tr.is-short td { background: #fdecea; }</style>
+<script>
+  (() => {
+    const form = document.getElementById("matrix-form");
+    const summary = document.getElementById("matrix-summary");
+    function update() {
+      let total = 0;
+      form.querySelectorAll("tbody tr").forEach((tr, i) => {
+        const dropped = form.querySelector(`[name=drop_${i}]`).checked;
+        tr.style.opacity = dropped ? 0.4 : 1;
+        if (!dropped) total += Number(form.querySelector(`[name=count_${i}]`).value) || 0;
+      });
+      summary.textContent = `Tổng ${total} câu`;
+    }
+    function schedule() {  // a public exam has no window
+      const pub = form.querySelector("[name=publish][value=public]");
+      form.querySelectorAll("label.schedule").forEach((label) => {
+        label.hidden = !!(pub && pub.checked);
+        label.querySelector("input").required = !(pub && pub.checked);
+      });
+    }
+    form.addEventListener("input", () => { update(); schedule(); });
+    update();
+    schedule();
+  })();
+</script>
+{% endblock %}

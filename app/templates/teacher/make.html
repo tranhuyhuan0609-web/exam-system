@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Tạo đề · Exam System{% endblock %}
+{% block content %}
+<p><a href="/teacher">← Bài kiểm tra của tôi</a></p>
+<h1>Tạo đề</h1>
+
+<div class="card">
+  <h2>📋 Theo ma trận đề</h2>
+  <p class="muted">Tải lên ma trận đề của bạn (Excel, Word, PDF hoặc ảnh chụp). AI đọc bảng chủ đề × mức độ × số câu,
+    ghép từng chủ đề vào mục lục của môn; bạn xem lại, chỉnh sửa rồi tạo bài kiểm tra. Câu hỏi được bốc từ ngân hàng
+    đúng theo ma trận, mỗi học sinh một đề hoặc cả lớp chung một đề.</p>
+  {% if reads_left is not none %}
+    <p class="small"><span class="badge {{ 'badge-warn' if reads_left == 0 else '' }}">Hôm nay còn {{ reads_left }} lượt đọc ma trận</span>
+      <a href="/plans">Gói Pro</a> không giới hạn.</p>
+  {% endif %}
+  <form method="post" action="/teacher/make/matrix" enctype="multipart/form-data">
+    <label>Môn
+      <select name="root_id" required>
+        <option value="">— Chọn môn —</option>
+        {% for r in roots %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>File ma trận
+      <input type="file" name="file" required accept=".xlsx,.xlsm,.docx,.pdf,.png,.jpg,.jpeg,.webp">
+    </label>
+    <p class="hint">Ví dụ: ma trận theo mẫu của Bộ (Biết / Hiểu / Vận dụng; trắc nghiệm, đúng sai, trả lời ngắn, tự luận). Tối đa 15 MB.</p>
+    <button class="btn" {{ 'disabled' if reads_left == 0 }}>Đọc ma trận</button>
+  </form>
+</div>
+
+<div class="card mt">
+  <h2>📄 Đề tương tự từ file đề</h2>
+  <p class="muted">Tải lên một đề (PDF, Word hoặc ảnh chụp). AI đọc từng câu rồi viết các câu tương tự cùng dạng, cùng
+    kiến thức và mức độ nhưng đổi số liệu, ngữ cảnh, kèm đáp án và lời giải; sau đó AI giải lại từng câu mới để kiểm
+    tra đáp án. Bạn duyệt, sửa từng câu rồi mới giao cho học sinh. Câu có hình vẽ được giữ nguyên như đề gốc.</p>
+  {% if similar_left is not none %}
+    <p class="small"><span class="badge {{ 'badge-warn' if similar_left == 0 else '' }}">Hôm nay còn {{ similar_left }} lượt tạo đề tương tự</span></p>
+  {% endif %}
+  <form method="post" action="/teacher/make/similar" enctype="multipart/form-data">
+    <div class="grid-3">
+      <label>Môn
+        <select name="root_id" required>
+          <option value="">— Chọn môn —</option>
+          {% for r in roots %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Số đề tương tự
+        <select name="versions">{% for n in range(1, max_versions + 1) %}<option value="{{ n }}">{{ n }} đề</option>{% endfor %}</select>
+      </label>
+      <label>File đề
+        <input type="file" name="file" required accept=".pdf,.docx,.png,.jpg,.jpeg">
+      </label>
+    </div>
+    <button class="btn" {{ 'disabled' if similar_left == 0 }}>Tạo đề tương tự</button>
+  </form>
+  {% if jobs %}
+    <table class="table mt">
+      <thead><tr><th>File</th><th>Trạng thái</th><th></th></tr></thead>
+      <tbody>
+      {% for j in jobs %}
+        <tr><td>{{ j.original_filename }}</td><td class="small">{{ j.stage or j.status }}</td>
+          <td><a class="btn btn-small btn-outline" href="/teacher/make/similar/{{ j.id }}">{{ "Duyệt đề" if j.status == "DONE" else "Xem" }}</a></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>
+{% endblock %}

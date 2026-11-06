@@ -22,6 +22,7 @@ from app.config import get_settings
 from app.models import Exam, ExamAttempt, ExamVisibility, LibraryDocument, LibraryKind, LibraryView, User, UserRole
 
 VN = timezone(timedelta(hours=7))
+FREE_MATRICES_PER_DAY = 5  # exam matrices a free teacher may have read by AI each day (/teacher/make)
 DOWNLOADABLE_KINDS = {LibraryKind.EXAM, LibraryKind.HSG}  # exam papers; books and topic notes are read online
 
 
