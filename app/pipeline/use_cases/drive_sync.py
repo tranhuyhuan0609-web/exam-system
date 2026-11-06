@@ -23,11 +23,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.storage import Storage
-from app.models import Category, Difficulty, ImportJob, JobStatus, LibraryDocument, LibraryKind, LibraryStatus
+from app.models import LibraryDocument, LibraryKind, LibraryStatus
 from app.pipeline.adapters.drive import Drive, DriveBlocked, DriveError
 from app.pipeline.domain.models import RawDocument, doc_id
 from app.pipeline.ports import RawStore
-from app.pipeline.use_cases.library_split import split_document
+from app.pipeline.use_cases.library_split import queue_import, split_document
 from app.pipeline.use_cases.toc import ensure_path
 
 log = logging.getLogger(__name__)
@@ -175,24 +175,3 @@ async def sync_drive(
                     stats["import_jobs"] += 1
             await session.commit()
     return stats
-
-
-async def queue_import(
-    session: AsyncSession, storage, name: str, data: bytes, ext: str, category_id: int, stage: str
-) -> ImportJob:
-    """Hand a file to the AI exam import (the worker turns it into questions under this category)."""
-    category = await session.get(Category, category_id)
-    raw_key = f"raw/library-{hashlib.sha256(data).hexdigest()[:24]}{ext}"
-    await storage.put(raw_key, data, "application/pdf" if ext == ".pdf" else "application/octet-stream")
-    job = ImportJob(
-        original_filename=name[:300],
-        stored_path=raw_key,
-        status=JobStatus.QUEUED,
-        stage=stage,
-        root_id=category.root_id,
-        category_id=category.id,
-        default_difficulty=Difficulty.UNDERSTANDING,
-    )
-    session.add(job)
-    await session.flush()
-    return job

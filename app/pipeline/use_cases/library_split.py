@@ -13,12 +13,12 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 import pymupdf
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.normalize import NormalizeError, docx_to_pdf
 from app.config import get_settings
-from app.models import LibraryDocument
+from app.models import Category, Difficulty, ImportJob, JobStatus, LibraryDocument
 from app.pipeline.domain.exam_split import Segment, find_exams
 
 log = logging.getLogger(__name__)
@@ -121,10 +121,51 @@ async def split_document(
     return parts
 
 
-async def split_stored(session: AsyncSession, doc: LibraryDocument, bronze, soffice: str) -> int:
-    """Split a document already in the library (admin button, `library-split` command). Parts only, no AI import."""
+async def queue_import(
+    session: AsyncSession, storage, name: str, data: bytes, ext: str, category_id: int, stage: str
+) -> ImportJob:
+    """Hand a file to the AI exam import (the worker turns it into questions under this category)."""
+    category = await session.get(Category, category_id)
+    raw_key = f"raw/library-{hashlib.sha256(data).hexdigest()[:24]}{ext}"
+    await storage.put(raw_key, data, "application/pdf" if ext == ".pdf" else "application/octet-stream")
+    job = ImportJob(
+        original_filename=name[:300],
+        stored_path=raw_key,
+        status=JobStatus.QUEUED,
+        stage=stage,
+        root_id=category.root_id,
+        category_id=category.id,
+        default_difficulty=Difficulty.UNDERSTANDING,
+    )
+    session.add(job)
+    await session.flush()
+    return job
+
+
+async def split_stored(session: AsyncSession, doc: LibraryDocument, bronze, storage, soffice: str) -> int:
+    """Split a document already in the library (admin button, `library-split` command). If the AI import of the
+    whole bundle has not started yet, it is replaced by one import per exam."""
     if doc.parent_id is not None:
         return 0
+    # Imports still waiting for the worker: the bundle's own, and those of the parts about to be replaced.
+    children = select(LibraryDocument.import_job_id).where(LibraryDocument.parent_id == doc.id)
+    waiting = (
+        await session.scalars(
+            select(ImportJob).where(
+                ImportJob.status == JobStatus.QUEUED,
+                (ImportJob.id == doc.import_job_id) | ImportJob.id.in_(children),
+            )
+        )
+    ).all()
     parts = await split_document(session, doc, await bronze.get(doc.storage_key), bronze, soffice)
+    if parts and waiting and doc.category_id is not None:
+        stage = waiting[0].stage or "Thư viện"
+        doc.import_job_id = None
+        for job in waiting:
+            await session.delete(job)
+        for child, data in parts:
+            name = f"{doc.title} – {child.title}.pdf"
+            child.import_job_id = (await queue_import(session, storage, name, data, ".pdf", doc.category_id, stage)).id
+            doc.import_job_id = doc.import_job_id or child.import_job_id
     await session.commit()
     return len(parts)
