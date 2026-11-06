@@ -176,3 +176,15 @@ def test_gemini_skips_models_out_of_daily_quota_and_then_waits():
     with pytest.raises(AIQuotaExhausted):
         asyncio.run(provider._generate(["x"], ExtractionResult, models=["lite", "flash"], thinking="low"))
     assert calls == [("lite", "low"), ("flash", "low")]  # each model tried once, no waiting rounds
+
+
+def test_latex_with_single_backslashes_in_a_json_answer_is_repaired():
+    import json
+
+    from app.ai.frugal import _loose_json
+    from app.domain.latex import repair_latex
+
+    # What models write: single backslashes (\s is no JSON escape, \f is form feed), a correct \\ and a \n.
+    raw = r'{"x": "$\sqrt{16} + \frac{1}{2}$, $\Delta$ và \\alpha, xuống dòng\n"}'
+    value = json.loads(_loose_json(raw))["x"]
+    assert repair_latex(value) == "$\\sqrt{16} + \\frac{1}{2}$, $\\Delta$ và \\alpha, xuống dòng\n"

@@ -12,6 +12,7 @@ import asyncio
 import base64
 import json
 import logging
+import re
 import time
 from collections.abc import Awaitable, Callable
 
@@ -120,13 +121,22 @@ class ChatModel:
             body["response_format"] = {"type": "json_object"}
         async with httpx.AsyncClient(timeout=240) as client:
             response = await client.post(self._url, headers=self._headers, json=body)
+            if response.status_code == 400 and "json_validate_failed" in response.text:
+                # JSON mode rejects answers whose LaTeX backslashes are not JSON escapes: ask again without it
+                body.pop("response_format", None)
+                response = await client.post(self._url, headers=self._headers, json=body)
         self._last_call[self.name] = time.monotonic()
         if self.usage:
             await self.usage.record(self.name, items)
         if response.status_code in (400, 404) and "endpoint" in response.text.lower():
             self.gone = True  # removed from the free list, or not allowed by the account's privacy settings
-        response.raise_for_status()
-        return _json_block(response.json()["choices"][0]["message"]["content"] or "{}")
+        if response.status_code >= 400:
+            raise httpx.HTTPStatusError(
+                f"{self.name}:{self.model} HTTP {response.status_code}: {response.text[:300]}",
+                request=response.request,
+                response=response,
+            )
+        return _loose_json(_json_block(response.json()["choices"][0]["message"]["content"] or "{}"))
 
     async def extract(self, pages: list[PageImage]) -> list[ExtractedQuestion]:
         content: list[dict] = []
@@ -162,6 +172,15 @@ class ChatModel:
 
 
 TextSolver = ChatModel  # the name used before vision models were added
+
+
+_ESCAPE = re.compile(r"\\(.)", re.S)  # read pairs left to right, so a correct "\\" is one unit
+
+
+def _loose_json(raw: str) -> str:
+    """Models often write LaTeX with single backslashes inside JSON strings ("\\sqrt"): JSON has no such escape,
+    so the backslash is doubled. "\\frac" and the like decode to control characters; repair_latex restores them."""
+    return _ESCAPE.sub(lambda m: m.group(0) if m.group(1) in '\\"/bfnrtu' else "\\\\" + m.group(1), raw)
 
 
 def _image(png: bytes) -> dict:
