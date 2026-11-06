@@ -99,12 +99,13 @@ class ChatModel:
         vision: bool = False,
         min_interval: float = 0.0,
         batch_size: int = 25,
+        headers: dict[str, str] | None = None,  # Azure: {"api-key": …}; others: a Bearer token
     ):
         self.name, self.model, self.daily_limit, self.usage = name, model, daily_limit, usage
         self.vision, self.min_interval, self.gone = vision, min_interval, False
         self.batch_size = batch_size  # questions per call: free tiers also limit tokens per minute
         self._url = base_url.rstrip("/") + "/chat/completions"
-        self._headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        self._headers = headers or {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
     async def available(self) -> bool:
         if self.gone:

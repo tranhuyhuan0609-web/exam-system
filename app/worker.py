@@ -80,6 +80,20 @@ def chat_models() -> tuple[list[ChatModel], list[ChatModel]]:
         vision += [
             ChatModel("openrouter", url, key, m, vision=True, **common) for m in s._names(s.openrouter_vision_models)
         ]
+    for provider in s.extra_providers:  # AI_PROVIDERS in .env (Azure for Students, Cerebras, …)
+        extra = {
+            "usage": usage,
+            "daily_limit": limits.get(provider.name, 0),
+            "batch_size": sizes.get(provider.name, 10),
+            "headers": provider.headers,
+        }
+        url = provider.base_url
+        text += [ChatModel(provider.name, url, provider.api_key, m, **extra) for m in provider.models]
+        # Paid or credited vision models read better than the free ones: tried first for pages and figures
+        vision = [
+            *(ChatModel(provider.name, url, provider.api_key, m, vision=True, **extra) for m in provider.vision_models),
+            *vision,
+        ]
     return text, vision
 
 

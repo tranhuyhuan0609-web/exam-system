@@ -213,3 +213,21 @@ def test_the_same_pages_and_questions_are_not_sent_twice():
     answers = asyncio.run(again.solve([renumbered], []))
     assert [(a.number, a.correct_label) for a in answers] == [(7, "C")]
     assert inner.read == 1 and inner.solved == [[1]] and again.cached == 3  # 2 pages + 1 question
+
+
+def test_any_openai_compatible_provider_is_declared_in_env(monkeypatch):
+    from app.config import Settings
+
+    for key, value in {
+        "AI_PROVIDERS": "azure,broken",
+        "AZURE_BASE_URL": "https://school.openai.azure.com/openai/v1",
+        "AZURE_API_KEY": "secret",
+        "AZURE_MODELS": "gpt-4o-mini",
+        "AZURE_VISION_MODELS": "gpt-4o-mini",
+        "AZURE_AUTH": "api-key",
+        "BROKEN_BASE_URL": "https://nowhere",  # no key, no models: ignored
+    }.items():
+        monkeypatch.setenv(key, value)
+    providers = Settings().extra_providers
+    assert [(p.name, p.models, p.vision_models) for p in providers] == [("azure", ["gpt-4o-mini"], ["gpt-4o-mini"])]
+    assert providers[0].headers["api-key"] == "secret" and "Authorization" not in providers[0].headers

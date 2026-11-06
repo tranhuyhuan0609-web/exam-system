@@ -1,10 +1,31 @@
+import os
+from dataclasses import dataclass, field
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+@dataclass
+class ProviderConfig:
+    """An OpenAI-compatible chat API declared in .env (AI_PROVIDERS)."""
+
+    name: str
+    base_url: str
+    api_key: str
+    models: list[str] = field(default_factory=list)
+    vision_models: list[str] = field(default_factory=list)
+    auth: str = "bearer"  # "api-key" (Azure) or "bearer"
+
+    @property
+    def headers(self) -> dict[str, str]:
+        if self.auth == "api-key":
+            return {"api-key": self.api_key, "Content-Type": "application/json"}
+        return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # extra="allow": the variables of the providers listed in AI_PROVIDERS (AZURE_API_KEY …) are read too
+    model_config = SettingsConfigDict(env_file=".env", extra="allow")
 
     app_env: str = "dev"
     database_url: str = "postgresql+asyncpg://exam:exam@localhost:5432/exam"
@@ -65,6 +86,7 @@ class Settings(BaseSettings):
     # disappears is skipped. E.g. "google/gemma-4-31b-it:free,nvidia/nemotron-3.5-super-vl:free".
     openrouter_vision_models: str = ""
     openrouter_min_interval: float = 3.2  # seconds between calls: free models allow 20 a minute
+    ai_providers: str = ""  # more OpenAI-compatible providers (Azure for Students …), see Settings.extra_providers
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     # Calls per provider and day (0 = no limit of ours; the provider still has its own).
     ai_daily_limits: str = "gemini:55,groq:900,openrouter:45"  # Gemini free tier: ~20/day per model
@@ -92,6 +114,31 @@ class Settings(BaseSettings):
     @property
     def gemini_model_list(self) -> list[str]:
         return self._names(self.gemini_models)
+
+    @property
+    def extra_providers(self) -> list["ProviderConfig"]:
+        """AI_PROVIDERS=azure,cerebras: any OpenAI-compatible API, declared in .env without code. For each name:
+        <NAME>_BASE_URL, <NAME>_API_KEY, <NAME>_MODELS (text, tried in order), <NAME>_VISION_MODELS (they read
+        images), <NAME>_AUTH (bearer, the default; api-key for Azure). Daily budgets: AI_DAILY_LIMITS=azure:500."""
+        extra = {k.lower(): str(v) for k, v in (self.model_extra or {}).items()}
+        out = []
+        for name in self._names(self.ai_providers):
+
+            def get(key: str, name: str = name) -> str:
+                variable = f"{name}_{key}"
+                return os.environ.get(variable.upper()) or extra.get(variable.lower(), "")
+
+            provider = ProviderConfig(
+                name=name.lower(),
+                base_url=get("base_url"),
+                api_key=get("api_key"),
+                models=self._names(get("models")),
+                vision_models=self._names(get("vision_models")),
+                auth=(get("auth") or "bearer").lower(),
+            )
+            if provider.base_url and provider.api_key and (provider.models or provider.vision_models):
+                out.append(provider)
+        return out
 
     @staticmethod
     def _names(value: str) -> list[str]:
