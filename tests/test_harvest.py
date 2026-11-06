@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from app.main import app
 from app.models import LibraryDocument, LibraryKind
 from app.pipeline.adapters.memory import MemoryRawStore
-from app.pipeline.harvest import files, trivia
+from app.pipeline.harvest import files, sources, trivia
 from app.pipeline.harvest.sources import OpenRecord, openalex
 from app.pipeline.harvest.store import PlanItem, TriviaPlan, save_records
 from app.pipeline.parsers.opentrivia import parse
@@ -52,6 +52,7 @@ def test_openalex_pages_follow_the_cursor_and_file_papers_by_field(monkeypatch):
         "authorships": [{"author": {"display_name": f"Tác giả {i}"}} for i in range(7)],
         "primary_topic": {"field": {"id": "https://openalex.org/fields/26"}},
     }
+    monkeypatch.setattr(sources, "env", lambda name: "")  # no OPENALEX_API_KEY
     http = FakeHttp({"results": [work], "meta": {"next_cursor": "c2"}}, {"results": [], "meta": {"next_cursor": None}})
     item = PlanItem(name="vi", folder=["Bài báo & nghiên cứu", "Tiếng Việt"], filter="language:vi", by_field=True)
     records, state = asyncio.run(openalex(http, item, None))
@@ -62,7 +63,7 @@ def test_openalex_pages_follow_the_cursor_and_file_papers_by_field(monkeypatch):
     assert record.authors.endswith("Tác giả 4 và cộng sự")
     assert asyncio.run(openalex(http, item, "p:2")) == ([], None)  # the last page: the item is done
 
-    monkeypatch.setenv("OPENALEX_API_KEY", "k")  # with a key: cursor paging, no 10,000 limit
+    monkeypatch.setattr(sources, "env", lambda name: "k")  # with a key: cursor paging, no 10,000 limit
     keyed = FakeHttp({"results": [work], "meta": {"next_cursor": "c2"}})
     assert asyncio.run(openalex(keyed, item, None))[1] == "c2" and keyed.calls[0][1]["cursor"] == "*"
     last_page = FakeHttp({"results": [work], "meta": {}})  # page 50 read before the key: a cursor from the top
