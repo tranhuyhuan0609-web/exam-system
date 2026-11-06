@@ -141,6 +141,10 @@ class ChatModel:
             )
         return _loose_json(_json_block(response.json()["choices"][0]["message"]["content"] or "{}"))
 
+    async def ask_json(self, system: str, user: str, items: int = 1) -> str:
+        """Any JSON task (the caller validates the answer against its own schema)."""
+        return await self._ask(system, user, items)
+
     async def extract(self, pages: list[PageImage]) -> list[ExtractedQuestion]:
         content: list[dict] = []
         for page in pages:

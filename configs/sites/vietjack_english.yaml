@@ -1,0 +1,66 @@
+# VietJack — trắc nghiệm Tiếng Anh 6–12 (Global Success). Each grade has one quiz index: "Unit N: …" headings
+# (chapters) and, per unit, Phonetics and Speaking / Vocabulary and Grammar / Reading / Writing quizzes (lessons).
+# Listening is left out: its questions need the audio. Reading and cloze questions keep their passage
+# (parser vietjack_quiz, "Question N." groups).
+site_id: vietjack_english
+name: VietJack – Tiếng Anh
+enabled: true
+base_url: https://vietjack.com
+parser: vietjack_quiz
+schedule_times: ["04:30"]
+refresh_days: 30
+max_pages: 300
+respect_robots: true
+auto_publish: true
+auto_toc: true
+default_difficulty: UNDERSTANDING
+rate_limit:
+  delay_sec: 3
+  timeout_sec: 20
+  retries: 2
+  concurrency: 1
+toc:
+  scope: ["//div[contains(@class, 'middle-col')]"]
+  chapter: '^Unit\s*\d+\s*:'           # "Unit 1: Family Life" (the quiz links read "… Unit 1 Reading", no colon)
+  lesson: '^Unit\s*\d+\s+(Phonetics|Vocabulary|Reading|Writing|Speaking|Grammar)'
+  strip: '^(Bài tập\s*)?[Tt]rắc nghiệm\s*|\s*\(có đáp án\).*$'
+seeds:
+  - url: https://vietjack.com/trac-nghiem-tieng-anh-6-moi/index.jsp
+    label: Tiếng Anh 6 – Global Success
+    root: Tiếng Anh 6
+    series: Global Success
+    scope_prefix: https://vietjack.com/trac-nghiem-tieng-anh-6-moi/
+  - url: https://vietjack.com/trac-nghiem-tieng-anh-7-moi/index.jsp
+    label: Tiếng Anh 7 – Global Success
+    root: Tiếng Anh 7
+    series: Global Success
+    scope_prefix: https://vietjack.com/trac-nghiem-tieng-anh-7-moi/
+  - url: https://vietjack.com/trac-nghiem-tieng-anh-8-moi/index.jsp
+    label: Tiếng Anh 8 – Global Success
+    root: Tiếng Anh 8
+    series: Global Success
+    scope_prefix: https://vietjack.com/trac-nghiem-tieng-anh-8-moi/
+  - url: https://vietjack.com/trac-nghiem-tieng-anh-9-moi/index.jsp
+    label: Tiếng Anh 9 – Global Success
+    root: Tiếng Anh 9
+    series: Global Success
+    scope_prefix: https://vietjack.com/trac-nghiem-tieng-anh-9-moi/
+  - url: https://vietjack.com/trac-nghiem-tieng-anh-10-moi/index.jsp
+    label: Tiếng Anh 10 – Global Success
+    root: Tiếng Anh 10
+    series: Global Success
+    scope_prefix: https://vietjack.com/trac-nghiem-tieng-anh-10-moi/
+  - url: https://vietjack.com/trac-nghiem-tieng-anh-11-moi/index.jsp
+    label: Tiếng Anh 11 – Global Success
+    root: Tiếng Anh 11
+    series: Global Success
+    scope_prefix: https://vietjack.com/trac-nghiem-tieng-anh-11-moi/
+  - url: https://vietjack.com/trac-nghiem-tieng-anh-12-moi/index.jsp
+    label: Tiếng Anh 12 – Global Success
+    root: Tiếng Anh 12
+    series: Global Success
+    scope_prefix: https://vietjack.com/trac-nghiem-tieng-anh-12-moi/
+follow:
+  # Unit quizzes, without Listening (audio)
+  - pattern: '^https://vietjack\.com/trac-nghiem-tieng-anh-([6-9]|1[012])-moi/unit-\d+-(phonetics-and-speaking|vocabulary-and-grammar|reading|writing)\.jsp$'
+    kind: detail

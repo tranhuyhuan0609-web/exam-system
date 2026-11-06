@@ -26,10 +26,23 @@ def _repair_math(segment: str) -> str:
     return _COLOR_SWITCH.sub("", segment)
 
 
+# A line break written as the two characters "\n" (JSON escaped twice by a model): "…cm$.\nĐộ lệch pha …".
+# LaTeX commands starting with "n" are kept: \ne, \neq, \nu, \nabla, \neg, \ni, \notin, \newline, …
+_LITERAL_NEWLINE = re.compile(
+    r"\\n(?!(?:e|eq|u|abla|eg|i|mid|leq|geq|less|gtr|ot|otin|ewline|olimits|onumber|parallel|"
+    r"subseteq|supseteq|exists|cong|sim|leftarrow|rightarrow|Leftarrow|Rightarrow|leftrightarrow)(?![a-zA-Z]))"
+)
+
+
+def literal_newlines(text: str | None) -> str | None:
+    return _LITERAL_NEWLINE.sub("\n", text) if text else text
+
+
 def repair_latex(text: str | None) -> str | None:
     if not text:
         return text
     text = _CONTROL_RE.sub(lambda m: _CONTROL[m.group()], text)
+    text = literal_newlines(text)
     return _MATH.sub(lambda m: _repair_math(m.group()), text)
 
 
