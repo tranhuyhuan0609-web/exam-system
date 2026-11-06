@@ -13,6 +13,9 @@ python -m app.pipeline recheck SIMILAR       # dedup + labelling again for the i
 python -m app.pipeline recheck READY --no-semantic   # publish without the cosine check (embeddings at quota)
 python -m app.pipeline renormalize           # rule-based formula conversion for AI-queued items
 python -m app.pipeline drop-stale            # delete old readings left as rejected by earlier reparses
+python -m app.pipeline fix-text              # repair stored texts (line breaks written as "
+" by a model)
+python -m app.pipeline rescue                # complete questions waiting for review (answers, options, pictures)
 python -m app.pipeline adopt-series "Vật lí 11" "Kết nối tri thức"
 python -m app.pipeline drive-sync thptqg2026 [--max-files 50]   # Google Drive folder -> library
 python -m app.pipeline library-split [--id 12]                 # cut stored bundles into one exam each
@@ -100,6 +103,35 @@ async def _drive_sync(source_id: str, max_files: int | None) -> None:
         await drive.close()
         await store.close()
     print("Drive sync:", stats)
+
+
+async def _rescue(limit: int) -> None:
+    from app.db import SessionLocal
+    from app.pipeline.use_cases.rescue import rescue_waiting
+    from app.pipeline.workers import rescue_models
+
+    async with SessionLocal() as session:
+        print("Rescue:", await rescue_waiting(session, rescue_models(), limit))
+
+
+async def _fix_text() -> None:
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.domain.latex import literal_newlines
+    from app.models import CrawledQuestion, Question
+
+    fixed = 0
+    async with SessionLocal() as session:
+        for model in (Question, CrawledQuestion):
+            for row in (await session.scalars(select(model))).all():
+                before = (row.content, row.explanation, row.choices)
+                row.content = literal_newlines(row.content)
+                row.explanation = literal_newlines(row.explanation)
+                row.choices = [{**c, "content": literal_newlines(c.get("content"))} for c in row.choices or []]
+                fixed += (row.content, row.explanation, row.choices) != before
+        await session.commit()
+    print(f"Repaired {fixed} stored questions")
 
 
 async def _drop_stale() -> None:
@@ -199,6 +231,9 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("embed-questions")
     sub.add_parser("renormalize")
     sub.add_parser("drop-stale")
+    sub.add_parser("fix-text")
+    rescue = sub.add_parser("rescue")
+    rescue.add_argument("--limit", type=int, default=40)
     drive = sub.add_parser("drive-sync")
     drive.add_argument("source_id")
     drive.add_argument("--max-files", type=int)
@@ -257,6 +292,10 @@ def main(argv: list[str] | None = None) -> None:
         asyncio.run(_drive_sync(args.source_id, args.max_files))
     elif args.command == "library-split":
         asyncio.run(_library_split(args.id))
+    elif args.command == "rescue":
+        asyncio.run(_rescue(args.limit))
+    elif args.command == "fix-text":
+        asyncio.run(_fix_text())
     elif args.command == "drop-stale":
         asyncio.run(_drop_stale())
     elif args.command == "renormalize":

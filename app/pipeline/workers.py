@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import sys
+import time
 from datetime import UTC, datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -13,6 +14,7 @@ from app.infrastructure.storage import get_bronze_storage, get_storage
 from app.models import CrawlerSite, CrawlRun, CrawlRunStatus
 from app.pipeline.domain.models import SiteConfig
 from app.pipeline.ports import DLQ_TOPIC, LIBRARY_TOPIC, RAW_TOPIC, AIUnavailable
+from app.pipeline.use_cases.rescue import rescue_waiting
 from app.pipeline.use_cases.silver import SilverDeps, ai_sweep, backfill_embeddings, ingest_document, retry_ready
 
 log = logging.getLogger(__name__)
@@ -57,6 +59,17 @@ async def handle_raw_event(deps: SilverDeps, event: dict) -> None:
         await ingest_document(session, deps, doc)
 
 
+RESCUE_EVERY = 30 * 60  # seconds between passes over the questions waiting for review
+
+
+def rescue_models() -> list:
+    """Free text models for completing questions (app/pipeline/use_cases/rescue.py)."""
+    from app.worker import chat_models
+
+    text, _ = chat_models()
+    return text
+
+
 async def run_silver(stop: asyncio.Event | None = None) -> None:
     from app.pipeline.adapters.kafka import KafkaBus, consume
 
@@ -67,6 +80,7 @@ async def run_silver(stop: asyncio.Event | None = None) -> None:
         await bus.publish(DLQ_TOPIC, {"stage": "silver", "event": event, "error": error})
 
     async def sweep() -> None:
+        next_rescue = 0.0
         while not (stop and stop.is_set()):
             pause = 15
             try:
@@ -77,6 +91,10 @@ async def run_silver(stop: asyncio.Event | None = None) -> None:
                 if not handled:  # idle: catch up on embeddings skipped while they were at quota
                     async with SessionLocal() as session:
                         await backfill_embeddings(session, deps)
+                    if time.monotonic() >= next_rescue:  # and finish what waits for review, when a machine can
+                        next_rescue = time.monotonic() + RESCUE_EVERY
+                        async with SessionLocal() as session:
+                            log.info("Rescue: %s", await rescue_waiting(session, rescue_models()))
                 pause = 1 if handled else 15
             except AIUnavailable:
                 pause = 120  # quota / overload: wait for it to recover
