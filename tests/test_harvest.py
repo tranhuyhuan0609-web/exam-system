@@ -40,7 +40,7 @@ def _record(key, source="openalex", title="Giáo dục STEM ở trường phổ 
     )
 
 
-def test_openalex_pages_follow_the_cursor_and_file_papers_by_field():
+def test_openalex_pages_follow_the_cursor_and_file_papers_by_field(monkeypatch):
     work = {
         "id": "https://openalex.org/W1",
         "doi": "https://doi.org/10.1/ABC",
@@ -54,13 +54,17 @@ def test_openalex_pages_follow_the_cursor_and_file_papers_by_field():
     }
     http = FakeHttp({"results": [work], "meta": {"next_cursor": "c2"}}, {"results": [], "meta": {"next_cursor": None}})
     item = PlanItem(name="vi", folder=["Bài báo & nghiên cứu", "Tiếng Việt"], filter="language:vi", by_field=True)
-    records, cursor = asyncio.run(openalex(http, item, None))
+    records, state = asyncio.run(openalex(http, item, None))
     record = records[0]
-    assert cursor == "c2" and http.calls[0][1]["cursor"] == "*" and http.calls[0][1]["filter"] == "language:vi"
+    assert state == "p:2" and http.calls[0][1]["page"] == 1 and http.calls[0][1]["filter"] == "language:vi"
     assert record.key == "doi:10.1/abc" and record.title == "Dạy học hàm số" and record.file_url.endswith("1.pdf")
     assert record.folder == ["Bài báo & nghiên cứu", "Tiếng Việt", "Toán học"]
     assert record.authors.endswith("Tác giả 4 và cộng sự")
-    assert asyncio.run(openalex(http, item, "c2")) == ([], None)  # the last page: the item is done
+    assert asyncio.run(openalex(http, item, "p:2")) == ([], None)  # the last page: the item is done
+
+    monkeypatch.setenv("OPENALEX_API_KEY", "k")  # with a key: cursor paging, no 10,000 limit
+    keyed = FakeHttp({"results": [work], "meta": {"next_cursor": "c2"}})
+    assert asyncio.run(openalex(keyed, item, None))[1] == "c2" and keyed.calls[0][1]["cursor"] == "*"
 
 
 def test_a_work_found_by_two_sources_is_kept_once_and_listed_with_its_link(db, make_user):

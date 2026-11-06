@@ -127,19 +127,30 @@ FIELDS_VI = {
 }
 
 
+OPENALEX_PAGES_WITHOUT_KEY = 50  # 10,000 results per query: paging further needs a cursor, and a cursor a key
+
+
 async def openalex(http: Http, item, state: str | None) -> tuple[list[OpenRecord], str | None]:
+    """State: "p:<n>" (page number, without a key) or a cursor (with OPENALEX_API_KEY)."""
     params = {
         "filter": item.filter or "is_oa:true,has_content.pdf:true",
         "sort": item.sort or "cited_by_count:desc",
         "per-page": 200,
-        "cursor": state or "*",
         "select": "id,doi,title,publication_year,language,type,best_oa_location,open_access,authorships,primary_topic",
     }
     if item.search:
         params["search"] = item.search
         params.pop("sort")  # relevance first when searching
-    if key := env("OPENALEX_API_KEY"):
-        params["api_key"] = key
+    key = env("OPENALEX_API_KEY")
+    page = 0
+    if key and not (state or "").startswith("p:"):
+        params["api_key"], params["cursor"] = key, state or "*"
+    else:
+        if key:
+            params["api_key"] = key
+        # a cursor saved before (first page read without a key): go on from page 2
+        page = int(state[2:]) if (state or "").startswith("p:") else (2 if state else 1)
+        params["page"] = page
     data = await http.get_json("https://api.openalex.org/works", params)
     records = []
     for work in data.get("results", []):
@@ -170,8 +181,12 @@ async def openalex(http: Http, item, state: str | None) -> tuple[list[OpenRecord
                 license=location.get("license") or "",
             )
         )
+    if not data.get("results"):
+        return records, None
+    if page:
+        return records, f"p:{page + 1}" if page < OPENALEX_PAGES_WITHOUT_KEY else None
     cursor = (data.get("meta") or {}).get("next_cursor")
-    return records, cursor if records and cursor else None
+    return records, cursor or None
 
 
 async def semanticscholar(http: Http, item, state: str | None) -> tuple[list[OpenRecord], str | None]:
