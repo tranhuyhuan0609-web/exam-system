@@ -132,8 +132,8 @@ class ChatModel:
         self._last_call[self.name] = time.monotonic()
         if self.usage:
             await self.usage.record(self.name, items)
-        if response.status_code in (400, 404) and "endpoint" in response.text.lower():
-            self.gone = True  # removed from the free list, or not allowed by the account's privacy settings
+        if response.status_code == 404 or (response.status_code == 400 and "endpoint" in response.text.lower()):
+            self.gone = True  # model removed (or renamed), or not allowed by the account's privacy settings
         if response.status_code >= 400:
             raise httpx.HTTPStatusError(
                 f"{self.name}:{self.model} HTTP {response.status_code}: {response.text[:300]}",

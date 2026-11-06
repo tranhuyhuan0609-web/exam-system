@@ -231,3 +231,39 @@ def test_any_openai_compatible_provider_is_declared_in_env(monkeypatch):
     providers = Settings().extra_providers
     assert [(p.name, p.models, p.vision_models) for p in providers] == [("azure", ["gpt-4o-mini"], ["gpt-4o-mini"])]
     assert providers[0].headers["api-key"] == "secret" and "Authorization" not in providers[0].headers
+
+
+def test_known_free_providers_need_only_a_key(monkeypatch):
+    from app.config import Settings
+
+    for key, value in {
+        "AI_PROVIDERS": "mistral,cerebras,cloudflare,sambanova",
+        "MISTRAL_API_KEY": "m",
+        "CEREBRAS_API_KEY": "c",
+        "CEREBRAS_MODELS": "qwen-3-235b",  # overrides the preset
+        "CLOUDFLARE_API_KEY": "cf",
+        "CLOUDFLARE_ACCOUNT_ID": "acc1",
+        # sambanova: no key, so not used
+    }.items():
+        monkeypatch.setenv(key, value)
+    providers = {p.name: p for p in Settings().extra_providers}
+    assert sorted(providers) == ["cerebras", "cloudflare", "mistral"]
+    assert providers["mistral"].base_url == "https://api.mistral.ai/v1" and providers["mistral"].vision_models
+    assert providers["cerebras"].models == ["qwen-3-235b"]
+    assert "/accounts/acc1/" in providers["cloudflare"].base_url
+    assert providers["mistral"].headers["Authorization"] == "Bearer m"
+
+
+def test_a_model_the_provider_no_longer_serves_is_skipped(monkeypatch):
+    from app.ai.frugal import ChatModel
+
+    async def post(self, url, **kwargs):
+        return httpx.Response(404, text='{"error": "model not found"}', request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", post)
+    model = ChatModel("mistral", "http://x", "k", "old-model")
+    import pytest
+
+    with pytest.raises(httpx.HTTPError):
+        asyncio.run(model.ask_json("s", "u"))
+    assert model.gone

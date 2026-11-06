@@ -4,6 +4,27 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# OpenAI-compatible providers with a free tier (or free credits): AI_PROVIDERS=<name> and <NAME>_API_KEY are enough.
+# Model names change often: the defaults are a starting point; `python -m app.ai.check` lists what a key can use,
+# and <NAME>_MODELS / <NAME>_VISION_MODELS override them. A model a provider no longer serves is skipped.
+PRESETS: dict[str, dict[str, str]] = {
+    "mistral": {
+        "base_url": "https://api.mistral.ai/v1",
+        "models": "mistral-small-latest",
+        "vision_models": "mistral-small-latest",
+    },
+    "cerebras": {"base_url": "https://api.cerebras.ai/v1", "models": "gpt-oss-120b,llama-3.3-70b"},
+    "sambanova": {"base_url": "https://api.sambanova.ai/v1", "models": "Meta-Llama-3.3-70B-Instruct"},
+    "nvidia": {"base_url": "https://integrate.api.nvidia.com/v1", "models": "openai/gpt-oss-120b"},
+    "cohere": {"base_url": "https://api.cohere.ai/compatibility/v1", "models": "command-a-03-2025"},
+    "huggingface": {"base_url": "https://router.huggingface.co/v1", "models": "openai/gpt-oss-120b"},
+    "cloudflare": {
+        "base_url": "https://api.cloudflare.com/client/v4/accounts/{account}/ai/v1",  # CLOUDFLARE_ACCOUNT_ID
+        "models": "@cf/openai/gpt-oss-120b",
+    },
+    "azure": {"auth": "api-key"},  # AZURE_BASE_URL=https://<resource>.openai.azure.com/openai/v1
+}
+
 
 @dataclass
 class ProviderConfig:
@@ -117,28 +138,37 @@ class Settings(BaseSettings):
 
     @property
     def extra_providers(self) -> list["ProviderConfig"]:
-        """AI_PROVIDERS=azure,cerebras: any OpenAI-compatible API, declared in .env without code. For each name:
-        <NAME>_BASE_URL, <NAME>_API_KEY, <NAME>_MODELS (text, tried in order), <NAME>_VISION_MODELS (they read
-        images), <NAME>_AUTH (bearer, the default; api-key for Azure). Daily budgets: AI_DAILY_LIMITS=azure:500."""
+        """Providers ready to use: a key and at least one model."""
+        return [p for p in self.declared_providers() if p.api_key and (p.models or p.vision_models)]
+
+    def declared_providers(self) -> list["ProviderConfig"]:
+        """AI_PROVIDERS=mistral,cerebras,…: any OpenAI-compatible API, declared in .env without code. For each name:
+        <NAME>_API_KEY, and optionally <NAME>_BASE_URL, <NAME>_MODELS (text, tried in order), <NAME>_VISION_MODELS
+        (they read images), <NAME>_AUTH (bearer, the default; api-key for Azure). Known names (PRESETS) need only the
+        key; `python -m app.ai.check` lists the models a key can use. Daily budgets: AI_DAILY_LIMITS=mistral:500."""
         extra = {k.lower(): str(v) for k, v in (self.model_extra or {}).items()}
         out = []
         for name in self._names(self.ai_providers):
+            preset = PRESETS.get(name.lower(), {})
 
             def get(key: str, name: str = name) -> str:
                 variable = f"{name}_{key}"
                 return os.environ.get(variable.upper()) or extra.get(variable.lower(), "")
 
-            provider = ProviderConfig(
-                name=name.lower(),
-                base_url=get("base_url"),
-                api_key=get("api_key"),
-                models=self._names(get("models")),
-                vision_models=self._names(get("vision_models")),
-                auth=(get("auth") or "bearer").lower(),
+            base_url = get("base_url") or preset.get("base_url", "")
+            if "{account}" in base_url:  # Cloudflare: the account id is part of the URL
+                base_url = base_url.replace("{account}", get("account_id"))
+            out.append(
+                ProviderConfig(
+                    name=name.lower(),
+                    base_url=base_url,
+                    api_key=get("api_key"),
+                    models=self._names(get("models") or preset.get("models", "")),
+                    vision_models=self._names(get("vision_models") or preset.get("vision_models", "")),
+                    auth=(get("auth") or preset.get("auth", "bearer")).lower(),
+                )
             )
-            if provider.base_url and provider.api_key and (provider.models or provider.vision_models):
-                out.append(provider)
-        return out
+        return [p for p in out if p.base_url]
 
     @staticmethod
     def _names(value: str) -> list[str]:
