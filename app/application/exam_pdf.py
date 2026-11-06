@@ -4,8 +4,10 @@ HTML from templates/pdf/exam.html, formulas by KaTeX (as on the site), printed t
 (Playwright). Figures are embedded as data URIs, so the page needs nothing but the KaTeX CDN.
 """
 
+import asyncio
 import base64
 import logging
+import sys
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
@@ -109,7 +111,23 @@ def exam_html(*, title: str, subtitle: str, minutes: int, source: str, parts: li
 
 
 async def chromium_pdf(html: str, footer: str) -> bytes:
-    """Print HTML to A4 with headless Chromium, once KaTeX has typeset the formulas."""
+    """Print HTML to A4 with headless Chromium, once KaTeX has typeset the formulas. Playwright starts Chromium
+    as a subprocess, which the selector event loop (Windows, aiokafka/asyncpg processes) cannot do: there the
+    printing runs in a thread with a loop of its own."""
+    if sys.platform == "win32" and not isinstance(asyncio.get_running_loop(), asyncio.ProactorEventLoop):
+
+        def in_thread() -> bytes:
+            loop = asyncio.ProactorEventLoop()
+            try:
+                return loop.run_until_complete(_chromium_pdf(html, footer))
+            finally:
+                loop.close()
+
+        return await asyncio.to_thread(in_thread)
+    return await _chromium_pdf(html, footer)
+
+
+async def _chromium_pdf(html: str, footer: str) -> bytes:
     from playwright.async_api import Error as PlaywrightError
     from playwright.async_api import async_playwright
 

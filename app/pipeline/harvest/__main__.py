@@ -5,6 +5,7 @@
     python -m app.pipeline.harvest files --limit 500       # store open PDFs of listed works
     python -m app.pipeline.harvest trivia [--force]        # Open Trivia DB -> question bank (via Silver)
     python -m app.pipeline.harvest status
+    python -m app.pipeline.harvest books [--only "Vật lí 10"]   # our books from the bank + anthologies
     python -m app.pipeline.harvest loop                    # run at the plan's schedule_times (Vietnam time)
 
 Each run continues where the last one stopped (cursors in MongoDB harvest_state). Optional keys in .env:
@@ -81,6 +82,22 @@ async def run_all(plan: Plan, states: StateStore) -> None:
         log.info("Open Trivia: %s", await trivia(plan, states))
     except Exception:
         log.exception("Open Trivia failed")
+    try:
+        log.info("Books: %s / anthologies: %s", *await bind())
+    except Exception:
+        log.exception("Binding books failed")
+
+
+async def bind(only: str | None = None) -> tuple[dict, dict]:
+    """Our books from the question bank (printed again when their questions change), then new anthologies."""
+    from app.application.books import compile_books
+    from app.pipeline.harvest.anthologies import compile_anthologies
+
+    async with SessionLocal() as session:
+        books = await compile_books(session, only=only)
+    async with SessionLocal() as session:
+        anthologies = await compile_anthologies(session)
+    return books, anthologies
 
 
 async def files_batch(plan: Plan) -> dict:
@@ -152,6 +169,8 @@ def main(argv: list[str] | None = None) -> None:
     tr = sub.add_parser("trivia")
     tr.add_argument("--force", action="store_true", help="also categories done recently")
     sub.add_parser("status")
+    bd = sub.add_parser("books", help="print our books from the question bank, and new anthologies")
+    bd.add_argument("--only", help="only books whose title contains this")
     sub.add_parser("loop")
     args = parser.parse_args(argv)
     if sys.platform == "win32":  # aiokafka/asyncpg are happiest on the selector loop
@@ -173,6 +192,8 @@ def main(argv: list[str] | None = None) -> None:
         print(asyncio.run(with_states(lambda s: trivia(plan, s, args.force))))
     elif args.command == "status":
         asyncio.run(status())
+    elif args.command == "books":
+        print(asyncio.run(bind(args.only)))
     elif args.command == "loop":
         try:
             asyncio.run(loop())
