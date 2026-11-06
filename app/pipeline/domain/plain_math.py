@@ -195,6 +195,9 @@ def _convert_plain(text: str, holes: list[str] | None = None) -> str:
     return "".join(out)
 
 
+_TEXT_MARK = re.compile(r"\\underline\{\\text\{[^{}$]*\}\}")
+
+
 def normalize_plain_math(text: str) -> str:
     """Wrap and convert plain-text formulas outside existing $...$ / \\(...\\) segments."""
     if not text:
@@ -208,11 +211,18 @@ def normalize_plain_math(text: str) -> str:
                 done.append(part)
                 continue
             holes: list[str] = []
+            words: list[str] = []
 
-            def hole(m, holes=holes):
+            def hole(m, holes=holes, words=words):
+                # An underlined sound in a word (r$\underline{\text{e}}$member) is text, not a formula: it is
+                # never merged with the letters around it
+                if _TEXT_MARK.fullmatch(m.group(1)):
+                    words.append(m.group(0))
+                    return f"¤{len(words) - 1}¤"
                 holes.append(m.group(1))
                 return f"§{len(holes) - 1}§"
 
-            done.append(_convert_plain(_INLINE.sub(hole, part), holes))
+            converted = _convert_plain(_INLINE.sub(hole, part), holes)
+            done.append(re.sub(r"¤(\d+)¤", lambda m, words=words: words[int(m.group(1))], converted))
         lines.append("".join(done))
     return "\n".join(lines)
