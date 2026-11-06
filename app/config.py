@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     # AI import (Gemini). Models are tried in order; later ones are fallbacks when one is overloaded.
     gemini_api_key: str = ""
     gemini_models: str = "gemini-3.5-flash,gemini-3.8-flash,gemini-3.6-flash"
+    # Reading exam pages (transcription): cheaper models first. Free quotas are per model, so several also
+    # mean more free requests a day. Thinking is billed as output: little of it for transcription.
+    gemini_extract_models: str = "gemini-3.1-flash-lite,gemini-3.5-flash-lite,gemini-3.5-flash,gemini-3.8-flash"
+    gemini_extract_thinking: str = "low"
     # LibreOffice binary used to turn .docx (MathType, Word shapes) into PDF.
     soffice_path: str = "soffice"
     tessdata_dir: str = ""  # Tesseract language data (vie): enables OCR of scanned library PDFs
@@ -53,7 +57,11 @@ class Settings(BaseSettings):
     groq_model: str = "openai/gpt-oss-120b"
     groq_base_url: str = "https://api.groq.com/openai/v1"
     openrouter_api_key: str = ""
-    openrouter_model: str = ""  # pick a ":free" model on openrouter.ai/models
+    openrouter_model: str = ""  # text models, tried in order: ":free" ones on openrouter.ai/models
+    # Models that read images (exam pages, figures), tried in order before Gemini. Free lists change: a model
+    # that disappears is skipped.
+    openrouter_vision_models: str = "google/gemma-4-31b-it:free,nvidia/nemotron-3.5-super-vl:free"
+    openrouter_min_interval: float = 3.2  # seconds between calls: free models allow 20 a minute
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     # Calls per provider and day (0 = no limit of ours; the provider still has its own).
     ai_daily_limits: str = "gemini:55,groq:900,openrouter:45"  # Gemini free tier: ~20/day per model
@@ -80,7 +88,11 @@ class Settings(BaseSettings):
 
     @property
     def gemini_model_list(self) -> list[str]:
-        return [m.strip() for m in self.gemini_models.split(",") if m.strip()]
+        return self._names(self.gemini_models)
+
+    @staticmethod
+    def _names(value: str) -> list[str]:
+        return [m.strip() for m in value.split(",") if m.strip()]
 
 
 @lru_cache

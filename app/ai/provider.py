@@ -63,7 +63,11 @@ class AIError(Exception):
     """The model could not produce a usable answer (after retries and fallbacks)."""
 
 
-EXTRACT_PROMPT = """Bạn là chuyên gia số hoá đề thi Vật lí THPT Việt Nam. Các ảnh trên là các trang của một đề thi, \
+class AIQuotaExhausted(AIError):
+    """Every model is out of its daily quota: the job waits and runs again later instead of failing."""
+
+
+EXTRACT_PROMPT = """Bạn là chuyên gia số hoá đề thi Việt Nam (mọi môn, mọi cấp). Các ảnh trên là các trang của một đề thi, \
 mỗi ảnh được đánh dấu bằng nhãn “TRANG n” ngay trước nó.
 
 Nhiệm vụ: trích xuất MỌI câu hỏi bắt đầu trên các trang KHÔNG đánh dấu “chỉ tham khảo”. \
@@ -110,7 +114,15 @@ class GeminiProvider:
 
     RETRYABLE = {429, 500, 502, 503, 504}
 
-    def __init__(self, api_key: str, models: list[str], max_rounds: int = 4, base_delay: float = 5.0):
+    def __init__(
+        self,
+        api_key: str,
+        models: list[str],
+        max_rounds: int = 4,
+        base_delay: float = 5.0,
+        extract_models: list[str] | None = None,
+        extract_thinking: str = "",
+    ):
         from google import genai
 
         if not api_key:
@@ -119,21 +131,37 @@ class GeminiProvider:
             raise AIError("Chưa cấu hình GEMINI_MODELS.")
         self._client = genai.Client(api_key=api_key)
         self._models = models
+        # Reading pages is transcription: a cheaper model, thinking little (thinking is billed as output).
+        self._extract_models = extract_models or models
+        self._extract_thinking = extract_thinking
         self._max_rounds = max_rounds
         self._base_delay = base_delay
         self._used: set[str] = set()
+        self._out_for_today: set[str] = set()  # daily free quota used up: not worth retrying today
 
     @property
     def models_used(self) -> set[str]:
         return self._used
 
-    async def _generate(self, contents: list, schema: type[BaseModel], code_execution: bool = False) -> BaseModel:
+    async def _generate(
+        self,
+        contents: list,
+        schema: type[BaseModel],
+        code_execution: bool = False,
+        models: list[str] | None = None,
+        thinking: str = "",
+    ) -> BaseModel:
         from google.genai import errors, types
 
         last_error: Exception | None = None
         for round_no in range(self._max_rounds):
-            for model in self._models:
+            candidates = [m for m in models or self._models if m not in self._out_for_today]
+            if not candidates:
+                raise AIQuotaExhausted("Mọi model Gemini đã hết quota hôm nay; job sẽ chạy lại sau.")
+            for model in candidates:
                 config = types.GenerateContentConfig(temperature=0)
+                if thinking:
+                    config.thinking_config = types.ThinkingConfig(thinking_level=thinking)
                 if code_execution:
                     # Code execution cannot be combined with a response schema on every model, so ask for a
                     # JSON block in the text and validate it ourselves.
@@ -158,8 +186,15 @@ class GeminiProvider:
                     return schema.model_validate_json(_json_block(text))
                 except errors.APIError as exc:
                     last_error = exc
+                    if exc.code == 400 and thinking and "thinking" in str(exc.message).lower():
+                        thinking = ""  # this model has no thinking levels: ask again without
+                        continue
                     if exc.code not in self.RETRYABLE:
                         raise AIError(f"Gemini từ chối yêu cầu ({exc.code}): {exc.message}") from exc
+                    if exc.code == 429 and "perday" in str(exc).replace(" ", "").lower():
+                        self._out_for_today.add(model)
+                        log.warning("Gemini %s: daily quota used up, skipped until the worker restarts", model)
+                        continue
                     log.warning("Gemini %s busy (%s), trying next model", model, exc.code)
                 except (ValidationError, ValueError, IndexError, AttributeError) as exc:
                     last_error = exc
@@ -175,7 +210,9 @@ class GeminiProvider:
             label = f"TRANG {page.number}" + (" (chỉ tham khảo)" if page.context_only else "")
             contents += [label, types.Part.from_bytes(data=page.png, mime_type="image/png")]
         contents.append(EXTRACT_PROMPT)
-        result = await self._generate(contents, ExtractionResult)
+        result = await self._generate(
+            contents, ExtractionResult, models=self._extract_models, thinking=self._extract_thinking
+        )
         for q in result.questions:
             q.content = repair_latex(q.content)
             for c in q.choices:

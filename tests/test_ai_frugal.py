@@ -51,7 +51,7 @@ class FakeText(TextSolver):
         super().__init__("groq", "http://x", "k", "gpt-oss")
         self.fail, self.solved = fail, []
 
-    async def solve(self, questions):
+    async def solve(self, questions, figures=()):
         self.solved.append([q.number for q in questions])
         if self.fail:
             raise httpx.HTTPError("429")
@@ -114,3 +114,65 @@ def test_different_options_are_not_taken_from_the_bank(db):
     lookup = db(lambda s: bank_lookup(s, root_id))
     same_text_other_options = _q(1, "Giá trị cực đại của hàm số $y = x^3 - 3x$ bằng", ["$3$", "$4$", "$5$", "$6$"])
     assert asyncio.run(lookup([same_text_other_options])) == {}
+
+
+class FakeReader(FakeText):
+    """A free vision model on OpenRouter."""
+
+    def __init__(self, found):
+        super().__init__()
+        self.name, self.model, self.vision, self.found = "openrouter", "gemma", True, found
+        self.figures: list[list[int]] = []
+
+    async def extract(self, pages):
+        return self.found
+
+    async def solve(self, questions, figures=()):
+        self.figures.append([f.question_number for f in figures])
+        return await super().solve(questions, figures)
+
+
+class InnerReader(Inner):
+    def __init__(self):
+        super().__init__()
+        self.read = 0
+
+    async def extract(self, pages):
+        self.read += 1
+        return [_q(9, "Gemini đọc", ["$1$", "$2$", "$3$", "$4$"])]
+
+
+def test_free_vision_models_read_pages_and_figures_before_gemini():
+    inner = InnerReader()
+    reader = FakeReader([_q(1, "Gemma đọc", ["$1$", "$2$", "$3$", "$4$"])])
+    provider = FrugalProvider(inner, None, [FakeText(fail=True)], [reader])
+    assert [q.content for q in asyncio.run(provider.extract([]))] == ["Gemma đọc"] and inner.read == 0
+    figure_question = _q(3, "Dựa vào hình vẽ, tìm $x$.", ["$1$", "$2$", "$3$", "$4$"])
+    answers = asyncio.run(provider.solve([figure_question], [FigureImage(3, b"png")]))
+    assert [a.correct_label for a in answers] == ["B"] and reader.figures == [[3]] and inner.solved == []
+
+    nothing_found = FrugalProvider(inner, None, [], [FakeReader([])])  # it could not read: Gemini tries
+    assert [q.content for q in asyncio.run(nothing_found.extract([]))] == ["Gemini đọc"] and inner.read == 1
+
+
+def test_gemini_skips_models_out_of_daily_quota_and_then_waits():
+    import pytest
+    from google.genai import errors
+
+    from app.ai.provider import AIQuotaExhausted, GeminiProvider
+    from app.ai.schemas import ExtractionResult
+
+    calls = []
+
+    class Models:
+        async def generate_content(self, model, contents, config):
+            calls.append((model, str(config.thinking_config.thinking_level.value).lower()))
+            raise errors.APIError(
+                429, {"error": {"code": 429, "message": "quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier"}}
+            )
+
+    provider = GeminiProvider("k", ["flash"], base_delay=0, extract_models=["lite", "flash"], extract_thinking="low")
+    provider._client = type("C", (), {"aio": type("A", (), {"models": Models()})()})()
+    with pytest.raises(AIQuotaExhausted):
+        asyncio.run(provider._generate(["x"], ExtractionResult, models=["lite", "flash"], thinking="low"))
+    assert calls == [("lite", "low"), ("flash", "low")]  # each model tried once, no waiting rounds

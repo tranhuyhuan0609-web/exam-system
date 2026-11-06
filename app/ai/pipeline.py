@@ -22,7 +22,7 @@ from typing import Any
 
 from app.ai.figures import crop_figure
 from app.ai.normalize import thumbnail_bytes, to_page_images
-from app.ai.provider import AIProvider, FigureImage, PageImage
+from app.ai.provider import AIProvider, AIQuotaExhausted, FigureImage, PageImage
 from app.ai.schemas import ExtractedQuestion, Solution
 from app.infrastructure.storage import Storage
 from app.question_rules import extract_number
@@ -200,6 +200,8 @@ async def run_pipeline(
             figures = [FigureImage(extracted[i].number, figure_bytes[i]) for i in indexes if i in figure_bytes]
             try:
                 answers = await provider.solve(questions, figures)
+            except AIQuotaExhausted:  # the whole job waits for tomorrow's quota rather than half-solved drafts
+                raise
             except Exception:  # keep the extracted questions even if solving one batch fails
                 log.exception("Solving batch %s of job %s failed", b, job_id)
                 continue

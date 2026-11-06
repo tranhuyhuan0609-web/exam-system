@@ -8,16 +8,19 @@ Reading the pages needs a model that sees images (Gemini). Solving does not, exc
 3. only questions with a figure, or that the text models could not solve, are sent to Gemini.
 """
 
+import asyncio
+import base64
 import json
 import logging
+import time
 from collections.abc import Awaitable, Callable
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.provider import SOLVE_PROMPT, AIProvider, EssayItem, FigureImage, PageImage
-from app.ai.schemas import EssayGrade, ExtractedQuestion, Solution, SolveResult
+from app.ai.provider import EXTRACT_PROMPT, SOLVE_PROMPT, AIProvider, EssayItem, FigureImage, PageImage, _json_block
+from app.ai.schemas import EssayGrade, ExtractedQuestion, ExtractionResult, Solution, SolveResult
 from app.domain.latex import repair_latex
 from app.domain.question_hash import normalize_text
 from app.models import Question, QuestionType
@@ -76,35 +79,81 @@ async def bank_lookup(session: AsyncSession, root_id: int) -> Lookup:
     return lookup
 
 
-class TextSolver:
-    """Solving on an OpenAI-compatible chat API (Groq, OpenRouter): text only, JSON as in Gemini's schema."""
+class ChatModel:
+    """A model on an OpenAI-compatible chat API (Groq, OpenRouter). Solves questions; with `vision`, also reads
+    exam pages and figures. Calls are spaced (`min_interval`) to stay under per-minute limits, counted per
+    provider and day (ai_usage), and a model that the provider no longer serves is skipped from then on."""
 
-    def __init__(self, name: str, base_url: str, api_key: str, model: str, usage=None, daily_limit: int = 0):
+    _last_call: dict[str, float] = {}  # per provider: free tiers limit requests per minute
+
+    def __init__(
+        self,
+        name: str,
+        base_url: str,
+        api_key: str,
+        model: str,
+        usage=None,
+        daily_limit: int = 0,
+        vision: bool = False,
+        min_interval: float = 0.0,
+    ):
         self.name, self.model, self.daily_limit, self.usage = name, model, daily_limit, usage
+        self.vision, self.min_interval, self.gone = vision, min_interval, False
         self._url = base_url.rstrip("/") + "/chat/completions"
         self._headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
     async def available(self) -> bool:
+        if self.gone:
+            return False
         return not (self.daily_limit and self.usage and await self.usage.used_today(self.name) >= self.daily_limit)
 
-    async def solve(self, questions: list[ExtractedQuestion]) -> list[Solution]:
-        payload = [q.model_dump(include={"number", "type", "content", "choices"}, mode="json") for q in questions]
-        schema = json.dumps(SolveResult.model_json_schema(), ensure_ascii=False)
+    async def _ask(self, system: str, user: list[dict] | str, items: int) -> str:
+        wait = self._last_call.get(self.name, 0) + self.min_interval - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
         body = {
             "model": self.model,
             "temperature": 0,
-            "response_format": {"type": "json_object"},
-            "messages": [
-                {"role": "system", "content": SOLVE_PROMPT + "\nTrả về DUY NHẤT một JSON đúng schema: " + schema},
-                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-            ],
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         }
-        async with httpx.AsyncClient(timeout=180) as client:
+        if not self.vision:
+            body["response_format"] = {"type": "json_object"}
+        async with httpx.AsyncClient(timeout=240) as client:
             response = await client.post(self._url, headers=self._headers, json=body)
+        self._last_call[self.name] = time.monotonic()
         if self.usage:
-            await self.usage.record(self.name, len(questions))
+            await self.usage.record(self.name, items)
+        if response.status_code in (400, 404) and "endpoint" in response.text.lower():
+            self.gone = True  # removed from the free list, or not allowed by the account's privacy settings
         response.raise_for_status()
-        result = SolveResult.model_validate_json(response.json()["choices"][0]["message"]["content"] or "{}")
+        return _json_block(response.json()["choices"][0]["message"]["content"] or "{}")
+
+    async def extract(self, pages: list[PageImage]) -> list[ExtractedQuestion]:
+        content: list[dict] = []
+        for page in pages:
+            label = f"TRANG {page.number}" + (" (chỉ tham khảo)" if page.context_only else "")
+            content += [{"type": "text", "text": label}, _image(page.png)]
+        schema = json.dumps(ExtractionResult.model_json_schema(), ensure_ascii=False)
+        content.append({"type": "text", "text": EXTRACT_PROMPT})
+        raw = await self._ask("Trả về DUY NHẤT một JSON đúng schema: " + schema, content, len(pages))
+        questions = ExtractionResult.model_validate_json(raw).questions
+        for q in questions:
+            q.content = repair_latex(q.content)
+            for c in q.choices:
+                c.content = repair_latex(c.content)
+        return questions
+
+    async def solve(self, questions: list[ExtractedQuestion], figures: list[FigureImage] = ()) -> list[Solution]:
+        payload = [q.model_dump(include={"number", "type", "content", "choices"}, mode="json") for q in questions]
+        schema = json.dumps(SolveResult.model_json_schema(), ensure_ascii=False)
+        user: list[dict] | str = json.dumps(payload, ensure_ascii=False)
+        if figures:
+            user = [{"type": "text", "text": user}]
+            for fig in figures:
+                user += [{"type": "text", "text": f"HÌNH CÂU {fig.question_number}"}, _image(fig.png)]
+        system = SOLVE_PROMPT + "\nTrả về DUY NHẤT một JSON đúng schema: " + schema
+        raw = await self._ask(system, user, len(questions))
+        result = SolveResult.model_validate_json(raw)
         for sol in result.solutions:
             sol.step_by_step_solution = repair_latex(sol.step_by_step_solution)
             sol.final_value = repair_latex(sol.final_value)
@@ -112,11 +161,30 @@ class TextSolver:
         return result.solutions
 
 
-class FrugalProvider:
-    """An AIProvider that reads pages with `inner` (Gemini) and solves bank first, text models second."""
+TextSolver = ChatModel  # the name used before vision models were added
 
-    def __init__(self, inner: AIProvider, lookup: Lookup | None = None, text_solvers: list[TextSolver] = ()):
-        self.inner, self.lookup, self.text_solvers = inner, lookup, list(text_solvers)
+
+def _image(png: bytes) -> dict:
+    return {"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(png).decode()}}
+
+
+class FrugalProvider:
+    """An AIProvider that spends Gemini (`inner`) last.
+
+    Pages: free vision models (`readers`) first, Gemini if they fail or find nothing.
+    Solving: the bank first; questions without a figure to text models (`text_solvers`); questions with a figure
+    to the vision models; whatever is left to Gemini.
+    """
+
+    def __init__(
+        self,
+        inner: AIProvider,
+        lookup: Lookup | None = None,
+        text_solvers: list[ChatModel] = (),
+        readers: list[ChatModel] = (),
+    ):
+        self.inner, self.lookup = inner, lookup
+        self.text_solvers, self.readers = list(text_solvers), list(readers)
         self._used: set[str] = set()
         self.reused = 0  # questions answered from the bank (for the job's stage line)
 
@@ -125,10 +193,41 @@ class FrugalProvider:
         return self.inner.models_used | self._used
 
     async def extract(self, pages: list[PageImage]) -> list[ExtractedQuestion]:
+        for reader in self.readers:
+            if not await reader.available():
+                continue
+            try:
+                questions = await reader.extract(pages)
+            except (httpx.HTTPError, ValueError, KeyError, IndexError) as exc:
+                log.warning("%s:%s could not read the pages: %s", reader.name, reader.model, exc)
+                continue
+            if questions:  # nothing found may just mean the model could not read it: ask the next one
+                self._used.add(f"{reader.name}:{reader.model}")
+                return questions
         return await self.inner.extract(pages)
 
     async def grade_essays(self, items: list[EssayItem]) -> list[EssayGrade]:
         return await self.inner.grade_essays(items)
+
+    async def _try(self, solvers: list[ChatModel], questions, todo: list[int], figures, solved: dict) -> list[int]:
+        for solver in solvers:
+            if not todo or not await solver.available():
+                continue
+            numbers = {questions[i].number for i in todo}
+            try:
+                answers = await solver.solve(
+                    [questions[i] for i in todo], [f for f in figures if f.question_number in numbers]
+                )
+            except (httpx.HTTPError, ValueError, KeyError, IndexError) as exc:  # out of quota, bad JSON: next one
+                log.warning("%s:%s could not solve: %s", solver.name, solver.model, exc)
+                continue
+            by_number = {a.number: a for a in answers}
+            for i in todo:
+                if (answer := by_number.get(questions[i].number)) is not None:
+                    solved[i] = answer
+            self._used.add(f"{solver.name}:{solver.model}")
+            todo = [i for i in todo if i not in solved]
+        return todo
 
     async def solve(self, questions: list[ExtractedQuestion], figures: list[FigureImage]) -> list[Solution]:
         solved: dict[int, Solution] = await self.lookup(questions) if self.lookup else {}
@@ -137,20 +236,9 @@ class FrugalProvider:
             self._used.add("ngân hàng câu hỏi")
         with_figure = {f.question_number for f in figures}
         text_only = [i for i, q in enumerate(questions) if i not in solved and q.number not in with_figure]
-        for solver in self.text_solvers:
-            if not text_only or not await solver.available():
-                continue
-            try:
-                answers = await solver.solve([questions[i] for i in text_only])
-            except (httpx.HTTPError, ValueError, KeyError) as exc:  # out of quota, bad JSON: next one
-                log.warning("%s could not solve: %s", solver.name, exc)
-                continue
-            by_number = {a.number: a for a in answers}
-            for i in text_only:
-                if (answer := by_number.get(questions[i].number)) is not None:
-                    solved[i] = answer
-            self._used.add(f"{solver.name}:{solver.model}")
-            text_only = [i for i in text_only if i not in solved]
+        await self._try(self.text_solvers, questions, text_only, [], solved)
+        drawn = [i for i, q in enumerate(questions) if i not in solved and q.number in with_figure]
+        await self._try(self.readers, questions, drawn, figures, solved)
         rest = [i for i in range(len(questions)) if i not in solved]
         if rest:
             numbers = {questions[i].number for i in rest}
