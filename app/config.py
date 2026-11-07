@@ -1,4 +1,5 @@
 import os
+import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 
@@ -67,13 +68,14 @@ class Settings(BaseSettings):
     # Base URL browsers use to fetch public figures, e.g. https://media.example.com
     s3_public_url: str = "http://localhost:9000"
 
-    # AI import (Gemini). Models are tried in order; later ones are fallbacks when one is overloaded.
+    # AI import (Gemini). Supports multiple keys for rotation (comma/semicolon/newline-separated).
     gemini_api_key: str = ""
-    gemini_models: str = "gemini-3.5-flash,gemini-3.8-flash,gemini-3.6-flash"
+    gemini_api_keys: str = ""
+    gemini_models: str = "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.5-flash,gemini-3.6-flash,gemini-3.8-flash"
     # Reading exam pages (transcription): cheaper models first. Free quotas are per model, so several also
     # mean more free requests a day. Thinking is billed as output: little of it for transcription.
-    gemini_extract_models: str = "gemini-3.1-flash-lite,gemini-3.5-flash-lite,gemini-3.5-flash,gemini-3.8-flash"
-    gemini_extract_thinking: str = "low"
+    gemini_extract_models: str = "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.5-flash,gemini-3.6-flash,gemini-3.8-flash"
+    gemini_extract_thinking: str = ""
     # LibreOffice binary used to turn .docx (MathType, Word shapes) into PDF.
     soffice_path: str = "soffice"
     tessdata_dir: str = ""  # Tesseract language data (vie): enables OCR of scanned library PDFs
@@ -96,6 +98,7 @@ class Settings(BaseSettings):
     semantic_dedup_optional: bool = True
     # AI fallbacks for crawled questions when Gemini is out of quota (OpenAI-compatible APIs, free tiers).
     groq_api_key: str = ""
+    groq_api_keys: str = ""
     groq_model: str = "openai/gpt-oss-120b"
     groq_base_url: str = "https://api.groq.com/openai/v1"
     openrouter_api_key: str = ""
@@ -111,7 +114,7 @@ class Settings(BaseSettings):
     ai_daily_limits: str = "gemini:55,groq:900,openrouter:45"  # Gemini free tier: ~20/day per model
 
     # Questions per AI call: Groq's free tier allows ~8K tokens a minute, so its batches are small.
-    ai_batch_sizes: str = "gemini:15,groq:6,openrouter:8"
+    ai_batch_sizes: str = "gemini:12,groq:3,openrouter:6"
 
     @property
     def ai_batch_size_map(self) -> dict[str, int]:
@@ -133,6 +136,18 @@ class Settings(BaseSettings):
     @property
     def gemini_model_list(self) -> list[str]:
         return self._names(self.gemini_models)
+
+    @property
+    def gemini_api_key_list(self) -> list[str]:
+        raw = f"{self.gemini_api_key},{self.gemini_api_keys}"
+        tokens = [k.strip() for k in re.split(r"[,;\s\n]+", raw) if k.strip()]
+        return list(dict.fromkeys(tokens))
+
+    @property
+    def groq_api_key_list(self) -> list[str]:
+        raw = f"{self.groq_api_key},{self.groq_api_keys}"
+        tokens = [k.strip() for k in re.split(r"[,;\s\n]+", raw) if k.strip()]
+        return list(dict.fromkeys(tokens))
 
     @property
     def extra_providers(self) -> list["ProviderConfig"]:

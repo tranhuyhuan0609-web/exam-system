@@ -6,7 +6,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
-        onload="renderMathInElement(document.body, {delimiters: [
+        onload="window.qTables && window.qTables(document.body); renderMathInElement(document.body, {delimiters: [
           {left: '$$', right: '$$', display: true}, {left: '\\[', right: '\\]', display: true},
           {left: '$', right: '$', display: false}, {left: '\\(', right: '\\)', display: false}],
           throwOnError: false}); window.mathDone = true;"></script>
@@ -19,6 +19,7 @@
   .candidate { margin: 6px 0 12px; }
   h2 { font-size: 12.5pt; margin: 14px 0 6px; text-transform: uppercase; }
   .question { margin: 0 0 8px; break-inside: avoid; }
+  .answers .question { break-inside: auto; }  /* a marking scheme runs over pages: no blank page before it */
   .question .stem { white-space: pre-wrap; }
   .question b.label { margin-right: 4px; }
   .choices { display: grid; gap: 2px 12px; margin: 2px 0 0 14px; }
@@ -33,13 +34,15 @@
   table.key td { border: 1px solid #000; padding: 2px 8px; text-align: center; min-width: 22px; }
   .solution { white-space: pre-wrap; margin: 2px 0 10px 14px; }
 </style>
+{% include "_qtables.html" %}
 </head>
 <body>
 <header>
-  <div class="left">{{ subtitle }}<div class="muted">{{ "LỜI GIẢI THAM KHẢO" if solutions else "ĐỀ THI" }}</div></div>
+  <div class="left">{{ subtitle }}<div class="muted">{{ "ĐÁP ÁN – HƯỚNG DẪN CHẤM" if solutions else "ĐỀ THI" }}</div></div>
   <div class="right">
     <div class="title">{{ title }}</div>
     {% if not solutions %}<div class="muted">Thời gian làm bài: {{ minutes }} phút, không kể thời gian phát đề</div>{% endif %}
+    {% if solutions %}<div class="muted">Bản đáp án của đề {{ title }}</div>{% endif %}
     <div class="source">{{ source }}</div>
   </div>
 </header>
@@ -47,9 +50,10 @@
   <div class="candidate">Họ, tên thí sinh: ...................................................... Số báo danh: ............................</div>
 {% endif %}
 
-{% if solutions %}
+{% set keyed = parts | map(attribute="questions") | map("selectattr", "answer") | map("list") | sum(start=[]) %}
+{% if solutions and keyed %}
   <h2>Đáp án</h2>
-  {% for part in parts %}
+  {% for part in parts if part.questions | selectattr("answer") | list %}
     {% if parts | length > 1 %}<div><b>{{ part.title }}</b></div>{% endif %}
     {% for row in part.questions | batch(10) %}
       <table class="key">
@@ -58,8 +62,11 @@
       </table>
     {% endfor %}
   {% endfor %}
-  <h2>Lời giải chi tiết</h2>
 {% endif %}
+{% if solutions %}
+  <h2>{{ "Lời giải chi tiết" if keyed else "Hướng dẫn chấm" }}</h2>
+{% endif %}
+<div class="{{ 'answers' if solutions }}">
 
 {% for part in parts %}
   <h2>{{ part.title }}</h2>
@@ -73,12 +80,13 @@
         <div class="choices c{{ q.columns }}">{% for c in q.choices %}<div><b>{{ "ABCDEF"[loop.index0] }}.</b>{{ c }}</div>{% endfor %}</div>
       {% endif %}
       {% if solutions %}
-        {% if q.kind != "TRUE_FALSE" %}<div><b>Đáp án: {{ q.answer }}</b></div>{% endif %}
+        {% if q.kind != "TRUE_FALSE" and q.answer %}<div><b>Đáp án: {{ q.answer }}</b></div>{% endif %}
         {% if q.explanation %}<div class="solution">{{ q.explanation }}</div>{% endif %}
       {% endif %}
     </div>
   {% endfor %}
 {% endfor %}
+</div>
 <div class="end">— HẾT —</div>
 </body>
 </html>

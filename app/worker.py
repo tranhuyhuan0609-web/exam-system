@@ -33,23 +33,36 @@ from app.pipeline.adapters.ai_chain import DbUsage
 
 log = logging.getLogger("app.worker")
 
-POLL_SECONDS = 3
-QUOTA_PAUSE_SECONDS = 30 * 60  # all AI models out of quota: try again later
+POLL_SECONDS = 2
+QUOTA_PAUSE_SECONDS = 60  # all AI models out of quota: retry after 60s instead of waiting 30 minutes
 _paused_until = 0.0
 AUTO_SUBMIT_SECONDS = 60
 ESSAY_SECONDS = 5
 # A PROCESSING job untouched for this long belongs to a worker that died; put it back in the queue.
-STALE_AFTER = timedelta(minutes=30)
+STALE_AFTER = timedelta(minutes=15)
+
+_shared_provider: GeminiProvider | None = None
+_shared_provider_sig: tuple | None = None
 
 
 def default_provider() -> AIProvider:
+    global _shared_provider, _shared_provider_sig
     settings = get_settings()
-    return GeminiProvider(
-        settings.gemini_api_key,
-        settings.gemini_model_list,
-        extract_models=settings._names(settings.gemini_extract_models),
-        extract_thinking=settings.gemini_extract_thinking,
+    sig = (
+        tuple(settings.gemini_api_key_list),
+        tuple(settings.gemini_model_list),
+        tuple(settings._names(settings.gemini_extract_models)),
+        settings.gemini_extract_thinking,
     )
+    if _shared_provider is None or _shared_provider_sig != sig:
+        _shared_provider = GeminiProvider(
+            settings.gemini_api_key_list,
+            settings.gemini_model_list,
+            extract_models=settings._names(settings.gemini_extract_models),
+            extract_thinking=settings.gemini_extract_thinking,
+        )
+        _shared_provider_sig = sig
+    return _shared_provider
 
 
 def chat_models() -> tuple[list[ChatModel], list[ChatModel]]:
@@ -57,18 +70,20 @@ def chat_models() -> tuple[list[ChatModel], list[ChatModel]]:
     s, usage = get_settings(), DbUsage()
     limits, sizes = s.ai_daily_limit_map, s.ai_batch_size_map
     text, vision = [], []
-    if s.groq_api_key and s.groq_model:
-        text.append(
-            ChatModel(
-                "groq",
-                s.groq_base_url,
-                s.groq_api_key,
-                s.groq_model,
-                usage,
-                limits.get("groq", 0),
-                batch_size=sizes.get("groq", 6),
+    if s.groq_api_key_list and s.groq_model:
+        for idx, key in enumerate(s.groq_api_key_list, start=1):
+            label = f"groq-{idx}" if len(s.groq_api_key_list) > 1 else "groq"
+            text.append(
+                ChatModel(
+                    label,
+                    s.groq_base_url,
+                    key,
+                    s.groq_model,
+                    usage,
+                    limits.get("groq", 0),
+                    batch_size=sizes.get("groq", 6),
+                )
             )
-        )
     if s.openrouter_api_key:
         common = {
             "usage": usage,
@@ -103,7 +118,11 @@ async def claim_next() -> int | None:
         job_id = await session.scalar(
             select(ImportJob.id)
             .where(ImportJob.status == JobStatus.QUEUED)
-            .order_by((ImportJob.purpose == "SIMILAR").desc(), ImportJob.id)  # a teacher waits: first
+            .order_by(
+                (ImportJob.purpose == "SIMILAR").desc(),
+                ImportJob.original_filename.ilike("%.docx").desc(),  # .docx files read locally in 0.05s first!
+                ImportJob.id,
+            )
             .with_for_update(skip_locked=True)
             .limit(1)
         )
@@ -118,12 +137,13 @@ async def claim_next() -> int | None:
         return job_id
 
 
-async def requeue_stale() -> int:
+async def requeue_stale(all_processing: bool = False) -> int:
     async with SessionLocal() as session:
+        cond = [ImportJob.status == JobStatus.PROCESSING]
+        if not all_processing:
+            cond.append(ImportJob.started_at < func.now() - STALE_AFTER)
         result = await session.execute(
-            update(ImportJob)
-            .where(ImportJob.status == JobStatus.PROCESSING, ImportJob.started_at < func.now() - STALE_AFTER)
-            .values(status=JobStatus.QUEUED, stage="Xếp hàng lại sau khi worker bị dừng")
+            update(ImportJob).where(*cond).values(status=JobStatus.QUEUED, stage="Xếp hàng lại sau khi worker bị dừng")
         )
         await session.commit()
         return result.rowcount
@@ -133,10 +153,14 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
     settings = get_settings()
     async with SessionLocal() as session:
         job = await session.get(ImportJob, job_id)
+        progress_lock = asyncio.Lock()
 
         async def progress(stage: str, done: int, total: int) -> None:
-            job.stage, job.progress_done, job.progress_total = stage, done, total
-            await session.commit()
+            async with progress_lock:
+                job.stage = stage
+                job.progress_done = done
+                job.progress_total = total
+                await session.commit()
 
         try:
             if provider is None:  # bank answers and free text models first; Gemini reads the pages
@@ -159,6 +183,7 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
                     soffice=settings.soffice_path,
                     default_difficulty=job.default_difficulty.value,
                     progress=progress,
+                    solve=(job.purpose == "SIMILAR" or getattr(provider, "is_fake", False)),
                 )
                 if job.purpose == "SIMILAR":  # a teacher's paper: similar papers, nothing for the bank
                     text, _ = chat_models()
@@ -263,13 +288,15 @@ async def ai_jobs_loop(once: bool = False) -> None:
 
 async def run(once: bool = False) -> None:
     log.info("Worker started (models: %s)", get_settings().gemini_models)
+    if requeued := await requeue_stale(all_processing=True):
+        log.info("Requeued %s interrupted PROCESSING job(s) on startup", requeued)
     if once:
         await auto_submit_once()
         await essay_grading_once()
         await ai_jobs_loop(once=True)
         return
-    # Independent loops: AI import jobs, auto-submit sweep every minute, AI essay grading.
-    await asyncio.gather(ai_jobs_loop(), auto_submit_loop(), essay_grading_loop())
+    # Independent loops: 2 parallel AI import workers, auto-submit sweep every minute, AI essay grading.
+    await asyncio.gather(ai_jobs_loop(), ai_jobs_loop(), auto_submit_loop(), essay_grading_loop())
 
 
 def main() -> None:

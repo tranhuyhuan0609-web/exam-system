@@ -42,6 +42,7 @@ def _question(job: ImportJob, d: dict, verified: bool) -> Question:
         choices=rules.build_choices(d["type"], d["choices"], d.get("correct"), d.get("truths")),
         accepted_answers=d["answers"] if d["type"] == QuestionType.SHORT_ANSWER else None,
         explanation=d.get("explanation") or None,
+        points=d.get("points") if d["type"] == QuestionType.ESSAY else None,  # "Câu 1 (4,0 điểm)"
         image_path=d.get("figure"),
         source_type=SourceType.AI_UPLOAD,
         is_verified=verified,

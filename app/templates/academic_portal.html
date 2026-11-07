@@ -1,0 +1,395 @@
+{% extends "base.html" %}
+{% block title %}Cổng Tri Thức Số & Nghiên Cứu Học Thuật - Exam System{% endblock %}
+
+{% block content %}
+<div class="academic-portal-container" style="max-width: 1200px; margin: 0 auto; padding-bottom: 3rem;">
+  <!-- Breadcrumb -->
+  <nav class="breadcrumb-nav mb-3" aria-label="Breadcrumb">
+    <a href="/" class="crumb-link">Trang chủ</a>
+    <span class="crumb-sep">/</span>
+    <span class="crumb-current">Cổng Tri Thức Học Thuật & Sách Điện Tử Mở</span>
+  </nav>
+
+  <!-- Hero Banner -->
+  <section class="card mb-4" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color: #ffffff; border-radius: 18px; padding: 2rem 2.25rem; border: none; box-shadow: 0 10px 25px rgba(15, 23, 42, 0.15);">
+    <div style="display: flex; gap: 1.5rem; align-items: center; flex-wrap: wrap;">
+      <div style="width: 64px; height: 64px; border-radius: 16px; background: rgba(59, 130, 246, 0.2); border: 1.5px solid rgba(96, 165, 250, 0.4); display: flex; align-items: center; justify-content: center; font-size: 2.2rem;">
+        🌐
+      </div>
+      <div style="flex: 1; min-width: 280px;">
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;">
+          <span class="badge" style="background: #3b82f6; color: #fff;">Kho Tri Thức Mở Toàn Cầu</span>
+          <span class="badge" style="background: rgba(255, 255, 255, 0.15); color: #e2e8f0;">OpenAlex · Semantic Scholar</span>
+          <span class="badge" style="background: rgba(255, 255, 255, 0.15); color: #e2e8f0;">Open Library · Open Trivia DB</span>
+        </div>
+        <h1 style="font-size: 1.85rem; font-weight: 800; margin: 0 0 6px; color: #ffffff; letter-spacing: -0.02em;">
+          Tra Cứu Học Thuật, Sách Điện Tử & Trắc Nghiệm Mở
+        </h1>
+        <p style="color: #cbd5e1; margin: 0; font-size: 0.95rem; line-height: 1.55;">
+          Tích hợp trực tiếp các chuẩn API học thuật quốc tế hàng đầu: tra cứu hàng triệu bài báo nghiên cứu khoa học, đọc sách giáo trình điện tử miễn phí và luyện thi ngân hàng câu hỏi trắc nghiệm đa lĩnh vực.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Navigation Tabs -->
+  <div class="card mb-4" style="padding: 0.6rem; border-radius: 14px; background: #f8fafc; border: 1.5px solid #e2e8f0;">
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+      <a href="/academic?tab=papers" class="btn {{ 'btn-primary' if active_tab == 'papers' else 'btn-outline' }}" style="flex: 1; min-width: 200px; text-align: center; font-weight: 700; padding: 0.75rem 1rem;">
+        🔬 1. Bài Báo & Luận Văn Khoa Học
+      </a>
+      <a href="/academic?tab=books" class="btn {{ 'btn-primary' if active_tab == 'books' else 'btn-outline' }}" style="flex: 1; min-width: 200px; text-align: center; font-weight: 700; padding: 0.75rem 1rem;">
+        📚 2. Sách Giáo Trình & E-Books Mở
+      </a>
+      <a href="/academic?tab=trivia" class="btn {{ 'btn-primary' if active_tab == 'trivia' else 'btn-outline' }}" style="flex: 1; min-width: 200px; text-align: center; font-weight: 700; padding: 0.75rem 1rem;">
+        🎯 3. Ngân Hàng Trắc Nghiệm Quốc Tế
+      </a>
+    </div>
+  </div>
+
+  <!-- ==================== TAB 1: BÀI BÁO & LUẬN VĂN ==================== -->
+  {% if active_tab == 'papers' %}
+    <div class="card mb-4" style="padding: 1.5rem; border-radius: 16px;">
+      <div style="margin-bottom: 1.25rem;">
+        <h2 style="font-size: 1.3rem; font-weight: 800; color: #0f172a; margin: 0 0 4px;">🔬 Tra cứu Bài báo Khoa học & Luận văn (OpenAlex / Semantic Scholar)</h2>
+        <p style="color: #64748b; font-size: 0.9rem; margin: 0;">Truy cập hơn 200 triệu công trình nghiên cứu, bài báo bình duyệt có trích dẫn và link tải PDF toàn văn.</p>
+      </div>
+
+      <!-- Search Bar -->
+      <form method="get" action="/academic" style="display: flex; gap: 10px; margin-bottom: 1rem;">
+        <input type="hidden" name="tab" value="papers">
+        <input type="text" name="q" value="{{ query or 'artificial intelligence education' }}" placeholder="Nhập từ khóa nghiên cứu (VD: artificial intelligence, climate change, quantum physics, mathematics education...)" class="search-filter-input" style="flex: 1; font-size: 0.95rem; padding: 0.75rem 1rem;">
+        <button type="submit" class="btn btn-primary" style="padding: 0.75rem 1.5rem; font-weight: 700;">🔍 Tìm nghiên cứu</button>
+      </form>
+
+      <!-- Quick keyword pills -->
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1.5rem; align-items: center;">
+        <span style="font-size: 0.82rem; font-weight: 700; color: #64748b;">Gợi ý từ khóa:</span>
+        <a href="/academic?tab=papers&q=machine+learning+education" class="btn btn-small btn-secondary-soft">🤖 AI in Education</a>
+        <a href="/academic?tab=papers&q=quantum+computing" class="btn btn-small btn-secondary-soft">⚛️ Quantum Computing</a>
+        <a href="/academic?tab=papers&q=renewable+energy" class="btn btn-small btn-secondary-soft">🌱 Renewable Energy</a>
+        <a href="/academic?tab=papers&q=applied+mathematics" class="btn btn-small btn-secondary-soft">📐 Applied Mathematics</a>
+        <a href="/academic?tab=papers&q=vietnam+history+culture" class="btn btn-small btn-secondary-soft">🏛️ Vietnam History</a>
+      </div>
+
+      <!-- Papers list -->
+      <div style="display: flex; flex-direction: column; gap: 14px;" id="papers-results-container">
+        {% for p in papers %}
+          <div class="card" style="padding: 1.25rem 1.4rem; border: 1.5px solid #e2e8f0; border-radius: 14px; background: #ffffff; transition: box-shadow 0.2s ease;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px;">
+              <span class="badge badge-primary" style="font-size: 0.78rem;">📅 Năm {{ p.year }}</span>
+              <div style="display: flex; gap: 8px;">
+                {% if p.citations %}
+                  <span class="badge badge-warning-glow" style="font-size: 0.78rem;">⭐ {{ p.citations }} trích dẫn</span>
+                {% endif %}
+                <span class="badge badge-soft-blue" style="font-size: 0.78rem;">{{ p.source }}</span>
+              </div>
+            </div>
+
+            <h3 style="font-size: 1.12rem; font-weight: 700; color: #1e293b; margin: 0 0 6px; line-height: 1.4;">
+              {{ p.title }}
+            </h3>
+
+            <div style="font-size: 0.85rem; color: #0284c7; font-weight: 600; margin-bottom: 8px;">
+              ✍️ Tác giả: {{ p.authors }}
+            </div>
+
+            <p style="font-size: 0.9rem; color: #475569; line-height: 1.55; margin: 0 0 12px; background: #f8fafc; padding: 10px 12px; border-radius: 8px; border-left: 3px solid #3b82f6;">
+              {{ p.abstract }}
+            </p>
+
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+              {% if p.pdf_url %}
+                <a href="{{ p.pdf_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-small btn-primary" style="font-weight: 700;">
+                  📥 Đọc PDF Toàn Văn Miễn Phí →
+                </a>
+              {% endif %}
+              {% if p.landing_url %}
+                <a href="{{ p.landing_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-small btn-outline">
+                  🔗 Xem Bài Báo Gốc (DOI)
+                </a>
+              {% endif %}
+            </div>
+          </div>
+        {% else %}
+          <div class="card" style="text-align: center; padding: 2rem; color: #64748b;">
+            Không tìm thấy bài báo phù hợp hoặc máy chủ API đang quá tải. Hãy thử từ khóa khác!
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- ==================== TAB 2: SÁCH & GIÁO TRÌNH ĐIỆN TỬ ==================== -->
+  {% if active_tab == 'books' %}
+    <div class="card mb-4" style="padding: 1.5rem; border-radius: 16px;">
+      <div style="margin-bottom: 1.25rem;">
+        <h2 style="font-size: 1.3rem; font-weight: 800; color: #0f172a; margin: 0 0 4px;">📚 Tra cứu Sách & Giáo trình Điện tử (Open Library)</h2>
+        <p style="color: #64748b; font-size: 0.9rem; margin: 0;">Kho sách điện tử mở từ Internet Archive với thông tin bìa, mục lục, tác giả và link đọc online hợp pháp.</p>
+      </div>
+
+      <!-- Search Bar -->
+      <form method="get" action="/academic" style="display: flex; gap: 10px; margin-bottom: 1rem;">
+        <input type="hidden" name="tab" value="books">
+        <input type="text" name="q" value="{{ query or 'physics' }}" placeholder="Nhập tên sách, giáo trình hoặc chủ đề (VD: calculus, algorithms, organic chemistry, english grammar...)" class="search-filter-input" style="flex: 1; font-size: 0.95rem; padding: 0.75rem 1rem;">
+        <button type="submit" class="btn btn-primary" style="padding: 0.75rem 1.5rem; font-weight: 700;">🔍 Tìm sách</button>
+      </form>
+
+      <!-- Quick keyword pills -->
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1.5rem; align-items: center;">
+        <span style="font-size: 0.82rem; font-weight: 700; color: #64748b;">Chủ đề phổ biến:</span>
+        <a href="/academic?tab=books&q=calculus" class="btn btn-small btn-secondary-soft">📐 Giải tích (Calculus)</a>
+        <a href="/academic?tab=books&q=physics" class="btn btn-small btn-secondary-soft">⚡ Vật lí (Physics)</a>
+        <a href="/academic?tab=books&q=computer+algorithms" class="btn btn-small btn-secondary-soft">💻 Thuật toán (Algorithms)</a>
+        <a href="/academic?tab=books&q=chemistry" class="btn btn-small btn-secondary-soft">🧪 Hóa học (Chemistry)</a>
+        <a href="/academic?tab=books&q=english+grammar" class="btn btn-small btn-secondary-soft">🇬🇧 Ngữ pháp Tiếng Anh</a>
+      </div>
+
+      <!-- Books Grid -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;">
+        {% for b in books %}
+          <div class="card" style="padding: 1.1rem; border-radius: 14px; border: 1.5px solid #e2e8f0; display: flex; flex-direction: column; justify-content: space-between; height: 100%;">
+            <div>
+              <div style="width: 100%; height: 180px; background: #f1f5f9; border-radius: 10px; overflow: hidden; display: flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+                {% if b.cover_url %}
+                  <img src="{{ b.cover_url }}" alt="{{ b.title }}" style="max-height: 100%; max-width: 100%; object-fit: contain;">
+                {% else %}
+                  <span style="font-size: 3rem;">📖</span>
+                {% endif %}
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span class="badge badge-primary" style="font-size: 0.75rem;">Năm {{ b.year }}</span>
+                <span class="badge badge-soft-blue" style="font-size: 0.75rem;">{{ b.editions_count }} tái bản</span>
+              </div>
+              <h3 style="font-size: 1rem; font-weight: 700; color: #1e293b; margin: 0 0 4px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                {{ b.title }}
+              </h3>
+              <p style="font-size: 0.85rem; color: #64748b; margin: 0 0 6px;">
+                ✍️ {{ b.author }}
+              </p>
+              <div style="font-size: 0.78rem; color: #94a3b8; margin-bottom: 10px;">
+                🏢 NXB: {{ b.publisher }}
+              </div>
+            </div>
+            {% if b.read_url %}
+              <a href="{{ b.read_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-small btn-primary full" style="font-weight: 700;">
+                📖 Mở Xem Sách Tại Open Library →
+              </a>
+            {% else %}
+              <button type="button" class="btn btn-small btn-outline full" disabled>Đang cập nhật</button>
+            {% endif %}
+          </div>
+        {% else %}
+          <div class="card" style="grid-column: 1 / -1; text-align: center; padding: 2rem; color: #64748b;">
+            Không tìm thấy sách phù hợp hoặc dịch vụ đang bận. Vui lòng thử lại!
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  <!-- ==================== TAB 3: TRẮC NGHIỆM TRI THỨC QUỐC TẾ ==================== -->
+  {% if active_tab == 'trivia' %}
+    <div class="card mb-4" style="padding: 1.5rem; border-radius: 16px;">
+      <div style="margin-bottom: 1.25rem;">
+        <h2 style="font-size: 1.3rem; font-weight: 800; color: #0f172a; margin: 0 0 4px;">🎯 Ngân Hàng Câu Hỏi Trắc Nghiệm Quốc Tế (Open Trivia Database)</h2>
+        <p style="color: #64748b; font-size: 0.9rem; margin: 0;">Luyện thi câu hỏi chuẩn quốc tế đa lĩnh vực (Khoa học, Toán học, Máy tính, Lịch sử, Địa lí). Có thể làm trực tiếp hoặc lưu thành Đề thi trong hệ thống.</p>
+      </div>
+
+      <!-- Control Toolbar -->
+      <div class="card mb-4" style="background: #f8fafc; border: 1.5px solid #e2e8f0; padding: 1.2rem; border-radius: 12px;">
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+          <div style="flex: 1; min-width: 180px;">
+            <label style="display: block; font-size: 0.82rem; font-weight: 700; color: #475569; margin-bottom: 4px;">Chủ đề trắc nghiệm:</label>
+            <select id="trivia-category-select" class="search-filter-input" style="padding: 0.55rem; width: 100%;">
+              {% for cat in trivia_categories %}
+                <option value="{{ cat.id }}">{{ cat.icon }} {{ cat.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div style="width: 150px;">
+            <label style="display: block; font-size: 0.82rem; font-weight: 700; color: #475569; margin-bottom: 4px;">Độ khó:</label>
+            <select id="trivia-difficulty-select" class="search-filter-input" style="padding: 0.55rem; width: 100%;">
+              <option value="">Tất cả mức độ</option>
+              <option value="easy">Dễ (Easy)</option>
+              <option value="medium">Trung bình (Medium)</option>
+              <option value="hard">Khó (Hard)</option>
+            </select>
+          </div>
+
+          <div style="width: 130px;">
+            <label style="display: block; font-size: 0.82rem; font-weight: 700; color: #475569; margin-bottom: 4px;">Số câu:</label>
+            <select id="trivia-amount-select" class="search-filter-input" style="padding: 0.55rem; width: 100%;">
+              <option value="5">5 câu</option>
+              <option value="10" selected>10 câu</option>
+              <option value="15">15 câu</option>
+              <option value="20">20 câu</option>
+            </select>
+          </div>
+
+          <div>
+            <button type="button" class="btn btn-primary" onclick="loadTriviaQuestions()" style="font-weight: 700; padding: 0.65rem 1.25rem;">
+              🔄 Tải câu hỏi mới
+            </button>
+          </div>
+
+          <div>
+            <button type="button" class="btn btn-success" onclick="saveAsSystemExam()" style="font-weight: 700; padding: 0.65rem 1.25rem;">
+              🚀 Tạo đề thi trong hệ thống
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Question Cards Container -->
+      <div id="trivia-questions-container" style="display: flex; flex-direction: column; gap: 14px;">
+        {% for q in trivia_quizzes %}
+          <div class="card trivia-question-card" data-correct="{{ q.correct_letter }}" style="padding: 1.25rem 1.4rem; border: 1.5px solid #e2e8f0; border-radius: 14px; background: #ffffff;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span class="badge badge-primary">Câu 0{{ q.number }}</span>
+              <div style="display: flex; gap: 8px;">
+                <span class="badge badge-soft-blue">{{ q.category }}</span>
+                <span class="badge badge-warning-glow">{{ q.difficulty }}</span>
+              </div>
+            </div>
+
+            <div style="font-size: 1.05rem; font-weight: 700; color: #1e293b; margin-bottom: 12px; line-height: 1.4;">
+              {{ q.question }}
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;">
+              {% for opt in q.choices %}
+                <label style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer;">
+                  <input type="radio" name="q_{{ q.number }}" value="{{ opt.letter }}" onchange="checkAnswer(this, '{{ q.number }}', '{{ q.correct_letter }}')">
+                  <span style="font-weight: 700; color: #2563eb;">{{ opt.letter }}.</span>
+                  <span style="color: #334155;">{{ opt.text }}</span>
+                </label>
+              {% endfor %}
+            </div>
+
+            <div id="feedback-{{ q.number }}" style="display: none; padding: 8px 12px; border-radius: 8px; font-size: 0.88rem; font-weight: 600;"></div>
+          </div>
+        {% else %}
+          <div class="card" style="text-align: center; padding: 2rem; color: #64748b;">
+            Đang tải câu hỏi từ Open Trivia Database...
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+<script>
+  let currentTriviaQuestions = [];
+
+  function checkAnswer(radioInput, qNumber, correctLetter) {
+    const feedbackBox = document.getElementById(`feedback-${qNumber}`);
+    if (!feedbackBox) return;
+
+    feedbackBox.style.display = 'block';
+    if (radioInput.value === correctLetter) {
+      feedbackBox.style.background = '#f0fdf4';
+      feedbackBox.style.color = '#166534';
+      feedbackBox.style.border = '1px solid #bbf7d0';
+      feedbackBox.innerHTML = '✅ <strong>Chính xác!</strong> Lựa chọn của bạn hoàn toàn đúng.';
+    } else {
+      feedbackBox.style.background = '#fef2f2';
+      feedbackBox.style.color = '#991b1b';
+      feedbackBox.style.border = '1px solid #fecaca';
+      feedbackBox.innerHTML = `❌ <strong>Chưa chính xác!</strong> Đáp án đúng là <strong>${correctLetter}</strong>.`;
+    }
+  }
+
+  async function loadTriviaQuestions() {
+    const cat = document.getElementById('trivia-category-select').value;
+    const diff = document.getElementById('trivia-difficulty-select').value;
+    const amount = document.getElementById('trivia-amount-select').value;
+    const container = document.getElementById('trivia-questions-container');
+
+    container.innerHTML = '<div class="card" style="text-align: center; padding: 2rem; color: #64748b;">⏳ Đang nạp câu hỏi trắc nghiệm mới từ Open Trivia DB...</div>';
+
+    try {
+      const resp = await fetch(`/api/academic/trivia?amount=${amount}&category_id=${cat}&difficulty=${diff}`);
+      const data = await resp.json();
+      currentTriviaQuestions = data.quizzes || [];
+
+      if (!currentTriviaQuestions.length) {
+        container.innerHTML = '<div class="card" style="text-align: center; padding: 2rem; color: #64748b;">Không thể tải câu hỏi lúc này. Vui lòng thử lại sau giây lát!</div>';
+        return;
+      }
+
+      container.innerHTML = '';
+      currentTriviaQuestions.forEach(q => {
+        let choicesHtml = '';
+        q.choices.forEach(opt => {
+          choicesHtml += `
+            <label style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer;">
+              <input type="radio" name="q_${q.number}" value="${opt.letter}" onchange="checkAnswer(this, '${q.number}', '${q.correct_letter}')">
+              <span style="font-weight: 700; color: #2563eb;">${opt.letter}.</span>
+              <span style="color: #334155;">${opt.text}</span>
+            </label>
+          `;
+        });
+
+        const card = document.createElement('div');
+        card.className = 'card trivia-question-card';
+        card.style.cssText = 'padding: 1.25rem 1.4rem; border: 1.5px solid #e2e8f0; border-radius: 14px; background: #ffffff;';
+        card.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span class="badge badge-primary">Câu 0${q.number}</span>
+            <div style="display: flex; gap: 8px;">
+              <span class="badge badge-soft-blue">${q.category}</span>
+              <span class="badge badge-warning-glow">${q.difficulty}</span>
+            </div>
+          </div>
+          <div style="font-size: 1.05rem; font-weight: 700; color: #1e293b; margin-bottom: 12px; line-height: 1.4;">
+            ${q.question}
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;">
+            ${choicesHtml}
+          </div>
+          <div id="feedback-${q.number}" style="display: none; padding: 8px 12px; border-radius: 8px; font-size: 0.88rem; font-weight: 600;"></div>
+        `;
+        container.appendChild(card);
+      });
+    } catch (err) {
+      container.innerHTML = '<div class="card" style="text-align: center; padding: 2rem; color: #dc2626;">Lỗi kết nối khi tải câu hỏi.</div>';
+    }
+  }
+
+  async function saveAsSystemExam() {
+    if (!currentTriviaQuestions.length) {
+      alert('Vui lòng bấm "🔄 Tải câu hỏi mới" trước khi tạo đề thi.');
+      return;
+    }
+
+    const catSelect = document.getElementById('trivia-category-select');
+    const catName = catSelect.options[catSelect.selectedIndex].text;
+    const title = `Đề thi Tri thức Quốc tế: ${catName} (${currentTriviaQuestions.length} câu)`;
+
+    try {
+      const resp = await fetch('/api/academic/create-exam-from-trivia', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title,
+          questions: currentTriviaQuestions,
+          duration: 15
+        })
+      });
+
+      const res = await resp.json();
+      if (res.success && res.link) {
+        if (confirm(`🎉 Đã tạo đề thi thành công!\n\nTiêu đề: ${title}\n\nBạn có muốn chuyển sang làm bài thi có bấm giờ và tính điểm ngay không?`)) {
+          window.location.href = res.link;
+        }
+      } else {
+        alert('Có lỗi khi tạo đề thi: ' + (res.error || 'Vui lòng thử lại'));
+      }
+    } catch (e) {
+      alert('Lỗi kết nối đến máy chủ: ' + e);
+    }
+  }
+</script>
+{% endblock %}

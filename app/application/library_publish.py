@@ -14,6 +14,8 @@ exam author's; the worked solutions are ours (solved by the AI import).
 
 import hashlib
 import logging
+import re
+import unicodedata
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,6 +59,21 @@ def auto_problems(drafts: list[dict]) -> str | None:
     return None
 
 
+def answered_in_file(drafts: list[dict]) -> str | None:
+    """For papers whose answers are printed in the file itself (essays with their marking scheme, multiple choice
+    with an answer table): "" when every question has it, a reason when one lacks it. None: not such a paper, the
+    official answers decide."""
+    kinds = {d.get("type") for d in drafts}
+    if not kinds <= {"ESSAY", "MULTIPLE_CHOICE"}:
+        return None
+    if "MULTIPLE_CHOICE" in kinds and not all(d.get("printed") for d in drafts if d.get("type") == "MULTIPLE_CHOICE"):
+        return None
+    missing = [d for d in drafts if d.get("type") == "ESSAY" and not d.get("key_from_file")]
+    if missing:
+        return f"câu {missing[0].get('number')}: tự luận chưa có hướng dẫn chấm trong file"
+    return ""
+
+
 async def library_document(session: AsyncSession, job: ImportJob) -> LibraryDocument | None:
     """The library file this import came from: the exam cut from a bundle rather than the bundle itself."""
     docs = (
@@ -87,10 +104,55 @@ async def _names(session: AsyncSession, job: ImportJob) -> tuple[str, str]:
     return subject, category.name if category else ""
 
 
+_SUBJECTS = [
+    "Toán", "Vật lí", "Vật lý", "Hóa học", "Hoá học", "Sinh học", "Ngữ văn", "Tiếng Anh", "Lịch sử", "Địa lí",
+    "Địa lý", "Tin học", "GDCD", "Giáo dục kinh tế và pháp luật", "Công nghệ", "Khoa học tự nhiên", "Tiếng Việt",
+]  # fmt: skip
+_CANONICAL = {"Vật lý": "Vật lí", "Hoá học": "Hóa học", "Địa lý": "Địa lí"}
+
+
+def exam_code(names: list[str]) -> str:
+    """The exam's short name from its folders / categories: THPTQG, TS10, HSG-DHBB, HSG, or initials."""
+    text = " ".join(names)
+    plain = _plain(text)
+    if "hsg" in plain or "hoc sinh gioi" in plain:
+        return "HSG-DHBB" if "duyen hai" in plain or "dhbb" in plain or "dh&db" in plain else "HSG"
+    if "vao 10" in plain or "tuyen sinh 10" in plain or "lop 10 thpt" in plain:
+        return "TS10"
+    if "thpt" in plain or "tot nghiep" in plain:
+        return "THPTQG"
+    words = [w for w in re.findall(r"[A-Za-z0-9]+", plain.upper()) if not w.isdigit()]
+    return "".join(w[0] for w in words[:4]) or "DE"
+
+
+def subject_name(names: list[str]) -> str:
+    for name in names:
+        for subject in _SUBJECTS:
+            if subject.casefold() in name.casefold():
+                return _CANONICAL.get(subject, subject)
+    return "Tổng hợp"
+
+
+def _plain(text: str) -> str:
+    text = unicodedata.normalize("NFD", text.replace("đ", "d").replace("Đ", "D"))
+    return "".join(c for c in text if unicodedata.category(c) != "Mn").lower()
+
+
 async def exam_title(session: AsyncSession, job: ImportJob, doc: LibraryDocument) -> str:
-    subject, group = await _names(session, job)
-    parts = [group, subject if subject.casefold() not in group.casefold() else "", doc.title]
-    return " – ".join(p for p in parts if p)
+    """ "<KỲ THI>-<Môn>-<số thứ tự>", e.g. "THPTQG-Toán-001": the next number of that exam and subject."""
+    category = await session.get(Category, job.category_id)
+    path = [c.name for c in await _ancestors(session, category)] if category else []
+    names = [*path, *doc.folder_path, doc.title]
+    prefix = f"{exam_code(names)}-{subject_name(names)}-"
+    taken = await session.scalars(select(Exam.title).where(Exam.title.like(f"{prefix}%")))
+    numbers = [int(m.group(1)) for t in taken if (m := re.match(re.escape(prefix) + r"(\d+)$", t))]
+    return f"{prefix}{max(numbers, default=0) + 1:03d}"
+
+
+async def _ancestors(session: AsyncSession, category: Category) -> list[Category]:
+    ids = [int(i) for i in category.path.strip("/").split("/") if i]
+    found = {c.id: c for c in await session.scalars(select(Category).where(Category.id.in_(ids)))}
+    return [found[i] for i in ids if i in found]
 
 
 async def auto_publish(session: AsyncSession, job: ImportJob, render: Renderer | None = None) -> Exam | None:
@@ -101,7 +163,9 @@ async def auto_publish(session: AsyncSession, job: ImportJob, render: Renderer |
     if doc is None or any(d.get("question_id") for d in drafts):
         return None
     reason = auto_problems(drafts)
-    if reason is None:  # a misread question still passes the checks above: the official answers decide
+    if reason is None and (keyed := answered_in_file(drafts)) is not None:
+        reason = keyed or None  # "" when the file's own answers settle every question
+    elif reason is None:  # a misread question still passes the checks above: the official answers decide
         answers = await official_answers(session, job, doc)
         if answers is None:
             reason = "chưa có đáp án chính thức để đối chiếu"
@@ -145,6 +209,11 @@ async def recheck_waiting(session: AsyncSession, category_id: int, render: Rende
     return published
 
 
+def answers_title(paper_title: str) -> str:
+    """The answer copy of a paper in the library: "THPTQG-Toán-001 – Đáp án" (linked to it by exam_id)."""
+    return f"{paper_title} – Đáp án"
+
+
 async def publish_to_library(
     session: AsyncSession, job: ImportJob, exam: Exam, render: Renderer | None = None
 ) -> list[LibraryDocument]:
@@ -172,7 +241,9 @@ async def publish_to_library(
                 parts=parts,
                 solutions=solutions,
             )
-            made.append((solutions, await render(html, exam.title)))
+            # Each copy names its pair, so a printed paper and its answers are never mixed up
+            footer = f"{answers_title(exam.title)} · đáp án của đề {exam.title}" if solutions else f"Đề {exam.title}"
+            made.append((solutions, await render(html, footer)))
     except PdfError as exc:
         log.warning("Exam %s: %s", exam.id, exc)
         return []
@@ -187,7 +258,7 @@ async def publish_to_library(
         if clean is None:
             clean = LibraryDocument(source=GENERATED, source_file_id=file_id, status=doc.status)
             session.add(clean)
-        clean.title = f"{exam.title} – Lời giải" if solutions else exam.title
+        clean.title = answers_title(exam.title) if solutions else exam.title
         clean.kind, clean.folder_path, clean.category_id = doc.kind, doc.folder_path, job.category_id
         clean.checksum, clean.storage_key = hashlib.sha256(pdf).hexdigest(), key
         clean.mime, clean.size = "application/pdf", len(pdf)

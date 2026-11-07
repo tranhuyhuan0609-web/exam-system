@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="grade-portal-container">
+  <!-- Breadcrumb điều hướng -->
+  <nav class="breadcrumb-nav mb-3" aria-label="Breadcrumb">
+    <a href="/" class="crumb-link">Trang chủ</a>
+    <span class="crumb-sep">/</span>
+    <span class="crumb-current">{{ box.title }}</span>
+  </nav>
+
+  <!-- Hero giới thiệu Lớp / Khối thi -->
+  <section class="grade-hero-banner card mb-4">
+    <div class="grade-hero-inner">
+      <div class="grade-hero-icon-box">
+        {% if 'tieng-anh' in box.id %}🇬🇧
+        {% elif 'tieng-trung' in box.id %}🇨🇳
+        {% elif 'tieng-nhat' in box.id %}🇯🇵
+        {% elif 'dai-hoc' in box.id %}🏛️
+        {% elif 'dgnl' in box.id %}🧠
+        {% elif 'tnthpt' in box.id %}🎓
+        {% elif '12' in box.id or '11' in box.id or '10' in box.id %}🎓
+        {% elif '9' in box.id or '8' in box.id or '7' in box.id or '6' in box.id %}🏫
+        {% else %}🎒
+        {% endif %}
+      </div>
+      <div>
+        <div class="grade-hero-badge"><span class="badge badge-primary">{% if 'tieng-' in box.id %}Chứng chỉ Ngoại ngữ Quốc tế{% else %}Chương trình GDPT mới{% endif %}</span></div>
+        <h1 class="grade-hero-title">{{ box.title }}</h1>
+        <p class="grade-hero-desc">Tổng hợp toàn bộ danh sách các môn học, ngân hàng đề thi tự luyện, đề kiểm tra định kỳ và bài giảng theo từng chương bài.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Thanh tìm kiếm môn học -->
+  <div class="search-filter-toolbar card mb-4">
+    <div class="search-filter-row">
+      <input type="text" id="subject-search-input" class="search-filter-input" placeholder="🔍 Tìm kiếm môn học... (VD: Toán, Vật lí, Hóa học, Tiếng Anh...)" oninput="filterSubjectCards(this.value)">
+    </div>
+  </div>
+
+  <!-- Danh sách các môn học dạng Grid thẻ hiện đại -->
+  <div class="grade-subjects-grid" id="subjects-card-grid">
+    {% for row in box.rows %}
+      <div class="card subject-portal-card clickable-portal-card" data-subject-name="{{ row.name | lower }}" onclick="window.location.href='{{ row.link }}'" style="cursor: pointer;">
+        <div class="subj-card-header">
+          <div class="subj-card-icon">
+            <a href="{{ row.link }}" onclick="event.stopPropagation()">
+            {% if 'toeic' in row.name | lower %}🎧
+            {% elif 'ielts' in row.name | lower %}💎
+            {% elif 'vstep' in row.name | lower %}📜
+            {% elif 'hsk' in row.name | lower or 'tiếng trung' in row.name | lower %}🇨🇳
+            {% elif 'jlpt' in row.name | lower or 'tiếng nhật' in row.name | lower or 'kanji' in row.name | lower %}🇯🇵
+            {% elif 'toán' in row.name | lower %}📐
+            {% elif 'lí' in row.name | lower or 'vật' in row.name | lower %}⚡
+            {% elif 'hóa' in row.name | lower %}🧪
+            {% elif 'sinh' in row.name | lower %}🧬
+            {% elif 'anh' in row.name | lower or 'ngoại ngữ' in row.name | lower %}🌐
+            {% elif 'văn' in row.name | lower or 'tiếng việt' in row.name | lower %}📖
+            {% elif 'sử' in row.name | lower or 'địa' in row.name | lower %}🏛️
+            {% elif 'tin' in row.name | lower %}💻
+            {% elif 'triết' in row.name | lower %}🏛️
+            {% else %}📘
+            {% endif %}
+            </a>
+          </div>
+          <span class="badge badge-soft-blue">{{ row.count }} đề thi</span>
+        </div>
+        <h3 class="subj-card-title">
+          <a href="{{ row.link }}" class="subj-title-link" onclick="event.stopPropagation()">{{ row.name }}</a>
+        </h3>
+        <p class="subj-card-desc">
+          {% if 'tieng-' in box.id %}
+            Tích hợp bài Test năng lực đầu vào, phần Study bài giảng phương pháp và phần Practice luyện đề 4 kỹ năng có bấm giờ.
+          {% else %}
+            Gồm đầy đủ các chương bài học lý thuyết, bài tập trắc nghiệm và đề thi thử chấm điểm tự động.
+          {% endif %}
+        </p>
+        <div class="subj-card-meta">
+          {% if 'tieng-' in box.id %}
+            <span>🎯 Test năng lực</span>
+            <span>🎧 4 Kỹ năng (Nghe, Đọc, Viết, Nói)</span>
+            <span>⏱ Bấm giờ online</span>
+          {% else %}
+            <span>📚 Đầy đủ SGK mới</span>
+            <span>⏱ Bấm giờ online</span>
+          {% endif %}
+        </div>
+        <div class="subj-card-action">
+          {% if 'tieng-' in box.id %}
+            <a href="{{ row.link }}" class="btn btn-primary full" onclick="event.stopPropagation()">🚀 Vào học & Test năng lực 4 kỹ năng →</a>
+          {% else %}
+            <a href="{{ row.link }}" class="btn btn-primary full" onclick="event.stopPropagation()">Vào học từng chương, từng bài →</a>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+  function filterSubjectCards(query) {
+    const q = query.trim().toLowerCase();
+    const cards = document.querySelectorAll('.subject-portal-card');
+    cards.forEach(card => {
+      const name = card.dataset.subjectName || '';
+      if (!q || name.includes(q)) {
+        card.style.display = 'flex';
+      } else {
+        card.style.display = 'none';
+      }
+    });
+  }
+</script>
+{% endblock %}

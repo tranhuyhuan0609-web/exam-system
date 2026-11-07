@@ -1,13 +1,12 @@
-# Lời giải hay — trắc nghiệm Vật lí 10–11, three series. robots.txt allows these paths.
-# Not covered: Toán (the "tự luyện" pages load questions with JavaScript) and Lí 12 (old-curriculum category).
 site_id: loigiaihay
 name: Lời giải hay
 enabled: true
 base_url: https://loigiaihay.com
 parser: loigiaihay_quiz
-schedule_times: ["02:30"]   # Vietnam time; quiet hours for the source
+schedule_times:
+- 02:30
 refresh_days: 30
-max_pages: 200
+max_pages: 1000
 respect_robots: true
 auto_publish: true
 auto_toc: true
@@ -18,40 +17,143 @@ rate_limit:
   retries: 2
   concurrency: 1
 toc:
-  # Chapter pages: the h1 names the chapter, the main column lists its lessons (the sidebars list others).
-  scope: ["//div[contains(@class, 'left-3col')]"]
+  scope:
+  - //div[contains(@class, 'left-3col')]
 seeds:
-  - url: https://loigiaihay.com/bai-tap-trac-nghiem-li-10-ket-noi-tri-thuc-c1333.html
-    label: Vật lí 10 – Kết nối tri thức
-    root: Vật lí 10
-    series: Kết nối tri thức
-  - url: https://loigiaihay.com/bai-tap-trac-nghiem-li-10-chan-troi-sang-tao-c1334.html
-    label: Vật lí 10 – Chân trời sáng tạo
-    root: Vật lí 10
-    series: Chân trời sáng tạo
-  - url: https://loigiaihay.com/bai-tap-trac-nghiem-li-10-canh-dieu-c1335.html
-    label: Vật lí 10 – Cánh diều
-    root: Vật lí 10
-    series: Cánh diều
-  - url: https://loigiaihay.com/bai-tap-trac-nghiem-li-11-ket-noi-tri-thuc-c1680.html
-    label: Vật lí 11 – Kết nối tri thức
-    root: Vật lí 11
-    series: Kết nối tri thức
-  - url: https://loigiaihay.com/bai-tap-trac-nghiem-li-11-chan-troi-sang-tao-c1682.html
-    label: Vật lí 11 – Chân trời sáng tạo
-    root: Vật lí 11
-    series: Chân trời sáng tạo
-  - url: https://loigiaihay.com/bai-tap-trac-nghiem-li-11-canh-dieu-c1681.html
-    label: Vật lí 11 – Cánh diều
-    root: Vật lí 11
-    series: Cánh diều
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-toan-1-ket-noi-tri-thuc-c510.html
+  label: Toán 1 – Kết nối tri thức
+  root: Toán 1
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-tieng-viet-1-ket-noi-tri-thuc-c520.html
+  label: Tiếng Việt 1 – Kết nối tri thức
+  root: Tiếng Việt 1
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-toan-2-ket-noi-tri-thuc-c630.html
+  label: Toán 2 – Kết nối tri thức
+  root: Toán 2
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-tieng-viet-2-ket-noi-tri-thuc-c640.html
+  label: Tiếng Việt 2 – Kết nối tri thức
+  root: Tiếng Việt 2
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-toan-3-ket-noi-tri-thuc-c980.html
+  label: Toán 3 – Kết nối tri thức
+  root: Toán 3
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-tieng-viet-3-ket-noi-tri-thuc-c990.html
+  label: Tiếng Việt 3 – Kết nối tri thức
+  root: Tiếng Việt 3
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-toan-4-ket-noi-tri-thuc-c1750.html
+  label: Toán 4 – Kết nối tri thức
+  root: Toán 4
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-tieng-viet-4-ket-noi-tri-thuc-c1760.html
+  label: Tiếng Việt 4 – Kết nối tri thức
+  root: Tiếng Việt 4
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-toan-5-ket-noi-tri-thuc-c2150.html
+  label: Toán 5 – Kết nối tri thức
+  root: Toán 5
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-tieng-viet-5-ket-noi-tri-thuc-c2160.html
+  label: Tiếng Việt 5 – Kết nối tri thức
+  root: Tiếng Việt 5
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-khtn-6-ket-noi-tri-thuc-c615.html
+  label: Khoa học tự nhiên 6 – Kết nối tri thức
+  root: KHTN 6
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-khtn-7-ket-noi-tri-thuc-c960.html
+  label: Khoa học tự nhiên 7 – Kết nối tri thức
+  root: KHTN 7
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-khtn-8-ket-noi-tri-thuc-c1720.html
+  label: Khoa học tự nhiên 8 – Kết nối tri thức
+  root: KHTN 8
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-khtn-9-ket-noi-tri-thuc-c2110.html
+  label: Khoa học tự nhiên 9 – Kết nối tri thức
+  root: KHTN 9
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-li-10-ket-noi-tri-thuc-c1333.html
+  label: Vật lí 10 – Kết nối tri thức
+  root: Vật lí 10
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-li-10-chan-troi-sang-tao-c1334.html
+  label: Vật lí 10 – Chân trời sáng tạo
+  root: Vật lí 10
+  series: Chân trời sáng tạo
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-li-10-canh-dieu-c1335.html
+  label: Vật lí 10 – Cánh diều
+  root: Vật lí 10
+  series: Cánh diều
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-hoa-10-ket-noi-tri-thuc-c1336.html
+  label: Hóa học 10 – Kết nối tri thức
+  root: Hóa học 10
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-sinh-10-ket-noi-tri-thuc-c1339.html
+  label: Sinh học 10 – Kết nối tri thức
+  root: Sinh học 10
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-su-10-ket-noi-tri-thuc-c1342.html
+  label: Lịch sử 10 – Kết nối tri thức
+  root: Lịch sử 10
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-dia-10-ket-noi-tri-thuc-c1345.html
+  label: Địa lí 10 – Kết nối tri thức
+  root: Địa lí 10
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-li-11-ket-noi-tri-thuc-c1680.html
+  label: Vật lí 11 – Kết nối tri thức
+  root: Vật lí 11
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-li-11-chan-troi-sang-tao-c1682.html
+  label: Vật lí 11 – Chân trời sáng tạo
+  root: Vật lí 11
+  series: Chân trời sáng tạo
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-li-11-canh-dieu-c1681.html
+  label: Vật lí 11 – Cánh diều
+  root: Vật lí 11
+  series: Cánh diều
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-hoa-11-ket-noi-tri-thuc-c1683.html
+  label: Hóa học 11 – Kết nối tri thức
+  root: Hóa học 11
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-sinh-11-ket-noi-tri-thuc-c1686.html
+  label: Sinh học 11 – Kết nối tri thức
+  root: Sinh học 11
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-su-11-ket-noi-tri-thuc-c1689.html
+  label: Lịch sử 11 – Kết nối tri thức
+  root: Lịch sử 11
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-dia-11-ket-noi-tri-thuc-c1692.html
+  label: Địa lí 11 – Kết nối tri thức
+  root: Địa lí 11
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-li-12-ket-noi-tri-thuc-c2080.html
+  label: Vật lí 12 – Kết nối tri thức
+  root: Vật lí 12
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-hoa-12-ket-noi-tri-thuc-c2083.html
+  label: Hóa học 12 – Kết nối tri thức
+  root: Hóa học 12
+  series: Kết nối tri thức
+- url: https://loigiaihay.com/bai-tap-trac-nghiem-sinh-12-ket-noi-tri-thuc-c2086.html
+  label: Sinh học 12 – Kết nối tri thức
+  root: Sinh học 12
+  series: Kết nối tri thức
 follow:
-  - pattern: '^https://loigiaihay\.com/bai-tap-trac-nghiem-(chuong|chu-de|phan)-[a-z0-9-]+-e\d+\.html$'
-    kind: listing
-  - pattern: '^https://loigiaihay\.com/trac-nghiem-vat-li-1[01]-bai-[a-z0-9-]+-co-dap-an-a\d+\.html$'
-    kind: detail
+- pattern: ^https://loigiaihay\.com/bai-tap-trac-nghiem-(chuong|chu-de|phan)-[a-z0-9-]+-e\d+\.html$
+  kind: listing
+- pattern: ^https://loigiaihay\.com/bai-tap-trac-nghiem-[a-z0-9-]+-c\d+\.html$
+  kind: listing
+- pattern: ^https://loigiaihay\.com/trac-nghiem-[a-z0-9-]+-co-dap-an-a\d+\.html$
+  kind: detail
+- pattern: ^https://loigiaihay\.com/trac-nghiem-[a-z0-9-]+-a\d+\.html$
+  kind: detail
 categories:
-  # Fallback for pages crawled before auto_toc (no context).
-  - pattern: 'trac-nghiem-vat-li-11-bai-\d+-ket-noi'
-    root: Vật lí 11
-    lesson: 'bài\s*(\d+)'
+- pattern: trac-nghiem-.*-bai-\d+
+  root: Chương trình GDPT
+  lesson: bài\s*(\d+)

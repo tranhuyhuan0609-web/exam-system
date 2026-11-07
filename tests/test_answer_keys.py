@@ -155,5 +155,5 @@ def test_reading_the_answer_table_publishes_the_codes_that_were_waiting_for_it(d
     keys = db(lambda s: s.scalars(select(AnswerKey)))
     assert [(k.code, k.answers["multiple_choice"]) for k in keys] == [("101", ["B"] * 6)]
     exam = db(lambda s: s.scalar(select(Exam)))
-    assert exam is not None and exam.title.endswith("Mã đề 101")  # the waiting code went out by itself
+    assert exam is not None and exam.title == "THPTQG-Toán-001"  # the waiting code went out by itself
     assert "Chờ admin duyệt" not in db(lambda s: s.get(ImportJob, waiting)).stage

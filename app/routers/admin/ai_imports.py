@@ -45,7 +45,18 @@ async def _job_or_404(session, job_id: int) -> ImportJob:
 
 @router.get("/ai-imports")
 async def list_jobs(request: Request, user: AdminUser, session: SessionDep, scope: str = ""):
-    jobs = (await session.scalars(select(ImportJob).order_by(ImportJob.id.desc()).limit(50))).all()
+    jobs = (
+        await session.scalars(
+            select(ImportJob)
+            .order_by(
+                (ImportJob.status == JobStatus.PROCESSING).desc(),
+                (ImportJob.status == JobStatus.DONE).desc(),
+                ImportJob.finished_at.desc().nulls_last(),
+                ImportJob.id.desc(),
+            )
+            .limit(100)
+        )
+    ).all()
     subjects = await load_categories(session)
     return templates.TemplateResponse(
         request,

@@ -454,3 +454,3942 @@ dialog.submit-dialog::backdrop { background: rgba(15, 23, 42, .45); }
 .library-folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin: 12px 0; }
 .library-folder { padding: 12px 14px; color: var(--text); }
 .library-folder:hover { text-decoration: none; border-color: var(--primary); }
+
+
+/* ==========================================================================
+   PORTAL 4 MỤC (HỌC NGOẠI NGỮ, LUYỆN ĐỀ, TÀI LIỆU, HỌC BÀI MỚI) & CẤP HỌC (THCS, THPT)
+   ========================================================================== */
+
+/* Topbar adjustments */
+.topbar-left { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
+.nav-sections { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.nav-sec-link { font-size: 0.92rem; font-weight: 500; color: #475569; padding: 6px 10px; border-radius: 6px; transition: all .15s ease; }
+.nav-sec-link:hover { color: var(--primary); background: #f1f5f9; text-decoration: none; }
+.nav-user { display: flex; align-items: center; gap: 14px; }
+
+@media (max-width: 960px) {
+  .nav-sections { display: none; }
+}
+
+/* Portal Hero Banner */
+.portal-hero {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  color: #fff;
+  border-radius: 16px;
+  padding: 48px 32px;
+  text-align: center;
+  margin-bottom: 32px;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.2);
+}
+.portal-hero-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  color: #93c5fd;
+  margin-bottom: 14px;
+}
+.portal-hero-title {
+  font-size: 2.2rem;
+  font-weight: 800;
+  margin: 0 0 12px;
+  line-height: 1.25;
+  color: #fff;
+}
+.portal-hero-desc {
+  max-width: 680px;
+  margin: 0 auto 24px;
+  font-size: 1.05rem;
+  color: #cbd5e1;
+  line-height: 1.6;
+}
+.portal-hero-actions {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.btn-hero {
+  padding: 12px 24px;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 10px;
+}
+
+.welcome-banner {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px 28px;
+  margin-bottom: 28px;
+  border-left: 5px solid var(--primary);
+}
+.welcome-banner h1 { margin: 0 0 6px; font-size: 1.6rem; }
+
+.portal-section-title {
+  margin: 16px 0 20px;
+}
+.portal-section-title h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+/* 4 Mục Lớn (Hub Grid) */
+.hub-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  margin-bottom: 36px;
+}
+@media (max-width: 1100px) {
+  .hub-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .hub-grid { grid-template-columns: 1fr; }
+}
+
+.hub-card {
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  text-decoration: none;
+  color: var(--text);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+.hub-card:hover {
+  text-decoration: none;
+  transform: translateY(-5px);
+  box-shadow: 0 16px 30px -8px rgba(0, 0, 0, 0.1);
+}
+
+.hub-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+.hub-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+}
+
+.hub-icon-foreign { background: #eff6ff; }
+.hub-icon-practice { background: #ecfdf5; }
+.hub-icon-materials { background: #fffbeb; }
+.hub-icon-lessons { background: #f5f3ff; }
+
+.hub-card-foreign:hover { border-color: #3b82f6; }
+.hub-card-practice:hover { border-color: #10b981; }
+.hub-card-materials:hover { border-color: #f59e0b; }
+.hub-card-lessons:hover { border-color: #8b5cf6; }
+
+.hub-pill {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.hub-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+.hub-desc {
+  font-size: 0.9rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0 0 16px;
+  flex-grow: 1;
+}
+
+.hub-subitems {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #475569;
+  background: #f8fafc;
+  padding: 10px 12px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+
+.hub-footer {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+.hub-cta {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.hub-card:hover .hub-cta {
+  text-decoration: underline;
+}
+
+/* Divider & Section Subheads */
+.section-divider {
+  display: flex;
+  align-items: center;
+  margin: 36px 0 24px;
+  text-align: center;
+}
+.section-divider::before, .section-divider::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid var(--border);
+}
+.section-divider span {
+  padding: 0 16px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+/* ==========================================================================
+   SECTION DETAIL VIEW (KHI BẤM VÀO MỖI MỤC)
+   ========================================================================== */
+.section-portal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.back-btn {
+  font-weight: 600;
+}
+.section-quick-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sec-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #475569;
+  background: #fff;
+  border: 1px solid var(--border);
+  transition: all .15s ease;
+}
+.sec-tab:hover {
+  text-decoration: none;
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+.sec-tab.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* Section Hero */
+.section-hero {
+  border-radius: 16px;
+  padding: 28px 32px;
+  margin-bottom: 24px;
+}
+.section-hero-content {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+@media (max-width: 600px) {
+  .section-hero-content { flex-direction: column; text-align: center; }
+}
+.section-hero-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  flex-shrink: 0;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+}
+.section-hero-title {
+  font-size: 1.8rem;
+  font-weight: 800;
+  margin: 4px 0 6px;
+}
+.section-hero-desc {
+  color: var(--muted);
+  font-size: 0.98rem;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Level Tabs (THCS, THPT Filter) */
+.level-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+.level-filter-label {
+  font-weight: 700;
+  font-size: 0.9rem;
+  margin-right: 6px;
+  color: #334155;
+}
+.level-tab-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #f8fafc;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: #475569;
+  transition: all 0.15s ease;
+}
+.level-tab-btn:hover {
+  background: #edf2f7;
+}
+.level-tab-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* Level Group & Items */
+.level-group {
+  margin-bottom: 32px;
+}
+.level-header {
+  margin-bottom: 16px;
+}
+.level-header h2 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.item-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+.item-card {
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  margin-bottom: 0;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.item-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.06);
+}
+.item-highlight {
+  border-color: #93c5fd;
+  background: #fbfdff;
+}
+
+.item-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.item-card-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+.item-card-desc {
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0 0 14px;
+  flex-grow: 1;
+}
+
+.item-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.tag-pill {
+  font-size: 0.75rem;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 500;
+}
+
+.item-card-action {
+  margin-top: auto;
+}
+
+
+/* ==========================================================================
+   DANH SÁCH BÀI THI TRỰC TUYẾN THAM KHẢO TRACNGHIEM.COM / TRACNGHIEM.NET
+   ========================================================================== */
+.tracnghiem-toolbar {
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+.tracnghiem-search-row {
+  margin-bottom: 12px;
+}
+.tracnghiem-search-input {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 0.98rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+.tracnghiem-search-input:focus {
+  background: #fff;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  outline: none;
+}
+.tracnghiem-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pill-label {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #475569;
+  margin-right: 4px;
+}
+.tn-pill {
+  padding: 6px 14px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.tn-pill:hover {
+  background: #e2e8f0;
+}
+.tn-pill.active {
+  background: #10b981;
+  border-color: #10b981;
+  color: #fff;
+}
+
+/* Thẻ đề thi phong cách TracNghiem.net */
+.portal-exam-card {
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  position: relative;
+}
+.portal-exam-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px -6px rgba(0, 0, 0, 0.08);
+  border-color: #10b981;
+  text-decoration: none;
+}
+.exam-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.exam-badge-subject {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.exam-badge-level {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #475569;
+}
+.exam-title-text {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.4;
+  margin: 0;
+}
+.exam-card-footer {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+.exam-action-btn {
+  display: block;
+  text-align: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #10b981;
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  transition: background 0.15s ease;
+}
+.portal-exam-card:hover .exam-action-btn {
+  background: #059669;
+}
+
+
+/* ==========================================================================
+   TỪNG KHỐI LỚP TỪ LỚP 12 ĐẾN LỚP 1 (TOÁN HỌC 12, VẬT LÍ 12,...)
+   ========================================================================== */
+.grade-jump-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  margin-bottom: 24px;
+  background: #ffffff;
+  border-radius: 12px;
+  flex-wrap: wrap;
+}
+.jump-label {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: #334155;
+  white-space: nowrap;
+}
+.jump-pills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.jump-pill {
+  padding: 5px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid var(--border);
+  transition: all 0.15s ease;
+}
+.jump-pill:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  text-decoration: none;
+}
+
+/* Khối từng lớp */
+.grade-section-block {
+  padding: 24px;
+  border-radius: 16px;
+  margin-bottom: 28px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+.grade-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.grade-section-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.grade-icon {
+  font-size: 2rem;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+.grade-main-title {
+  font-size: 1.4rem;
+  font-weight: 800;
+  margin: 0 0 4px;
+  color: #1e293b;
+}
+
+/* Grid các môn học của từng lớp */
+.grade-subjects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+.subject-card {
+  padding: 18px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.subject-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 18px -4px rgba(0, 0, 0, 0.06);
+  border-color: #93c5fd;
+}
+.subject-hot {
+  border-color: #bfdbfe;
+  background: #fbfdff;
+}
+
+.subject-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.subject-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+}
+.badge-muted {
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.subject-title-text {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0 0 6px;
+  color: #0f172a;
+}
+.subject-desc-text {
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0 0 12px;
+  flex-grow: 1;
+}
+
+.subject-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+
+.subject-action {
+  margin-top: auto;
+}
+
+/* Container đề thi trực tuyến có sẵn trong hệ thống */
+.live-exams-container {
+  margin-top: 24px;
+  padding: 20px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+}
+.live-exams-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0 0 16px;
+  color: #1e3a8a;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+
+/* ==========================================================================
+   BẢNG BOX ĐỀ THI TỰ LUYỆN (THEO MẪU ẢNH: TNTHPT, ĐGNL, LỚP 12 -> LỚP 1)
+   ========================================================================== */
+.search-filter-toolbar {
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+.search-filter-row {
+  margin-bottom: 12px;
+}
+.search-filter-input {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 0.98rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+.search-filter-input:focus {
+  background: #fff;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  outline: none;
+}
+.search-filter-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Lưới các Box 3 cột chuẩn như ảnh mẫu */
+.practice-box-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-bottom: 32px;
+}
+@media (max-width: 1024px) {
+  .practice-box-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .practice-box-grid { grid-template-columns: 1fr; }
+}
+
+.practice-box {
+  background: #ffffff;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header xanh đậm chuẩn mẫu */
+.practice-box-head {
+  background: #0056b3;
+  color: #ffffff;
+  padding: 11px 16px;
+  font-weight: 700;
+  font-size: 1.02rem;
+  line-height: 1.35;
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+  letter-spacing: -0.01em;
+}
+
+/* Thân box cuộn dọc có scrollbar như trong ảnh */
+.practice-box-body {
+  max-height: 275px;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-top: 0;
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.practice-box-body::-webkit-scrollbar {
+  width: 6px;
+}
+.practice-box-body::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+.practice-box-body::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+
+.practice-row-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #374151;
+  font-size: 0.93rem;
+  text-decoration: none;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.practice-row-item:hover {
+  background: #f8fafc;
+  color: #0056b3;
+  text-decoration: none;
+}
+
+.practice-row-item .item-name {
+  font-weight: 500;
+  color: inherit;
+}
+.practice-row-item .item-count {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9rem;
+  color: #64748b;
+  font-weight: 600;
+  min-width: 32px;
+  text-align: right;
+}
+
+
+/* ==========================================================================
+   GIAO DIỆN KHỐI ĐỀ THI HOT & LƯỢT LÀM NHIỀU
+   ========================================================================== */
+.hot-exams-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.hot-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hot-flame-icon {
+  font-size: 1.8rem;
+  line-height: 1;
+  background: #fff;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.15);
+  border: 1px solid #fee2e2;
+}
+
+.badge-hot-fire {
+  background: linear-gradient(135deg, #ef4444 0%, #f97316 100%);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.25);
+}
+
+.badge-hot-trending {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+  font-weight: 600;
+  font-size: 0.78rem;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.exam-attempts-stat {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #475569;
+  background: #f1f5f9;
+  padding: 2px 8px;
+  border-radius: 6px;
+  margin-left: auto;
+}
+
+.hot-exam-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.hot-exam-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 22px -4px rgba(0, 0, 0, 0.08);
+  border-color: #f97316;
+}
+
+
+/* ==========================================================================
+   GIAO DIỆN TRANG LỚP HỌC & MÔN HỌC (TỪNG CHƯƠNG, TỪNG BÀI)
+   ========================================================================== */
+.breadcrumb-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: #64748b;
+}
+.crumb-link {
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 500;
+}
+.crumb-link:hover {
+  text-decoration: underline;
+}
+.crumb-sep {
+  color: #94a3b8;
+}
+.crumb-current {
+  color: #1e293b;
+  font-weight: 600;
+}
+
+/* Banner Lớp & Môn */
+.grade-hero-banner, .subject-hero-banner {
+  padding: 24px 28px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
+  border: 1px solid #bfdbfe;
+  border-left: 6px solid #2563eb;
+}
+.grade-hero-inner, .subject-hero-content {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.grade-hero-icon-box, .subject-hero-icon {
+  width: 64px;
+  height: 64px;
+  min-width: 64px;
+  border-radius: 16px;
+  background: #2563eb;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.2rem;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
+.grade-hero-title, .subject-hero-title {
+  margin: 4px 0 6px;
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+.grade-hero-desc, .subject-hero-desc {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #475569;
+  line-height: 1.5;
+}
+
+/* Grid các môn học của Lớp */
+.grade-subjects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+}
+.subject-portal-card {
+  padding: 20px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.subject-portal-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px -4px rgba(0, 0, 0, 0.08);
+  border-color: #93c5fd;
+}
+.subj-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.subj-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  border: 1px solid #e2e8f0;
+}
+.badge-soft-blue {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+.subj-card-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: #0f172a;
+}
+.subj-card-desc {
+  font-size: 0.88rem;
+  color: #64748b;
+  margin: 0 0 14px;
+  line-height: 1.45;
+  flex-grow: 1;
+}
+.subj-card-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 0.82rem;
+  color: #475569;
+  margin-bottom: 14px;
+  font-weight: 500;
+}
+.subj-card-action {
+  margin-top: auto;
+}
+
+/* Quick nav & Table of Contents chương */
+.chapter-quick-nav {
+  padding: 16px 22px;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+}
+.chapter-nav-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.chapter-quick-label {
+  font-weight: 800;
+  font-size: 1rem;
+  color: #1e293b;
+}
+.chapter-pills-wrap {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.chapter-pill-btn {
+  padding: 6px 14px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.chapter-pill-btn:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+.chapter-pill-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+}
+.btn-show-all {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  margin-left: auto;
+}
+
+/* Card từng chương dạng Accordion */
+.chapter-block-card {
+  padding: 20px 24px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  transition: all 0.2s ease;
+}
+.chapter-block-card.is-open {
+  border-color: #93c5fd;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.06);
+}
+.chapter-block-card.is-collapsed {
+  background: #fafbfc;
+}
+.chapter-block-card.is-collapsed:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.chapter-toggle-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+  user-select: none;
+}
+.chapter-block-card.is-open .chapter-toggle-head {
+  padding-bottom: 16px;
+  border-bottom: 2px solid #f1f5f9;
+  margin-bottom: 16px;
+}
+.chapter-block-card.is-collapsed .chapter-toggle-head {
+  padding-bottom: 0;
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.chapter-head-left {
+  flex: 1;
+}
+.chapter-head-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.badge-lessons-count {
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+}
+.chapter-block-card.is-open .badge-lessons-count {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+.chapter-chevron-icon {
+  font-size: 0.85rem;
+  color: #64748b;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #f1f5f9;
+}
+.chapter-block-card.is-open .chapter-chevron-icon {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.chapter-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.chapter-index-badge {
+  background: #eff6ff;
+  color: #2563eb;
+  font-weight: 800;
+  font-size: 0.82rem;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid #dbeafe;
+}
+.chapter-title-text {
+  font-size: 1.22rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0;
+}
+.chapter-desc-text {
+  margin: 2px 0 0;
+  font-size: 0.88rem;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+/* Danh sách bài trong chương */
+.lessons-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lesson-row-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 18px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.lesson-row-item:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+.lesson-exam-row {
+  background: #fffbeb !important;
+  border: 1.5px solid #fde68a !important;
+}
+.lesson-exam-row:hover {
+  background: #fef3c7 !important;
+  border-color: #f59e0b !important;
+}
+.badge-exam-pill {
+  background: #fef3c7 !important;
+  color: #b45309 !important;
+  border: 1px solid #fde68a !important;
+  font-weight: 700 !important;
+}
+.badge-success-soft {
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid #a7f3d0;
+}
+.lesson-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.lesson-marker {
+  font-size: 1.25rem;
+}
+.lesson-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 2px;
+}
+.lesson-meta-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tag-pill-sm {
+  font-size: 0.74rem;
+  padding: 1px 6px;
+}
+.chapter-live-exams {
+  padding-top: 14px;
+  border-top: 1px dashed #e2e8f0;
+}
+.chapter-exams-heading {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #1e3a8a;
+  margin: 0 0 10px;
+}
+
+/* Link tiêu đề box ở trang chủ */
+.practice-box-head-link {
+  color: #ffffff;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.practice-box-head-link:hover {
+  color: #bfdbfe;
+  text-decoration: none;
+}
+
+
+.item-title-clickable {
+  color: #0f172a;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.item-title-clickable:hover {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.tag-link {
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.tag-link:hover {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-color: #93c5fd;
+  text-decoration: none;
+}
+
+
+.lesson-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.btn-theory {
+  background: #ffffff;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+.btn-theory:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+  border-color: #94a3b8;
+}
+
+
+/* ==================== GIAO DIỆN CHUYÊN BIỆT NGOẠI NGỮ (TEST NĂNG LỰC, STUDY, PRACTICE) ==================== */
+
+.placement-test-card {
+  background: linear-gradient(135deg, #eff6ff 0%, #fdf2f8 50%, #fefce8 100%);
+  border: 2px solid #bfdbfe;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.08);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.placement-test-inner {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 8px 4px;
+}
+
+@media (max-width: 768px) {
+  .placement-test-inner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.placement-icon-badge {
+  font-size: 3rem;
+  background: #ffffff;
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  flex-shrink: 0;
+}
+
+.placement-info {
+  flex: 1;
+}
+
+.placement-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.badge-warning-glow {
+  background: #f59e0b;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.35);
+}
+
+.placement-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #1e3a8a;
+  margin: 0 0 6px;
+  line-height: 1.3;
+}
+
+.placement-desc {
+  color: #475569;
+  font-size: 0.92rem;
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+
+.placement-skills-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.skills-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #64748b;
+  margin-right: 4px;
+}
+
+.skill-tag {
+  background: #ffffff;
+  color: #1e40af;
+  border: 1px solid #cbd5e1;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.placement-action {
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.btn-placement-start {
+  font-size: 1.02rem;
+  font-weight: 700;
+  padding: 12px 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+  transition: all 0.2s ease;
+}
+
+.btn-placement-start:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.4);
+}
+
+/* Tab Chế độ Study / Practice */
+.language-mode-tabs {
+  padding: 16px;
+  background: #ffffff;
+}
+
+.mode-tabs-wrap {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 640px) {
+  .mode-tabs-wrap {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lang-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.lang-tab-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.lang-tab-btn.active {
+  background: #eff6ff;
+  border-color: #2563eb;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12);
+}
+
+.lang-tab-btn.active#btn-mode-practice {
+  background: #ecfdf5;
+  border-color: #059669;
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.12);
+}
+
+.lang-tab-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.lang-tab-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #1e293b;
+}
+
+.lang-tab-btn.active .lang-tab-title {
+  color: #1d4ed8;
+}
+
+.lang-tab-btn.active#btn-mode-practice .lang-tab-title {
+  color: #047857;
+}
+
+.lang-tab-sub {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+/* Toolbar lọc 4 kỹ năng */
+.skills-filter-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.skill-filter-btn {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 20px;
+  padding: 5px 14px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.skill-filter-btn:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+.skill-filter-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+}
+
+/* Thẻ khối Kỹ năng */
+.skill-block-card {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.skill-card-head {
+  padding: 16px 20px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-left: 4px solid #2563eb;
+}
+
+.skill-head-info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.skill-icon-wrap {
+  width: 44px;
+  height: 44px;
+  background: #eff6ff;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.skill-title {
+  font-size: 1.12rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.skill-desc {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin: 2px 0 0;
+}
+
+.skill-lessons-list {
+  padding: 12px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.btn-secondary-soft {
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.btn-secondary-soft:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+/* Modal Placement Test */
+.placement-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.placement-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+}
+
+.placement-modal-box {
+  position: relative;
+  z-index: 10000;
+  width: 90%;
+  max-width: 520px;
+  background: #ffffff;
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.modal-head h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #1e3a8a;
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.btn-close:hover {
+  color: #334155;
+}
+
+.modal-specs-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal-specs-list li {
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  color: #334155;
+  border-left: 3px solid #2563eb;
+}
+
+.text-info-soft {
+  color: #0369a1;
+  background: #f0f9ff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin: 0;
+  border: 1px solid #bae6fd;
+}
+
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+
+/* ==========================================================================
+   GIAO DIỆN DẠNG MỤC LỤC NGOẠI NGỮ (/section/ngoai-ngu)
+   ========================================================================== */
+.foreign-toc-directory {
+  margin-top: 1rem;
+}
+
+.foreign-toc-intro {
+  padding: 1.5rem 1.75rem;
+  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+}
+
+.toc-badge-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.toc-title {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 8px;
+}
+
+.foreign-toc-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.foreign-toc-card {
+  padding: 1.75rem;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  transition: all 0.25s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.foreign-toc-card:hover {
+  transform: translateY(-3px);
+  border-color: #3b82f6;
+  box-shadow: 0 14px 25px -4px rgba(37, 99, 235, 0.12);
+}
+
+.toc-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.toc-flag-icon {
+  font-size: 2.25rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  background: #f1f5f9;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+}
+
+.toc-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.badge-toc-num {
+  background: #1e293b;
+  color: #f8fafc;
+  font-weight: 800;
+  font-size: 0.8rem;
+  padding: 4px 10px;
+  border-radius: 6px;
+  letter-spacing: 0.05em;
+}
+
+.toc-skills-pill {
+  font-size: 0.8rem;
+  color: #0369a1;
+  background: #e0f2fe;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid #bae6fd;
+}
+
+.toc-card-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  margin: 0 0 8px;
+  color: #0f172a;
+}
+
+.toc-title-link {
+  color: #0f172a;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.toc-title-link:hover {
+  color: #2563eb;
+}
+
+.toc-card-desc {
+  font-size: 0.95rem;
+  color: #475569;
+  line-height: 1.55;
+  margin: 0 0 1.25rem;
+}
+
+.toc-cert-summary {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.cert-summary-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.cert-pills-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cert-item-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  color: #1e293b;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.cert-item-pill:hover {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  color: #1d4ed8;
+  transform: translateY(-1px);
+}
+
+.toc-card-footer {
+  margin-top: 0.75rem;
+}
+
+.btn-open-language {
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 12px 20px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+}
+
+.btn-open-language:hover {
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);
+}
+
+
+/* ==========================================================================
+   BÁO CÁO KẾT QUẢ BÀI THI HIỆN ĐẠI (RESULT DASHBOARD)
+   ========================================================================== */
+.result-dashboard-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding-bottom: 2rem;
+}
+
+.result-flash-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.result-hero-card {
+  padding: 0;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.07), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e2e8f0;
+}
+
+/* Banner động viên trên đầu Hero */
+.result-feedback-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 1.25rem 1.75rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.feedback-great {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  color: #065f46;
+}
+.feedback-good {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  color: #1e40af;
+}
+.feedback-fair {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  color: #92400e;
+}
+.feedback-low {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  color: #991b1b;
+}
+
+.feedback-icon {
+  font-size: 2.25rem;
+  line-height: 1;
+}
+
+.feedback-heading {
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin: 0 0 4px;
+}
+
+.feedback-sub {
+  margin: 0;
+  font-size: 0.88rem;
+  opacity: 0.85;
+}
+
+/* Nội dung chính Hero */
+.result-hero-body {
+  display: flex;
+  gap: 2rem;
+  padding: 2rem;
+  align-items: stretch;
+}
+
+@media (max-width: 850px) {
+  .result-hero-body {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+
+/* Hộp điểm số Score Ring */
+.score-card-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 200px;
+  padding: 1.5rem 1rem;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+}
+
+.score-good {
+  background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%);
+  border-color: #86efac;
+}
+.score-ok {
+  background: linear-gradient(180deg, #fefce8 0%, #fef9c3 100%);
+  border-color: #fde047;
+}
+.score-low {
+  background: linear-gradient(180deg, #fef2f2 0%, #fee2e2 100%);
+  border-color: #fca5a5;
+}
+
+.score-circle-outer {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.score-good .score-circle-outer {
+  border: 6px solid #22c55e;
+}
+.score-ok .score-circle-outer {
+  border: 6px solid #eab308;
+}
+.score-low .score-circle-outer {
+  border: 6px solid #ef4444;
+}
+
+.score-circle-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.score-big-num {
+  font-size: 2.75rem;
+  font-weight: 900;
+  line-height: 1;
+  color: #0f172a;
+  letter-spacing: -0.03em;
+}
+
+.score-good .score-big-num { color: #15803d; }
+.score-ok .score-big-num { color: #a16207; }
+.score-low .score-big-num { color: #b91c1c; }
+
+.score-scale {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.score-pending-tag {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #0284c7;
+  background: #e0f2fe;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-top: 2px;
+}
+
+.score-rank-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.88rem;
+  font-weight: 800;
+  padding: 6px 14px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rank-excellent, .rank-good {
+  background: #16a34a;
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(22, 163, 74, 0.3);
+}
+.rank-fair {
+  background: #0284c7;
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(2, 132, 199, 0.3);
+}
+.rank-average {
+  background: #d97706;
+  color: #ffffff;
+}
+.rank-weak {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+/* Thông tin bài thi & Metrics */
+.result-stats-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.result-exam-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 6px;
+}
+
+.result-meta-tags {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-bottom: 1.25rem;
+}
+
+.meta-item {
+  background: #f1f5f9;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+/* Lưới 4 thẻ Metrics */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.metric-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  transition: transform 0.15s ease;
+}
+
+.metric-card:hover {
+  transform: translateY(-2px);
+  background: #ffffff;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.05);
+}
+
+.metric-icon-wrap {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+}
+.icon-blue { background: #e0f2fe; }
+.icon-purple { background: #ede9fe; }
+.icon-green { background: #dcfce7; }
+.icon-amber { background: #fef3c7; }
+
+.metric-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.metric-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.metric-val {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.2;
+}
+
+.text-green { color: #16a34a; }
+
+.metric-sub {
+  font-size: 0.74rem;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.stat-counts-pill {
+  display: flex;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.count-chip {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.chip-correct { background: #dcfce7; color: #15803d; }
+.chip-partial { background: #fef3c7; color: #b45309; }
+.chip-wrong { background: #fee2e2; color: #b91c1c; }
+.chip-skip { background: #f1f5f9; color: #64748b; }
+
+/* Thanh nút bấm hành động */
+.result-actions-bar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.btn-glow-solutions {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+  font-weight: 700;
+  transition: all 0.2s;
+}
+
+.btn-glow-solutions:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.45);
+}
+
+/* ==================== 2. ANALYTICS 2 CỘT ==================== */
+.analytics-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+@media (max-width: 850px) {
+  .analytics-two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+.analytics-card {
+  padding: 1.5rem;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+}
+
+.analytics-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+.head-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.analytics-icon {
+  font-size: 1.75rem;
+}
+
+.analytics-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 2px;
+}
+
+/* Thanh Bar Progress động */
+.bar-chart-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+}
+
+.result-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.result-bar-row:hover {
+  background: #f8fafc;
+}
+
+.bar-header-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.bar-name {
+  font-weight: 600;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.warn-icon {
+  font-size: 0.9rem;
+}
+
+.bar-fraction {
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.bar-pct {
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.bar-track-wrap {
+  width: 100%;
+  height: 10px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bar-fill-dynamic {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fill-great {
+  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+}
+.fill-normal {
+  background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+}
+.fill-weak {
+  background: linear-gradient(90deg, #f87171 0%, #dc2626 100%);
+}
+
+.analytics-footer-tip {
+  margin-top: 1.25rem;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border-left: 3px solid #3b82f6;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+/* Alert chuyên đề yếu */
+.weak-topics-alert {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-radius: 10px;
+  margin-bottom: 1rem;
+}
+
+.weak-topics-alert .alert-icon {
+  font-size: 1.4rem;
+}
+
+.alert-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #9f1239;
+  margin-bottom: 6px;
+}
+
+.weak-tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.weak-tag-chip {
+  background: #ffffff;
+  color: #be123c;
+  border: 1px solid #fda4af;
+  font-size: 0.78rem;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.all-topics-good-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+  color: #065f46;
+  font-size: 0.88rem;
+  margin-bottom: 1rem;
+}
+
+/* ==================== 3. BẢNG MA TRẬN ĐÁP ÁN (ANSWER MATRIX) ==================== */
+.answer-matrix-card {
+  padding: 1.75rem;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+}
+
+.matrix-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.matrix-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 4px;
+}
+
+.palette-matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 8px;
+  margin-bottom: 1.25rem;
+}
+
+.matrix-cell {
+  height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-weight: 700;
+  color: #ffffff;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  position: relative;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.matrix-cell:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+  opacity: 0.95;
+}
+
+.matrix-cell .cell-num {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.matrix-cell .cell-icon {
+  font-size: 0.72rem;
+  line-height: 1;
+  margin-top: 2px;
+  opacity: 0.9;
+}
+
+.matrix-cell.correct {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+.matrix-cell.partial {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+.matrix-cell.wrong {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
+.matrix-cell.unanswered {
+  background: #94a3b8;
+  color: #ffffff;
+}
+
+.matrix-cell.is-flagged::after {
+  content: "★";
+  position: absolute;
+  top: -4px;
+  right: -2px;
+  color: #fbbf24;
+  font-size: 0.75rem;
+}
+
+.matrix-legend-bar {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.dot-correct { background: #10b981; }
+.dot-partial { background: #f59e0b; }
+.dot-wrong { background: #ef4444; }
+.dot-skip { background: #94a3b8; }
+.dot-pending { background: #3b82f6; }
+
+/* ==================== 4. LỘ TRÌNH ĐỀ XUẤT ==================== */
+.next-steps-card {
+  padding: 1.5rem 1.75rem;
+  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
+  border: 1px solid #bfdbfe;
+  border-radius: 16px;
+}
+
+.next-steps-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 1rem;
+}
+
+.next-steps-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+@media (max-width: 800px) {
+  .next-steps-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.step-card {
+  display: flex;
+  gap: 12px;
+  background: #ffffff;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.step-num-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.step-content h4 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: #0f172a;
+}
+
+.step-content p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+
+/* ==========================================================================
+   GIAO DIỆN MỤC LỤC & CÂN ĐỐI TEST NĂNG LỰC NGOẠI NGỮ
+   ========================================================================== */
+
+/* 1. Khối Placement Test cân đối 2 cột */
+.placement-test-card {
+  background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 50%, #fefce8 100%);
+  border: 1.5px solid #bfdbfe;
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.08);
+  border-radius: 18px;
+  padding: 1.75rem 2rem;
+  margin-bottom: 2rem;
+}
+
+.placement-grid-layout {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 28px;
+  align-items: center;
+}
+
+@media (max-width: 900px) {
+  .placement-grid-layout {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
+
+.placement-info-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.placement-title {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #1e3a8a;
+  margin: 0 0 8px;
+  line-height: 1.3;
+}
+
+.placement-desc {
+  color: #475569;
+  font-size: 0.94rem;
+  line-height: 1.55;
+  margin: 0 0 14px;
+}
+
+/* Thẻ CTA hành động bên phải */
+.placement-action-card {
+  background: #ffffff;
+  border: 1.5px solid #bfdbfe;
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.action-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.action-card-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.action-card-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.action-card-sub {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.action-card-perks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.76rem;
+  color: #0369a1;
+  font-weight: 600;
+  padding-top: 4px;
+  border-top: 1px dashed #e2e8f0;
+}
+
+/* 2. Thanh lọc kỹ năng & Mở tất cả */
+.skills-filter-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.filter-pills-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filter-actions-group {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-toggle-all {
+  font-weight: 700;
+  border-color: #cbd5e1;
+  background: #ffffff;
+}
+
+.btn-toggle-all:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+/* 3. Banner hướng dẫn mục lục */
+.toc-guidance-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.guidance-text {
+  font-size: 0.88rem;
+  color: #475569;
+  font-weight: 500;
+}
+
+/* 4. Thẻ Kỹ năng dạng Mục Lục (Accordion) */
+.skill-card-head.clickable {
+  cursor: pointer;
+  user-select: none;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  transition: all 0.2s ease;
+  border-radius: 14px;
+}
+
+.skill-card-head.clickable:hover {
+  background: #f8fafc;
+}
+
+.skill-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.skill-toc-idx {
+  background: #1e293b;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.05em;
+}
+
+.skill-toc-idx.idx-green {
+  background: #059669;
+}
+
+.icon-wrap-green {
+  background: #ecfdf5 !important;
+  color: #059669 !important;
+}
+
+.icon-wrap-gold {
+  background: #fefce8 !important;
+  color: #ca8a04 !important;
+}
+
+.skill-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.btn-chevron-pill {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #1e293b;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.btn-chevron-pill:hover, .btn-chevron-pill.is-active {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.25);
+}
+
+.btn-chevron-green:hover, .btn-chevron-green.is-active {
+  background: #059669 !important;
+  border-color: #059669 !important;
+  box-shadow: 0 4px 10px rgba(5, 150, 105, 0.25) !important;
+}
+
+.btn-chevron-gold:hover, .btn-chevron-gold.is-active {
+  background: #d97706 !important;
+  border-color: #d97706 !important;
+  box-shadow: 0 4px 10px rgba(217, 119, 6, 0.25) !important;
+}
+
+/* Khi accordion mở ra */
+.skill-block-card.is-open {
+  border-color: #93c5fd;
+  box-shadow: 0 8px 20px -4px rgba(37, 99, 235, 0.12);
+}
+
+.skill-block-card.is-open .skill-lessons-list {
+  padding: 0 1.5rem 1.5rem;
+  border-top: 1px solid #f1f5f9;
+  margin-top: 8px;
+}
+
+/* ==========================================================================
+   5. HAI THẺ HUB ĐIỀU HƯỚNG MỤC LỤC STUDY VÀ PRACTICE (TRANG TỔNG QUAN)
+   ========================================================================== */
+.lang-hubs-container {
+  margin-top: 1rem;
+}
+
+.lang-hubs-header {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border: 1.5px solid #e2e8f0;
+  border-radius: 18px;
+  padding: 1.5rem 1.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+}
+
+.hubs-badge-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.hubs-main-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 6px;
+}
+
+.hubs-sub-desc {
+  font-size: 0.92rem;
+  color: #64748b;
+  margin: 0;
+}
+
+.hubs-header-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 10px 18px;
+}
+
+.hub-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.hub-stat-num {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #1e3a8a;
+  line-height: 1.1;
+}
+
+.hub-stat-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.hub-stat-sep {
+  width: 1px;
+  height: 28px;
+  background: #cbd5e1;
+}
+
+.lang-portal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+  align-items: stretch;
+}
+
+@media (max-width: 860px) {
+  .lang-portal-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
+
+.lang-portal-card {
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 1.85rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+}
+
+.lang-portal-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.08);
+}
+
+.study-portal-card {
+  border-color: #bfdbfe;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.study-portal-card:hover {
+  border-color: #2563eb;
+}
+
+.practice-portal-card {
+  border-color: #bbf7d0;
+  background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
+}
+
+.practice-portal-card:hover {
+  border-color: #16a34a;
+}
+
+.portal-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.15rem;
+}
+
+.portal-icon-box {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.portal-icon-blue {
+  background: #eff6ff;
+  border: 1.5px solid #bfdbfe;
+}
+
+.portal-icon-green {
+  background: #f0fdf4;
+  border: 1.5px solid #bbf7d0;
+}
+
+.portal-badge-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.portal-title-block {
+  margin-bottom: 8px;
+}
+
+.portal-card-title {
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #0f172a;
+  margin: 0 0 2px;
+  line-height: 1.2;
+}
+
+.portal-card-subtitle {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.portal-card-desc {
+  color: #475569;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  margin: 0 0 1.25rem;
+  min-height: 48px;
+}
+
+.portal-toc-preview {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.portal-toc-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #64748b;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.75rem;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.portal-toc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.portal-toc-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.88rem;
+  color: #1e293b;
+  font-weight: 600;
+  padding: 2px 0;
+}
+
+.portal-toc-item .toc-item-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.highlight-toc {
+  background: #fffbeb;
+  border: 1px dashed #fde68a;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.highlight-toc.study-highlight {
+  background: #eff6ff;
+  border: 1px dashed #bfdbfe;
+}
+
+.portal-action-wrap {
+  margin-top: auto;
+}
+
+.btn-portal-action {
+  padding: 0.85rem 1.25rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  border-radius: 12px;
+}
+
+.portal-hint-text {
+  font-size: 0.8rem;
+  color: #64748b;
+  text-align: center;
+  margin-top: 8px;
+  font-weight: 500;
+}
+
+.btn-practice-action {
+  background: #16a34a !important;
+  border-color: #16a34a !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(22, 163, 74, 0.25);
+}
+
+.btn-practice-action:hover {
+  background: #15803d !important;
+  border-color: #15803d !important;
+}
+
+/* ==========================================================================
+   6. GIAO DIỆN TRANG CHUYÊN BIỆT (DEDICATED MODE: /STUDY & /PRACTICE)
+   ========================================================================== */
+.dedicated-mode-page {
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.dedicated-top-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1.4rem;
+  border-radius: 16px;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.top-nav-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.top-nav-sep {
+  color: #cbd5e1;
+}
+
+.top-nav-subtext {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.back-overview-btn {
+  font-weight: 700;
+  font-size: 0.92rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 10px;
+}
+
+.btn-switch-mode {
+  font-weight: 700;
+  border-radius: 10px;
+}
+
+.dedicated-hero-banner {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 1.75rem 2rem;
+  border-radius: 20px;
+}
+
+.dedicated-hero-banner.study-theme {
+  background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+  border: 1.5px solid #bfdbfe;
+}
+
+.dedicated-hero-banner.practice-theme {
+  background: linear-gradient(135deg, #f0fdf4 0%, #f8fafc 100%);
+  border: 1.5px solid #bbf7d0;
+}
+
+.dedicated-hero-icon-box {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.2rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.blue-box {
+  background: #ffffff;
+  border: 1.5px solid #bfdbfe;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12);
+}
+
+.green-box {
+  background: #ffffff;
+  border: 1.5px solid #bbf7d0;
+  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.12);
+}
+
+.dedicated-title {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 6px 0 8px;
+  line-height: 1.3;
+}
+
+.dedicated-desc {
+  color: #475569;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.dedicated-hero-summary {
+  display: flex;
+  gap: 12px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.hero-summary-box {
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 10px 16px;
+  text-align: center;
+  min-width: 90px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.hero-summary-num {
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #1e3a8a;
+  line-height: 1.1;
+}
+
+.hero-summary-label {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.hero-tag-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ==========================================================================
+   7. MODAL GIẢ LẬP TRÌNH PHÁT VIDEO & TÓM TẮT BÀI GIẢNG STUDY
+   ========================================================================== */
+.lesson-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.lesson-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+}
+
+.lesson-modal-box {
+  position: relative;
+  width: 100%;
+  max-width: 680px;
+  background: #ffffff;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-head-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lesson-modal-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0;
+}
+
+.video-player-container {
+  background: #0f172a;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+}
+
+.video-screen-mock {
+  position: relative;
+  height: 200px;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+
+.video-play-btn {
+  width: 62px;
+  height: 62px;
+  background: rgba(37, 99, 235, 0.9);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  color: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 0 24px rgba(37, 99, 235, 0.6);
+  transition: transform 0.2s ease;
+}
+
+.video-play-btn:hover {
+  transform: scale(1.1);
+}
+
+.video-overlay-info {
+  position: absolute;
+  bottom: 12px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  color: #cbd5e1;
+}
+
+.video-control-bar {
+  background: #1e293b;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ctrl-btn {
+  background: #334155;
+  border: none;
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ctrl-btn:hover {
+  background: #475569;
+}
+
+.video-track {
+  flex: 1;
+  height: 6px;
+  background: #334155;
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+}
+
+.video-track-fill {
+  height: 100%;
+  background: #38bdf8;
+  border-radius: 3px;
+}
+
+.video-time-text {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-family: monospace;
+}
+
+.lesson-cheat-box {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 1.25rem;
+}
+
+.cheat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 10px;
+  font-size: 0.95rem;
+}
+
+.cheat-points-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.88rem;
+  color: #334155;
+  line-height: 1.6;
+}
+
+.cheat-points-list li {
+  margin-bottom: 6px;
+}
+
+/* ==========================================================================
+   INTERACTIVE PORTAL CARD TITLE & ITEM LINKS
+   ========================================================================== */
+.portal-title-link {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.portal-title-link:hover {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.portal-toc-item-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  border-radius: 8px;
+  padding: 3px 6px;
+  margin: -3px -6px;
+  transition: all 0.15s ease;
+}
+
+.portal-toc-item-link:hover {
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563eb;
+}
+
+.portal-toc-item-link:hover .portal-toc-item {
+  color: #1d4ed8;
+}
+
+.portal-toc-item-link:hover .toc-item-left {
+  font-weight: 700;
+}
+
+/* ==========================================================================
+   CHUYÊN MỤC TÀI LIỆU VỚI 3 PHÂN HỆ (CURRICULUM, EXTRA, REFERENCE EXAMS)
+   ========================================================================== */
+.materials-intro-banner {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border: 1.5px solid #fde68a;
+  border-radius: 18px;
+  padding: 1.75rem 2rem;
+}
+
+.materials-banner-title {
+  font-size: 1.75rem;
+  font-weight: 900;
+  color: #92400e;
+  margin: 10px 0 6px;
+}
+
+.materials-level-container {
+  border-radius: 20px;
+  border: 1.5px solid #e2e8f0;
+  padding: 1.75rem 2rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+}
+
+.materials-level-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 1.25rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1.5px solid #f1f5f9;
+}
+
+.materials-level-header .level-icon-badge {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: #fef3c7;
+  border: 1.5px solid #fde68a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+}
+
+.materials-level-title {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 3px 0 0;
+}
+
+/* 3 Cột / 3 Phần Cân Đối */
+.materials-three-parts-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  align-items: stretch;
+}
+
+@media (max-width: 1024px) {
+  .materials-three-parts-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
+
+.materials-part-card {
+  border-radius: 18px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  border: 1.5px solid #e2e8f0;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+.materials-part-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
+}
+
+/* Phần 1: Xanh dương chủ đạo */
+.part-1-curriculum {
+  border-color: #bfdbfe;
+  background: linear-gradient(180deg, #ffffff 0%, #f0f7ff 100%);
+}
+.part-1-curriculum:hover {
+  border-color: #2563eb;
+}
+
+/* Phần 2: Hổ phách / Vàng cam */
+.part-2-extra {
+  border-color: #fde68a;
+  background: linear-gradient(180deg, #ffffff 0%, #fffdf5 100%);
+}
+.part-2-extra:hover {
+  border-color: #d97706;
+}
+
+/* Phần 3: Xanh lá tươi */
+.part-3-exams {
+  border-color: #bbf7d0;
+  background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
+}
+.part-3-exams:hover {
+  border-color: #16a34a;
+}
+
+.part-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.part-badge-tag {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.blue-tag { background: #dbeafe; color: #1e40af; }
+.amber-tag { background: #fef3c7; color: #92400e; }
+.green-tag { background: #dcfce7; color: #166534; }
+
+.part-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.part-icon {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.part-main-title {
+  font-size: 1.18rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.part-title-link {
+  color: inherit;
+  text-decoration: none;
+}
+.part-title-link:hover {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.part-sub-title {
+  font-size: 0.82rem;
+  color: #64748b;
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+.part-desc {
+  font-size: 0.88rem;
+  color: #475569;
+  line-height: 1.5;
+  margin: 6px 0 14px;
+}
+
+/* Phần 1 preview box */
+.part-preview-box {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.preview-box-label {
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.preview-classes-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.class-pill-link {
+  display: inline-flex;
+  align-items: center;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.class-pill-link:hover {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+  transform: translateY(-1px);
+}
+
+.part-action-bottom {
+  margin-top: auto;
+}
+
+.btn-part-action {
+  padding: 0.85rem 1.25rem;
+  font-weight: 700;
+  font-size: 0.92rem;
+  border-radius: 12px;
+}
+
+.part-action-hint {
+  font-size: 0.78rem;
+  color: #64748b;
+  text-align: center;
+  margin-top: 6px;
+}
+
+/* Sách tham khảo & Đề thi list trong card */
+.extra-books-list, .ref-exams-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.extra-book-item, .ref-exam-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.extra-book-item:hover, .ref-exam-item:hover {
+  border-color: #cbd5e1;
+  background: #fafafa;
+}
+
+.book-item-left, .ref-exam-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.book-icon, .ref-exam-icon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+}
+
+.book-title, .ref-exam-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 210px;
+}
+
+@media (max-width: 1400px) {
+  .book-title, .ref-exam-title {
+    max-width: 160px;
+  }
+}
+
+.btn-read-book {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  border-radius: 8px;
+}
+
+.ref-exam-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   TRANG CHI TIẾT TÀI LIỆU CHÍNH KHÓA THEO TỪNG LỚP (MATERIALS_LEVEL_DETAIL)
+   ========================================================================== */
+.materials-hero-banner {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border: 1.5px solid #fde68a;
+  border-radius: 20px;
+  padding: 2rem 2.25rem;
+}
+
+.materials-hero-inner {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.materials-hero-icon-box {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  background: #ffffff;
+  border: 2px solid #fde68a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.75rem;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.15);
+}
+
+.materials-hero-title {
+  font-size: 1.85rem;
+  font-weight: 900;
+  color: #78350f;
+  margin: 6px 0;
+}
+
+.materials-hero-desc {
+  color: #92400e;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.materials-class-block {
+  border-radius: 18px;
+  border: 1.5px solid #e2e8f0;
+  padding: 1.75rem 2rem;
+  background: #ffffff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+}
+
+.class-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 1.25rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1.5px solid #f1f5f9;
+}
+
+.class-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.class-badge-pill {
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 0.88rem;
+  font-weight: 800;
+  padding: 6px 14px;
+  border-radius: 10px;
+}
+
+.class-block-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 2px;
+}
+
+.class-subjects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.subj-material-card {
+  border-radius: 14px;
+  border: 1.5px solid #e2e8f0;
+  padding: 1.25rem;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.subj-material-card:hover {
+  transform: translateY(-2px);
+  border-color: #3b82f6;
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.08);
+}
+
+.subj-mat-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.subj-mat-icon {
+  font-size: 1.75rem;
+}
+
+.subj-mat-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 4px;
+}
+
+.subj-mat-desc {
+  margin: 0 0 10px;
+  line-height: 1.45;
+}
+
+.subj-mat-outline-box {
+  background: #ffffff;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 12px;
+}
+
+.outline-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 3px;
+}
+
+.outline-content {
+  font-size: 0.8rem;
+  color: #334155;
+  line-height: 1.4;
+}
+
+.subj-mat-actions {
+  margin-top: auto;
+}

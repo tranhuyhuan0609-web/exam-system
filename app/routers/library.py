@@ -103,6 +103,7 @@ async def library_home(
                 .order_by(name)
             )
         ).all()
+    pairs = await _pairs(session, user, shown)
     total = await session.scalar(select(func.count()).select_from(LibraryDocument).where(visible))
     now = await db_now(session)
     pro = user.has_pro(now)
@@ -128,8 +129,29 @@ async def library_home(
             "reads_left": None if pro else max(0, limit - await docs_read_today(session, user, now)),
             "read_limit": limit,
             "downloadable": {d.id for d in shown if can_download(user, d, now)},
+            "pairs": pairs,
         },
     )
+
+
+async def _pairs(session, user: User, docs) -> dict[int, tuple[str, int]]:
+    """A paper and its answer copy point at each other (same exam): doc id -> (label of the other, its id)."""
+    exam_ids = {d.exam_id for d in docs if d.exam_id}
+    if not exam_ids:
+        return {}
+    copies = (
+        await session.scalars(select(LibraryDocument).where(LibraryDocument.exam_id.in_(exam_ids), _visible(user)))
+    ).all()
+    by_exam: dict[int, dict[str, LibraryDocument]] = {}
+    for copy in copies:
+        side = "answers" if (copy.source_file_id or "").endswith(":loi-giai") else "paper"
+        by_exam.setdefault(copy.exam_id, {})[side] = copy
+    pairs = {}
+    for both in by_exam.values():
+        if "paper" in both and "answers" in both:
+            pairs[both["paper"].id] = ("📝 Đáp án", both["answers"].id)
+            pairs[both["answers"].id] = ("📄 Đề", both["paper"].id)
+    return pairs
 
 
 async def _document(session, user: User, document_id: int) -> LibraryDocument:

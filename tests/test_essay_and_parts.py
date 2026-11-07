@@ -161,7 +161,7 @@ def test_essay_answer_is_graded_by_the_ai_worker(student, db, mixed_exam):
     # Provisional: 0.25 of 0.25+0.25+1+0.25+2 = 3.75 points -> 0.67 / 10.
     assert data["score"] == "0.67"
     page = student.get(f"/attempts/{attempt_id}/result").text
-    assert "AI đang chấm phần tự luận" in page and "tạm tính" in page
+    assert "Hệ thống AI đang chấm" in page and "tạm tính" in page
 
     grader = FakeGrader(points=1.6)  # rounded to 1.5
     assert asyncio.run(grade_pending_essays(grader)) == 1
@@ -171,7 +171,7 @@ def test_essay_answer_is_graded_by_the_ai_worker(student, db, mixed_exam):
     assert attempt.grading_status == GradingStatus.COMPLETE
     assert attempt.essay_grades[str(ids["ESSAY1"])]["points"] == "1.50"
     assert attempt.score == Decimal("4.67")  # (0.25 + 1.5) / 3.75 * 10
-    assert "AI đang chấm" not in student.get(f"/attempts/{attempt_id}/result").text
+    assert "Hệ thống AI đang chấm" not in student.get(f"/attempts/{attempt_id}/result").text
     page = student.get(f"/attempts/{attempt_id}/solutions").text
     assert "Em làm đúng hướng" in page and "Nhận xét của AI · 1.5/2 điểm" in page and "AI đang chấm" not in page
     assert student.get(f"/api/attempts/{attempt_id}/grading").json()["grading_status"] == "COMPLETE"

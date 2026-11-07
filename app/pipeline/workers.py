@@ -31,7 +31,7 @@ def silver_deps(store=None) -> SilverDeps:
 
     enricher = build_chain()  # Gemini -> Groq -> OpenRouter, whichever have keys
     embedder = None
-    if settings.gemini_api_key:
+    if settings.gemini_api_key_list:
         from app.pipeline.adapters.gemini import GeminiEmbedder
 
         embedder = GeminiEmbedder()

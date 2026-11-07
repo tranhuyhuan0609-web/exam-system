@@ -19,6 +19,9 @@ include:
     targets:
       - match: 'to[aá]n'
         category: [Ôn thi THPT – Toán, Đề thi THPT 2024]
+      # Địa lí before Vật lí: "Địa lý" holds "lý"
+      - match: '[đd][iị]a\s*l[iíý]|(^|[^a-zà-ỹ])[đd][iị]a([^a-zà-ỹ]|$)'
+        category: [Ôn thi THPT – Địa lí, Đề thi THPT 2024]
       - match: 'v[aậ]t\s*l[iíyý]|(^|[^a-zà-ỹ])l[ýí]([^a-zà-ỹ]|$)'
         category: [Ôn thi THPT – Vật lí, Đề thi THPT 2024]
       - match: 'h[oóòọ]a\s*h[oọ]c|(^|[^a-zà-ỹ])h[oóòọ]a([^a-zà-ỹ]|$)'
@@ -27,8 +30,6 @@ include:
         category: [Ôn thi THPT – Sinh học, Đề thi THPT 2024]
       - match: 'l[iị]ch\s*s[uử]|(^|[^a-zà-ỹ])s[uử]([^a-zà-ỹ]|$)'
         category: [Ôn thi THPT – Lịch sử, Đề thi THPT 2024]
-      - match: '[đd][iị]a\s*l[iíý]|(^|[^a-zà-ỹ])[đd][iị]a([^a-zà-ỹ]|$)'
-        category: [Ôn thi THPT – Địa lí, Đề thi THPT 2024]
       - match: 'gdcd|gi[aá]o\s*d[uụ]c\s*c[oô]ng\s*d[aâ]n|ktpl|kinh\s*t[eế]\s*(v[aà]\s*)?ph[aá]p\s*lu[aậ]t'
         category: [Ôn thi THPT – GDKT&PL, Đề thi THPT 2024]
       - match: 'ti[eế]ng\s*anh|(^|[^a-zà-ỹ])anh([^a-zà-ỹ]|$)'
@@ -37,11 +38,25 @@ include:
     kind: HSG
     status: PUBLISHED
     license_note: Đề thi HSG đã công bố
-    targets:
+    targets:  # first match wins: Địa lí before Vật lí ("Địa lý" holds "lý")
       - match: 'to[aá]n'
         category: [Luyện thi HSG, Toán, Duyên hải & ĐBBB 2024]
+      - match: '[đd][iị]a\s*l[iíý]|(^|[^a-zà-ỹ])[đd][iị]a([^a-zà-ỹ]|$)'
+        category: [Luyện thi HSG, Địa lí, Duyên hải & ĐBBB 2024]
       - match: 'v[aậ]t\s*l[iíyý]|(^|[^a-zà-ỹ])l[ýí]([^a-zà-ỹ]|$)'
         category: [Luyện thi HSG, Vật lí, Duyên hải & ĐBBB 2024]
+      - match: 'h[oóòọ]a\s*h[oọ]c|(^|[^a-zà-ỹ])h[oóòọ]a([^a-zà-ỹ]|$)'
+        category: [Luyện thi HSG, Hoá học, Duyên hải & ĐBBB 2024]
+      - match: 'sinh\s*h[oọ]c|(^|[^a-zà-ỹ])sinh([^a-zà-ỹ]|$)'
+        category: [Luyện thi HSG, Sinh học, Duyên hải & ĐBBB 2024]
+      - match: 'l[iị]ch\s*s[uử]|(^|[^a-zà-ỹ])s[uử]([^a-zà-ỹ]|$)'
+        category: [Luyện thi HSG, Lịch sử, Duyên hải & ĐBBB 2024]
+      - match: 'ng[uữ]\s*v[aă]n|(^|[^a-zà-ỹ])v[aă]n([^a-zà-ỹ]|$)'
+        category: [Luyện thi HSG, Ngữ văn, Duyên hải & ĐBBB 2024]
+      - match: 'ti[eế]ng\s*anh|(^|[^a-zà-ỹ])anh([^a-zà-ỹ]|$)'
+        category: [Luyện thi HSG, Tiếng Anh, Duyên hải & ĐBBB 2024]
+      - match: 'tin\s*h[oọ]c|(^|[^a-zà-ỹ])tin([^a-zà-ỹ]|$)'
+        category: [Luyện thi HSG, Tin học, Duyên hải & ĐBBB 2024]
   - folder: "1. Khối 10 - Chương trình mới"
     kind: TOPIC
     status: PENDING_REVIEW

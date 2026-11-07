@@ -1,135 +1,332 @@
 {% extends "base.html" %}
-{% block title %}Kết quả · {{ exam.title }}{% endblock %}
+{% block title %}Báo cáo kết quả · {{ exam.title }}{% endblock %}
 {% block head %}{% include "_katex.html" %}{% endblock %}
 
 {% macro bar(b) %}
-  <div class="bar-row {{ 'weak' if b.weak }}" tabindex="0"
+  <div class="result-bar-row {{ 'is-weak' if b.weak }}" tabindex="0"
        data-tip="{{ b.label }}: đúng {{ b.correct }}/{{ b.graded }} câu ({{ b.percent }}%)">
-    <span class="bar-label">{% if b.weak %}<span class="status-critical" aria-hidden="true">⚠</span> {% endif %}{{ b.label }}</span>
-    <span class="bar-track"><span class="bar-fill" style="width: {{ b.percent }}%"></span></span>
-    <span class="bar-value">{{ b.correct }}/{{ b.graded }} · {{ b.percent }}%</span>
+    <div class="bar-header-info">
+      <span class="bar-name">
+        {% if b.weak %}<span class="warn-icon" aria-hidden="true">⚠️</span>{% endif %}
+        {{ b.label }}
+      </span>
+      <span class="bar-fraction"><strong>{{ b.correct }}</strong>/{{ b.graded }} câu <span class="bar-pct">({{ b.percent }}%)</span></span>
+    </div>
+    <div class="bar-track-wrap">
+      <div class="bar-fill-dynamic {{ 'fill-weak' if b.weak else ('fill-great' if b.percent >= 80 else 'fill-normal') }}" style="width: {{ b.percent }}%"></div>
+    </div>
   </div>
 {% endmacro %}
 
 {% block content %}
-<p class="muted"><a href="/exams/{{ exam.id }}">← {{ exam.title }}</a></p>
+<div class="result-dashboard-container">
+  <!-- Breadcrumb điều hướng -->
+  <nav class="breadcrumb-nav mb-3" aria-label="Breadcrumb">
+    <a href="/" class="crumb-link">Trang chủ</a>
+    <span class="crumb-sep">/</span>
+    <a href="/exams/{{ exam.id }}" class="crumb-link">{{ exam.title }}</a>
+    <span class="crumb-sep">/</span>
+    <span class="crumb-current">Báo cáo kết quả làm bài</span>
+  </nav>
 
-{% if grading_pending %}
-  <div class="flash flash-info" id="grading-banner" data-url="/api/attempts/{{ attempt.id }}/grading">
-    ⏳ AI đang chấm phần tự luận. Điểm bên dưới là điểm tạm tính (tự luận chưa được cộng); trang sẽ tự cập nhật.
-  </div>
-  <script>
-    (() => {
-      const banner = document.getElementById("grading-banner");
-      async function poll() {
-        try {
-          const res = await fetch(banner.dataset.url, { cache: "no-store" });
-          const data = await res.json();
-          if (data.grading_status !== "PENDING_AI") return location.reload();
-        } catch (e) { /* keep polling */ }
+  {% if grading_pending %}
+    <div class="flash flash-info result-flash-banner" id="grading-banner" data-url="/api/attempts/{{ attempt.id }}/grading">
+      <div class="flash-icon">⏳</div>
+      <div>
+        <strong>Hệ thống AI đang chấm điểm phần tự luận.</strong> Điểm hiển thị bên dưới hiện là điểm tạm tính; trang sẽ tự động làm mới khi AI chấm xong.
+      </div>
+    </div>
+    <script>
+      (() => {
+        const banner = document.getElementById("grading-banner");
+        async function poll() {
+          try {
+            const res = await fetch(banner.dataset.url, { cache: "no-store" });
+            const data = await res.json();
+            if (data.grading_status !== "PENDING_AI") return location.reload();
+          } catch (e) { /* keep polling */ }
+          setTimeout(poll, 4000);
+        }
         setTimeout(poll, 4000);
-      }
-      setTimeout(poll, 4000);
-    })();
-  </script>
-{% elif grading_failed %}
-  <div class="flash flash-error">AI chưa chấm được phần tự luận; các câu tự luận tạm tính 0 điểm.</div>
-{% endif %}
+      })();
+    </script>
+  {% elif grading_failed %}
+    <div class="flash flash-error result-flash-banner">
+      <div class="flash-icon">⚠️</div>
+      <div>Hệ thống AI tạm thời chưa hoàn tất chấm điểm tự luận; các câu tự luận đang tạm tính 0 điểm.</div>
+    </div>
+  {% endif %}
 
-{# ---------------------------------------------------------------- 1. Overview #}
-<section class="card result-head" aria-label="Tổng quan">
-  <div class="score-ring {{ 'good' if attempt.score >= 8 else ('ok' if attempt.score >= 5 else 'low') }}">
-    <div class="score-value">{{ "%g" % attempt.score }}</div>
-    <div class="muted small">/ 10 điểm{% if grading_pending %} · tạm tính{% endif %}</div>
-  </div>
-  <div class="grow">
-    <div class="row"><h1>{{ exam.title }}</h1><span class="rank-badge {{ report.rank_class }}">{{ report.rank }}</span></div>
-    <div class="overview-grid">
-      <div><div class="stat-label">Thời gian làm</div>
-        <div class="stat-num">{{ report.time_spent | duration }}</div>
-        <div class="muted small">quy định {{ report.time_allowed | duration }}</div></div>
-      <div><div class="stat-label">Tốc độ trung bình</div><div class="stat-num">{{ report.seconds_per_question | duration }}<span class="muted small">/câu</span></div></div>
-      <div><div class="stat-label">Đúng · một phần</div><div class="stat-num">{{ report.counts.correct }} · {{ report.counts.partial }}</div></div>
-      <div><div class="stat-label">Sai · bỏ trống</div><div class="stat-num">{{ report.counts.wrong }} · {{ report.counts.unanswered }}</div></div>
+  <!-- ==================== 1. HERO CARD TỔNG QUAN KẾT QUẢ ==================== -->
+  <section class="card result-hero-card mb-4" aria-label="Tổng quan kết quả">
+    <!-- Banner động viên theo điểm số -->
+    <div class="result-feedback-banner {{ 'feedback-great' if attempt.score >= 8.0 else ('feedback-good' if attempt.score >= 6.5 else ('feedback-fair' if attempt.score >= 5.0 else 'feedback-low')) }}">
+      <div class="feedback-icon">
+        {% if attempt.score >= 8.5 %}🏆
+        {% elif attempt.score >= 8.0 %}🌟
+        {% elif attempt.score >= 6.5 %}👏
+        {% elif attempt.score >= 5.0 %}👍
+        {% else %}💪
+        {% endif %}
+      </div>
+      <div class="feedback-text">
+        <h2 class="feedback-heading">
+          {% if attempt.score >= 9.0 %}Xuất sắc! Bạn đã hoàn thành bài thi với kết quả đỉnh cao!
+          {% elif attempt.score >= 8.0 %}Làm bài rất tốt! Điểm số ấn tượng và phong độ ổn định.
+          {% elif attempt.score >= 6.5 %}Kết quả khá tốt! Bạn đã nắm vững hầu hết kiến thức trọng tâm.
+          {% elif attempt.score >= 5.0 %}Đạt yêu cầu! Tiếp tục ôn luyện thêm để bứt phá điểm số cao hơn.
+          {% else %}Đừng nản lòng! Hãy xem kỹ lời giải chi tiết bên dưới để rút kinh nghiệm nhé.
+          {% endif %}
+        </h2>
+        <p class="feedback-sub">Báo cáo phân tích chuyên sâu chi tiết điểm số, ma trận độ khó và các chuyên đề cần củng cố.</p>
+      </div>
     </div>
-    <div class="exam-facts small">
-      <span>🔁 Lần #{{ attempt.attempt_no }}</span>
-      {% if chosen_parts %}<span>🧩 {% for p in chosen_parts %}{{ TYPE_LABELS[p] }}{{ " + " if not loop.last }}{% endfor %}</span>{% endif %}
-      <span class="muted">Nộp lúc {{ attempt.submitted_at | local_dt }}</span>
-    </div>
-    <div class="row mt">
-      {% if can_retry %}
-        <form method="post" action="/exams/{{ exam.id }}/start"><button class="btn">🔁 Làm lại đề này</button></form>
-      {% endif %}
-      <a class="btn btn-outline" href="/">Chọn đề khác</a>
-    </div>
-  </div>
-</section>
 
-<div class="report-grid">
-  {# -------------------------------------------------------------- 2. Difficulty breakdown #}
-  <section class="card viz-root" aria-labelledby="by-difficulty-title">
-    <h3 id="by-difficulty-title">Ma trận độ khó</h3>
-    <p class="muted small">Số câu làm đúng hoàn toàn ở mỗi mức độ: biết em mất điểm ở câu dễ hay câu khó.</p>
-    <div class="bar-chart" role="img" aria-label="Tỉ lệ đúng theo mức độ">
-      {% for b in report.by_difficulty %}{{ bar(b) }}{% endfor %}
-      <div class="bar-tooltip" hidden></div>
+    <div class="result-hero-body">
+      <!-- Vòng tròn điểm số nổi bật (Score Ring Card) -->
+      <div class="score-card-box {{ 'score-good' if attempt.score >= 8.0 else ('score-ok' if attempt.score >= 5.0 else 'score-low') }}">
+        <div class="score-circle-outer">
+          <div class="score-circle-inner">
+            <span class="score-big-num">{{ "%g" % attempt.score }}</span>
+            <span class="score-scale">/ 10 điểm</span>
+            {% if grading_pending %}
+              <span class="score-pending-tag">Tạm tính</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="score-rank-pill {{ report.rank_class }}">
+          <span class="rank-icon">⭐</span>
+          <span class="rank-name">{{ report.rank }}</span>
+        </div>
+      </div>
+
+      <!-- Thông tin bài thi & Lưới thống kê sinh động -->
+      <div class="result-stats-content">
+        <div class="result-title-row">
+          <div>
+            <h1 class="result-exam-title">{{ exam.title }}</h1>
+            <div class="result-meta-tags">
+              <span class="meta-item">🔁 Lần làm bài #{{ attempt.attempt_no }}</span>
+              {% if chosen_parts %}
+                <span class="meta-item">🧩 {% for p in chosen_parts %}{{ TYPE_LABELS[p] }}{{ " + " if not loop.last }}{% endfor %}</span>
+              {% endif %}
+              <span class="meta-item">📅 Nộp bài: {{ attempt.submitted_at | local_dt }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lưới 4 Thẻ chỉ số chính (Metric Cards) -->
+        {% set total_q = rows | length %}
+        {% set accuracy = ((report.counts.correct / total_q) * 100) | round | int if total_q > 0 else 0 %}
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-icon-wrap icon-blue">⏱️</div>
+            <div class="metric-info">
+              <span class="metric-label">Thời gian làm bài</span>
+              <span class="metric-val">{{ report.time_spent | duration }}</span>
+              <span class="metric-sub">Quy định: {{ report.time_allowed | duration }}</span>
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-icon-wrap icon-purple">⚡</div>
+            <div class="metric-info">
+              <span class="metric-label">Tốc độ trung bình</span>
+              <span class="metric-val">{{ report.seconds_per_question | duration }}<small>/câu</small></span>
+              <span class="metric-sub">Phản xạ làm bài</span>
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-icon-wrap icon-green">🎯</div>
+            <div class="metric-info">
+              <span class="metric-label">Độ chính xác</span>
+              <span class="metric-val text-green">{{ accuracy }}%</span>
+              <span class="metric-sub">{{ report.counts.correct }} / {{ total_q }} câu đúng</span>
+            </div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-icon-wrap icon-amber">📊</div>
+            <div class="metric-info">
+              <span class="metric-label">Chi tiết kết quả</span>
+              <div class="stat-counts-pill">
+                <span class="count-chip chip-correct" title="Số câu đúng hoàn toàn">✓ {{ report.counts.correct }}</span>
+                <span class="count-chip chip-partial" title="Số câu đúng một phần">~ {{ report.counts.partial }}</span>
+                <span class="count-chip chip-wrong" title="Số câu sai">✗ {{ report.counts.wrong }}</span>
+                <span class="count-chip chip-skip" title="Số câu bỏ trống">⭕ {{ report.counts.unanswered }}</span>
+              </div>
+              <span class="metric-sub">Tổng cộng {{ total_q }} câu hỏi</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Thanh thao tác chính -->
+        <div class="result-actions-bar">
+          <a class="btn btn-primary btn-large btn-glow-solutions" href="/attempts/{{ attempt.id }}/solutions">
+            📖 Xem lời giải chi tiết & Đáp án từng câu →
+          </a>
+          {% if can_retry %}
+            <form method="post" action="/exams/{{ exam.id }}/start" class="d-inline">
+              <button class="btn btn-outline btn-large">🔁 Làm lại đề này</button>
+            </form>
+          {% endif %}
+          <a class="btn btn-ghost btn-large" href="/">🏠 Chọn đề khác</a>
+        </div>
+      </div>
     </div>
-    <table class="sr-only">
-      <caption>Tỉ lệ đúng theo mức độ</caption>
-      <tr><th>Mức độ</th><th>Câu đúng</th><th>Tỉ lệ</th></tr>
-      {% for b in report.by_difficulty %}<tr><td>{{ b.label }}</td><td>{{ b.correct }}/{{ b.graded }}</td><td>{{ b.percent }}%</td></tr>{% endfor %}
-    </table>
   </section>
 
-  {# -------------------------------------------------------------- 3. Topic mastery #}
-  <section class="card viz-root" aria-labelledby="topics-title">
-    <h3 id="topics-title">Phân tích theo chuyên đề</h3>
-    {% if report.weak_topics %}
-      <p class="weak-note"><span class="status-critical" aria-hidden="true">⚠</span>
-        <span class="status-label">Hổng kiến thức</span> (đúng dưới 50%):
-        {% for t in report.weak_topics %}<strong>{{ t.label }}</strong>{{ ", " if not loop.last }}{% endfor %}</p>
-    {% else %}
-      <p class="ok-text small">✓ Không có chuyên đề nào dưới 50%.</p>
-    {% endif %}
-    <div class="bar-chart" role="img" aria-label="Tỉ lệ đúng theo chuyên đề">
-      {% for t in report.topics %}{{ bar(t) }}{% endfor %}
-      <div class="bar-tooltip" hidden></div>
+  <!-- ==================== 2. PHÂN TÍCH CHUYÊN SÂU: ĐỘ KHÓ & CHUYÊN ĐỀ ==================== -->
+  <div class="analytics-two-col mb-4">
+    <!-- Cột 1: Ma trận mức độ nhận thức (Bloom Taxonomy) -->
+    <section class="card analytics-card" aria-labelledby="by-difficulty-title">
+      <div class="analytics-card-head">
+        <div class="head-left">
+          <span class="analytics-icon">📈</span>
+          <div>
+            <h3 id="by-difficulty-title" class="analytics-title">Ma trận mức độ nhận thức</h3>
+            <p class="muted small">Tỉ lệ làm đúng ở từng cấp độ tư duy: Nhận biết, Thông hiểu, Vận dụng, Vận dụng cao.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bar-chart-container" role="img" aria-label="Tỉ lệ đúng theo mức độ">
+        {% for b in report.by_difficulty %}
+          {{ bar(b) }}
+        {% endfor %}
+        <div class="bar-tooltip" hidden></div>
+      </div>
+
+      <div class="analytics-footer-tip">
+        <span>💡 <strong>Lời khuyên:</strong> Hãy đảm bảo đạt trên 80% ở phần Nhận biết & Thông hiểu trước khi dồn sức cho câu Vận dụng cao.</span>
+      </div>
+    </section>
+
+    <!-- Cột 2: Phân tích theo chuyên đề & Dạng bài -->
+    <section class="card analytics-card" aria-labelledby="topics-title">
+      <div class="analytics-card-head">
+        <div class="head-left">
+          <span class="analytics-icon">🧠</span>
+          <div>
+            <h3 id="topics-title" class="analytics-title">Phân tích theo chuyên đề</h3>
+            <p class="muted small">Đánh giá mức độ nắm vững từng đơn vị kiến thức để phát hiện lỗ hổng kịp thời.</p>
+          </div>
+        </div>
+      </div>
+
+      {% if report.weak_topics %}
+        <div class="weak-topics-alert">
+          <div class="alert-icon">⚠️</div>
+          <div>
+            <div class="alert-title">Chuyên đề cần củng cố (Tỉ lệ đúng &lt; 50%):</div>
+            <div class="weak-tags-list">
+              {% for t in report.weak_topics %}
+                <span class="weak-tag-chip"><strong>{{ t.label }}</strong> ({{ t.correct }}/{{ t.graded }} · {{ t.percent }}%)</span>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      {% else %}
+        <div class="all-topics-good-alert">
+          <span class="good-icon">🎉</span>
+          <span><strong>Rất tốt!</strong> Bạn không bị hổng kiến thức ở chuyên đề nào (tất cả đều đạt trên 50%).</span>
+        </div>
+      {% endif %}
+
+      <div class="bar-chart-container" role="img" aria-label="Tỉ lệ đúng theo chuyên đề">
+        {% for t in report.topics %}
+          {{ bar(t) }}
+        {% endfor %}
+        <div class="bar-tooltip" hidden></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ==================== 3. BẢNG MA TRẬN ĐÁP ÁN TRỰC QUAN ==================== -->
+  <section class="card answer-matrix-card mb-4" aria-labelledby="sheet-title">
+    <div class="matrix-card-header">
+      <div>
+        <h3 id="sheet-title" class="matrix-title">📋 Bảng đáp án & Trạng thái từng câu</h3>
+        <p class="muted small">Bấm trực tiếp vào số câu để xem ngay lời giải và phương pháp giải chi tiết.</p>
+      </div>
+      <a class="btn btn-primary btn-small" href="/attempts/{{ attempt.id }}/solutions">
+        📖 Xem toàn bộ lời giải chi tiết →
+      </a>
     </div>
-    <table class="sr-only">
-      <caption>Tỉ lệ đúng theo chuyên đề</caption>
-      <tr><th>Chuyên đề</th><th>Câu đúng</th><th>Tỉ lệ</th><th>Câu số</th></tr>
-      {% for t in report.topics %}<tr><td>{{ t.label }}</td><td>{{ t.correct }}/{{ t.graded }}</td><td>{{ t.percent }}%</td><td>{{ t.numbers | join(", ") }}</td></tr>{% endfor %}
-    </table>
+
+    <!-- Palette ô câu hỏi hiện đại -->
+    <div class="palette-matrix-grid">
+      {% for r in rows %}
+        <a href="/attempts/{{ attempt.id }}/solutions#r-{{ r.number }}" 
+           class="matrix-cell {{ r.status }} {{ 'is-flagged' if r.flagged }}"
+           title="Câu {{ r.number }}: {{ 'Đúng' if r.status == 'correct' else ('Đúng một phần' if r.status == 'partial' else ('Sai' if r.status == 'wrong' else 'Bỏ trống')) }} · Bấm để xem lời giải">
+          <span class="cell-num">{{ r.number }}</span>
+          {% if r.status == 'correct' %}
+            <span class="cell-icon">✓</span>
+          {% elif r.status == 'partial' %}
+            <span class="cell-icon">~</span>
+          {% elif r.status == 'wrong' %}
+            <span class="cell-icon">✗</span>
+          {% elif r.status == 'unanswered' %}
+            <span class="cell-icon">-</span>
+          {% endif %}
+        </a>
+      {% endfor %}
+    </div>
+
+    <!-- Chú thích màu sắc (Legend) -->
+    <div class="matrix-legend-bar">
+      <div class="legend-item"><span class="legend-dot dot-correct"></span> Đúng hoàn toàn</div>
+      <div class="legend-item"><span class="legend-dot dot-partial"></span> Đúng một phần</div>
+      <div class="legend-item"><span class="legend-dot dot-wrong"></span> Làm sai</div>
+      <div class="legend-item"><span class="legend-dot dot-skip"></span> Bỏ trống</div>
+      <div class="legend-item"><span class="legend-dot dot-pending"></span> AI đang chấm</div>
+    </div>
+  </section>
+
+  <!-- ==================== 4. LỘ TRÌNH ĐỀ XUẤT CỦNG CỐ KIẾN THỨC ==================== -->
+  <section class="card next-steps-card">
+    <h3 class="next-steps-title">🚀 Lộ trình hành động đề xuất sau bài thi</h3>
+    <div class="next-steps-grid">
+      <div class="step-card">
+        <div class="step-num-badge">1</div>
+        <div class="step-content">
+          <h4>Phân tích câu sai</h4>
+          <p class="muted small">Bấm xem lời giải chi tiết ở các câu bị mất điểm để tìm hiểu lý do sai: nhầm công thức hay mắc bẫy đề thi.</p>
+        </div>
+      </div>
+      <div class="step-card">
+        <div class="step-num-badge">2</div>
+        <div class="step-content">
+          <h4>Ôn tập chuyên đề yếu</h4>
+          <p class="muted small">Đọc lại lý thuyết và ghi chép sơ đồ tư duy của các chuyên đề có tỉ lệ đúng dưới 50% trong bảng thống kê.</p>
+        </div>
+      </div>
+      <div class="step-card">
+        <div class="step-num-badge">3</div>
+        <div class="step-content">
+          <h4>Luyện tập củng cố</h4>
+          <p class="muted small">Làm lại đề thi sau 2-3 ngày hoặc làm đề kiểm tra chuyên đề tương tự để khắc sâu phản xạ giải đề.</p>
+        </div>
+      </div>
+    </div>
   </section>
 </div>
 
-{# ---------------------------------------------------------------- 4. Answer sheet → solutions page #}
-<section class="card" aria-labelledby="sheet-title">
-  <div class="page-head">
-    <h3 id="sheet-title">Bảng đáp án</h3>
-    <a class="btn" href="/attempts/{{ attempt.id }}/solutions">📖 Xem lời giải chi tiết</a>
-  </div>
-  <div class="palette result-palette">
-    {% for r in rows %}<a href="/attempts/{{ attempt.id }}/solutions#r-{{ r.number }}" class="{{ r.status }} {{ 'flagged' if r.flagged }}"
-       title="Câu {{ r.number }}: xem lời giải">{{ r.number }}</a>{% endfor %}
-  </div>
-  <p class="hint"><span class="dot correct"></span> Đúng · <span class="dot partial"></span> Đúng một phần · <span class="dot wrong"></span> Sai · <span class="dot unanswered"></span> Bỏ trống · <span class="dot pending"></span> Đang chấm.
-    Bấm số câu hoặc nút “Xem lời giải chi tiết” để mở trang lời giải.</p>
-  <p class="hint">Điểm theo cấu trúc THPT: trắc nghiệm 0,25 · đúng/sai 0,1 – 0,25 – 0,5 – 1 (đúng 1–4 ý) · trả lời ngắn 0,25; tự luận theo điểm từng câu (AI chấm); quy về thang 10.</p>
-</section>
-
 <script>
   (() => {
-    // Bar tooltips (hover or keyboard focus).
-    document.querySelectorAll(".bar-chart").forEach((chart) => {
+    // Tooltips cho thanh tiến độ
+    document.querySelectorAll(".bar-chart-container").forEach((chart) => {
       const tip = chart.querySelector(".bar-tooltip");
+      if (!tip) return;
       const show = (row) => {
         tip.textContent = row.dataset.tip;
         tip.hidden = false;
-        tip.style.top = row.offsetTop - tip.offsetHeight - 6 + "px";
+        tip.style.top = (row.offsetTop - 34) + "px";
+        tip.style.left = "40px";
       };
-      chart.querySelectorAll(".bar-row").forEach((row) => {
+      chart.querySelectorAll(".result-bar-row").forEach((row) => {
         row.addEventListener("mouseenter", () => show(row));
         row.addEventListener("focus", () => show(row));
         row.addEventListener("mouseleave", () => (tip.hidden = true));

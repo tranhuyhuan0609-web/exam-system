@@ -46,6 +46,9 @@ class LocalExam:
     answers: dict[int, str] = field(default_factory=dict)  # question index -> option label printed in the file
     figures: dict[int, bytes] = field(default_factory=dict)  # question index -> PNG
     source: str = ""  # "docx" | "pdf-text"
+    explanations: dict[int, str] = field(default_factory=dict)  # question index -> marking scheme in the file
+    points: dict[int, float] = field(default_factory=dict)  # question index -> points printed in the paper
+    key_only: bool = False  # a marking scheme / answer file without the questions: nothing to import
 
 
 def _clean(text: str) -> str:
@@ -216,6 +219,14 @@ def read_docx(path: Path) -> LocalExam | None:
             if file.exists() and (png := _to_png(file.read_bytes())) is not None:
                 images[ref] = png
     exam = parse_text_exam(markdown, images)
+    if exam is None:  # an essay paper ("Câu 1 (4,0 điểm)"), possibly with its marking scheme after it
+        from app.ai.essay_exam import read_essay_docx
+
+        essay = read_essay_docx(path)
+        if essay is not None:
+            exam = LocalExam(
+                essay.questions, explanations=essay.explanations, points=essay.points, key_only=essay.key_only
+            )
     if exam:
         exam.source = "docx"
     return exam

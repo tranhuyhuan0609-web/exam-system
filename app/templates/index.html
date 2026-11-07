@@ -1,6 +1,91 @@
 {% extends "base.html" %}
 {% block container_class %}wide{% endblock %}
 
+{% block head %}
+<script>
+  function filterLevel(levelId) {
+    document.querySelectorAll('.level-tab-btn').forEach(btn => btn.classList.remove('active'));
+    if (window.event && window.event.target) {
+      window.event.target.classList.add('active');
+    }
+    const groups = document.querySelectorAll('.level-group');
+    groups.forEach(g => {
+      if (levelId === 'all' || g.getAttribute('data-level') === levelId) {
+        g.style.display = 'block';
+      } else {
+        g.style.display = 'none';
+      }
+    });
+  }
+
+  function filterPracticeBoxes(query, containerId) {
+    const q = query.trim().toLowerCase();
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const boxes = container.querySelectorAll('.practice-box');
+    boxes.forEach(box => {
+      const boxTitle = box.getAttribute('data-box-title') || '';
+      const items = box.querySelectorAll('.practice-row-item');
+      let hasMatch = false;
+      items.forEach(it => {
+        const name = it.getAttribute('data-item-name') || '';
+        if (!q || name.includes(q) || boxTitle.includes(q)) {
+          it.parentElement.style.display = 'block';
+          hasMatch = true;
+        } else {
+          it.parentElement.style.display = 'none';
+        }
+      });
+      box.style.display = hasMatch ? 'flex' : 'none';
+    });
+  }
+
+  function filterHomeHot(type, btn) {
+    const parent = btn.parentElement;
+    parent.querySelectorAll('.tn-pill').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const container = document.getElementById('home-hot-grid');
+    if (!container) return;
+    const cards = container.querySelectorAll('.home-hot-item');
+    cards.forEach(c => {
+      const cardType = c.getAttribute('data-hot-type');
+      if (type === 'all' || cardType === type) {
+        c.style.display = 'flex';
+      } else {
+        c.style.display = 'none';
+      }
+    });
+  }
+
+  function filterBoxLevel(lvl, btn, containerId) {
+    const parent = btn.parentElement;
+    parent.querySelectorAll('.tn-pill').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const boxes = container.querySelectorAll('.practice-box');
+    boxes.forEach(box => {
+      const boxLvl = box.getAttribute('data-level') || '';
+      if (lvl === 'all' || boxLvl === lvl) {
+        box.style.display = 'flex';
+        box.querySelectorAll('li').forEach(li => li.style.display = 'block');
+      } else {
+        box.style.display = 'none';
+      }
+    });
+
+    const liveExamSection = document.getElementById(containerId === 'home-boxes' ? 'de-he-thong-home' : 'de-he-thong');
+    if (liveExamSection) {
+      if (lvl === 'all' || lvl === 'thpt') {
+        liveExamSection.style.display = 'block';
+      } else {
+        liveExamSection.style.display = 'none';
+      }
+    }
+  }
+</script>
+{% endblock %}
+
 {% macro tree(nodes) %}
   <ul class="toc">
     {% for node in nodes if node.id in toc_ids %}
@@ -20,7 +105,6 @@
     {% endfor %}
   </ul>
 {% endmacro %}
-
 
 {% macro quiz_form() %}
   <section class="card quiz-builder" id="tu-tao">
@@ -98,39 +182,697 @@
 {% endmacro %}
 
 {% block content %}
-{% if user %}
-  <h1>Xin chào, {{ user.full_name }} 👋</h1>
-  <p class="muted">Chọn một mục ở mục lục bên trái để làm đề có sẵn hoặc tự tạo bài kiểm tra theo ý mình. Mỗi lần bấm “Bắt đầu” sẽ tính giờ riêng cho bạn.</p>
-{% else %}
-  <section class="hero">
-    <h1>Tự luyện thi trắc nghiệm theo chương, theo bài</h1>
-    <p class="muted">Chọn bài, làm bài có tính giờ, nộp bài và xem điểm kèm lời giải ngay.</p>
-    <p>
-      <a class="btn" href="/register">Tạo tài khoản</a>
-      <a class="btn btn-outline" href="/login">Đăng nhập</a>
-    </p>
-  </section>
+<!-- Danh mục trợ năng và liên kết cấu trúc hệ thống -->
+<nav class="sr-only" aria-label="Cấu trúc danh mục hệ thống">
+  {{ tree(roots) }}
+</nav>
+
+<!-- KHU VỰC TỰ TẠO BÀI KIỂM TRA & BREADCRUMB KHI CHỌN CHUYÊN MỤC CÓ CÂU HỎI -->
+{% if selected or quiz %}
+  <div class="card quiz-selected-area" style="margin-bottom: 24px;">
+    {% with trail_link_last=False %}{% include "_breadcrumb.html" %}{% endwith %}
+    {% if selected %}<h2 class="subject-title" style="margin-top: 6px;">{{ selected.name }}</h2>{% endif %}
+    {% if quiz %}{{ quiz_form() }}{% endif %}
+  </div>
 {% endif %}
 
-<div class="home-layout">
-  <aside class="card toc-panel" aria-label="Mục lục">
-    <h3>Mục lục</h3>
-    <a href="/" class="{{ 'current' if not selected }}">Tất cả đề</a>
-    {{ tree(roots) }}
-  </aside>
+{% if current_section %}
+  <!-- ==================== GIAO DIỆN KHI BẤM VÀO MỖI MỤC (SECTION DETAIL) ==================== -->
+  <div class="section-portal-nav">
+    <a href="/" class="btn btn-outline btn-small back-btn">← Quay lại trang chủ</a>
+    <div class="section-quick-tabs">
+      {% for sec_id, sec in sections.items() %}
+        <a href="/section/{{ sec_id }}" class="sec-tab {{ 'active' if sec_id == active_section_key }}">
+          <span class="sec-tab-icon">{{ sec.icon }}</span>
+          <span>{{ sec.title }}</span>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
 
-  <div>
-    {% with trail_link_last=False %}{% include "_breadcrumb.html" %}{% endwith %}
-    {% if selected %}<h2 class="subject-title">{{ selected.name }}</h2>{% endif %}
-    {% if quiz %}{{ quiz_form() }}{% endif %}
-    {% if selected and groups %}<h3 class="mt">Đề có sẵn</h3>{% endif %}
-    {% for subject, exams in groups %}
-      {% if not selected %}<h2 class="subject-title">{{ subject.name }}</h2>{% endif %}
-      <div class="exam-grid">
-        {% for exam in exams %}
-          <a class="card exam-card" href="/exams/{{ exam.id }}">
-            <div class="muted small">{{ scope_paths.get(scope_of(exam).key, '') }}</div>
-            <h3>{{ exam.title }}</h3>
+  <section class="section-hero card" style="background: {{ current_section.bg_soft }}; border-left: 6px solid {{ current_section.color }};">
+    <div class="section-hero-content">
+      <div class="section-hero-icon" style="background: {{ current_section.gradient }};">{{ current_section.icon }}</div>
+      <div>
+        <div class="section-hero-badge"><span class="badge" style="background: #fff; color: {{ current_section.color }}; font-weight: 700;">{{ current_section.badge }}</span></div>
+        <h1 class="section-hero-title">{{ current_section.title }}</h1>
+        <p class="section-hero-desc">{{ current_section.description }}</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Lựa chọn Cấp học (Tiểu học, THCS, THPT, Đại học) hoặc Ngôn ngữ -->
+  <div class="level-filter-bar">
+    <span class="level-filter-label">{% if active_section_key == 'ngoai-ngu' %}Chọn ngôn ngữ:{% else %}Chọn cấp học:{% endif %}</span>
+    <button type="button" class="level-tab-btn {{ 'active' if not current_level }}" onclick="filterLevel('all')">{% if active_section_key == 'ngoai-ngu' %}✨ Tất cả ngôn ngữ{% else %}✨ Tất cả cấp học{% endif %}</button>
+    {% for lvl in current_section.levels %}
+      <button type="button" class="level-tab-btn {{ 'active' if current_level == lvl.id }}" onclick="filterLevel('{{ lvl.id }}')">
+        {{ lvl.icon }} {{ lvl.name }}
+      </button>
+    {% endfor %}
+  </div>
+
+  <!-- Phân nhánh giao diện: Ngoại ngữ hiển thị dạng MỤC LỤC, các mục khác hiển thị dạng level-grid -->
+  {% if active_section_key == 'ngoai-ngu' %}
+    <!-- ==================== GIAO DIỆN DẠNG MỤC LỤC CHUYÊN BIỆT NGOẠI NGỮ ==================== -->
+    <div class="foreign-toc-directory">
+      <div class="foreign-toc-intro card mb-4">
+        <div class="toc-badge-row">
+          <span class="badge badge-primary">Mục lục chuyên khoa</span>
+          <span class="badge badge-soft-blue">3 Ngôn ngữ trọng điểm</span>
+          <span class="badge badge-success-soft">Rèn luyện toàn diện 4 kỹ năng</span>
+        </div>
+        <h2 class="toc-title">📋 Mục lục các chương trình Ngoại ngữ</h2>
+        <p class="muted">Chọn ngôn ngữ bạn muốn học để mở danh mục chi tiết các chứng chỉ (TOEIC, IELTS, VSTEP, HSK, JLPT), bài test đánh giá năng lực đầu vào và ngân hàng đề thi 4 kỹ năng.</p>
+      </div>
+
+      <div class="foreign-toc-grid">
+        {% for lvl in current_section.levels %}
+          <div class="card foreign-toc-card level-group" data-level="{{ lvl.id }}" style="{{ 'display: none;' if current_level and current_level != lvl.id }}">
+            <div class="toc-card-header">
+              <div class="toc-flag-icon">{{ lvl.icon }}</div>
+              <div class="toc-header-meta">
+                <span class="badge badge-toc-num">Mục 0{{ loop.index }}</span>
+                <span class="toc-skills-pill">🎧 Listening · 📖 Reading · ✍️ Writing · 🗣️ Speaking</span>
+              </div>
+            </div>
+
+            <h3 class="toc-card-title">
+              <a href="/grade/{{ lvl.id }}" class="toc-title-link">{{ lvl.name }}</a>
+            </h3>
+            <p class="toc-card-desc">{{ lvl.desc }}</p>
+
+            <div class="toc-cert-summary">
+              <div class="cert-summary-label">Các chứng chỉ & lộ trình đào tạo trong mục:</div>
+              <div class="cert-pills-list">
+                {% if lvl.id == 'tieng-anh' %}
+                  <a href="/grade/tieng-anh/subject/toeic" class="cert-item-pill">🎧 TOEIC (Format ETS)</a>
+                  <a href="/grade/tieng-anh/subject/ielts" class="cert-item-pill">💎 IELTS (Academic & General)</a>
+                  <a href="/grade/tieng-anh/subject/vstep" class="cert-item-pill">📜 VSTEP (Chuẩn 6 bậc B1 · B2 · C1)</a>
+                  <a href="/grade/tieng-anh" class="cert-item-pill">🗣️ Giao tiếp & Ngữ pháp</a>
+                {% elif lvl.id == 'tieng-trung' %}
+                  <a href="/grade/tieng-trung/subject/hsk" class="cert-item-pill">🏮 HSK (Cấp độ 1 - 6)</a>
+                  <a href="/grade/tieng-trung/subject/hskk" class="cert-item-pill">🗣️ Khẩu ngữ HSKK & Giao tiếp</a>
+                  <a href="/grade/tieng-trung" class="cert-item-pill">🇨🇳 Tiếng Trung Sơ cấp & Trung cấp</a>
+                {% elif lvl.id == 'tieng-nhat' %}
+                  <a href="/grade/tieng-nhat/subject/jlpt" class="cert-item-pill">⛩️ JLPT (Cấp độ N5 - N1)</a>
+                  <a href="/grade/tieng-nhat/subject/kanji-kaiwa" class="cert-item-pill">🌸 Kanji & Kaiwa Giao tiếp</a>
+                  <a href="/grade/tieng-nhat" class="cert-item-pill">🇯🇵 Tiếng Nhật Sơ cấp & Trung cấp</a>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="toc-card-footer">
+              {% if lvl.id == 'tieng-anh' %}
+                <a href="/grade/tieng-anh/subject/toeic" class="btn btn-primary btn-large btn-open-language full">
+                  Vào mục Tiếng Anh (Xem chi tiết TOEIC, IELTS, VSTEP...) →
+                </a>
+              {% elif lvl.id == 'tieng-trung' %}
+                <a href="/grade/tieng-trung/subject/hsk" class="btn btn-primary btn-large btn-open-language full">
+                  Vào mục Tiếng Trung (Xem chi tiết HSK, HSKK...) →
+                </a>
+              {% elif lvl.id == 'tieng-nhat' %}
+                <a href="/grade/tieng-nhat/subject/jlpt" class="btn btn-primary btn-large btn-open-language full">
+                  Vào mục Tiếng Nhật (Xem chi tiết JLPT, Kaiwa...) →
+                </a>
+              {% else %}
+                <a href="/grade/{{ lvl.id }}" class="btn btn-primary btn-large btn-open-language full">
+                  Vào mục {{ lvl.name.split('(')[0].strip() }} →
+                </a>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% elif active_section_key == 'tai-lieu' %}
+    <!-- ==================== GIAO DIỆN CHUYÊN BIỆT TÀI LIỆU VỚI 3 PHẦN ==================== -->
+    <div class="materials-portal-directory">
+      <div class="materials-intro-banner card mb-4">
+        <div class="materials-badge-row">
+          <span class="badge badge-primary">Kho tri thức số</span>
+          <span class="badge badge-warning-glow">3 Phân hệ tài liệu chuyên sâu</span>
+          <span class="badge badge-success-soft">Bám sát chương trình mới GDPT</span>
+        </div>
+        <h2 class="materials-banner-title">📚 Kho Tài Liệu, Sách Tham Khảo & Đề Thi Tuyển Chọn</h2>
+        <p class="muted">Mỗi cấp học được cấu trúc khoa học thành 3 phân hệ: <strong>(1) Tài liệu & Bài giảng trên lớp</strong> theo từng khối (Lớp 1, 2, 3...), <strong>(2) Tài liệu thêm & Sách tham khảo</strong> bồi dưỡng, và <strong>(3) Một số đề thi tham khảo</strong> có đáp án chi tiết.</p>
+      </div>
+
+      <!-- Danh sách từng cấp học với 3 phần rõ ràng -->
+      <div class="materials-levels-grid">
+        {% for lvl in current_section.levels %}
+          <div class="card materials-level-container level-group mb-5" data-level="{{ lvl.id }}" style="{{ 'display: none;' if current_level and current_level != lvl.id }}">
+            <div class="materials-level-header">
+              <div class="level-icon-badge">{{ lvl.icon }}</div>
+              <div class="level-header-text">
+                <div class="level-meta-row">
+                  <span class="badge badge-toc-num">Mục 0{{ loop.index }}</span>
+                  <span class="badge badge-soft-blue">{{ lvl.name }}</span>
+                </div>
+                <h3 class="materials-level-title">{{ lvl.name }}</h3>
+                <p class="muted small" style="margin: 2px 0 0;">{{ lvl.desc }}</p>
+              </div>
+            </div>
+
+            <!-- 3 PHẦN CÂN ĐỐI CỦA CẤP HỌC -->
+            <div class="materials-three-parts-grid">
+
+              <!-- PHẦN 1: TÀI LIỆU VÀ BÀI GIẢNG TRÊN LỚP -->
+              <div class="card materials-part-card part-1-curriculum" onclick="window.location.href='/section/tai-lieu/level/{{ lvl.id }}/chinh-khoa'" style="cursor: pointer;" title="Bấm để mở trang tài liệu và đề cương chi tiết từng lớp">
+                <div class="part-card-top">
+                  <span class="part-badge-tag blue-tag">PHẦN 01</span>
+                  <span class="badge badge-primary">Chương trình trên lớp</span>
+                </div>
+                
+                <div class="part-title-row">
+                  <span class="part-icon">🏫</span>
+                  <div>
+                    <h4 class="part-main-title">
+                      <a href="/section/tai-lieu/level/{{ lvl.id }}/chinh-khoa" class="part-title-link" onclick="event.stopPropagation()">
+                        Tài liệu & Bài giảng trên lớp
+                      </a>
+                    </h4>
+                    <div class="part-sub-title">Đề cương bài học & lý thuyết SGK mới</div>
+                  </div>
+                </div>
+
+                <p class="part-desc">Tổng hợp bài giảng điện tử, tài liệu tóm tắt lý thuyết và đề cương ôn thi học kỳ phân tách riêng theo từng khối lớp từ Lớp 1 đến Lớp 12.</p>
+
+                <!-- Khung tóm tắt danh sách các khối lớp có đề cương -->
+                <div class="part-preview-box">
+                  <div class="preview-box-label">Các khối lớp & đề cương trong mục:</div>
+                  <div class="preview-classes-pills">
+                    {% if lvl.id == 'tieu-hoc' %}
+                      <a href="/section/tai-lieu/level/tieu-hoc/chinh-khoa" class="class-pill-link" onclick="event.stopPropagation()">🎒 Đề cương Lớp 1</a>
+                      <a href="/section/tai-lieu/level/tieu-hoc/chinh-khoa" class="class-pill-link" onclick="event.stopPropagation()">🎒 Đề cương Lớp 2</a>
+                      <a href="/section/tai-lieu/level/tieu-hoc/chinh-khoa" class="class-pill-link" onclick="event.stopPropagation()">🎒 Đề cương Lớp 3</a>
+                      <a href="/section/tai-lieu/level/tieu-hoc/chinh-khoa" class="class-pill-link" onclick="event.stopPropagation()">🎒 Đề cương Lớp 4</a>
+                      <a href="/section/tai-lieu/level/tieu-hoc/chinh-khoa" class="class-pill-link" onclick="event.stopPropagation()">🎒 Đề cương Lớp 5 & Vào 6</a>
+                      <div class="sr-only"><a href="/grade/lop-1/subject/toan-lop-1">Toán Lớp 1</a></div>
+                    {% elif lvl.id == 'thcs' %}
+                      <a href="/section/tai-lieu/level/thcs/chinh-khoa" class="class-pill-link" onclick="event.stopPropagation()">🏫 Đề cương Lớp 6</a>
+                      <a href="/section/tai-lieu/level/thcs/chinh-khoa" class="class-pill-link" onclick="event.stopPropagation()">🏫 Đề cương Lớp 7</a>
+                      <a href="/section/tai-lieu/level/thcs/chinh-khoa" class="class-pill-link" onclick="event.stopPropagation()">🏫 Đề cương Lớp 8</a>
+                      <a href="/section/tai-lieu/level/thcs/chinh-khoa" class="class-pill-link" onclick="event.stopPropagation()">🏫 Đề cương Lớp 9 & Vào 10</a>
+                    {% elif lvl.id == 'thpt' %}
+                      <a href="/section/tai-lieu/level/thpt/chinh-khoa" class="class-pill-link" onclick="event.stopPropagation()">🎓 Đề cương Lớp 10</a>
+                      <a href="/section/tai-lieu/level/thpt/chinh-khoa" class="class-pill-link" onclick="event.stopPropagation()">🎓 Đề cương Lớp 11</a>
+                      <a href="/section/tai-lieu/level/thpt/chinh-khoa" class="class-pill-link" onclick="event.stopPropagation()">🎓 Đề cương Lớp 12</a>
+                      <a href="/section/tai-lieu/level/thpt/chinh-khoa" class="class-pill-link" onclick="event.stopPropagation()">🏆 Cẩm nang Ôn thi TNTHPT</a>
+                    {% else %}
+                      <a href="/section/tai-lieu/level/dai-hoc/chinh-khoa" class="class-pill-link" onclick="event.stopPropagation()">🏛️ Triết học Mác - Lênin</a>
+                      <a href="/section/tai-lieu/level/dai-hoc/chinh-khoa" class="class-pill-link" onclick="event.stopPropagation()">📊 Kinh tế chính trị</a>
+                      <a href="/section/tai-lieu/level/dai-hoc/chinh-khoa" class="class-pill-link" onclick="event.stopPropagation()">📐 Toán cao cấp & XSTK</a>
+                      <a href="/section/tai-lieu/level/dai-hoc/chinh-khoa" class="class-pill-link" onclick="event.stopPropagation()">⚖️ Pháp luật đại cương</a>
+                    {% endif %}
+                  </div>
+                </div>
+
+                <div class="part-action-bottom">
+                  <a href="/section/tai-lieu/level/{{ lvl.id }}/chinh-khoa" class="btn btn-primary btn-large full btn-part-action" onclick="event.stopPropagation()">
+                    🚀 Mở trang Tài liệu & Đề cương {{ lvl.name.split('(')[0].strip() }} (Lớp 1, Lớp 2...) →
+                  </a>
+                  <div class="part-action-hint">Chuyển sang trang chi tiết bài giảng & đề cương từng lớp</div>
+                </div>
+              </div>
+
+              <!-- PHẦN 2: TÀI LIỆU THÊM VÀ SÁCH THAM KHẢO -->
+              <div class="card materials-part-card part-2-extra">
+                <div class="part-card-top">
+                  <span class="part-badge-tag amber-tag">PHẦN 02</span>
+                  <span class="badge badge-warning-glow">Tài liệu mở rộng</span>
+                </div>
+
+                <div class="part-title-row">
+                  <span class="part-icon">📚</span>
+                  <div>
+                    <h4 class="part-main-title">Tài liệu thêm & Sách tham khảo</h4>
+                    <div class="part-sub-title">Sổ tay tra cứu, Mindmap & Sách nâng cao</div>
+                  </div>
+                </div>
+
+                <p class="part-desc">Bộ cẩm nang phương pháp giải nhanh, sơ đồ tư duy tóm tắt và tuyển tập sách bài tập nâng cao bồi dưỡng học sinh.</p>
+
+                <!-- Danh sách sách tham khảo nổi bật -->
+                <div class="extra-books-list">
+                  {% for book in lvl.extra_materials %}
+                    <div class="extra-book-item">
+                      <div class="book-item-left">
+                        <span class="book-icon">📖</span>
+                        <div>
+                          <div class="book-title">{{ book.title }}</div>
+                          <div class="book-meta small muted">
+                            <span>📄 {{ book.pages }}</span> · <span>📥 {{ book.downloads }} lượt tải</span>
+                          </div>
+                        </div>
+                      </div>
+                      <button type="button" class="btn btn-small btn-outline btn-read-book" onclick="openGeneralMaterialModal({{ book.title | tojson }}, {{ book.desc | tojson }}, {{ book.pages | tojson }}, {{ book.format | tojson }}, {{ book.summary_points | tojson }})">
+                        Xem tài liệu
+                      </button>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <!-- PHẦN 3: MỘT SỐ ĐỀ THI THAM KHẢO -->
+              <div class="card materials-part-card part-3-exams">
+                <div class="part-card-top">
+                  <span class="part-badge-tag green-tag">PHẦN 03</span>
+                  <span class="badge badge-success-soft">Ngân hàng đề tuyển chọn</span>
+                </div>
+
+                <div class="part-title-row">
+                  <span class="part-icon">📝</span>
+                  <div>
+                    <h4 class="part-main-title">Một số đề thi tham khảo</h4>
+                    <div class="part-sub-title">Đề thi giữa kỳ, học kỳ có lời giải chi tiết</div>
+                  </div>
+                </div>
+
+                <p class="part-desc">Tuyển tập đề thi khảo sát, kiểm tra định kỳ và đề thi học sinh giỏi kèm ma trận phân tích và thang điểm chi tiết.</p>
+
+                <!-- Danh sách đề thi tham khảo -->
+                <div class="ref-exams-list">
+                  {% for ex in lvl.reference_exams %}
+                    <div class="ref-exam-item">
+                      <div class="ref-exam-left">
+                        <span class="ref-exam-icon">📄</span>
+                        <div>
+                          <div class="ref-exam-title">{{ ex.title }}</div>
+                          <div class="ref-exam-meta small muted">
+                            <span>⏱ {{ ex.duration }}</span> · <span>📝 {{ ex.questions }}</span> · <span>👥 {{ ex.attempts }}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="ref-exam-actions">
+                        <button type="button" class="btn btn-small btn-secondary-soft" onclick="openGeneralExamModal({{ ex.title | tojson }}, {{ ex.desc | tojson }}, {{ ex.duration | tojson }}, {{ ex.questions | tojson }}, {{ ex.practice_link | tojson }})">
+                          Xem đề thi
+                        </button>
+                        {% if ex.practice_link %}
+                          <a href="{{ ex.practice_link }}" class="btn btn-small btn-success">
+                            Thi ngay →
+                          </a>
+                        {% endif %}
+                      </div>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+{% else %}
+  <!-- Danh sách các mục theo cấp học Tiểu học, THCS, THPT, Đại học,... -->
+  <div class="levels-container">
+    {% for lvl in current_section.levels %}
+      <div class="level-group" data-level="{{ lvl.id }}" style="{{ 'display: none;' if current_level and current_level != lvl.id }}">
+        <div class="level-header">
+          <h2>{{ lvl.icon }} {{ lvl.name }}</h2>
+          <p class="muted small">{{ lvl.desc }}</p>
+        </div>
+
+        <div class="item-grid">
+          {% for item in lvl.sub_items %}
+            {% if item.subject_link %}
+              {% set direct_url = item.subject_link %}
+            {% elif item.tags and item.tags[0] is mapping and item.tags[0].link %}
+              {% set direct_url = item.tags[0].link %}
+            {% elif item.grade_id %}
+              {% set direct_url = '/grade/' ~ item.grade_id %}
+            {% else %}
+              {% set direct_url = '/section/luyen-de' %}
+            {% endif %}
+            <div class="card item-card {{ 'item-highlight' if item.highlight }}" onclick="window.location.href='{{ direct_url }}'" style="cursor: pointer;">
+              <div class="item-card-top">
+                <span class="badge badge-primary">{{ item.badge }}</span>
+                <span class="muted small">{{ item.topics }}</span>
+              </div>
+              <h3 class="item-card-title">
+                <a href="{{ direct_url }}" class="item-title-clickable" onclick="event.stopPropagation()">{{ item.title }}</a>
+              </h3>
+              <p class="item-card-desc">{{ item.desc }}</p>
+              <div class="item-tags">
+                {% for tag in item.tags %}
+                  {% if tag is mapping %}
+                    <a href="{{ tag.link }}" class="tag-pill tag-link" onclick="event.stopPropagation()" title="Mở môn {{ tag.name }} từng chương bài">{{ tag.icon or '⚡' }} {{ tag.name }}</a>
+                  {% elif 'Vật lí 11' in tag or 'Vật Lí 11' in tag %}
+                    <a href="/grade/lop-11/subject/vat-li-lop-11" class="tag-pill tag-link" onclick="event.stopPropagation()" title="Mở môn Vật lí 11 từng chương bài">⚡ {{ tag }}</a>
+                  {% elif 'Toán 11' in tag %}
+                    <a href="/grade/lop-11/subject/toan-lop-11" class="tag-pill tag-link" onclick="event.stopPropagation()" title="Mở môn Toán 11 từng chương bài">📐 {{ tag }}</a>
+                  {% elif 'Vật lí 10' in tag or 'Vật Lí 10' in tag %}
+                    <a href="/grade/lop-10/subject/vat-li-lop-10" class="tag-pill tag-link" onclick="event.stopPropagation()" title="Mở môn Vật lí 10 từng chương bài">⚡ {{ tag }}</a>
+                  {% elif 'Toán 10' in tag %}
+                    <a href="/grade/lop-10/subject/toan-lop-10" class="tag-pill tag-link" onclick="event.stopPropagation()" title="Mở môn Toán 10 từng chương bài">📐 {{ tag }}</a>
+                  {% elif item.grade_id %}
+                    <a href="/grade/{{ item.grade_id }}" class="tag-pill tag-link" onclick="event.stopPropagation()" title="Mở môn {{ tag }} khối {{ item.title }}">⚡ {{ tag }}</a>
+                  {% else %}
+                    <span class="tag-pill">{{ tag }}</span>
+                  {% endif %}
+                {% endfor %}
+              </div>
+              <div class="item-card-action">
+                {% if item.subject_link %}
+                  <a href="{{ item.subject_link }}" class="btn btn-small btn-primary full" onclick="event.stopPropagation()">🚀 Vào học & Test năng lực ngay →</a>
+                {% elif active_section_key == 'luyen-de' %}
+                  <a href="{{ direct_url }}" class="btn btn-small btn-primary full" onclick="event.stopPropagation()">Vào phòng luyện đề →</a>
+                {% elif active_section_key == 'tai-lieu' %}
+                  <a href="{{ direct_url }}" class="btn btn-small btn-primary full" onclick="event.stopPropagation()">Xem tài liệu & Đề cương →</a>
+                {% elif active_section_key == 'hoc-bai-moi' %}
+                  <a href="{{ direct_url }}" class="btn btn-small btn-primary full" onclick="event.stopPropagation()">Học lý thuyết & Làm bài củng cố →</a>
+                {% else %}
+                  <a href="{{ direct_url }}" class="btn btn-small btn-primary full" onclick="event.stopPropagation()">Vào học & Luyện thi →</a>
+                {% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- PHẦN CUỐI TRANG MỤC RIÊNG: HIỂN THỊ HOT THEO TỪNG MỤC -->
+  {% if active_section_key == 'luyen-de' %}
+    <div class="live-exams-container mt-4" id="de-thi-hot-section">
+      <div class="hot-exams-header-bar">
+        <div class="hot-title-group">
+          <span class="hot-flame-icon">🔥</span>
+          <div>
+            <h3 class="live-exams-title" style="margin: 0; font-size: 1.25rem;">Top những đề thi HOT & Được làm nhiều nhất</h3>
+            <p class="muted small" style="margin: 2px 0 0;">Luyện đề bấm giờ, hệ thống chấm điểm tự động & lời giải chi tiết</p>
+          </div>
+        </div>
+      </div>
+      {% if hot_exams %}
+        <div class="exam-grid mt-3">
+          {% for exam in hot_exams %}
+            <a class="card exam-card portal-exam-card hot-exam-card" href="/exams/{{ exam.id }}">
+              <div class="exam-card-header">
+                {% if loop.index == 1 %}
+                  <span class="badge badge-hot-fire">🔥 TOP 1 HOT</span>
+                {% elif loop.index <= 3 %}
+                  <span class="badge badge-hot-trending">⭐ Phổ biến</span>
+                {% endif %}
+                <span class="exam-attempts-stat">👥 {{ total_attempts.get(exam.id, 0) }} lượt làm</span>
+              </div>
+              <div class="muted small exam-scope-text">{{ scope_paths.get(scope_of(exam).key, '') }}</div>
+              <h3 class="exam-title-text">{{ exam.title }}</h3>
+              <div class="exam-facts small">
+                <span>📝 {{ question_counts.get(exam.id, 0) }} câu</span>
+                <span>⏱ {{ exam.duration_seconds | duration }}</span>
+                <span>🔁 {{ exam.max_attempts ~ " lượt" if exam.max_attempts else "Không giới hạn" }}</span>
+              </div>
+              {% if active.get(exam.id) %}
+                <span class="badge badge-warn">Đang làm dở</span>
+              {% elif my_attempts.get(exam.id) %}
+                <span class="badge">Đã làm {{ my_attempts[exam.id] }} lần{% if best.get(exam.id) is not none %} · cao nhất {{ "%g" % best[exam.id] }}đ{% endif %}</span>
+              {% endif %}
+              <div class="exam-card-footer">
+                <span class="exam-action-btn">Vào thi ngay →</span>
+              </div>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state-card" style="padding: 24px; text-align: center; color: #64748b; background: #fff; border-radius: 10px; margin-top: 12px; border: 1px dashed #cbd5e1;">
+          <p style="margin: 0;">Hiện chưa có bài thi nào được mở trực tiếp. Các bộ đề thi mới đang được cập nhật!</p>
+        </div>
+      {% endif %}
+    </div>
+
+  {% elif active_section_key == 'tai-lieu' %}
+    <div class="live-exams-container mt-4" id="tai-lieu-hot-section">
+      <div class="hot-exams-header-bar">
+        <div class="hot-title-group">
+          <span class="hot-flame-icon">📚</span>
+          <div>
+            <h3 class="live-exams-title" style="margin: 0; font-size: 1.25rem;">Top những tài liệu & Đề cương HOT nhất</h3>
+            <p class="muted small" style="margin: 2px 0 0;">Cẩm nang công thức, đề cương học kỳ và sơ đồ tư duy có nhiều lượt tải nhất</p>
+          </div>
+        </div>
+      </div>
+      <div class="exam-grid mt-3">
+        {% for mat in hot_materials %}
+          <a class="card exam-card portal-exam-card hot-exam-card" href="{{ mat.link }}">
+            <div class="exam-card-header">
+              <span class="badge badge-hot-fire">{{ mat.badge }}</span>
+              <span class="exam-attempts-stat">{{ mat.stats }}</span>
+            </div>
+            <div class="muted small exam-scope-text">{{ mat.scope }}</div>
+            <h3 class="exam-title-text">{{ mat.title }}</h3>
+            <p class="exam-desc-text small muted" style="margin: 6px 0 10px; font-size: 0.84rem; line-height: 1.45;">{{ mat.desc }}</p>
+            <div class="exam-card-footer">
+              <span class="exam-action-btn" style="background: #2563eb;">{{ mat.action_text }}</span>
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+
+  {% elif active_section_key == 'hoc-bai-moi' %}
+    <div class="live-exams-container mt-4" id="bai-hoc-hot-section">
+      <div class="hot-exams-header-bar">
+        <div class="hot-title-group">
+          <span class="hot-flame-icon">📖</span>
+          <div>
+            <h3 class="live-exams-title" style="margin: 0; font-size: 1.25rem;">Top những bài giảng & Lý thuyết HOT nhất</h3>
+            <p class="muted small" style="margin: 2px 0 0;">Lý thuyết trọng tâm SGK mới, nắm chắc kiến thức và câu hỏi củng cố ngay</p>
+          </div>
+        </div>
+      </div>
+      <div class="exam-grid mt-3">
+        {% for les in hot_lessons %}
+          <a class="card exam-card portal-exam-card hot-exam-card" href="{{ les.link }}">
+            <div class="exam-card-header">
+              <span class="badge badge-hot-fire">{{ les.badge }}</span>
+              <span class="exam-attempts-stat">{{ les.stats }}</span>
+            </div>
+            <div class="muted small exam-scope-text">{{ les.scope }}</div>
+            <h3 class="exam-title-text">{{ les.title }}</h3>
+            <p class="exam-desc-text small muted" style="margin: 6px 0 10px; font-size: 0.84rem; line-height: 1.45;">{{ les.desc }}</p>
+            <div class="exam-card-footer">
+              <span class="exam-action-btn" style="background: #0284c7;">{{ les.action_text }}</span>
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+
+  {% elif active_section_key == 'ngoai-ngu' %}
+    <div class="live-exams-container mt-4" id="ngoai-ngu-hot-section">
+      <div class="hot-exams-header-bar">
+        <div class="hot-title-group">
+          <span class="hot-flame-icon">🌐</span>
+          <div>
+            <h3 class="live-exams-title" style="margin: 0; font-size: 1.25rem;">Top chuyên đề từ vựng & Đề thi ngoại ngữ HOT nhất</h3>
+            <p class="muted small" style="margin: 2px 0 0;">Từ vựng thông dụng, 12 thì ngữ pháp và các bộ đề thi thử vào 10, ĐGNL</p>
+          </div>
+        </div>
+      </div>
+      <div class="exam-grid mt-3">
+        {% for f in hot_foreign %}
+          <a class="card exam-card portal-exam-card hot-exam-card" href="{{ f.link }}">
+            <div class="exam-card-header">
+              <span class="badge badge-hot-fire">{{ f.badge }}</span>
+              <span class="exam-attempts-stat">{{ f.stats }}</span>
+            </div>
+            <div class="muted small exam-scope-text">{{ f.scope }}</div>
+            <h3 class="exam-title-text">{{ f.title }}</h3>
+            <p class="exam-desc-text small muted" style="margin: 6px 0 10px; font-size: 0.84rem; line-height: 1.45;">{{ f.desc }}</p>
+            <div class="exam-card-footer">
+              <span class="exam-action-btn" style="background: #4f46e5;">{{ f.action_text }}</span>
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+{% else %}
+  <!-- ==================== GIAO DIỆN TRANG CHỦ BAN ĐẦU (4 MỤC CHÍNH) ==================== -->
+  {% if user %}
+    <div class="welcome-banner">
+      <h1>Xin chào, {{ user.full_name }} 👋</h1>
+      <p class="muted">Chào mừng bạn quay trở lại. Hãy chọn một trong 4 mục dưới đây để tiếp tục học tập và ôn luyện.</p>
+    </div>
+  {% else %}
+    <section class="portal-hero">
+      <div class="portal-hero-badge">🚀 NỀN TẢNG KHẢO THÍ & HỌC TẬP THÔNG MINH</div>
+      <h1 class="portal-hero-title">Hệ Thống Học Tập & Luyện Thi Trực Tuyến</h1>
+      <p class="portal-hero-desc">Luyện thi trắc nghiệm theo chương trình mới GDPT, làm bài bấm giờ, chấm điểm tự động và lời giải chi tiết tức thì từ Tiểu học đến Đại học.</p>
+      <div class="portal-hero-actions">
+        <a class="btn btn-hero" href="/register">Tạo tài khoản học sinh</a>
+        <a class="btn btn-hero btn-outline" href="/login">Đăng nhập</a>
+      </div>
+    </section>
+  {% endif %}
+
+  <!-- 4 MỤC CHÍNH CỦA GIAO DIỆN WEB -->
+  <div class="portal-section-title">
+    <h2>🎯 Chọn mục học tập của bạn</h2>
+    <p class="muted">Bấm vào từng mục để xem chi tiết các cấp học Tiểu học, THCS, THPT, Đại học, bài giảng và ngân hàng đề thi</p>
+  </div>
+
+  <div class="hub-grid">
+    <!-- Mục 1: Học ngoại ngữ -->
+    <a href="/section/ngoai-ngu" class="card hub-card hub-card-foreign">
+      <div class="hub-card-header">
+        <div class="hub-icon hub-icon-foreign">🌐</div>
+        <span class="hub-pill">Tiếng Anh · Trung · Nhật</span>
+      </div>
+      <h3 class="hub-title">Học ngoại ngữ</h3>
+      <p class="hub-desc">Hệ thống từ vựng, ngữ pháp, đề thi Tiếng Anh, Tiếng Trung, Tiếng Nhật với các chứng chỉ TOEIC, IELTS, VSTEP, HSK, JLPT.</p>
+      <div class="hub-subitems">
+        <span>🇬🇧 Tiếng Anh (TOEIC, IELTS, VSTEP)</span>
+        <span>🇨🇳 Tiếng Trung (HSK 1 - 6, HSKK)</span>
+        <span>🇯🇵 Tiếng Nhật (JLPT N5 - N1)</span>
+      </div>
+      <div class="hub-footer">
+        <span class="hub-cta">Bắt đầu học ngoại ngữ →</span>
+      </div>
+    </a>
+
+    <!-- Mục 2: Luyện đề -->
+    <a href="/section/luyen-de" class="card hub-card hub-card-practice">
+      <div class="hub-card-header">
+        <div class="hub-icon hub-icon-practice">📝</div>
+        <span class="hub-pill">Thi thử & Chấm điểm</span>
+      </div>
+      <h3 class="hub-title">Luyện đề</h3>
+      <p class="hub-desc">Kho đề thi tự luyện: Đề thi tự luyện TNTHPT, ĐGNL/ĐGTD và đề tự luyện từ Lớp 12 đến Lớp 1 đầy đủ các môn Toán, Vật lí, Hóa học.</p>
+      <div class="hub-subitems">
+        <span>🎒 Đề tự luyện Lớp 1 - 5</span>
+        <span>🏫 Đề tự luyện Lớp 6 - 9</span>
+        <span>🎓 Đề tự luyện Lớp 10 - 12</span>
+        <span>🏛️ Trắc nghiệm Đại học & ĐGNL</span>
+      </div>
+      <div class="hub-footer">
+        <span class="hub-cta">Vào phòng luyện đề →</span>
+      </div>
+    </a>
+
+    <!-- Mục 3: Tài liệu -->
+    <a href="/section/tai-lieu" class="card hub-card hub-card-materials">
+      <div class="hub-card-header">
+        <div class="hub-icon hub-icon-materials">📚</div>
+        <span class="hub-pill">Kho tài liệu & Sổ tay</span>
+      </div>
+      <h3 class="hub-title">Tài liệu</h3>
+      <p class="hub-desc">Tuyển tập cẩm nang công thức Toán - Lý - Hóa, sơ đồ tư duy mindmap, đề cương ôn tập học kỳ từ Tiểu học đến Đại học.</p>
+      <div class="hub-subitems">
+        <span>🎒 Sổ tay Toán - TV Tiểu học</span>
+        <span>🏫 Sổ tay KHTN THCS</span>
+        <span>🎓 Cẩm nang công thức THPT</span>
+        <span>🏛️ Đề cương Triết học & Toán ĐH</span>
+      </div>
+      <div class="hub-footer">
+        <span class="hub-cta">Khám phá kho tài liệu →</span>
+      </div>
+    </a>
+
+    <!-- Mục 4: Học bài mới -->
+    <a href="/section/hoc-bai-moi" class="card hub-card hub-card-lessons">
+      <div class="hub-card-header">
+        <div class="hub-icon hub-icon-lessons">📖</div>
+        <span class="hub-pill">Lý thuyết & Bài giảng</span>
+      </div>
+      <h3 class="hub-title">Học bài mới</h3>
+      <p class="hub-desc">Bài giảng lý thuyết bám sát SGK mới Kết nối tri thức, Cánh diều; ví dụ minh họa và câu hỏi củng cố ngay sau bài.</p>
+      <div class="hub-subitems">
+        <span>🎒 Bài học Tiểu học (Lớp 1 - 5)</span>
+        <span>🏫 Lý thuyết SGK THCS</span>
+        <span>🎓 Bài học trọng tâm THPT</span>
+        <span>🏛️ Học phần đại cương Đại học</span>
+      </div>
+      <div class="hub-footer">
+        <span class="hub-cta">Xem bài học mới →</span>
+      </div>
+    </a>
+  </div>
+
+  <!-- PHẦN ĐỀ TỰ LUYỆN TỪ LỚP 1 ĐẾN 12 Ở TRANG MỞ ĐẦU -->
+  <div class="home-practice-section mt-4" id="de-tu-luyen-home">
+    <div class="section-divider">
+      <span>⚡ Danh sách bài thi và đề thi tự luyện</span>
+    </div>
+
+    <!-- Thanh tìm kiếm & lọc cấp học giữ nguyên như cũ -->
+    <div class="search-filter-toolbar card">
+      <div class="search-filter-row">
+        <input type="text" id="home-practice-search" class="search-filter-input" placeholder="🔍 Tìm kiếm đề thi theo tên, môn học, lớp... (VD: Vật lí 12, Toán Lớp 11, ĐGNL, Triết học...)" oninput="filterPracticeBoxes(this.value, 'home-boxes')">
+      </div>
+      <div class="search-filter-pills">
+        <span class="pill-label">Cấp học:</span>
+        <button type="button" class="tn-pill active" onclick="filterBoxLevel('all', this, 'home-boxes')">✨ Tất cả</button>
+        <button type="button" class="tn-pill" onclick="filterBoxLevel('tieu-hoc', this, 'home-boxes')">🎒 Tiểu học (Lớp 1-5)</button>
+        <button type="button" class="tn-pill" onclick="filterBoxLevel('thcs', this, 'home-boxes')">🏫 THCS (Lớp 6-9)</button>
+        <button type="button" class="tn-pill" onclick="filterBoxLevel('thpt', this, 'home-boxes')">🎓 THPT (Lớp 10-12)</button>
+        <button type="button" class="tn-pill" onclick="filterBoxLevel('dai-hoc', this, 'home-boxes')">🏛️ Đại học</button>
+        <button type="button" class="tn-pill" onclick="filterBoxLevel('ngoai-ngu', this, 'home-boxes')">🌐 Ngoại ngữ (Anh, Trung, Nhật)</button>
+      </div>
+    </div>
+
+    <!-- Hệ thống các bảng Box xanh đậm từ Lớp 12 đến Lớp 1, TNTHPT, ĐGNL, Đại học -->
+    <div class="practice-box-grid" id="home-boxes">
+      {% for b in practice_boxes %}
+        <div class="practice-box" data-level="{{ b.level_group }}" data-box-title="{{ b.title | lower }}">
+          <div class="practice-box-head">
+            <a href="/grade/{{ b.id }}" class="practice-box-head-link" title="Bấm để xem toàn bộ danh sách các môn học {{ b.title }}">
+              <span>{{ b.title }}</span>
+              <span class="box-head-arrow">→</span>
+            </a>
+          </div>
+          <ul class="practice-box-body">
+            {% for it in b.rows %}
+              <li>
+                <a href="{{ it.link }}" class="practice-row-item" data-item-name="{{ it.name | lower }}">
+                  <span class="item-name">{{ it.name }}</span>
+                  <span class="item-count">{{ it.count }}</span>
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    </div>
+
+    <!-- PHẦN CUỐI: TOP NHỮNG TÀI LIỆU, BÀI GIẢNG VÀ ĐỀ THI HOT -->
+    <div class="live-exams-container mt-4" id="de-he-thong-home">
+      <div class="hot-exams-header-bar" style="flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center;">
+        <div class="hot-title-group">
+          <span class="hot-flame-icon">🔥</span>
+          <div>
+            <h3 class="live-exams-title" style="margin: 0; font-size: 1.3rem;">Top những tài liệu, bài giảng và đề thi HOT</h3>
+            <p class="muted small" style="margin: 2px 0 0;">Tổng hợp những tài liệu, bài giảng trọng tâm và đề thi có nhiều học sinh tham gia nhất</p>
+          </div>
+        </div>
+        <div class="search-filter-pills" style="margin: 0;">
+          <button type="button" class="tn-pill active" onclick="filterHomeHot('all', this)">✨ Tất cả HOT</button>
+          <button type="button" class="tn-pill" onclick="filterHomeHot('exam', this)">📝 Đề thi HOT</button>
+          <button type="button" class="tn-pill" onclick="filterHomeHot('material', this)">📚 Tài liệu HOT</button>
+          <button type="button" class="tn-pill" onclick="filterHomeHot('lesson', this)">📖 Bài giảng HOT</button>
+        </div>
+      </div>
+
+      <div class="exam-grid mt-3" id="home-hot-grid">
+        <!-- 1. Đề thi HOT -->
+        {% for exam in hot_exams %}
+          <a class="card exam-card portal-exam-card hot-exam-card home-hot-item" data-hot-type="exam" href="/exams/{{ exam.id }}">
+            <div class="exam-card-header">
+              {% if loop.index == 1 %}
+                <span class="badge badge-hot-fire">🔥 TOP 1 ĐỀ THI</span>
+              {% elif loop.index <= 3 %}
+                <span class="badge badge-hot-trending">⭐ Đề thi HOT</span>
+              {% else %}
+                <span class="badge">📝 Đề thi</span>
+              {% endif %}
+              <span class="exam-attempts-stat">👥 {{ total_attempts.get(exam.id, 0) }} lượt làm</span>
+            </div>
+            <div class="muted small exam-scope-text">{{ scope_paths.get(scope_of(exam).key, '') }}</div>
+            <h3 class="exam-title-text">{{ exam.title }}</h3>
             <div class="exam-facts small">
               <span>📝 {{ question_counts.get(exam.id, 0) }} câu</span>
               <span>⏱ {{ exam.duration_seconds | duration }}</span>
@@ -141,16 +883,250 @@
             {% elif my_attempts.get(exam.id) %}
               <span class="badge">Đã làm {{ my_attempts[exam.id] }} lần{% if best.get(exam.id) is not none %} · cao nhất {{ "%g" % best[exam.id] }}đ{% endif %}</span>
             {% endif %}
+            <div class="exam-card-footer">
+              <span class="exam-action-btn">Vào thi ngay →</span>
+            </div>
+          </a>
+        {% endfor %}
+
+        <!-- 2. Tài liệu HOT -->
+        {% for mat in hot_materials %}
+          <a class="card exam-card portal-exam-card hot-exam-card home-hot-item" data-hot-type="material" href="{{ mat.link }}">
+            <div class="exam-card-header">
+              <span class="badge badge-hot-fire">{{ mat.badge }}</span>
+              <span class="exam-attempts-stat">{{ mat.stats }}</span>
+            </div>
+            <div class="muted small exam-scope-text">{{ mat.scope }}</div>
+            <h3 class="exam-title-text">{{ mat.title }}</h3>
+            <p class="exam-desc-text small muted" style="margin: 6px 0 10px; font-size: 0.84rem; line-height: 1.45;">{{ mat.desc }}</p>
+            <div class="exam-card-footer">
+              <span class="exam-action-btn" style="background: #2563eb;">{{ mat.action_text }}</span>
+            </div>
+          </a>
+        {% endfor %}
+
+        <!-- 3. Bài giảng HOT -->
+        {% for les in hot_lessons %}
+          <a class="card exam-card portal-exam-card hot-exam-card home-hot-item" data-hot-type="lesson" href="{{ les.link }}">
+            <div class="exam-card-header">
+              <span class="badge badge-hot-fire">{{ les.badge }}</span>
+              <span class="exam-attempts-stat">{{ les.stats }}</span>
+            </div>
+            <div class="muted small exam-scope-text">{{ les.scope }}</div>
+            <h3 class="exam-title-text">{{ les.title }}</h3>
+            <p class="exam-desc-text small muted" style="margin: 6px 0 10px; font-size: 0.84rem; line-height: 1.45;">{{ les.desc }}</p>
+            <div class="exam-card-footer">
+              <span class="exam-action-btn" style="background: #0284c7;">{{ les.action_text }}</span>
+            </div>
           </a>
         {% endfor %}
       </div>
-    {% else %}
-      <div class="card muted">{{ ("Mục này chưa có đề có sẵn — hãy tự tạo bài ở trên." if quiz else "Mục này chưa có đề luyện tập nào.") if selected else "Chưa có đề luyện tập nào được công khai." }}</div>
-    {% endfor %}
+    </div>
+  </div>
+
+  
+
+  {% if user and user.role == "ADMIN" %}
+    <p class="mt"><a class="btn btn-outline" href="/admin">Vào trang quản trị →</a></p>
+  {% endif %}
+{% endif %}
+
+<script>
+  function filterLevel(levelId) {
+    document.querySelectorAll('.level-tab-btn').forEach(btn => btn.classList.remove('active'));
+    if (window.event && window.event.target) {
+      window.event.target.classList.add('active');
+    }
+    const groups = document.querySelectorAll('.level-group');
+    groups.forEach(g => {
+      if (levelId === 'all' || g.getAttribute('data-level') === levelId) {
+        g.style.display = 'block';
+      } else {
+        g.style.display = 'none';
+      }
+    });
+  }
+
+  function filterPracticeBoxes(query, containerId) {
+    const q = query.trim().toLowerCase();
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const boxes = container.querySelectorAll('.practice-box');
+    boxes.forEach(box => {
+      const boxTitle = box.getAttribute('data-box-title') || '';
+      const items = box.querySelectorAll('.practice-row-item');
+      let hasMatch = false;
+      items.forEach(it => {
+        const name = it.getAttribute('data-item-name') || '';
+        if (!q || name.includes(q) || boxTitle.includes(q)) {
+          it.parentElement.style.display = 'block';
+          hasMatch = true;
+        } else {
+          it.parentElement.style.display = 'none';
+        }
+      });
+      box.style.display = hasMatch ? 'flex' : 'none';
+    });
+  }
+
+  function filterBoxLevel(lvl, btn, containerId) {
+    const parent = btn.parentElement;
+    parent.querySelectorAll('.tn-pill').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const boxes = container.querySelectorAll('.practice-box');
+    boxes.forEach(box => {
+      const boxLvl = box.getAttribute('data-level') || '';
+      if (lvl === 'all' || boxLvl === lvl) {
+        box.style.display = 'flex';
+        box.querySelectorAll('li').forEach(li => li.style.display = 'block');
+      } else {
+        box.style.display = 'none';
+      }
+    });
+
+    const liveExamSection = document.getElementById(containerId === 'home-boxes' ? 'de-he-thong-home' : 'de-he-thong');
+    if (liveExamSection) {
+      if (lvl === 'all' || lvl === 'thpt') {
+        liveExamSection.style.display = 'block';
+      } else {
+        liveExamSection.style.display = 'none';
+      }
+    }
+  }
+</script>
+
+
+<!-- ==================== MODAL XEM NHANH TÀI LIỆU & ĐỀ THI THAM KHẢO ==================== -->
+<div id="general-material-modal" class="lesson-modal" style="display: none;" onclick="if(event.target === this) closeGeneralMaterialModal();">
+  <div class="lesson-modal-dialog" style="max-width: 650px;">
+    <div class="lesson-modal-header">
+      <div class="modal-header-meta">
+        <span class="badge badge-warning-glow" id="gen-mat-badge">Tài liệu tham khảo</span>
+        <span class="badge badge-soft-blue" id="gen-mat-pages">45 trang</span>
+      </div>
+      <h3 class="modal-lesson-title" id="gen-mat-title">Tiêu đề tài liệu</h3>
+      <button type="button" class="modal-close-btn" onclick="closeGeneralMaterialModal()" title="Đóng">✕</button>
+    </div>
+
+    <div class="lesson-modal-body">
+      <div class="card mb-3" style="background: #f8fafc; border-color: #cbd5e1;">
+        <div style="font-weight: 700; color: #1e293b; margin-bottom: 4px;">📖 Tóm tắt nội dung tài liệu:</div>
+        <p style="margin: 0; font-size: 0.92rem; color: #334155; line-height: 1.55;" id="gen-mat-desc">Mô tả</p>
+      </div>
+
+      <div class="lesson-cheat-box mb-3">
+        <div class="cheat-header">
+          <span>💡 Các chuyên đề & nội dung nổi bật trong tài liệu:</span>
+        </div>
+        <div id="gen-mat-points" style="font-size: 0.9rem; line-height: 1.6; color: #334155;"></div>
+      </div>
+
+      <div class="modal-actions-row" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 1.25rem;">
+        <button type="button" class="btn btn-outline" onclick="closeGeneralMaterialModal()">Đóng</button>
+        <button type="button" class="btn btn-primary" onclick="alert('📥 Tài liệu đang được chuẩn bị tải về máy của bạn!')">
+          📥 Tải File PDF Toàn Văn
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 
-{% if user and user.role == "ADMIN" %}
-  <p class="mt"><a class="btn btn-outline" href="/admin">Vào trang quản trị →</a></p>
-{% endif %}
+<div id="general-exam-modal" class="lesson-modal" style="display: none;" onclick="if(event.target === this) closeGeneralExamModal();">
+  <div class="lesson-modal-dialog" style="max-width: 650px;">
+    <div class="lesson-modal-header">
+      <div class="modal-header-meta">
+        <span class="badge badge-success-soft">Đề thi tham khảo</span>
+        <span class="badge badge-warning-glow" id="gen-exam-duration">⏱ 45 phút</span>
+      </div>
+      <h3 class="modal-lesson-title" id="gen-exam-title">Tiêu đề đề thi</h3>
+      <button type="button" class="modal-close-btn" onclick="closeGeneralExamModal()" title="Đóng">✕</button>
+    </div>
+
+    <div class="lesson-modal-body">
+      <div class="card mb-3" style="background: #f0fdf4; border-color: #bbf7d0;">
+        <div style="font-weight: 700; color: #166534; margin-bottom: 4px;">📝 Cấu trúc & Hướng dẫn làm đề:</div>
+        <p style="margin: 0; font-size: 0.92rem; color: #14532d; line-height: 1.55;" id="gen-exam-desc">Mô tả</p>
+      </div>
+
+      <div class="card mb-3" style="background: #fffbeb; border-color: #fde68a;">
+        <div style="font-weight: 700; color: #92400e; margin-bottom: 4px;">🎯 Quy chuẩn đề thi & Barem chấm điểm:</div>
+        <ul style="margin: 0; padding-left: 20px; font-size: 0.88rem; color: #78350f;">
+          <li>Ma trận đề thi chuẩn 4 mức độ: Nhận biết (40%), Thông hiểu (30%), Vận dụng (20%), Vận dụng cao (10%).</li>
+          <li>Có đáp án trắc nghiệm tự động chấm điểm và lời giải chi tiết từng câu.</li>
+          <li>Đồng hồ đếm ngược mô phỏng chính xác phòng thi thực tế.</li>
+        </ul>
+      </div>
+
+      <div class="modal-actions-row" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 1.25rem;">
+        <button type="button" class="btn btn-outline" onclick="closeGeneralExamModal()">Đóng</button>
+        <a id="gen-exam-link" href="/section/luyen-de" class="btn btn-success">
+          🚀 Bắt đầu làm bài thi trực tuyến →
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function openGeneralMaterialModal(title, desc, pages, format, points) {
+    document.getElementById('gen-mat-title').textContent = title;
+    document.getElementById('gen-mat-desc').textContent = desc;
+    document.getElementById('gen-mat-pages').textContent = pages;
+    document.getElementById('gen-mat-badge').textContent = format || 'Tài liệu tham khảo';
+
+    const pointsBox = document.getElementById('gen-mat-points');
+    pointsBox.innerHTML = '';
+    if (points && points.length) {
+      const ul = document.createElement('ul');
+      ul.style.margin = '0';
+      ul.style.paddingLeft = '20px';
+      points.forEach(pt => {
+        const li = document.createElement('li');
+        li.textContent = pt;
+        li.style.marginBottom = '6px';
+        ul.appendChild(li);
+      });
+      pointsBox.appendChild(ul);
+    } else {
+      pointsBox.textContent = 'Toàn bộ nội dung và kiến thức trọng tâm đã được chọn lọc đầy đủ.';
+    }
+
+    const modal = document.getElementById('general-material-modal');
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeGeneralMaterialModal() {
+    const modal = document.getElementById('general-material-modal');
+    modal.style.display = 'none';
+    document.body.style.overflow = 'auto';
+  }
+
+  function openGeneralExamModal(title, desc, duration, questions, practiceLink) {
+    document.getElementById('gen-exam-title').textContent = title;
+    document.getElementById('gen-exam-desc').textContent = desc;
+    document.getElementById('gen-exam-duration').textContent = '⏱ ' + duration + ' · 📝 ' + questions;
+    
+    const linkBtn = document.getElementById('gen-exam-link');
+    if (practiceLink) {
+      linkBtn.href = practiceLink;
+      linkBtn.style.display = 'inline-block';
+    } else {
+      linkBtn.style.display = 'none';
+    }
+
+    const modal = document.getElementById('general-exam-modal');
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeGeneralExamModal() {
+    const modal = document.getElementById('general-exam-modal');
+    modal.style.display = 'none';
+    document.body.style.overflow = 'auto';
+  }
+</script>
+
 {% endblock %}

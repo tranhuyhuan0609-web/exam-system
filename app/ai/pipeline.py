@@ -21,6 +21,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
+from app.ai.essay_exam import clean_paper_text
 from app.ai.figures import crop_figure
 from app.ai.local_text import read_locally
 from app.ai.normalize import NormalizeError, thumbnail_bytes, to_page_images
@@ -86,11 +87,21 @@ def _chunks(pages: list[Path], size: int = EXTRACT_CHUNK_PAGES) -> list[list[Pag
     return groups
 
 
-def _draft(q: ExtractedQuestion, solution: Solution | None, figure: str | None, figure_failed: bool, default: str):
+def _draft(
+    q: ExtractedQuestion,
+    solution: Solution | None,
+    figure: str | None,
+    figure_failed: bool,
+    default: str,
+    key: str | None = None,
+):
+    """`key`: the answer / marking scheme printed in the file for this question (it becomes the explanation)."""
     choices = [clean_choice(c.content) for c in q.choices]
     flags: list[str] = []
     correct, truths, answers = None, [], []
-    if solution is None:
+    if q.type == "ESSAY" and (key or solution is not None):
+        pass  # an essay: its marking scheme, or the AI's model answer (no option to match)
+    elif solution is None:
         flags.append("no_solution")
     elif q.type == "TRUE_FALSE":
         truths = list(solution.statement_truths or [])
@@ -114,18 +125,19 @@ def _draft(q: ExtractedQuestion, solution: Solution | None, figure: str | None, 
         "number": q.number,
         "page": q.page,
         "type": q.type,
-        "content": _QUESTION_LABEL.sub("", q.content.strip(), count=1),
+        "content": clean_paper_text(_QUESTION_LABEL.sub("", q.content.strip(), count=1)),
         "choices": choices,
         "correct": correct,
         "truths": truths,
         "answers": answers,
         "short_answer": solution.short_answer if solution else None,
         "final_value": solution.final_value if solution else None,
-        "explanation": solution.step_by_step_solution.strip() if solution else "",
-        "difficulty": solution.difficulty if solution else default,
+        "explanation": clean_paper_text(key) if key else (solution.step_by_step_solution.strip() if solution else ""),
+        "difficulty": (solution.difficulty if solution else None) or q.difficulty or default,
         "figure": figure,
         "figure_bbox": q.figure_bbox.model_dump() if q.figure_bbox else None,  # model's box, for re-cropping
         "flags": flags,
+        "key_from_file": bool(key),  # the explanation is the answer / marking scheme printed in the file
         "question_id": None,
     }
 
@@ -152,8 +164,9 @@ def _printed_answer(draft: dict[str, Any], label: str) -> None:
         draft["flags"] = [*draft["flags"], "key_mismatch"]
         draft["official"] = label
     else:
-        draft["flags"] = [f for f in draft["flags"] if f != "no_match"]  # the file settles it
+        draft["flags"] = [f for f in draft["flags"] if f not in ("no_match", "no_solution")]  # the file settles it
     draft["correct"] = index
+    draft["printed"] = label  # the file's own answer: it stands for the official key
 
 
 async def _extract(provider: AIProvider, chunk: list[PageImage]) -> list[ExtractedQuestion]:
@@ -204,8 +217,10 @@ async def run_pipeline(
     soffice: str,
     default_difficulty: str,
     progress: Progress,
+    solve: bool = True,
 ) -> tuple[int, list[dict[str, Any]]]:
     """Process one upload. Returns (page_count, drafts). Raises NormalizeError / AIError on failure.
+    `solve=False` saves AI calls: only the questions whose answer is not printed in the file are solved.
 
     Heavy work (LibreOffice, PyMuPDF, Pillow) runs in a temporary directory; results are written to storage:
     pages/<job>/page-NNN.png for the review screen and figures/<name>.png for questions.
@@ -217,12 +232,18 @@ async def run_pipeline(
         source.write_bytes(await storage.get(source_key))
         # Word files and PDFs with a text layer are read on this machine when that works: no AI call to read them.
         local = await asyncio.to_thread(read_locally, source)
-        try:
-            pages, geometries = await to_page_images(source, work / "pages", soffice)
-        except NormalizeError:
-            if local is None:
-                raise
-            pages, geometries = [], []  # no LibreOffice here: the text is enough, only the review images are missing
+        if local is not None and local.key_only:  # an answer / marking-scheme file: no question to import
+            await progress("Tệp hướng dẫn chấm / đáp án: không có câu hỏi để nhập", 1, 1)
+            return 0, []
+        if local is not None and source.suffix.lower() == ".docx":
+            pages, geometries = [], []  # read from its text: page images are not needed
+        else:
+            try:
+                pages, geometries = await to_page_images(source, work / "pages", soffice)
+            except NormalizeError:
+                if local is None:
+                    raise
+                pages, geometries = [], []  # no LibreOffice here: the text is enough, only review images are missing
         for number, page in enumerate(pages, start=1):
             await storage.put(page_key(job_id, number), page.read_bytes(), "image/png")
 
@@ -261,8 +282,16 @@ async def run_pipeline(
             else:
                 failed.add(index)
 
+        keys = {i: (local.explanations.get(i) if local else None) or q.key for i, q in enumerate(extracted)}
         solutions: dict[int, Solution] = {}
-        batches = [list(range(s, min(s + SOLVE_BATCH, len(extracted)))) for s in range(0, len(extracted), SOLVE_BATCH)]
+        # Essays whose marking scheme is in the file need no AI answer
+        to_solve = [i for i, q in enumerate(extracted) if not (q.type == "ESSAY" and keys.get(i))]
+        if not solve:  # the file's own answers are enough where it has them
+            printed_in_file = set(local.answers if local else {}) | {
+                i for i, q in enumerate(extracted) if q.key_label or (q.type != "MULTIPLE_CHOICE" and keys.get(i))
+            }
+            to_solve = [i for i in to_solve if i not in printed_in_file]
+        batches = [to_solve[s : s + SOLVE_BATCH] for s in range(0, len(to_solve), SOLVE_BATCH)]
         for b, indexes in enumerate(batches):
             questions = [extracted[i] for i in indexes]
             await progress(
@@ -289,10 +318,17 @@ async def run_pipeline(
                     solutions[i] = answers[position]
 
         drafts = [
-            _draft(q, solutions.get(i), figure_keys.get(i), i in failed, default_difficulty)
+            _draft(q, solutions.get(i), figure_keys.get(i), i in failed, default_difficulty, keys.get(i))
             for i, q in enumerate(extracted)
         ]
-        for index, label in (local.answers if local else {}).items():
+        printed = dict(local.answers) if local else {}
+        for index, q in enumerate(extracted):  # answers the AI read in the file's answer table
+            label = (q.key_label or "").strip().upper()[:1]
+            if index not in printed and q.type == "MULTIPLE_CHOICE" and label in ("A", "B", "C", "D"):
+                printed[index] = label
+        for index, label in printed.items():
             _printed_answer(drafts[index], label)
+        for index, points in (local.points if local else {}).items():
+            drafts[index]["points"] = points
         await progress("Hoàn tất", 1, 1)
         return len(pages), drafts

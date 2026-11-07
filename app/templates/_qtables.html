@@ -1,0 +1,70 @@
+{# Tables written in question / solution text as "a | b | c" lines (data tables of a paper, read from Word) become
+   real tables before KaTeX runs; formulas inside cells are still typeset. Lines that only hold one cell, or a
+   single such line, stay text. Included by _katex.html (site) and pdf/exam.html (printed papers). #}
+<style>
+  table.q-table { border-collapse: collapse; margin: 6px 0; font-size: 0.95em; white-space: normal; }
+  table.q-table td { border: 1px solid #9ca3af; padding: 3px 8px; vertical-align: top; }
+  table.q-table tr:first-child td { font-weight: 600; background: rgba(127, 127, 127, 0.08); }
+  table.q-table td.num { text-align: right; }
+</style>
+<script>
+  window.qTables = function (root) {
+    const SELECTOR = ".q-content, .math, .stem, .solution, .q-render, .explanation";
+    const elements = root.matches && root.matches(SELECTOR) ? [root] : [];
+    elements.push(...(root.querySelectorAll ? root.querySelectorAll(SELECTOR) : []));
+    const cellsOf = (line) => {  // split on " | " outside $...$ (a formula may hold |x|)
+      const cells = [];
+      let inMath = false, start = 0;
+      for (let i = 0; i < line.length; i++) {
+        if (line[i] === "$") inMath = !inMath;
+        else if (!inMath && line.startsWith(" | ", i)) { cells.push(line.slice(start, i)); start = i + 3; i += 2; }
+      }
+      cells.push(line.slice(start));
+      return cells.map((c) => c.trim());
+    };
+    const tableOf = (rows) => {
+      const table = document.createElement("table");
+      table.className = "q-table";
+      const width = Math.max(...rows.map((r) => r.length));
+      for (const row of rows) {
+        const tr = table.insertRow();
+        for (let c = 0; c < width; c++) {
+          const td = tr.insertCell();
+          td.textContent = row[c] || "";
+          if (/^-?[\d.,]+%?$/.test(td.textContent)) td.className = "num";
+        }
+      }
+      return table;
+    };
+    const convert = (node) => {  // one text node -> text and tables
+      const lines = node.nodeValue.split("\n");
+      const out = document.createDocumentFragment();
+      let text = [], rows = [];
+      const flushRows = () => {
+        if (rows.length >= 2) {
+          if (text.length) out.appendChild(document.createTextNode(text.join("\n") + "\n"));
+          text = [];
+          out.appendChild(tableOf(rows));
+        } else text.push(...rows.map((r) => r.join(" | ")));
+        rows = [];
+      };
+      for (const line of lines) {
+        const cells = cellsOf(line);
+        if (cells.length >= 2) rows.push(cells);
+        else { flushRows(); text.push(line); }
+      }
+      flushRows();
+      if (text.length) out.appendChild(document.createTextNode(text.join("\n")));
+      return out;
+    };
+    for (const el of elements) {
+      if (el.dataset.qTables) continue;
+      el.dataset.qTables = "1";
+      for (const node of [...el.childNodes]) {
+        if (node.nodeType === Node.TEXT_NODE && node.nodeValue.includes(" | ") && node.nodeValue.includes("\n")) {
+          node.replaceWith(convert(node));
+        }
+      }
+    }
+  };
+</script>
