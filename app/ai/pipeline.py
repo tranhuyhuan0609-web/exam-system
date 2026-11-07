@@ -27,6 +27,7 @@ from app.ai.local_text import read_locally
 from app.ai.normalize import NormalizeError, thumbnail_bytes, to_page_images
 from app.ai.provider import AIError, AIProvider, AIQuotaExhausted, FigureImage, PageImage
 from app.ai.schemas import ExtractedQuestion, Solution
+from app.domain.latex import latex_tables
 from app.infrastructure.storage import Storage
 from app.question_rules import extract_number
 
@@ -87,6 +88,12 @@ def _chunks(pages: list[Path], size: int = EXTRACT_CHUNK_PAGES) -> list[list[Pag
     return groups
 
 
+def _tables(content: str, figure: str | None) -> str:
+    """LaTeX tabulars as table rows; a variation table already drawn in the question's figure is not repeated."""
+    is_variation = bool(re.search(r"[ns][ew]arrow|infty", content))
+    return latex_tables(content, drop=bool(figure) and is_variation and "tabular" in content)
+
+
 def _draft(
     q: ExtractedQuestion,
     solution: Solution | None,
@@ -125,14 +132,16 @@ def _draft(
         "number": q.number,
         "page": q.page,
         "type": q.type,
-        "content": clean_paper_text(_QUESTION_LABEL.sub("", q.content.strip(), count=1)),
+        "content": _tables(clean_paper_text(_QUESTION_LABEL.sub("", q.content.strip(), count=1)), figure),
         "choices": choices,
         "correct": correct,
         "truths": truths,
         "answers": answers,
         "short_answer": solution.short_answer if solution else None,
         "final_value": solution.final_value if solution else None,
-        "explanation": clean_paper_text(key) if key else (solution.step_by_step_solution.strip() if solution else ""),
+        "explanation": latex_tables(
+            clean_paper_text(key) if key else (solution.step_by_step_solution.strip() if solution else "")
+        ),
         "difficulty": (solution.difficulty if solution else None) or q.difficulty or default,
         "figure": figure,
         "figure_bbox": q.figure_bbox.model_dump() if q.figure_bbox else None,  # model's box, for re-cropping

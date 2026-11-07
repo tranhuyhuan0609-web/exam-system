@@ -285,6 +285,10 @@ class GeminiProvider:
                                 )
                             continue
                         log.warning("Gemini %s busy (%s), trying next key or model", model, exc.code)
+                    except TimeoutError as exc:  # a slow answer is not a broken file: next key, then next model
+                        last_error = AIError(f"Gemini {model} quá thời gian chờ")
+                        log.warning("Gemini %s timed out (%s), trying next key or model", model, exc.__class__.__name__)
+                        continue
                     except (ValidationError, ValueError, IndexError, AttributeError) as exc:
                         last_error = exc
                         log.warning("Gemini %s returned unusable output: %s — switching to next model", model, exc)

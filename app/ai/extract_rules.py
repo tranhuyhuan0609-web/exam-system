@@ -13,4 +13,6 @@ QUY TẮC CHỌN LỌC NỘI DUNG (ưu tiên hơn mọi hướng dẫn phía tr�
 - KHÔNG chép: tên trường, sở, người ra đề / phản biện / giáo viên, số điện thoại, email, "Họ và tên thí sinh",
   "Số báo danh", "Cán bộ coi thi…", "--- HẾT ---", số trang, mã đề in ở đầu trang.
 - Bỏ nhãn ma trận của từng ý như "(NB 0,5 – VDC 1,5)", "(TH 1,0 -- VD 1,0)": chúng không phải nội dung câu hỏi.
+- Bảng (bảng số liệu, bảng biến thiên) KHÔNG viết bằng \\begin{tabular}: mỗi hàng một dòng, các ô ngăn bởi " | "
+  (VD: "$x$ | $-\\infty$ | $1$ | $+\\infty$"). Nếu bảng nằm trong hình đã khoanh bằng figure_bbox thì không chép lại.
 """
