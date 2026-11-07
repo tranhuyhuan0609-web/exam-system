@@ -3,6 +3,8 @@
 # OpenAlex pages hold 200 works, Semantic Scholar 1000, Crossref 500, Open Library 100, Gutendex 32.
 # Without OPENALEX_API_KEY OpenAlex shares ~1000 requests a day per IP; with a free key (openalex.org/settings/api)
 # raise pages_per_run. Open PDFs are fetched all day into our storage; readers only see works whose file we hold.
+# Paused: the library keeps only exams and topics for now; set to true to harvest papers and open books again.
+library_sources: false
 schedule_times:
 - 01:30
 - 09:30

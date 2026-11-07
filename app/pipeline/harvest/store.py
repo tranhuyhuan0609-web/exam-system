@@ -41,6 +41,8 @@ class TriviaPlan(BaseModel):
 
 
 class Plan(BaseModel):
+    # False: papers and open books are not harvested, fetched or bound (Open Trivia still runs)
+    library_sources: bool = True
     schedule_times: list[str] = ["02:00"]
     pages_per_run: int = 10
     files_per_run: int = 200  # open PDFs fetched per batch; batches run all day, between the harvest runs
