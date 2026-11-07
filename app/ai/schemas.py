@@ -31,10 +31,25 @@ class ExtractedQuestion(BaseModel):
         description="MULTIPLE_CHOICE: có các lựa chọn A, B, C, D; TRUE_FALSE: các ý a), b), c), d) đúng/sai; "
         "SHORT_ANSWER: trả lời bằng một số/kết quả ngắn; ESSAY: tự luận"
     )
+    difficulty: DifficultyName | None = Field(
+        default=None,
+        description="Mức độ nhận thức của câu: RECOGNITION (Nhận biết), UNDERSTANDING (Thông hiểu), "
+        "APPLICATION (Vận dụng), ADVANCED_APPLICATION (Vận dụng cao)",
+    )
     content: str = Field(description="Nguyên văn đề bài tiếng Việt, mọi công thức/ký hiệu/số mũ viết LaTeX trong $...$")
     choices: list[ExtractedChoice] = Field(description="Các lựa chọn theo thứ tự; rỗng nếu không phải trắc nghiệm")
     figure_bbox: BoundingBox | None = Field(
         default=None, description="Khung bao quanh riêng hình vẽ của câu này (không lấy chữ); null nếu không có hình"
+    )
+    key_label: str | None = Field(
+        default=None,
+        description="Trắc nghiệm: chữ cái đáp án đúng CỦA CÂU NÀY nếu tài liệu có in (bảng đáp án, phần đáp án); "
+        "null nếu không thấy",
+    )
+    key: str | None = Field(
+        default=None,
+        description="Đáp án / lời giải / hướng dẫn chấm CỦA CÂU NÀY nếu tài liệu có in (phần ĐÁP ÁN, HƯỚNG DẪN CHẤM), "
+        "chép gọn, bỏ cột điểm; null nếu không thấy",
     )
 
 

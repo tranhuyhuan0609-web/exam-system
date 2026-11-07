@@ -1,7 +1,9 @@
 {# KaTeX renders $...$ / $$...$$ / \(...\) / \[...\] inside any element passed to renderMath(). #}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
+{% include "_qtables.html" %}
 <script>
   window.renderMath = function (el) {
+    if (window.qTables) window.qTables(el);  // "a | b" lines -> tables, before formulas
     if (!window.renderMathInElement) return;
     renderMathInElement(el, {
       delimiters: [

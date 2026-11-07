@@ -9,6 +9,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, ValidationError
 
+from app.ai.extract_rules import EXTRACT_RULES
 from app.ai.schemas import (
     AnswerKeyResult,
     EssayGrade,
@@ -94,6 +95,7 @@ Dấu thập phân kiểu Việt Nam viết là {,} trong LaTeX.
 - Câu có các ý a), b), c), d) đúng/sai: type = TRUE_FALSE, đưa từng ý vào choices với nhãn A, B, C, D.
 - Nếu câu có hình vẽ / đồ thị / sơ đồ mạch, trả figure_bbox bao sát riêng phần hình (không lấy chữ đề bài), \
 theo thang 0–1000 của đúng trang chứa hình, và page là trang chứa câu hỏi."""
+EXTRACT_PROMPT += EXTRACT_RULES  # exam questions only, answers attached to their question, no names
 
 ANSWER_KEY_PROMPT = """Các ảnh trên là BẢNG ĐÁP ÁN chính thức của một đề thi, gồm nhiều mã đề.
 Chép CHÍNH XÁC đáp án của MỌI mã đề có trong bảng, không suy luận, không bỏ sót, không giải lại đề:

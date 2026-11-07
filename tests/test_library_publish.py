@@ -48,9 +48,11 @@ def _draft(n: int, **extra) -> dict:
 class FakePrinter:
     def __init__(self):
         self.pages: list[str] = []
+        self.footers: list[str] = []
 
     async def __call__(self, html: str, footer: str) -> bytes:
         self.pages.append(html)
+        self.footers.append(footer)
         return b"%PDF-1.4 fake"
 
 
@@ -124,9 +126,8 @@ def test_checked_import_is_published_and_typeset_in_place_of_the_original(db):
     exam_id = _publish(db, job_id, printer)
 
     exam = db(lambda s: s.get(Exam, exam_id))
-    assert (
-        exam.title == "Đề thi THPT 2024 – Toán – Mã đề 101" and exam.is_published and exam.duration_seconds == 90 * 60
-    )
+    # "<kỳ thi>-<môn>-<số thứ tự>": the library's own name, not the file's (nor its setter's)
+    assert exam.title == "THPTQG-Toán-001" and exam.is_published and exam.duration_seconds == 90 * 60
     assert db(lambda s: s.scalar(select(func.count()).select_from(Question).where(Question.is_verified))) == 6
 
     paper, solutions = printer.pages
@@ -134,7 +135,7 @@ def test_checked_import_is_published_and_typeset_in_place_of_the_original(db):
     assert "Lời giải câu 1" in solutions and "Đáp án" in solutions
 
     clean = db(lambda s: s.scalars(select(LibraryDocument).where(LibraryDocument.exam_id == exam_id)))
-    assert sorted(d.title for d in clean) == [exam.title, f"{exam.title} – Lời giải"]
+    assert sorted(d.title for d in clean) == [exam.title, f"{exam.title} – Đáp án"]
     assert all(
         d.status == LibraryStatus.PUBLISHED
         and d.downloadable
@@ -208,3 +209,18 @@ def test_chromium_prints_the_paper():
     with pymupdf.open(stream=pdf, filetype="pdf") as document:
         text = document[0].get_text()
     assert "Câu 1." in text and "Họ, tên thí sinh" in text and "Trang 1/1" in text
+
+
+def test_the_paper_and_its_answer_copy_point_at_each_other(db, admin_client):
+    job_id, _, _ = _library_import(db, [_draft(n) for n in range(1, 7)])
+    printer = FakePrinter()
+    exam_id = _publish(db, job_id, printer)
+    copies = {
+        d.title: d.id
+        for d in db(lambda s: s.scalars(select(LibraryDocument).where(LibraryDocument.exam_id == exam_id)))
+    }
+    paper, answers = copies["THPTQG-Toán-001"], copies["THPTQG-Toán-001 – Đáp án"]
+    page = admin_client.get("/library", params={"section": "de-thi", "folder": "Đề thi 2024/Toán (mã đề 10x)"}).text
+    assert f'href="/library/{answers}/view" target="_blank" rel="noopener">📝 Đáp án' in page
+    assert f'href="/library/{paper}/view" target="_blank" rel="noopener">📄 Đề' in page
+    assert printer.footers == ["Đề THPTQG-Toán-001", "THPTQG-Toán-001 – Đáp án · đáp án của đề THPTQG-Toán-001"]
