@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 
 from lxml import etree
 
+from app.pipeline.domain.html_content import BLANK
 from app.pipeline.domain.models import ParsedPage, ParsedQuestion
 from app.pipeline.parsers.base import Images, document, letter_choices, page_title, register, text_of, tf_choices
 
@@ -43,9 +44,10 @@ def _from_instruction(blocks: list) -> list:
     return blocks[starts[-1] :] if starts else []
 
 
-_OPTION = re.compile(r"^([A-D])\s*[.)]\s*")
+_OPTION = re.compile(r"^([A-Da-d])\s*[.)]\s*")  # English quizzes letter options "a. r<ins>e</ins>member"
 _INLINE_OPTIONS = re.compile(r"(?:^|\s)([A-D])\s*\.\s+")
-_MC_ANSWER = re.compile(r"(?i:đáp án)(?: đúng)?(?: là)?\s*:?\s*([A-D])\b")  # also "Chọn đáp án: C"
+# "Đáp án đúng là C", "Chọn đáp án: C", "Đáp án cần chọn là: d"
+_MC_ANSWER = re.compile(r"(?i:đáp án)(?: đúng)?(?: cần chọn)?(?: là)?\s*:?\s*([A-Da-d])\b")
 _SA_ANSWER = re.compile(r"^(?:Đáp (?:án|số)|Trả lời)\s*:?\s*(.+?)\s*\.?$")
 _STATEMENT = re.compile(r"^([a-d])\s*\)\s*")
 _TF_KEY = re.compile(r"\b([a-d])\s*\)\s*[-–:]?\s*(Đúng|Sai|Đ|S)\b", re.I)
@@ -105,6 +107,20 @@ def _drafts(root) -> list[_Draft]:
         if tag == "p" and _PART.match(text):
             part = _part_of(text)
             current = None
+            continue
+        if (
+            tag == "p"
+            and _ENGLISH.match(text)
+            and current is not None
+            and len(current.stem) == 1
+            and not current.options
+            and not _ENGLISH.match(text_of(current.stem[0]))
+        ):  # "Câu 6. Choose the best answer:" then "Question 6. She has been ___": one question
+            current.stem.append(el)
+            # Numbered as when the two lines were read as two questions (the second one held the options and
+            # the answer), so the questions already in the bank keep their ids
+            counters[part] += 1
+            current.number = counters[part]
             continue
         if tag == "p" and _QUESTION.match(text):
             if fresh := _from_instruction(between):
@@ -169,10 +185,32 @@ def _options_from(images: Images, nodes: list) -> list[str]:
     return [t for t in texts if t]
 
 
+_QUESTION_LINE = re.compile(r"(?m)^Question\s*\d+\s*[.:]\s*")
+_BLANK_LINE = re.compile(r".*(_{4,}|\.{5,}|…{2,})")  # the question repeated with its gap, atop the answer
+_WORD_ANSWER = re.compile(r"^Đáp án\s*:\s*(.{1,40}?)\s*\.?$")
+
+
+def _filled_word(blocks: list) -> str | None:
+    """The word written in the gap: "Đáp án: adolescence", or the word underlined (<ins>/<u>) in the worked
+    sentence ("Đáp án: … more <ins>responsibility</ins> …", "=> … <ins>worried</ins> …")."""
+    for node in blocks:
+        found = _WORD_ANSWER.match(text_of(node))
+        if found and len(found.group(1).split()) <= 4 and not _MC_ANSWER.fullmatch(text_of(node).rstrip(".")):
+            return found.group(1)
+    for starts in ("Đáp án", "=>"):
+        for node in blocks:
+            if text_of(node).startswith(starts):
+                marked = [text_of(m) for m in node.xpath(".//ins|.//u") if text_of(m)]
+                if marked:
+                    return " ".join(marked)
+    return None
+
+
 def _build(draft: _Draft, url: str, slug: str) -> ParsedQuestion:
     images = Images(url)
     stem = images.convert(draft.stem)
     stem = _QUESTION.sub("", stem, count=1).strip()
+    stem = _QUESTION_LINE.sub("", stem).strip()  # "Question 6." under "Câu 6."
     if draft.context:  # a reading question carries its passage (and the instruction): it is read on its own
         context = images.convert(draft.context).strip()
         number = re.search(r"\d+", text_of(draft.stem[0]))
@@ -193,10 +231,17 @@ def _build(draft: _Draft, url: str, slug: str) -> ParsedQuestion:
         for node in answer_blocks:
             found = _MC_ANSWER.search(text_of(node))
             if found and correct is None and _tag(node) == "p" and len(text_of(node)) < 40:
-                correct = found.group(1)
+                correct = found.group(1).upper()
                 continue
             explanation_nodes.append(node)
         options = _options_from(images, draft.options)
+        if not options and BLANK in stem and (word := _filled_word(answer_blocks)):
+            # "Use the correct form of the words … ________ (responsible)": the answer is the word underlined
+            # in the worked sentence; students type it
+            q.question_type, q.accepted_answers = "SHORT_ANSWER", [word]
+            q.explanation = images.convert([n for n in answer_blocks if not _BLANK_LINE.match(text_of(n))])
+            q.images = images.urls
+            return q
         if len(options) < 2:
             q.issues.append("Không tách được các lựa chọn A–D.")
         q.choices = letter_choices(options, correct)

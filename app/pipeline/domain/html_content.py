@@ -33,6 +33,7 @@ BLOCK_TAGS = {
 }
 SKIP_TAGS = {"script", "style", "ins", "noscript", "iframe", "button", "svg", "form", "input"}
 SKIP_CLASSES = ("ads_", "adsbygoogle", "ads-", "advert")
+BLANK = "________"  # a gap to fill in (an <input> on the source page)
 _SPACES = re.compile(r"[ \t\r\f\v ]+")
 
 
@@ -89,6 +90,11 @@ class _Writer:
         self.parts.append("\n")
 
     def walk(self, el) -> None:
+        if isinstance(el.tag, str) and etree.QName(el.tag).localname.lower() == "input":
+            if (el.get("type") or "text").lower() == "text":  # a gap students fill in on the site: keep it visible
+                self.parts.append(f" {BLANK} ")
+            self.text(el.tail)
+            return
         if _skip(el):
             self.text(el.tail)
             return
