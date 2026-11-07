@@ -17,7 +17,7 @@ import logging
 import re
 import unicodedata
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.ai_publish import create_exam, drafts_of, publish_drafts, publish_problems
@@ -144,6 +144,9 @@ async def exam_title(session: AsyncSession, job: ImportJob, doc: LibraryDocument
     path = [c.name for c in await _ancestors(session, category)] if category else []
     names = [*path, *doc.folder_path, doc.title]
     prefix = f"{exam_code(names)}-{subject_name(names)}-"
+    # Two workers publishing papers of one series at once would take the same number: one at a time per prefix,
+    # until the transaction that creates the exam commits
+    await session.execute(text("select pg_advisory_xact_lock(hashtext(:prefix))"), {"prefix": prefix})
     taken = await session.scalars(select(Exam.title).where(Exam.title.like(f"{prefix}%")))
     numbers = [int(m.group(1)) for t in taken if (m := re.match(re.escape(prefix) + r"(\d+)$", t))]
     return f"{prefix}{max(numbers, default=0) + 1:03d}"
