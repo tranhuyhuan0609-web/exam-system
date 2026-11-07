@@ -38,6 +38,7 @@ from app.models import (
 )
 from app.pipeline.domain.models import ParsedQuestion, RawDocument, SiteConfig
 from app.pipeline.domain.plain_math import normalize_plain_math
+from app.pipeline.domain.subject_of import corrected_context
 from app.pipeline.parsers.base import all_parsers
 from app.pipeline.ports import AIUnavailable, Downloader, Embedder, Enricher, EnrichItem, RawStore
 from app.pipeline.use_cases.toc import ensure_path
@@ -593,7 +594,8 @@ async def label(
     mapped = await session.get(CrawlCategoryMap, (config.site_id, url))
     if mapped is not None:
         return await session.get(Category, mapped.category_id)
-    context = context or {}
+    # A page reached from another subject's seed carries that seed's subject: the page's own URL / title wins
+    context = corrected_context(context, url, title)
     if config.auto_toc and context.get("root") and context.get("chapter"):
         target = await ensure_path(
             session, [context["root"], context.get("series", ""), context["chapter"], context.get("lesson", "")]

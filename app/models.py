@@ -417,6 +417,8 @@ class CrawledQuestion(Base):
     accepted_answers: Mapped[list[str] | None] = mapped_column(JSONB)
     explanation: Mapped[str | None] = mapped_column(Text)
     explanation_by_ai: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # The level was graded by AI (app/pipeline/use_cases/difficulty.py), not taken from the source's sections
+    difficulty_checked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     ai_provider: Mapped[str | None] = mapped_column(String(30))  # which AI normalised it (gemini, groq...)
     image_path: Mapped[str | None] = mapped_column(String(300))  # re-hosted figure (our storage)
     images: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)  # [{"src", "key", "inline"}]
