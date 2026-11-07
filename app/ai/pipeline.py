@@ -99,8 +99,8 @@ def _draft(
     choices = [clean_choice(c.content) for c in q.choices]
     flags: list[str] = []
     correct, truths, answers = None, [], []
-    if solution is None and q.type == "ESSAY" and key:
-        pass  # an essay with its marking scheme: nothing to solve
+    if q.type == "ESSAY" and (key or solution is not None):
+        pass  # an essay: its marking scheme, or the AI's model answer (no option to match)
     elif solution is None:
         flags.append("no_solution")
     elif q.type == "TRUE_FALSE":
