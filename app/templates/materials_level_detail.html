@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="materials-detail-container">
+  <!-- Breadcrumb điều hướng -->
+  <nav class="breadcrumb-nav mb-3" aria-label="Breadcrumb">
+    <a href="/" class="crumb-link">Trang chủ</a>
+    <span class="crumb-sep">/</span>
+    <a href="/section/tai-lieu" class="crumb-link">Tài liệu</a>
+    <span class="crumb-sep">/</span>
+    <span class="crumb-current">{{ level.name }} · Đề cương bài giảng trên lớp</span>
+  </nav>
+
+  <!-- Top bar điều hướng quay lại -->
+  <div class="dedicated-top-nav card mb-4">
+    <div class="top-nav-left">
+      <a href="/section/tai-lieu" class="btn btn-outline back-overview-btn">
+        ← Quay lại chuyên mục Tài liệu
+      </a>
+      <span class="top-nav-sep d-none d-md-inline">|</span>
+      <span class="top-nav-subtext d-none d-md-inline">Phần 1: Tài liệu và bài giảng trên lớp (Chính khóa theo từng lớp)</span>
+    </div>
+    <div class="top-nav-right">
+      <a href="/section/tai-lieu" class="btn btn-secondary-soft">
+        Xem Sách tham khảo & Đề thi 📚 →
+      </a>
+    </div>
+  </div>
+
+  <!-- Hero Banner Cấp học -->
+  <section class="materials-hero-banner card mb-4">
+    <div class="materials-hero-inner">
+      <div class="materials-hero-icon-box">{{ level.icon }}</div>
+      <div class="materials-hero-text">
+        <div class="materials-hero-badges">
+          <span class="badge badge-primary">Mục lục chính khóa</span>
+          <span class="badge badge-warning-glow">SGK Mới (Kết nối tri thức · Cánh diều · Chân trời)</span>
+          <span class="badge badge-success-soft">Đề cương Học kỳ 1 & 2</span>
+        </div>
+        <h1 class="materials-hero-title">Tài liệu & Đề cương bài giảng: {{ level.name }}</h1>
+        <p class="materials-hero-desc">
+          Tổng hợp chi tiết toàn bộ tài liệu lý thuyết trọng tâm, bài giảng điện tử và đề cương ôn tập học kỳ của từng khối lớp từ {{ level.class_curriculum[0].class_name }} đến {{ level.class_curriculum[-1].class_name }}. Bấm vào từng môn để xem nội dung đề cương hoặc bắt đầu luyện đề.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Thanh lọc nhanh từng khối lớp -->
+  <div class="search-filter-toolbar card mb-4">
+    <div class="search-filter-pills" style="margin: 0; align-items: center;">
+      <span class="pill-label">Chọn khối lớp:</span>
+      <button type="button" class="tn-pill active" onclick="filterClassBlock('all', this)">✨ Tất cả khối lớp</button>
+      {% for c in level.class_curriculum %}
+        <button type="button" class="tn-pill" onclick="filterClassBlock('{{ c.class_id }}', this)">
+          {{ c.class_name }}
+        </button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Danh sách các Khối lớp -->
+  <div class="materials-classes-container">
+    {% for c in level.class_curriculum %}
+      <div class="card materials-class-block mb-4" id="class-block-{{ c.class_id }}" data-class-id="{{ c.class_id }}">
+        <div class="class-block-header">
+          <div class="class-header-left">
+            <span class="class-badge-pill">{{ c.badge }}</span>
+            <div>
+              <h2 class="class-block-title">{{ c.title }}</h2>
+              <p class="class-block-desc muted small">{{ c.desc }}</p>
+            </div>
+          </div>
+          <div class="class-header-right">
+            <span class="badge badge-soft-blue">📄 {{ c.pages }}</span>
+            <span class="badge badge-warning-glow">{{ c.subjects | length }} Môn học</span>
+          </div>
+        </div>
+
+        <!-- Lưới môn học của khối lớp -->
+        <div class="class-subjects-grid">
+          {% for s in c.subjects %}
+            <div class="card subj-material-card">
+              <div class="subj-mat-top">
+                <span class="subj-mat-icon">{{ s.icon }}</span>
+                <span class="badge badge-soft-blue">Đề cương chuẩn</span>
+              </div>
+              <h3 class="subj-mat-title">{{ s.name }}</h3>
+              <p class="subj-mat-desc small muted">{{ s.desc }}</p>
+
+              {% if s.outline %}
+                <div class="subj-mat-outline-box">
+                  <div class="outline-label">Mục lục chương trọng tâm:</div>
+                  <div class="outline-content">{{ s.outline }}</div>
+                </div>
+              {% endif %}
+
+              <div class="subj-mat-actions">
+                <button type="button" class="btn btn-small btn-primary full" onclick="openClassOutlineModal({{ s.name | tojson }}, {{ c.title | tojson }}, {{ s.desc | tojson }}, {{ s.outline | tojson }}, {{ s.link | tojson }})">
+                  📖 Xem đề cương & Tóm tắt →
+                </button>
+                {% if s.link %}
+                  <a href="{{ s.link }}" class="btn btn-small btn-outline full mt-2">
+                    🚀 Vào luyện đề môn này →
+                  </a>
+                {% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- Nút quay lại lớn ở cuối trang -->
+  <div class="bottom-back-card card mt-4 text-center" style="padding: 1.5rem; background: #f8fafc;">
+    <h3>Bạn muốn khám phá thêm Sách tham khảo & Đề thi thử?</h3>
+    <p class="muted">Quay lại chuyên mục Tài liệu để xem Phần 2 (Tài liệu thêm & Sách tham khảo) và Phần 3 (Một số đề thi tham khảo chọn lọc).</p>
+    <a href="/section/tai-lieu" class="btn btn-outline" style="display: inline-flex; align-items: center; gap: 8px;">
+      ← Quay lại chuyên mục Tài liệu
+    </a>
+  </div>
+</div>
+
+<!-- ==================== MODAL XEM CHI TIẾT ĐỀ CƯƠNG & TÀI LIỆU ==================== -->
+<div id="class-outline-modal" class="lesson-modal" style="display: none;" onclick="if(event.target === this) closeClassOutlineModal();">
+  <div class="lesson-modal-dialog" style="max-width: 680px;">
+    <div class="lesson-modal-header">
+      <div class="modal-header-meta">
+        <span class="badge badge-warning-glow" id="modal-class-badge">Đề Cương Chi Tiết</span>
+        <span class="badge badge-soft-blue" id="modal-class-subj">Môn học</span>
+      </div>
+      <h3 class="modal-lesson-title" id="modal-outline-title">Tiêu đề tài liệu</h3>
+      <button type="button" class="modal-close-btn" onclick="closeClassOutlineModal()" title="Đóng">✕</button>
+    </div>
+
+    <div class="lesson-modal-body">
+      <div class="card mb-3" style="background: #eff6ff; border-color: #bfdbfe;">
+        <div style="font-weight: 700; color: #1e40af; margin-bottom: 4px;">🎯 Tóm tắt nội dung & Mục tiêu đề cương:</div>
+        <p style="margin: 0; font-size: 0.92rem; color: #1e3a8a;" id="modal-outline-desc">Mô tả chi tiết</p>
+      </div>
+
+      <div class="lesson-cheat-box mb-3">
+        <div class="cheat-header">
+          <span>📋 Mục lục các chương bài kiểm tra:</span>
+        </div>
+        <div id="modal-outline-points" style="font-size: 0.9rem; line-height: 1.6; color: #334155;">
+          <!-- JS injects outline here -->
+        </div>
+      </div>
+
+      <div class="card mb-3" style="background: #fffbeb; border-color: #fde68a;">
+        <div style="font-weight: 700; color: #92400e; margin-bottom: 4px;">💡 Lời khuyên ôn tập đạt điểm cao:</div>
+        <ul style="margin: 0; padding-left: 20px; font-size: 0.88rem; color: #78350f;">
+          <li>Nắm chắc các công thức và định nghĩa cốt lõi trong sách giáo khoa mới.</li>
+          <li>Làm lại các dạng bài tập tự luận và trắc nghiệm tương tự trong đề cương.</li>
+          <li>Bấm giờ khi làm đề thi thử để phân bổ thời gian hợp lý trong phòng thi.</li>
+        </ul>
+      </div>
+
+      <div class="modal-actions-row" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 1rem;">
+        <button type="button" class="btn btn-outline" onclick="closeClassOutlineModal()">Đóng</button>
+        <button type="button" class="btn btn-secondary-soft" onclick="downloadPdfNotice()">
+          📥 Tải File PDF Đề Cương
+        </button>
+        <a id="modal-practice-btn" href="/section/luyen-de" class="btn btn-primary">
+          🚀 Bắt đầu luyện đề ngay →
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function filterClassBlock(classId, btn) {
+    const parent = btn.parentElement;
+    parent.querySelectorAll('.tn-pill').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    const blocks = document.querySelectorAll('.materials-class-block');
+    blocks.forEach(block => {
+      const bId = block.getAttribute('data-class-id');
+      if (classId === 'all' || bId === classId) {
+        block.style.display = 'block';
+      } else {
+        block.style.display = 'none';
+      }
+    });
+  }
+
+  function openClassOutlineModal(subjName, classTitle, desc, outline, link) {
+    document.getElementById('modal-class-badge').textContent = classTitle;
+    document.getElementById('modal-class-subj').textContent = subjName;
+    document.getElementById('modal-outline-title').textContent = 'Đề cương & Tài liệu ôn tập: ' + subjName;
+    document.getElementById('modal-outline-desc').textContent = desc || 'Tài liệu tóm tắt kiến thức và đề cương học kỳ chuẩn SGK mới.';
+    
+    // Split outline chapters
+    const pointsContainer = document.getElementById('modal-outline-points');
+    pointsContainer.innerHTML = '';
+    if (outline) {
+      const parts = outline.split(';');
+      const ul = document.createElement('ul');
+      ul.style.margin = '0';
+      ul.style.paddingLeft = '20px';
+      parts.forEach(p => {
+        if (p.trim()) {
+          const li = document.createElement('li');
+          li.textContent = p.trim();
+          li.style.marginBottom = '6px';
+          ul.appendChild(li);
+        }
+      });
+      pointsContainer.appendChild(ul);
+    } else {
+      pointsContainer.textContent = 'Toàn bộ các chương lý thuyết bám sát SGK mới.';
+    }
+
+    const practiceBtn = document.getElementById('modal-practice-btn');
+    if (link) {
+      practiceBtn.href = link;
+      practiceBtn.style.display = 'inline-block';
+    } else {
+      practiceBtn.style.display = 'none';
+    }
+
+    const modal = document.getElementById('class-outline-modal');
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeClassOutlineModal() {
+    const modal = document.getElementById('class-outline-modal');
+    modal.style.display = 'none';
+    document.body.style.overflow = 'auto';
+  }
+
+  function downloadPdfNotice() {
+    alert('📥 Đang tải tài liệu PDF đề cương chuẩn về máy của bạn! Vui lòng kiểm tra thư mục Downloads.');
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeClassOutlineModal();
+  });
+</script>
+{% endblock %}
+

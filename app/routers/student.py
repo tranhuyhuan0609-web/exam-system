@@ -30,6 +30,7 @@ from app.attempts import (
     submit,
 )
 from app.deps import ApiUser, CurrentUser, LoggedInUser, SessionDep
+from app.grades_data import PRACTICE_BOXES
 from app.models import (
     AttemptStatus,
     Category,
@@ -44,6 +45,7 @@ from app.models import (
 )
 from app.routers.admin.common import redirect
 from app.scope import breadcrumb, load_categories, scope_of, scope_paths, walk
+from app.sections_data import HOT_FOREIGN, HOT_LESSONS, HOT_MATERIALS, SECTIONS
 from app.templating import flash, templates
 
 router = APIRouter()
@@ -85,7 +87,16 @@ async def _own_attempt(session, attempt_id: int, user: User) -> ExamAttempt:
 
 
 @router.get("/")
-async def home(request: Request, user: CurrentUser, session: SessionDep, c: int | None = None):
+@router.get("/section/{section_id}")
+async def home(
+    request: Request,
+    user: CurrentUser,
+    session: SessionDep,
+    c: int | None = None,
+    section: str | None = None,
+    section_id: str | None = None,
+    level: str | None = None,
+):
     """Exam list with a table-of-contents sidebar; `c` selects a category (its whole branch)."""
     exams = (
         await session.scalars(
@@ -157,10 +168,34 @@ async def home(request: Request, user: CurrentUser, session: SessionDep, c: int 
     quiz = None
     if selected and question_totals.get(selected.id):
         quiz = {"bank": await bank_counts(session, selected), "levels": LEVELS, "seconds": SECONDS_PER_QUESTION}
+
+    # Calculate total attempts across all students to rank hot exams
+    total_attempts: dict[int, int] = dict(
+        (
+            await session.execute(select(ExamAttempt.exam_id, func.count(ExamAttempt.id)).group_by(ExamAttempt.exam_id))
+        ).all()
+    )
+
+    # Sort exams so hot, most attempted exams come first
+    hot_exams = sorted(shown, key=lambda e: total_attempts.get(e.id, 0), reverse=True)
+
+    active_section_key = section or section_id
+    current_section = SECTIONS.get(active_section_key) if active_section_key else None
+
     return templates.TemplateResponse(
         request,
         "index.html",
         {
+            "sections": SECTIONS,
+            "practice_boxes": PRACTICE_BOXES,
+            "hot_exams": hot_exams,
+            "hot_materials": HOT_MATERIALS,
+            "hot_lessons": HOT_LESSONS,
+            "hot_foreign": HOT_FOREIGN,
+            "total_attempts": total_attempts,
+            "current_section": current_section,
+            "active_section_key": active_section_key,
+            "current_level": level,
             "user": user,
             "groups": groups,
             "roots": roots,
@@ -521,4 +556,160 @@ async def attempt_grading(user: ApiUser, session: SessionDep, attempt_id: int):
             "score": str(attempt.score) if attempt.score and not hidden else None,
         },
         headers=NO_STORE,
+    )
+
+
+@router.get("/section/tai-lieu/level/{level_id}/chinh-khoa")
+@router.get("/section/tai-lieu/level/{level_id}")
+async def materials_level_curriculum(
+    request: Request,
+    user: CurrentUser,
+    level_id: str,
+):
+    tl_section = SECTIONS.get("tai-lieu")
+    if not tl_section:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy chuyên mục Tài liệu.")
+
+    level = next((l for l in tl_section.get("levels", []) if l["id"] == level_id), None)
+    if not level:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Không tìm thấy cấp học: {level_id}")
+
+    return templates.TemplateResponse(
+        request,
+        "materials_level_detail.html",
+        {
+            "user": user,
+            "section": tl_section,
+            "level": level,
+            "sections": SECTIONS,
+        },
+    )
+
+
+@router.get("/grade/{grade_id}")
+async def grade_detail(request: Request, user: CurrentUser, grade_id: str):
+    box = next((b for b in PRACTICE_BOXES if b["id"] == grade_id), None)
+    if not box:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy thông tin khối lớp.")
+    return templates.TemplateResponse(
+        request,
+        "grade_detail.html",
+        {
+            "box": box,
+            "user": user,
+            "sections": SECTIONS,
+        },
+    )
+
+
+@router.get("/grade/{grade_id}/subject/{subject_slug}")
+@router.get("/grade/{grade_id}/subject/{subject_slug}/{section_mode}")
+async def grade_subject_detail(
+    request: Request,
+    user: CurrentUser,
+    session: SessionDep,
+    grade_id: str,
+    subject_slug: str,
+    section_mode: str | None = None,
+):
+    if section_mode and section_mode not in ("study", "practice"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy trang yêu cầu.")
+
+    from app.curriculum_data import get_curriculum
+
+    box = next((b for b in PRACTICE_BOXES if b["id"] == grade_id), None)
+    if not box:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy thông tin khối lớp.")
+
+    row = next((r for r in box["rows"] if r.get("slug") == subject_slug), None)
+    subj_name = row["name"] if row else subject_slug.replace("-", " ").title()
+
+    curriculum = get_curriculum(grade_id, box["title"], subj_name, subject_slug)
+
+    # Load published exams to match with chapters/subject
+    exams = (
+        await session.scalars(
+            select(Exam)
+            .where(Exam.exam_mode == ExamMode.PRACTICE, Exam.visibility == ExamVisibility.PUBLIC, Exam.is_published)
+            .order_by(Exam.id)
+        )
+    ).all()
+    counts = {exam.id: await question_count(session, exam) for exam in exams}
+    mine: dict[int, int] = {}
+    active: dict[int, int] = {}
+    best: dict[int, Any] = {}
+    if user:
+        now = await db_now(session)
+        best = await _best_scores(session, user.id)
+        mine = dict(
+            (
+                await session.execute(
+                    select(ExamAttempt.exam_id, func.count())
+                    .where(ExamAttempt.user_id == user.id)
+                    .group_by(ExamAttempt.exam_id)
+                )
+            ).all()
+        )
+        active = dict(
+            (
+                await session.execute(
+                    select(ExamAttempt.exam_id, ExamAttempt.id).where(
+                        ExamAttempt.user_id == user.id,
+                        ExamAttempt.status == AttemptStatus.IN_PROGRESS,
+                        ExamAttempt.expires_at > now,
+                    )
+                )
+            ).all()
+        )
+
+    roots = await load_categories(session)
+    paths = scope_paths(roots)
+    nodes = {node.id: node for node, _ in walk(roots)}
+
+    # Match exams to chapters
+    ch_exams: dict[str, list[Exam]] = defaultdict(list)
+    for ch in curriculum["chapters"]:
+        ch_id = ch["id"]
+        ch_title = ch["title"].lower()
+        db_cat_id = ch.get("db_cat_id")
+        for exam in exams:
+            # Match by direct db_cat_id if category is ancestor
+            category = nodes.get(exam.category_id)
+            ancestors = {int(i) for i in category.path.strip("/").split("/")} if category else set()
+            if db_cat_id and db_cat_id in ancestors:
+                ch_exams[ch_id].append(exam)
+            elif (
+                any(word in exam.title.lower() for word in ["dao động", "chương 1"] if "chương 1" in ch_title)
+                and "chương 1" in ch_title
+                and not ch_exams[ch_id]
+            ):
+                ch_exams[ch_id].append(exam)
+            elif (
+                any(
+                    word in exam.title.lower()
+                    for word in ["khí lí tưởng", "sóng"]
+                    if "sóng" in ch_title or "khí" in ch_title
+                )
+                and not ch_exams[ch_id]
+            ):
+                ch_exams[ch_id].append(exam)
+
+    return templates.TemplateResponse(
+        request,
+        "grade_subject.html",
+        {
+            "curriculum": curriculum,
+            "box": box,
+            "user": user,
+            "ch_exams": ch_exams,
+            "question_counts": counts,
+            "my_attempts": mine,
+            "active": active,
+            "best": best,
+            "scope_paths": paths,
+            "scope_of": scope_of,
+            "section_mode": section_mode,
+            "subject_slug": subject_slug,
+            "grade_id": grade_id,
+        },
     )

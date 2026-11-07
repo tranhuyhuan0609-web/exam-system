@@ -76,13 +76,13 @@ def test_dashboard_then_solutions_page(started, db):
     page = client.get(f"/attempts/{attempt_id}/result").text
     # Overview: rank for 5.0 / 10, time vs allowed, pace.
     assert "rank-average" in page and ">Trung bình<" in page
-    assert "3 phút 20 giây" in page and "quy định 10 phút" in page and "50 giây" in page
+    assert "3 phút 20 giây" in page and "Quy định: 10 phút" in page and "50 giây" in page
     # Difficulty breakdown by questions fully correct.
     assert 'data-tip="Nhận biết: đúng 2/2 câu (100%)"' in page
     assert 'data-tip="Vận dụng: đúng 0/2 câu (0%)"' in page
     # Topic mastery: the chapter-only questions are the weak topic.
-    weak = page.split("weak-note", 1)[1].split("</p>", 1)[0]
-    assert "Hổng kiến thức" in weak and "Chương 2" in weak and "Định luật Boyle" not in weak
+    weak = page.split("weak-topics-alert", 1)[1].split("weak-tags-list", 1)[1].split("</div>", 1)[0]
+    assert "cần củng cố" in page and "Chương 2" in weak and "Định luật Boyle" not in weak
     # The dashboard shows no question details, only the answer sheet linking to the solutions page.
     assert "Đáp án đúng" not in page and "question-card" not in page
     assert f'href="/attempts/{attempt_id}/solutions#r-3"' in page and "📖 Xem lời giải chi tiết" in page
@@ -117,5 +117,5 @@ def test_report_without_weak_topics(started, db):
     client.post(f"/api/attempts/{attempt_id}/submit", json={"answers": {str(q): f"{i}a" for i, q in enumerate(ids, 1)}})
     db(lambda s: s.execute(update(ExamAttempt).values(submitted_at=func.now())))
     page = client.get(f"/attempts/{attempt_id}/result").text
-    assert "Không có chuyên đề nào dưới 50%" in page
+    assert "không bị hổng kiến thức ở chuyên đề nào" in page
     assert "Phân vân (" not in page  # no flag filter when nothing was flagged

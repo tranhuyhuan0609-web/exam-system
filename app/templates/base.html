@@ -4,13 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Exam System{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}?v=20261106_05">
   {% block head %}{% endblock %}
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/">📘 Exam System</a>
-    <nav>
+    <div class="topbar-left">
+      <a class="brand" href="/">📘 Exam System</a>
+      <nav class="nav-sections">
+        <a href="/section/ngoai-ngu" class="nav-sec-link">🌐 Học ngoại ngữ</a>
+        <a href="/section/luyen-de" class="nav-sec-link">📝 Luyện đề</a>
+        <a href="/section/tai-lieu" class="nav-sec-link">📚 Tài liệu</a>
+        <a href="/section/hoc-bai-moi" class="nav-sec-link">📖 Học bài mới</a>
+      </nav>
+    </div>
+    <nav class="nav-user">
       {% if user %}
         {% if user.role in ("TEACHER", "ADMIN") %}<a href="/teacher">Bài kiểm tra của tôi</a>{% endif %}
         {% if user.role == "STUDENT" %}<a href="/tests/mine">Bài kiểm tra</a>{% endif %}

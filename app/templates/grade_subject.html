@@ -1,0 +1,989 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="subject-curriculum-container">
+  <!-- Breadcrumb điều hướng -->
+  <nav class="breadcrumb-nav mb-3" aria-label="Breadcrumb">
+    <a href="/" class="crumb-link">Trang chủ</a>
+    <span class="crumb-sep">/</span>
+    <a href="/grade/{{ curriculum.grade_id }}" class="crumb-link">{{ curriculum.grade_name }}</a>
+    <span class="crumb-sep">/</span>
+    {% if section_mode %}
+      <a href="/grade/{{ grade_id or curriculum.grade_id }}/subject/{{ subject_slug or curriculum.subject_slug }}" class="crumb-link">{{ curriculum.subject_name }}</a>
+      <span class="crumb-sep">/</span>
+      {% if section_mode == 'study' %}
+        <span class="crumb-current">Phần STUDY (Bài học & Lý thuyết)</span>
+      {% else %}
+        <span class="crumb-current">Phần PRACTICE (Luyện tập & Thi thử)</span>
+      {% endif %}
+    {% else %}
+      <span class="crumb-current">{{ curriculum.subject_name }}</span>
+    {% endif %}
+  </nav>
+
+  <!-- Hero Header Môn Học (Chỉ hiện ở trang tổng quan) -->
+  {% if not section_mode %}
+    <section class="subject-hero-banner card mb-4">
+      <div class="subject-hero-content">
+        <div class="subject-hero-icon" style="background: {{ curriculum.color or '#0284c7' }};">
+          {{ curriculum.icon or '📘' }}
+        </div>
+        <div>
+          <div class="subject-hero-badges">
+            <span class="badge badge-primary">{{ curriculum.grade_name }}</span>
+            {% if curriculum.is_language %}
+              <span class="badge badge-soft-blue">Chứng chỉ Quốc tế · 4 Kỹ năng</span>
+            {% else %}
+              <span class="badge badge-soft-blue">Chương trình SGK mới</span>
+            {% endif %}
+          </div>
+          <h1 class="subject-hero-title">{{ curriculum.subject_name }}</h1>
+          <p class="subject-hero-desc">{{ curriculum.description }}</p>
+        </div>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if curriculum.is_language %}
+    <!-- ==================== GIAO DIỆN NGOẠI NGỮ (TOEIC, IELTS, VSTEP, HSK, JLPT) ==================== -->
+
+    {% if not section_mode %}
+      <!-- 1. TRANG TỔNG QUAN: BÀI TEST ĐÁNH GIÁ NĂNG LỰC + 2 THẺ HUB MỤC LỤC STUDY & PRACTICE -->
+
+      <!-- KHỐI BÀI TEST ĐÁNH GIÁ NĂNG LỰC ĐẦU VÀO (CÂN ĐỐI, TỶ LỆ CHUẨN) -->
+      {% if curriculum.placement_test %}
+        <div class="card placement-test-card mb-4" id="placement-test-section">
+          <div class="placement-grid-layout">
+            <!-- Cột trái: Thông tin bài test -->
+            <div class="placement-info-left">
+              <div class="placement-badge-row">
+                <span class="badge badge-warning-glow">{{ curriculum.placement_test.badge or 'Test Năng Lực Đầu Vào' }}</span>
+                <span class="badge badge-soft-blue">⏱ {{ curriculum.placement_test.duration_minutes }} phút</span>
+                <span class="badge badge-soft-blue">📝 {{ curriculum.placement_test.questions_count }} câu hỏi</span>
+                <span class="badge badge-success-soft">✨ Miễn phí 100%</span>
+              </div>
+              <h2 class="placement-title">{{ curriculum.placement_test.title }}</h2>
+              <p class="placement-desc">{{ curriculum.placement_test.desc }}</p>
+              <div class="placement-skills-tags">
+                <span class="skills-label">Bao quát 4 kỹ năng:</span>
+                <span class="skill-tag">🎧 Listening</span>
+                <span class="skill-tag">📖 Reading</span>
+                <span class="skill-tag">✍️ Writing</span>
+                <span class="skill-tag">🗣️ Speaking</span>
+              </div>
+            </div>
+
+            <!-- Cột phải: Hộp nút bấm hành động cân đối & nổi bật -->
+            <div class="placement-action-card">
+              <div class="action-card-header">
+                <span class="action-card-icon">🎯</span>
+                <div class="action-card-header-text">
+                  <div class="action-card-title">Đánh giá chuẩn quốc tế</div>
+                  <div class="action-card-sub">Chẩn đoán nhanh trình độ hiện tại</div>
+                </div>
+              </div>
+              <a href="/grade/{{ grade_id or curriculum.grade_id }}/subject/{{ subject_slug or curriculum.subject_slug }}/practice" class="btn btn-primary btn-large btn-placement-start full" onclick="startPlacementTest()">
+                🚀 Bắt đầu làm bài Test ngay →
+              </a>
+              <div class="action-card-perks">
+                <span>✓ 45 phút</span>
+                <span>✓ Chấm điểm tức thì</span>
+                <span>✓ Gợi ý lộ trình</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
+      <!-- TIÊU ĐỀ PHÂN ĐOẠN 2 THẺ HUB (CÂN ĐỐI, ĐẸP MẮT) -->
+      <div class="lang-hubs-header card mb-4">
+        <div class="hubs-header-left">
+          <div class="hubs-badge-row">
+            <span class="badge badge-primary">Mục lục chuyên biệt</span>
+            <span class="badge badge-soft-blue">Lộ trình học tập & Luyện thi</span>
+            <span class="badge badge-success-soft">Rèn luyện toàn diện 4 kỹ năng</span>
+          </div>
+          <h2 class="hubs-main-title">Chọn phân hệ học tập theo nhu cầu</h2>
+          <p class="hubs-sub-desc">Phân tách khoa học giữa học lý thuyết bài bản (STUDY) và luyện giải đề thi thực chiến bấm giờ (PRACTICE).</p>
+        </div>
+        <div class="hubs-header-stats">
+          <div class="hub-stat-item">
+            <span class="hub-stat-num">4</span>
+            <span class="hub-stat-label">Kỹ năng cốt lõi</span>
+          </div>
+          <div class="hub-stat-sep"></div>
+          <div class="hub-stat-item">
+            <span class="hub-stat-num">100%</span>
+            <span class="hub-stat-label">Chuẩn Format Đề</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2 THẺ MỤC LỤC ĐIỀU HƯỚNG CÂN ĐỐI 100%: STUDY vs PRACTICE (TOÀN BỘ THẺ CLICKABLE) -->
+      <div class="lang-portal-grid mb-4">
+        <!-- Hub Card 1: PHẦN STUDY -->
+        <div class="card lang-portal-card study-portal-card" onclick="window.location.href='/grade/{{ grade_id or curriculum.grade_id }}/subject/{{ subject_slug or curriculum.subject_slug }}/study'" style="cursor: pointer;" title="Bấm để mở danh sách toàn bộ bài học Study">
+          <div class="portal-card-top">
+            <div class="portal-icon-box portal-icon-blue">📚</div>
+            <div class="portal-badge-group">
+              <span class="badge badge-primary">Mục 01 · Học kiến thức</span>
+              <span class="badge badge-soft-blue">4 Kỹ năng</span>
+            </div>
+          </div>
+
+          <div class="portal-title-block">
+            <h3 class="portal-card-title">
+              <a href="/grade/{{ grade_id or curriculum.grade_id }}/subject/{{ subject_slug or curriculum.subject_slug }}/study" class="portal-title-link" onclick="event.stopPropagation()">PHẦN STUDY (Học kiến thức)</a>
+            </h3>
+            <div class="portal-card-subtitle">Học kiến thức & Lý thuyết bài bản</div>
+          </div>
+          <p class="portal-card-desc">Lộ trình video bài giảng, lý thuyết trọng tâm và chiến lược làm bài 4 kỹ năng: Listening, Reading, Writing, Speaking bám sát đề thi.</p>
+
+          <div class="portal-toc-preview">
+            <div class="portal-toc-title">Danh mục 4 kỹ năng đào tạo:</div>
+            <div class="portal-toc-list">
+              {% for skill in curriculum.study_skills %}
+                <a href="/grade/{{ grade_id or curriculum.grade_id }}/subject/{{ subject_slug or curriculum.subject_slug }}/study" class="portal-toc-item-link" onclick="event.stopPropagation()">
+                  <div class="portal-toc-item">
+                    <span class="toc-item-left"><span class="toc-icon">{{ skill.icon }}</span> {{ skill.name }}</span>
+                    <span class="badge badge-soft-blue">{{ skill.lessons | length }} bài học</span>
+                  </div>
+                </a>
+              {% endfor %}
+              <!-- Dòng thứ 5 đồng bộ độ cao với Practice -->
+              <a href="/grade/{{ grade_id or curriculum.grade_id }}/subject/{{ subject_slug or curriculum.subject_slug }}/study" class="portal-toc-item-link" onclick="event.stopPropagation()">
+                <div class="portal-toc-item highlight-toc study-highlight">
+                  <span class="toc-item-left"><span class="toc-icon">💡</span> Sổ Tay Bí Quyết & Mẹo Thi</span>
+                  <span class="badge badge-warning-glow">Full 4 kỹ năng</span>
+                </div>
+              </a>
+            </div>
+          </div>
+
+          <div class="portal-action-wrap">
+            <a href="/grade/{{ grade_id or curriculum.grade_id }}/subject/{{ subject_slug or curriculum.subject_slug }}/study" class="btn btn-primary btn-large full btn-portal-action" onclick="event.stopPropagation()">
+              📚 Vào học phần STUDY (Xem các bài học) →
+            </a>
+            <div class="portal-hint-text">Mở trang danh mục bài giảng, video và bí quyết làm bài</div>
+          </div>
+        </div>
+
+        <!-- Hub Card 2: PHẦN PRACTICE -->
+        <div class="card lang-portal-card practice-portal-card" onclick="window.location.href='/grade/{{ grade_id or curriculum.grade_id }}/subject/{{ subject_slug or curriculum.subject_slug }}/practice'" style="cursor: pointer;" title="Bấm để mở danh sách toàn bộ đề thi Practice">
+          <div class="portal-card-top">
+            <div class="portal-icon-box portal-icon-green">📝</div>
+            <div class="portal-badge-group">
+              <span class="badge badge-success-soft">Mục 02 · Luyện đề & Thi thử</span>
+              <span class="badge badge-warning-glow">Bấm giờ & Chấm điểm</span>
+            </div>
+          </div>
+
+          <div class="portal-title-block">
+            <h3 class="portal-card-title">
+              <a href="/grade/{{ grade_id or curriculum.grade_id }}/subject/{{ subject_slug or curriculum.subject_slug }}/practice" class="portal-title-link" onclick="event.stopPropagation()">PHẦN PRACTICE (Luyện tập & Thi thử)</a>
+            </h3>
+            <div class="portal-card-subtitle">Luyện tập & Bộ đề thi thử thực chiến</div>
+          </div>
+          <p class="portal-card-desc">Ngân hàng đề thi và bài tập bấm giờ 4 kỹ năng cùng các bộ đề thi thử Full Mock Tests mô phỏng 100% format đề thi thật, xếp hạng điểm số tự động.</p>
+
+          <div class="portal-toc-preview">
+            <div class="portal-toc-title">Danh mục ngân hàng đề thi:</div>
+            <div class="portal-toc-list">
+              {% for skill in curriculum.practice_skills %}
+                <a href="/grade/{{ grade_id or curriculum.grade_id }}/subject/{{ subject_slug or curriculum.subject_slug }}/practice" class="portal-toc-item-link" onclick="event.stopPropagation()">
+                  <div class="portal-toc-item">
+                    <span class="toc-item-left"><span class="toc-icon">{{ skill.icon }}</span> {{ skill.name }}</span>
+                    <span class="badge badge-success-soft">{{ skill.exercises | length }} bộ đề</span>
+                  </div>
+                </a>
+              {% endfor %}
+              {% if curriculum.full_tests %}
+                <a href="/grade/{{ grade_id or curriculum.grade_id }}/subject/{{ subject_slug or curriculum.subject_slug }}/practice" class="portal-toc-item-link" onclick="event.stopPropagation()">
+                  <div class="portal-toc-item highlight-toc">
+                    <span class="toc-item-left"><span class="toc-icon">🏆</span> Bộ Đề Full Mock Tests</span>
+                    <span class="badge badge-warning-glow">{{ curriculum.full_tests | length }} đề thi</span>
+                  </div>
+                </a>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="portal-action-wrap">
+            <a href="/grade/{{ grade_id or curriculum.grade_id }}/subject/{{ subject_slug or curriculum.subject_slug }}/practice" class="btn btn-success btn-large full btn-portal-action btn-practice-action" onclick="event.stopPropagation()">
+              📝 Vào luyện đề PRACTICE (Xem toàn bộ đề thi) →
+            </a>
+            <div class="portal-hint-text">Mở trang luyện đề 4 kỹ năng & thi thử Full Test bấm giờ</div>
+          </div>
+        </div>
+      </div>
+
+    {% elif section_mode == 'study' %}
+      <!-- 2. TRANG DÀNH RIÊNG: PHẦN STUDY (HỌC KIẾN THỨC) - THIẾT KẾ HIỆN ĐẠI -->
+      <div class="dedicated-mode-page">
+        <!-- Thanh điều hướng đầu trang -->
+        <div class="dedicated-top-nav card mb-4">
+          <div class="top-nav-left">
+            <a href="/grade/{{ grade_id or curriculum.grade_id }}/subject/{{ subject_slug or curriculum.subject_slug }}" class="btn btn-outline back-overview-btn">
+              ← Quay lại tổng quan {{ curriculum.subject_name }}
+            </a>
+            <span class="top-nav-sep d-none d-md-inline">|</span>
+            <span class="top-nav-subtext d-none d-md-inline">Phân hệ STUDY: Học lý thuyết & phương pháp làm bài</span>
+          </div>
+          <div class="top-nav-right">
+            <a href="/grade/{{ grade_id or curriculum.grade_id }}/subject/{{ subject_slug or curriculum.subject_slug }}/practice" class="btn btn-secondary-soft btn-switch-mode">
+              Chuyển sang phần Practice 📝 →
+            </a>
+          </div>
+        </div>
+
+        <!-- Banner tiêu đề trang Study -->
+        <div class="dedicated-hero-banner card mb-4 study-theme">
+          <div class="dedicated-hero-icon-box blue-box">📚</div>
+          <div class="dedicated-hero-text">
+            <div class="hero-tag-row">
+              <span class="badge badge-primary">Mục 01 · Học kiến thức</span>
+              <span class="badge badge-soft-blue">{{ curriculum.subject_name }}</span>
+              <span class="badge badge-soft-blue">4 Kỹ năng toàn diện</span>
+            </div>
+            <h1 class="dedicated-title">PHẦN STUDY: Danh Mục Bài Học & Bí Quyết</h1>
+            <p class="dedicated-desc">Chương trình video bài giảng, phân tích bẫy đề thi và sổ tay mẹo làm bài 4 kỹ năng Listening, Reading, Writing, Speaking. Bấm vào từng bài để xem bài giảng và tóm tắt mẹo.</p>
+          </div>
+          <div class="dedicated-hero-summary d-none d-lg-flex">
+            <div class="hero-summary-box">
+              <div class="hero-summary-num">4</div>
+              <div class="hero-summary-label">Kỹ năng</div>
+            </div>
+            <div class="hero-summary-box">
+              <div class="hero-summary-num">15+</div>
+              <div class="hero-summary-label">Bài học trọng tâm</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Toolbar bộ lọc và nút mở tất cả -->
+        <div class="skills-filter-toolbar card mb-4">
+          <div class="filter-pills-group">
+            <span class="filter-label">Lọc kỹ năng:</span>
+            <button type="button" class="skill-filter-btn active" onclick="filterSkill('all', this)">✨ Tất cả</button>
+            <button type="button" class="skill-filter-btn" onclick="filterSkill('listening', this)">🎧 Listening</button>
+            <button type="button" class="skill-filter-btn" onclick="filterSkill('reading', this)">📖 Reading</button>
+            <button type="button" class="skill-filter-btn" onclick="filterSkill('writing', this)">✍️ Writing</button>
+            <button type="button" class="skill-filter-btn" onclick="filterSkill('speaking', this)">🗣️ Speaking</button>
+            <button type="button" class="skill-filter-btn" onclick="filterSkill('fulltest', this)">🏆 Full Mock Tests</button>
+          </div>
+          <div class="filter-actions-group">
+            <button type="button" class="btn btn-small btn-outline btn-toggle-all" id="btn-toggle-all-study" onclick="toggleAllSkills('study')">
+              👁️ Mở tất cả mục lục
+            </button>
+          </div>
+        </div>
+
+        <!-- Danh sách Accordion 4 kỹ năng Study -->
+        <div class="lang-mode-content" id="section-study">
+          {% for skill in curriculum.study_skills %}
+            <div class="card skill-block-card study-accordion-card mb-3 is-open" 
+                 id="study-skill-block-{{ loop.index }}" 
+                 data-skill-type="{{ skill.id }}"
+                 data-skill-index="{{ loop.index }}"
+                 data-mode="study">
+              
+              <!-- Header kỹ năng dạng Mục Lục -->
+              <div class="skill-card-head clickable" onclick="toggleSkillAccordion('study', '{{ loop.index }}')" title="Bấm để mở danh sách bài học {{ skill.name }}">
+                <div class="skill-head-info">
+                  <span class="skill-icon-wrap">{{ skill.icon }}</span>
+                  <div>
+                    <div class="skill-title-row">
+                      <span class="skill-toc-idx">Mục 0{{ loop.index }}</span>
+                      <h2 class="skill-title">{{ skill.name }}</h2>
+                    </div>
+                    <p class="skill-desc">{{ skill.desc }}</p>
+                  </div>
+                </div>
+                <div class="skill-head-actions">
+                  <span class="badge badge-soft-blue">{{ skill.lessons | length }} bài học trọng tâm</span>
+                  <button type="button" class="btn-chevron-pill is-active" id="study-chevron-{{ loop.index }}">
+                    ▲ Thu gọn
+                  </button>
+                </div>
+              </div>
+
+              <!-- Danh sách bài học chi tiết -->
+              <div class="skill-lessons-list" id="study-lessons-{{ loop.index }}" style="display: flex;">
+                {% for les in skill.lessons %}
+                  <div class="lesson-row-item">
+                    <div class="lesson-info">
+                      <span class="lesson-marker">📖</span>
+                      <div>
+                        <h3 class="lesson-title">{{ les.title }}</h3>
+                        <div class="lesson-meta-tags">
+                          <span class="tag-pill tag-pill-sm">{{ les.badge }}</span>
+                          {% if les.duration %}
+                            <span class="muted small">· ⏱ {{ les.duration }}</span>
+                          {% endif %}
+                          {% if les.topics %}
+                            <span class="muted small">· {{ les.topics }}</span>
+                          {% endif %}
+                          <span class="badge badge-soft-blue">Video + Ghi chú</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="lesson-actions-group">
+                      <button type="button" class="btn btn-small btn-primary btn-theory btn-open-study-lesson" data-title="{{ les.title }}" data-badge="{{ les.badge }}" data-duration="{{ les.duration or '30 phút' }}" data-topics="{{ les.topics or 'Chiến lược làm bài' }}">
+                        ▶ Học bài giảng →
+                      </button>
+                      <button type="button" class="btn btn-small btn-secondary-soft btn-open-study-tips" data-title="{{ les.title }}" data-badge="{{ les.badge }}" data-duration="{{ les.duration or '30 phút' }}" data-topics="{{ les.topics or 'Chiến lược làm bài' }}">
+                        💡 Tóm tắt mẹo
+                      </button>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+    {% elif section_mode == 'practice' %}
+      <!-- 3. TRANG DÀNH RIÊNG: PHẦN PRACTICE (LUYỆN TẬP & THI THỬ) - THIẾT KẾ HIỆN ĐẠI -->
+      <div class="dedicated-mode-page">
+        <!-- Thanh điều hướng đầu trang -->
+        <div class="dedicated-top-nav card mb-4">
+          <div class="top-nav-left">
+            <a href="/grade/{{ grade_id or curriculum.grade_id }}/subject/{{ subject_slug or curriculum.subject_slug }}" class="btn btn-outline back-overview-btn">
+              ← Quay lại tổng quan {{ curriculum.subject_name }}
+            </a>
+            <span class="top-nav-sep d-none d-md-inline">|</span>
+            <span class="top-nav-subtext d-none d-md-inline">Phân hệ PRACTICE: Ngân hàng đề thi bấm giờ & chấm điểm</span>
+          </div>
+          <div class="top-nav-right">
+            <a href="/grade/{{ grade_id or curriculum.grade_id }}/subject/{{ subject_slug or curriculum.subject_slug }}/study" class="btn btn-secondary-soft btn-switch-mode">
+              Chuyển sang phần Study 📚 →
+            </a>
+          </div>
+        </div>
+
+        <!-- Banner tiêu đề trang Practice -->
+        <div class="dedicated-hero-banner card mb-4 practice-theme">
+          <div class="dedicated-hero-icon-box green-box">📝</div>
+          <div class="dedicated-hero-text">
+            <div class="hero-tag-row">
+              <span class="badge badge-success-soft">Mục 02 · Luyện đề & Thi thử</span>
+              <span class="badge badge-success-soft">{{ curriculum.subject_name }}</span>
+              <span class="badge badge-warning-glow">Bấm giờ & Xếp hạng điểm</span>
+            </div>
+            <h1 class="dedicated-title">PHẦN PRACTICE: Ngân Hàng Đề Thi Thực Chiến</h1>
+            <p class="dedicated-desc">Hệ thống bài tập luyện đề 4 kỹ năng có bấm giờ cùng bộ đề thi thử Full Mock Tests format mới nhất, có tính giờ và chấm điểm tự động. Bấm vào từng kỹ năng bên dưới để bắt đầu làm bài.</p>
+          </div>
+          <div class="dedicated-hero-summary d-none d-lg-flex">
+            <div class="hero-summary-box">
+              <div class="hero-summary-num">4</div>
+              <div class="hero-summary-label">Kỹ năng luyện đề</div>
+            </div>
+            <div class="hero-summary-box">
+              <div class="hero-summary-num">100%</div>
+              <div class="hero-summary-label">Chấm điểm tự động</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Toolbar bộ lọc và nút mở tất cả -->
+        <div class="skills-filter-toolbar card mb-4">
+          <div class="filter-pills-group">
+            <span class="filter-label">Lọc kỹ năng:</span>
+            <button type="button" class="skill-filter-btn active" onclick="filterSkill('all', this)">✨ Tất cả</button>
+            <button type="button" class="skill-filter-btn" onclick="filterSkill('listening', this)">🎧 Listening</button>
+            <button type="button" class="skill-filter-btn" onclick="filterSkill('reading', this)">📖 Reading</button>
+            <button type="button" class="skill-filter-btn" onclick="filterSkill('writing', this)">✍️ Writing</button>
+            <button type="button" class="skill-filter-btn" onclick="filterSkill('speaking', this)">🗣️ Speaking</button>
+          </div>
+          <div class="filter-actions-group">
+            <button type="button" class="btn btn-small btn-outline btn-toggle-all" id="btn-toggle-all-practice" onclick="toggleAllSkills('practice')">
+              👁️ Mở tất cả mục lục
+            </button>
+          </div>
+        </div>
+
+        <!-- Danh sách Accordion 4 kỹ năng Practice + Full Tests -->
+        <div class="lang-mode-content" id="section-practice">
+          {% for skill in curriculum.practice_skills %}
+            <div class="card skill-block-card practice-accordion-card mb-3 is-open" 
+                 id="practice-skill-block-{{ loop.index }}" 
+                 data-skill-type="{{ skill.id.replace('_practice', '') }}"
+                 data-skill-index="{{ loop.index }}"
+                 data-mode="practice">
+              
+              <!-- Header kỹ năng dạng Mục Lục -->
+              <div class="skill-card-head clickable head-practice" onclick="toggleSkillAccordion('practice', '{{ loop.index }}')" title="Bấm để mở danh sách bài tập {{ skill.name }}">
+                <div class="skill-head-info">
+                  <span class="skill-icon-wrap icon-wrap-green">{{ skill.icon }}</span>
+                  <div>
+                    <div class="skill-title-row">
+                      <span class="skill-toc-idx idx-green">Mục 0{{ loop.index }}</span>
+                      <h2 class="skill-title">{{ skill.name }}</h2>
+                    </div>
+                    <p class="skill-desc">{{ skill.desc }}</p>
+                  </div>
+                </div>
+                <div class="skill-head-actions">
+                  <span class="badge badge-success-soft">{{ skill.exercises | length }} bộ đề tự luyện</span>
+                  <button type="button" class="btn-chevron-pill btn-chevron-green is-active" id="practice-chevron-{{ loop.index }}">
+                    ▲ Thu gọn
+                  </button>
+                </div>
+              </div>
+
+              <!-- Danh sách bài tập luyện đề -->
+              <div class="skill-lessons-list" id="practice-lessons-{{ loop.index }}" style="display: flex;">
+                {% for ex in skill.exercises %}
+                  <div class="lesson-row-item {{ 'lesson-exam-row' if ex.highlight }}">
+                    <div class="lesson-info">
+                      <span class="lesson-marker">{{ '⚡' if ex.highlight else '📝' }}</span>
+                      <div>
+                        <h3 class="lesson-title">{{ ex.title }}</h3>
+                        <div class="lesson-meta-tags">
+                          <span class="tag-pill tag-pill-sm {{ 'badge-exam-pill' if ex.highlight }}">{{ ex.badge }}</span>
+                          <span class="muted small">· {{ ex.questions_count }} câu</span>
+                          <span class="muted small">· ⏱ {{ ex.duration }}</span>
+                          <span class="badge badge-success-soft">Bấm giờ & Chấm điểm</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="lesson-actions-group">
+                      {% if ex.highlight %}
+                        <button type="button" class="btn btn-small btn-primary btn-exam-action btn-open-practice-modal" data-title="{{ ex.title }}" data-badge="{{ ex.badge }}" data-duration="{{ ex.duration }}" data-questions="{{ ex.questions_count }}">⚡ Vào thi thử ngay →</button>
+                      {% else %}
+                        <button type="button" class="btn btn-small btn-primary btn-open-practice-modal" data-title="{{ ex.title }}" data-badge="{{ ex.badge }}" data-duration="{{ ex.duration }}" data-questions="{{ ex.questions_count }}">📝 Bắt đầu luyện tập →</button>
+                      {% endif %}
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+
+          <!-- KHỐI ĐỀ THI THỬ FULL TEST CHUẨN QUỐC TẾ (DẠNG MỤC LỤC MỞ/ĐÓNG) -->
+          {% if curriculum.full_tests %}
+            <div class="card skill-block-card fulltests-accordion-card mb-4 is-open" id="fulltests-block">
+              <div class="skill-card-head clickable head-fulltest" onclick="toggleFullTestsAccordion()" title="Bấm để mở danh sách đề thi Full Test">
+                <div class="skill-head-info">
+                  <span class="skill-icon-wrap icon-wrap-gold">🏆</span>
+                  <div>
+                    <div class="skill-title-row">
+                      <span class="badge badge-primary">Full Mock Tests</span>
+                      <h2 class="skill-title">Bộ Đề Thi Thử Toàn Diện (Mô Phỏng 100% Đề Thi Thật)</h2>
+                    </div>
+                    <p class="skill-desc">Đầy đủ các kỹ năng theo đúng chuẩn ma trận đề thi quốc tế, bấm giờ và xếp hạng điểm số tự động.</p>
+                  </div>
+                </div>
+                <div class="skill-head-actions">
+                  <span class="badge badge-warning-glow">{{ curriculum.full_tests | length }} đề Full Test</span>
+                  <button type="button" class="btn-chevron-pill btn-chevron-gold is-active" id="fulltests-chevron">
+                    ▲ Thu gọn
+                  </button>
+                </div>
+              </div>
+
+              <div class="skill-lessons-list" id="fulltests-lessons" style="display: flex;">
+                {% for ft in curriculum.full_tests %}
+                  <div class="lesson-row-item lesson-exam-row">
+                    <div class="lesson-info">
+                      <span class="lesson-marker">🏆</span>
+                      <div>
+                        <h3 class="lesson-title">{{ ft.title }}</h3>
+                        <div class="lesson-meta-tags">
+                          <span class="tag-pill tag-pill-sm badge-exam-pill">{{ ft.badge }}</span>
+                          <span class="muted small">· 📝 {{ ft.questions_count }} câu</span>
+                          <span class="muted small">· ⏱ {{ ft.duration }}</span>
+                          <span class="badge badge-success-soft">Format Mới Nhất</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="lesson-actions-group">
+                      <button type="button" class="btn btn-small btn-primary btn-exam-action btn-open-practice-modal" data-title="{{ ft.title }}" data-badge="{{ ft.badge }}" data-duration="{{ ft.duration }}" data-questions="{{ ft.questions_count }}">🚀 Vào thi Full Test →</button>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+  {% else %}
+    <!-- ==================== GIAO DIỆN CHƯƠNG TRÌNH PHỔ THÔNG (GDPT) ==================== -->
+    <!-- Thanh mục lục điều hướng nhanh các chương -->
+    <div class="chapter-quick-nav card mb-4">
+      <div class="chapter-nav-header">
+        <span class="chapter-quick-label">📑 Mục lục chương:</span>
+        <span class="muted small">(Bấm vào từng chương bên dưới để mở danh sách bài học tương ứng)</span>
+      </div>
+      <div class="chapter-pills-wrap">
+        {% for ch in curriculum.chapters %}
+          <button type="button" 
+                  class="chapter-pill-btn {{ 'active' if loop.first }}" 
+                  id="toc-btn-{{ loop.index }}"
+                  onclick="toggleChapter('{{ loop.index }}')">
+            <span class="ch-pill-num">Chương {{ loop.index }}</span>
+            {% if ':' in ch.title %}
+              <span class="ch-pill-name">· {{ ch.title.split(':')[-1].strip() }}</span>
+            {% endif %}
+          </button>
+        {% endfor %}
+        <button type="button" class="chapter-pill-btn btn-show-all" onclick="toggleAllChapters()">
+          👁️ Mở tất cả
+        </button>
+      </div>
+    </div>
+
+    <!-- CÁC CHƯƠNG VÀ BÀI HỌC CHI TIẾT (DẠNG ACCORDION THU GỌN GỌN GÀNG) -->
+    <div class="curriculum-chapters-list">
+      {% for ch in curriculum.chapters %}
+        <div class="card chapter-block-card mb-3 {{ 'is-open' if loop.first else 'is-collapsed' }}" 
+             id="chapter-block-{{ loop.index }}" 
+             data-chapter-index="{{ loop.index }}">
+          
+          <!-- Header Chương: Có thể bấm vào để đóng/mở -->
+          <div class="chapter-head chapter-toggle-head" onclick="toggleChapter('{{ loop.index }}')" title="Bấm để mở hoặc thu gọn chương này">
+            <div class="chapter-head-left">
+              <div class="chapter-title-wrap">
+                <span class="chapter-index-badge">Chương {{ loop.index }}</span>
+                <h2 class="chapter-title-text">{{ ch.title }}</h2>
+              </div>
+              {% if ch.desc %}
+                <p class="chapter-desc-text">{{ ch.desc }}</p>
+              {% endif %}
+            </div>
+            <div class="chapter-head-right">
+              <span class="badge badge-lessons-count">{{ ch.lessons | length }} bài học</span>
+              <span class="chapter-chevron-icon" id="chevron-{{ loop.index }}">{{ '▼' if loop.first else '▶' }}</span>
+            </div>
+          </div>
+
+          <!-- Danh sách từng bài trong chương -->
+          <div class="lessons-list" id="lessons-list-{{ loop.index }}" style="{{ 'display: flex;' if loop.first else 'display: none;' }}">
+            {% for les in ch.lessons %}
+              <div class="lesson-row-item {{ 'lesson-exam-row' if les.is_exam }}">
+                <div class="lesson-info">
+                  <span class="lesson-marker">{{ '⚡' if les.is_exam else '📖' }}</span>
+                  <div>
+                    <h3 class="lesson-title">{{ les.title }}</h3>
+                    <div class="lesson-meta-tags">
+                      <span class="tag-pill tag-pill-sm {{ 'badge-exam-pill' if les.is_exam }}">{{ les.badge }}</span>
+                      {% if les.questions_count %}
+                        <span class="muted small">· {{ les.questions_count }} câu trắc nghiệm</span>
+                      {% endif %}
+                      {% if les.is_exam %}
+                        <span class="muted small">· ⏱ 45 phút</span>
+                        <span class="badge badge-success-soft">Chấm điểm tự động</span>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+
+                <div class="lesson-actions-group">
+                  <button type="button" class="btn btn-small btn-outline btn-theory" onclick="alert('Đang mở bài giảng lý thuyết & tóm tắt công thức của: ' + {{ les.title | tojson }})">{% if les.is_exam %}📖 Tóm tắt kiến thức{% else %}📖 Lý thuyết & Tài liệu{% endif %}</button>
+                  {% if les.is_exam %}
+                    {% if les.db_cat_id %}
+                      <a href="/?c={{ les.db_cat_id }}" class="btn btn-small btn-primary btn-exam-action">📝 Vào thi trực tuyến →</a>
+                    {% else %}
+                      <a href="/section/luyen-de" class="btn btn-small btn-primary btn-exam-action">📝 Vào thi trực tuyến →</a>
+                    {% endif %}
+                  {% else %}
+                    {% if les.db_cat_id %}
+                      <a href="/?c={{ les.db_cat_id }}" class="btn btn-small btn-primary">📝 Luyện đề trực tuyến →</a>
+                    {% else %}
+                      <a href="/section/luyen-de" class="btn btn-small btn-primary">📝 Luyện đề trực tuyến →</a>
+                    {% endif %}
+                  {% endif %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+
+<!-- MODAL TEST NĂNG LỰC NHANH -->
+<div id="placement-modal" class="placement-modal" style="display: none;">
+  <div class="placement-modal-backdrop" onclick="closePlacementModal()"></div>
+  <div class="placement-modal-box card">
+    <div class="modal-head">
+      <h3>🎯 Bài Test Đánh Giá Năng Lực Đầu Vào</h3>
+      <button type="button" class="btn-close" onclick="closePlacementModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="muted">Hệ thống chuẩn bị bài test gồm <strong>50 câu hỏi</strong> kiểm tra toàn diện 4 kỹ năng trong thời gian <strong>45 phút</strong>:</p>
+      <ul class="modal-specs-list">
+        <li>🎧 <strong>Phần 1: Listening</strong> - 15 câu (Nghe hình ảnh & Hội thoại)</li>
+        <li>📖 <strong>Phần 2: Reading</strong> - 15 câu (Ngữ pháp & Đọc hiểu đoạn văn)</li>
+        <li>✍️ <strong>Phần 3: Writing</strong> - 10 câu (Cấu trúc câu & Hoàn thành đoạn)</li>
+        <li>🗣️ <strong>Phần 4: Speaking</strong> - 10 câu (Phản xạ câu hỏi tình huống)</li>
+      </ul>
+      <p class="small text-info-soft">💡 <em>Mẹo: Hãy làm bài nghiêm túc, không sử dụng tài liệu để có kết quả đánh giá trình độ chính xác nhất.</em></p>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-outline" onclick="closePlacementModal()">Để sau</button>
+      <a href="/section/luyen-de" class="btn btn-primary">🚀 Bắt đầu tính giờ thi →</a>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL XEM BÀI GIẢNG & MẸO LÀM BÀI CHO STUDY -->
+<div id="lesson-player-modal" class="lesson-modal" style="display: none;">
+  <div class="lesson-modal-backdrop" onclick="closeLessonModal()"></div>
+  <div class="lesson-modal-box card">
+    <div class="modal-head">
+      <div class="modal-head-title-wrap">
+        <span class="badge badge-primary" id="player-badge">Unit</span>
+        <h3 id="player-title" class="lesson-modal-title">Tiêu đề bài giảng</h3>
+      </div>
+      <button type="button" class="btn-close" onclick="closeLessonModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Giả lập trình phát Video bài giảng -->
+      <div class="video-player-container mb-3">
+        <div class="video-screen-mock">
+          <div class="video-play-btn" onclick="togglePlayVideo(this)">▶</div>
+          <div class="video-overlay-info">
+            <div class="video-now-playing" id="player-video-desc">Video Bài Giảng: Phương pháp & Chiến lược xử lý đề</div>
+            <div class="video-time-tag" id="player-duration">⏱ 30 phút</div>
+          </div>
+        </div>
+        <div class="video-control-bar">
+          <button type="button" class="ctrl-btn" onclick="togglePlayVideo()">▶ Play</button>
+          <div class="video-track"><div class="video-track-fill" style="width: 25%;"></div></div>
+          <span class="video-time-text">07:30 / <span id="player-duration-text">30:00</span></span>
+        </div>
+      </div>
+
+      <!-- Khung trọng tâm & Bí quyết -->
+      <div class="lesson-cheat-box">
+        <div class="cheat-header">
+          <span class="cheat-icon">💡</span>
+          <span class="cheat-title">Trọng Tâm Lý Thuyết & Mẹo Xử Lý Đề Thi</span>
+        </div>
+        <ul class="cheat-points-list">
+          <li><strong>Chiến lược bắt keyword:</strong> Tập trung vào danh từ cụ thể, động từ hành động và trạng từ thời gian; bỏ qua các từ nối phụ để tiết kiệm thời gian.</li>
+          <li><strong>Nhận diện bẫy phổ biến:</strong> Đề thi thường cài các từ đồng âm khác nghĩa hoặc câu trả lời lặp từ trực tiếp để đánh lừa thí sinh nghe sót.</li>
+          <li><strong>Nguyên tắc 30 giây:</strong> Không bao giờ dừng lại suy nghĩ 1 câu quá 30 giây; đánh dấu nghi ngờ và chuyển ngay sang câu tiếp theo.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-outline" onclick="closeLessonModal()">Đóng cửa sổ</button>
+      <a href="/section/luyen-de" class="btn btn-primary">⚡ Làm bài tập thực hành phần này ngay →</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Đóng mở Accordion từng kỹ năng ngoại ngữ
+  function toggleSkillAccordion(mode, index) {
+    const block = document.getElementById(`${mode}-skill-block-${index}`);
+    const list = document.getElementById(`${mode}-lessons-${index}`);
+    const chevron = document.getElementById(`${mode}-chevron-${index}`);
+    if (!block || !list) return;
+
+    const isOpen = block.classList.contains('is-open');
+    if (isOpen) {
+      block.classList.remove('is-open');
+      list.style.display = 'none';
+      if (chevron) {
+        chevron.textContent = mode === 'study' ? '▼ Mở bài học' : '▼ Mở luyện đề';
+        chevron.classList.remove('is-active');
+      }
+    } else {
+      block.classList.add('is-open');
+      list.style.display = 'flex';
+      if (chevron) {
+        chevron.textContent = '▲ Thu gọn';
+        chevron.classList.add('is-active');
+      }
+    }
+  }
+
+  // Đóng mở Khối Đề Full Test
+  function toggleFullTestsAccordion() {
+    const block = document.getElementById('fulltests-block');
+    const list = document.getElementById('fulltests-lessons');
+    const chevron = document.getElementById('fulltests-chevron');
+    if (!block || !list) return;
+
+    const isOpen = block.classList.contains('is-open');
+    if (isOpen) {
+      block.classList.remove('is-open');
+      list.style.display = 'none';
+      if (chevron) {
+        chevron.textContent = '▼ Xem đề Full Test';
+        chevron.classList.remove('is-active');
+      }
+    } else {
+      block.classList.add('is-open');
+      list.style.display = 'flex';
+      if (chevron) {
+        chevron.textContent = '▲ Thu gọn';
+        chevron.classList.add('is-active');
+      }
+    }
+  }
+
+  // Mở/Thu gọn tất cả kỹ năng
+  let allSkillsOpen = { study: true, practice: true };
+  function toggleAllSkills(mode) {
+    allSkillsOpen[mode] = !allSkillsOpen[mode];
+    const willOpen = allSkillsOpen[mode];
+    const blocks = document.querySelectorAll(`.${mode}-accordion-card`);
+
+    blocks.forEach((block) => {
+      const idx = block.dataset.skillIndex;
+      const list = document.getElementById(`${mode}-lessons-${idx}`);
+      const chevron = document.getElementById(`${mode}-chevron-${idx}`);
+      if (willOpen) {
+        block.classList.add('is-open');
+        if (list) list.style.display = 'flex';
+        if (chevron) {
+          chevron.textContent = '▲ Thu gọn';
+          chevron.classList.add('is-active');
+        }
+      } else {
+        block.classList.remove('is-open');
+        if (list) list.style.display = 'none';
+        if (chevron) {
+          chevron.textContent = mode === 'study' ? '▼ Mở bài học' : '▼ Mở luyện đề';
+          chevron.classList.remove('is-active');
+        }
+      }
+    });
+
+    // Cập nhật text nút
+    const btn = document.getElementById(`btn-toggle-all-${mode}`);
+    if (btn) {
+      btn.textContent = willOpen ? '📁 Thu gọn tất cả mục lục' : '👁️ Mở tất cả mục lục';
+    }
+  }
+
+
+<!-- MODAL XEM CHI TIẾT & HƯỚNG DẪN BỘ ĐỀ PRACTICE -->
+<div id="practice-exam-modal" class="lesson-modal" style="display: none;">
+  <div class="lesson-modal-backdrop" onclick="closePracticeModal()"></div>
+  <div class="lesson-modal-box card" style="max-width: 600px;">
+    <div class="modal-head" style="background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);">
+      <div class="modal-head-title-wrap">
+        <span class="badge" style="background: #ffffff; color: #166534;" id="prac-badge">Luyện đề</span>
+        <h3 id="prac-title" class="lesson-modal-title" style="color: #ffffff;">Tiêu đề bộ đề</h3>
+      </div>
+      <button type="button" class="btn-close" style="color: #ffffff;" onclick="closePracticeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="card mb-3" style="background: #f0fdf4; border-color: #bbf7d0;">
+        <div style="font-weight: 700; color: #166534; margin-bottom: 4px;">🎯 Quy chế bài thi & Bấm giờ chấm điểm:</div>
+        <ul style="margin: 0; padding-left: 20px; font-size: 0.9rem; color: #14532d; line-height: 1.6;">
+          <li>Thời lượng làm bài: <strong id="prac-duration-text">45 phút</strong> (Đồng hồ đếm ngược tự động).</li>
+          <li>Quy mô câu hỏi: <strong id="prac-questions-text">50 câu</strong> trắc nghiệm format mới nhất.</li>
+          <li>Chấm điểm tự động và xếp hạng ngay sau khi nộp bài.</li>
+        </ul>
+      </div>
+
+      <div class="card mb-3" style="background: #fffbeb; border-color: #fde68a;">
+        <div style="font-weight: 700; color: #92400e; margin-bottom: 4px;">💡 Hướng dẫn làm bài thi hiệu quả:</div>
+        <p style="margin: 0; font-size: 0.88rem; color: #78350f; line-height: 1.5;">Vui lòng chuẩn bị tai nghe và không gian yên tĩnh. Bạn có thể tạm dừng hoặc nộp bài bất cứ lúc nào trong thời gian làm bài.</p>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-outline" onclick="closePracticeModal()">Đóng</button>
+      <a href="/section/luyen-de" class="btn btn-success" id="prac-confirm-btn">🚀 Bắt đầu làm bài thi ngay →</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  function openPracticeModal(title, badge, duration, questions) {
+    const modal = document.getElementById('practice-exam-modal');
+    const titleEl = document.getElementById('prac-title');
+    const badgeEl = document.getElementById('prac-badge');
+    const durEl = document.getElementById('prac-duration-text');
+    const qEl = document.getElementById('prac-questions-text');
+
+    if (titleEl) titleEl.textContent = title;
+    if (badgeEl) badgeEl.textContent = badge || 'Luyện đề';
+    if (durEl) durEl.textContent = duration;
+    if (qEl) qEl.textContent = questions + ' câu hỏi';
+
+    if (modal) modal.style.display = 'flex';
+  }
+
+  function closePracticeModal() {
+    const modal = document.getElementById('practice-exam-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  // Gắn event listener sau khi DOM load
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.btn-open-study-lesson').forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const title = this.dataset.title;
+        const badge = this.dataset.badge;
+        const dur = this.dataset.duration;
+        const topics = this.dataset.topics;
+        openLessonModal(title, badge, dur, topics, false);
+      });
+    });
+
+    document.querySelectorAll('.btn-open-study-tips').forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const title = this.dataset.title;
+        const badge = this.dataset.badge;
+        const dur = this.dataset.duration;
+        const topics = this.dataset.topics;
+        openLessonModal(title, badge, dur, topics, true);
+      });
+    });
+
+    document.querySelectorAll('.btn-open-practice-modal').forEach(btn => {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const title = this.dataset.title;
+        const badge = this.dataset.badge;
+        const dur = this.dataset.duration;
+        const q = this.dataset.questions;
+        openPracticeModal(title, badge, dur, q);
+      });
+    });
+  });
+
+  // Lọc theo 4 kỹ năng (Listening, Reading, Writing, Speaking) + Full Tests
+  function filterSkill(skillId, btn) {
+    document.querySelectorAll('.skill-filter-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+
+    const cards = document.querySelectorAll('.skill-block-card');
+    cards.forEach(card => {
+      const type = card.getAttribute('data-skill-type');
+      const idx = card.dataset.skillIndex;
+      const mode = card.dataset.mode;
+      const list = idx ? document.getElementById(`${mode}-lessons-${idx}`) : null;
+      const chevron = idx ? document.getElementById(`${mode}-chevron-${idx}`) : null;
+
+      if (skillId === 'all') {
+        card.style.display = 'block';
+      } else if (skillId === 'fulltest') {
+        if (card.id === 'fulltests-block') {
+          card.style.display = 'block';
+          const ftList = document.getElementById('fulltests-lessons');
+          if (ftList) ftList.style.display = 'flex';
+        } else {
+          card.style.display = 'none';
+        }
+      } else if (type === skillId) {
+        card.style.display = 'block';
+        if (list) {
+          card.classList.add('is-open');
+          list.style.display = 'flex';
+          if (chevron) {
+            chevron.textContent = '▲ Thu gọn';
+            chevron.classList.add('is-active');
+          }
+        }
+      } else {
+        card.style.display = 'none';
+      }
+    });
+  }
+
+  function startPlacementTest() {
+    const modal = document.getElementById('placement-modal');
+    if (modal) modal.style.display = 'flex';
+  }
+
+  function closePlacementModal() {
+    const modal = document.getElementById('placement-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  // Modal bài giảng cho Study
+  function openLessonModal(title, badge, duration, topics, isTipsOnly = false) {
+    const modal = document.getElementById('lesson-player-modal');
+    const titleEl = document.getElementById('player-title');
+    const badgeEl = document.getElementById('player-badge');
+    const durEl = document.getElementById('player-duration');
+    const durText = document.getElementById('player-duration-text');
+    const descEl = document.getElementById('player-video-desc');
+
+    if (titleEl) titleEl.textContent = title;
+    if (badgeEl) badgeEl.textContent = badge || 'Bài giảng';
+    if (durEl) durEl.textContent = '⏱ ' + duration;
+    if (durText) durText.textContent = duration;
+    if (descEl) descEl.textContent = isTipsOnly ? 'Tóm tắt bí quyết & phân tích bẫy đề thi' : 'Video Bài Giảng: ' + (topics || title);
+
+    if (modal) modal.style.display = 'flex';
+  }
+
+  function closeLessonModal() {
+    const modal = document.getElementById('lesson-player-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function togglePlayVideo(btn) {
+    alert('Đang phát video bài giảng chất lượng cao với phụ đề song ngữ.');
+  }
+
+  // Accordion cho các chương GDPT
+  let allOpened = false;
+
+  function toggleChapter(index) {
+    const block = document.getElementById('chapter-block-' + index);
+    const list = document.getElementById('lessons-list-' + index);
+    const chevron = document.getElementById('chevron-' + index);
+    if (!block || !list) return;
+
+    const isOpen = block.classList.contains('is-open');
+
+    document.querySelectorAll('.chapter-block-card').forEach(b => {
+      b.classList.remove('is-open');
+      b.classList.add('is-collapsed');
+    });
+    document.querySelectorAll('.lessons-list').forEach(l => l.style.display = 'none');
+    document.querySelectorAll('.chapter-chevron-icon').forEach(c => c.textContent = '▶');
+    document.querySelectorAll('.chapter-pill-btn').forEach(p => p.classList.remove('active'));
+
+    if (!isOpen) {
+      block.classList.add('is-open');
+      block.classList.remove('is-collapsed');
+      list.style.display = 'flex';
+      if (chevron) chevron.textContent = '▼';
+      const pillBtn = document.getElementById('toc-btn-' + index);
+      if (pillBtn) pillBtn.classList.add('active');
+
+      block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
+  function toggleAllChapters() {
+    allOpened = !allOpened;
+    const blocks = document.querySelectorAll('.chapter-block-card');
+    const lists = document.querySelectorAll('.lessons-list');
+    const chevrons = document.querySelectorAll('.chapter-chevron-icon');
+
+    blocks.forEach(b => {
+      if (allOpened) {
+        b.classList.add('is-open');
+        b.classList.remove('is-collapsed');
+      } else {
+        b.classList.remove('is-open');
+        b.classList.add('is-collapsed');
+      }
+    });
+
+    lists.forEach(l => l.style.display = allOpened ? 'flex' : 'none');
+    chevrons.forEach(c => c.textContent = allOpened ? '▼' : '▶');
+  }
+</script>
+{% endblock %}
