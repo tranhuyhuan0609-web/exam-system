@@ -88,24 +88,51 @@ class GeminiEnricher:
 
 
 class GeminiEmbedder:
-    def __init__(self):
-        from google import genai
+    """Computes embeddings using a rotating pool of Gemini API keys."""
+
+    def __init__(self, api_keys: list[str] | str | None = None, model: str | None = None):
+        from app.ai.key_rotator import GeminiKeyPool
 
         settings = get_settings()
-        self._client = genai.Client(api_key=settings.gemini_api_key)
-        self._model = settings.gemini_embedding_model
+        keys = api_keys or settings.gemini_api_key_list
+        self._pool = GeminiKeyPool(keys)
+        self._model = model or settings.gemini_embedding_model
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        from google.genai import types
+        from google.genai import errors, types
 
         out: list[list[float]] = []
         for start in range(0, len(texts), 50):
-            response = await self._client.aio.models.embed_content(
-                model=self._model,
-                contents=texts[start : start + 50],
-                config=types.EmbedContentConfig(output_dimensionality=EMBEDDING_DIM, task_type="SEMANTIC_SIMILARITY"),
-            )
-            for emb in response.embeddings:
-                norm = math.sqrt(sum(v * v for v in emb.values)) or 1.0
-                out.append([v / norm for v in emb.values])  # truncated outputs are not unit length
+            chunk = texts[start : start + 50]
+            success = False
+            last_err = None
+
+            available_keys = await self._pool.get_all_available_keys() or self._pool.keys
+            for current_key in available_keys:
+                client = self._pool.get_client(current_key)
+                try:
+                    response = await client.aio.models.embed_content(
+                        model=self._model,
+                        contents=chunk,
+                        config=types.EmbedContentConfig(
+                            output_dimensionality=EMBEDDING_DIM, task_type="SEMANTIC_SIMILARITY"
+                        ),
+                    )
+                    for emb in response.embeddings:
+                        norm = math.sqrt(sum(v * v for v in emb.values)) or 1.0
+                        out.append([v / norm for v in emb.values])  # truncated outputs are not unit length
+                    await self._pool.mark_recovered(current_key)
+                    success = True
+                    break
+                except errors.APIError as exc:
+                    last_err = exc
+                    if exc.code == 429:
+                        await self._pool.mark_exhausted(
+                            current_key, cooldown_minutes=60, reason=str(exc.message)[:100]
+                        )
+                        continue
+                    raise
+
+            if not success:
+                raise last_err or RuntimeError("Không có Gemini API key nào khả dụng để tạo embedding.")
         return out

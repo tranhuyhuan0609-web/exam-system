@@ -119,6 +119,7 @@ class ChatModel:
         body = {
             "model": self.model,
             "temperature": 0,
+            "max_tokens": 2048,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
         }
         if not self.vision:
@@ -253,24 +254,55 @@ class FrugalProvider:
         return await self.inner.read_answer_key(pages)  # the reference for every check: Gemini only
 
     async def _try(self, solvers: list[ChatModel], questions, todo: list[int], figures, solved: dict) -> list[int]:
-        for solver in solvers:
-            if not todo or not await solver.available():
+        idx = 0
+        while idx < len(solvers) and todo:
+            first = solvers[idx]
+            # Group consecutive solvers that share the same model (e.g., groq-1, groq-2, groq-3)
+            pool = [first]
+            idx += 1
+            while idx < len(solvers) and solvers[idx].model == first.model:
+                pool.append(solvers[idx])
+                idx += 1
+            active = [s for s in pool if await s.available()]
+            if not active:
                 continue
-            for start in range(0, len(todo), solver.batch_size):
-                group = todo[start : start + solver.batch_size]
-                numbers = {questions[i].number for i in group}
-                try:
-                    answers = await solver.solve(
-                        [questions[i] for i in group], [f for f in figures if f.question_number in numbers]
-                    )
-                except (httpx.HTTPError, ValueError, KeyError, IndexError) as exc:  # out of quota, bad JSON
-                    log.warning("%s:%s could not solve: %s", solver.name, solver.model, exc)
-                    break  # the rest goes to the next solver
-                by_number = {a.number: a for a in answers}
-                for i in group:
-                    if (answer := by_number.get(questions[i].number)) is not None:
-                        solved[i] = answer
-                self._used.add(f"{solver.name}:{solver.model}")
+            batch_size = active[0].batch_size
+            groups = [todo[start : start + batch_size] for start in range(0, len(todo), batch_size)]
+            dead_solvers: set[int] = set()
+
+            async def _solve_group(g_idx: int, group: list[int]) -> None:
+                for attempt in range(len(active)):
+                    s_pos = (g_idx + attempt) % len(active)
+                    if s_pos in dead_solvers:
+                        continue
+                    solver = active[s_pos]
+                    numbers = {questions[i].number for i in group}
+                    try:
+                        answers = await solver.solve(
+                            [questions[i] for i in group], [f for f in figures if f.question_number in numbers]
+                        )
+                    except httpx.HTTPError as exc:  # rate limit / quota / HTTP error on this key: try next key in pool
+                        log.warning("%s:%s HTTP error: %s", solver.name, solver.model, exc)
+                        dead_solvers.add(s_pos)
+                        continue
+                    except (ValueError, KeyError, IndexError) as exc:  # model output format issue: don't retry same model
+                        log.warning("%s:%s could not solve: %s", solver.name, solver.model, exc)
+                        return
+                    by_number = {a.number: a for a in answers}
+                    for i in group:
+                        if (answer := by_number.get(questions[i].number)) is not None:
+                            solved[i] = answer
+                    self._used.add(f"{solver.name}:{solver.model}")
+                    return
+
+            # Run up to len(active) batches in parallel across the key pool
+            sem = asyncio.Semaphore(len(active))
+
+            async def _bounded(g_idx: int, group: list[int]) -> None:
+                async with sem:
+                    await _solve_group(g_idx, group)
+
+            await asyncio.gather(*(_bounded(g_idx, g) for g_idx, g in enumerate(groups)))
             todo = [i for i in todo if i not in solved]
         return todo
 

@@ -20,8 +20,10 @@ PING = {"messages": [{"role": "user", "content": "Trả lời đúng một từ:
 def configured() -> list[ProviderConfig]:
     s = get_settings()
     out = []
-    if s.groq_api_key:
-        out.append(ProviderConfig("groq", s.groq_base_url, s.groq_api_key, s._names(s.groq_model)))
+    if s.groq_api_key_list:
+        for idx, k in enumerate(s.groq_api_key_list, start=1):
+            lbl = f"groq-{idx}" if len(s.groq_api_key_list) > 1 else "groq"
+            out.append(ProviderConfig(lbl, s.groq_base_url, k, s._names(s.groq_model)))
     if s.openrouter_api_key:
         out.append(
             ProviderConfig(

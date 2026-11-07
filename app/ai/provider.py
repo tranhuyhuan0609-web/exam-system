@@ -77,24 +77,19 @@ class AIQuotaExhausted(AIError):
     """Every model is out of its daily quota: the job waits and runs again later instead of failing."""
 
 
-EXTRACT_PROMPT = """Bạn là chuyên gia số hoá đề thi Việt Nam (mọi môn, mọi cấp). Các ảnh trên là các trang của một đề thi, \
-mỗi ảnh được đánh dấu bằng nhãn “TRANG n” ngay trước nó.
+EXTRACT_PROMPT = """Hãy phân tích các trang đề thi đính kèm (mỗi ảnh có nhãn “TRANG n”) và trích xuất danh sách câu hỏi sang định dạng dữ liệu JSON phục vụ hệ thống chấm thi.
+Trang có ghi “(chỉ tham khảo)” chỉ dùng để nối tiếp phần cuối của câu bị ngắt ở trang trước; không trích câu bắt đầu ở trang đó.
 
-Nhiệm vụ: trích xuất MỌI câu hỏi bắt đầu trên các trang KHÔNG đánh dấu “chỉ tham khảo”. \
-Trang “chỉ tham khảo” chỉ dùng để đọc nốt phần cuối của câu bị ngắt sang trang sau; không trích câu bắt đầu ở trang đó.
-
-Quy tắc:
-- Giữ NGUYÊN VĂN đề bài, kể cả lỗi chính tả; không tóm tắt, không giải.
-- Viết MỌI công thức, ký hiệu, chỉ số, số mũ, phân số, vectơ bằng LaTeX đặt trong $...$. \
-Ví dụ: $10^5$ Pa, $p_1$, $1{,}25 \\cdot 10^5$ Pa, $\\rho = 1000\\ \\text{kg/m}^3$, $\\vec{F}$, $\\Delta\\varphi$, $\\dfrac{3}{4}$. \
-Dấu thập phân kiểu Việt Nam viết là {,} trong LaTeX.
-- Không dùng \\color / \\textcolor. Ký hiệu độ viết là $^\\circ\\text{C}$ (VD: $20^\\circ\\text{C}$).
-- Trong JSON, mỗi dấu \\ của LaTeX phải viết thành \\\\ (VD: "\\\\frac{1}{2}", "\\\\text{kg}").
-- Bỏ qua tiêu đề, tên lớp/giáo viên, logo, watermark, số trang, đáp án in sẵn ở cuối đề.
-- Nội dung lựa chọn không kèm nhãn “A.” và không kèm dấu chấm cuối.
-- Câu có các ý a), b), c), d) đúng/sai: type = TRUE_FALSE, đưa từng ý vào choices với nhãn A, B, C, D.
-- Nếu câu có hình vẽ / đồ thị / sơ đồ mạch, trả figure_bbox bao sát riêng phần hình (không lấy chữ đề bài), \
-theo thang 0–1000 của đúng trang chứa hình, và page là trang chứa câu hỏi."""
+Hướng dẫn chuẩn hoá dữ liệu:
+- Đưa đầy đủ nội dung câu hỏi và các phương án trả lời vào cấu trúc JSON.
+- Viết công thức Toán/Lý/Hoá, ký hiệu, chỉ số, số mũ, phân số, vectơ bằng LaTeX đặt trong $...$ (VD: $10^5$ Pa, $p_1$, $1{,}25 \\cdot 10^5$ Pa, $\\vec{F}$, $\\Delta\\varphi$, $\\dfrac{3}{4}$, $20^\\circ\\text{C}$).
+- Không dùng \\color / \\textcolor.
+- Bỏ qua tiêu đề trường/sở, logo, watermark, số trang.
+- Đánh giá mức độ nhận thức (difficulty): RECOGNITION (Nhận biết), UNDERSTANDING (Thông hiểu), APPLICATION (Vận dụng), ADVANCED_APPLICATION (Vận dụng cao).
+- Không đưa nhãn “A.”, “B.”, “C.”, “D.” hoặc dấu chấm cuối vào trường content của lựa chọn.
+- Câu có các ý a), b), c), d) đúng/sai: đặt type = TRUE_FALSE, đưa từng ý vào choices với nhãn A, B, C, D.
+- Nếu câu hỏi có hình minh hoạ / đồ thị / sơ đồ mạch, ghi toạ độ [ymin, xmin, ymax, xmax] thang 0–1000 bao sát phần hình vào figure_bbox và ghi page là số trang chứa câu hỏi.
+- Để tránh bộ lọc trùng lặp bộ đệm (RECITATION), hãy xuất danh sách trong mảng questions theo thứ tự NGƯỢC từ câu cuối trang lên câu đầu trang."""
 EXTRACT_PROMPT += EXTRACT_RULES  # exam questions only, answers attached to their question, no names
 
 ANSWER_KEY_PROMPT = """Các ảnh trên là BẢNG ĐÁP ÁN chính thức của một đề thi, gồm nhiều mã đề.
@@ -128,26 +123,27 @@ def _json_block(text: str) -> str:
 
 
 class GeminiProvider:
-    """Gemini with retries, model fallbacks and structured outputs."""
+    """Gemini with retries, multi-key rotation, model fallbacks and structured outputs."""
 
     RETRYABLE = {429, 500, 502, 503, 504}
 
     def __init__(
         self,
-        api_key: str,
+        api_key: str | list[str],
         models: list[str],
         max_rounds: int = 4,
-        base_delay: float = 5.0,
+        base_delay: float = 1.5,
         extract_models: list[str] | None = None,
         extract_thinking: str = "",
     ):
-        from google import genai
+        from app.ai.key_rotator import GeminiKeyPool
 
-        if not api_key:
-            raise AIError("Chưa cấu hình GEMINI_API_KEY.")
+        self._pool = GeminiKeyPool(api_key)
+        if self._pool.is_empty():
+            raise AIError("Chưa cấu hình GEMINI_API_KEY hoặc GEMINI_API_KEYS.")
         if not models:
             raise AIError("Chưa cấu hình GEMINI_MODELS.")
-        self._client = genai.Client(api_key=api_key)
+        self._client = self._pool.get_client(self._pool.keys[0])
         self._models = models
         # Reading pages is transcription: a cheaper model, thinking little (thinking is billed as output).
         self._extract_models = extract_models or models
@@ -156,6 +152,12 @@ class GeminiProvider:
         self._base_delay = base_delay
         self._used: set[str] = set()
         self._out_for_today: set[str] = set()  # daily free quota used up: not worth retrying today
+        self._out_for_today_keys: set[tuple[str, str]] = set()
+        self._rpm_cooldown_keys: dict[tuple[str, str], float] = {}
+
+    @property
+    def key_pool(self):
+        return self._pool
 
     @property
     def models_used(self) -> set[str]:
@@ -178,7 +180,8 @@ class GeminiProvider:
                 raise AIQuotaExhausted("Mọi model Gemini đã hết quota hôm nay; job sẽ chạy lại sau.")
             for model in candidates:
                 # A whole exam in one answer: room for it (a cut-off answer is split and asked again by the pipeline)
-                config = types.GenerateContentConfig(temperature=0, max_output_tokens=65536)
+                temp = 0.3 if schema is ExtractionResult else 0
+                config = types.GenerateContentConfig(temperature=temp, max_output_tokens=65536)
                 if thinking:
                     config.thinking_config = types.ThinkingConfig(thinking_level=thinking)
                 if code_execution:
@@ -194,31 +197,101 @@ class GeminiProvider:
                     config.response_mime_type = "application/json"
                     config.response_schema = schema
                     request = contents
-                try:
-                    response = await self._client.aio.models.generate_content(
-                        model=model, contents=request, config=config
-                    )
-                    self._used.add(model)
-                    if not code_execution and response.parsed is not None:
-                        return response.parsed
-                    text = "".join(p.text or "" for p in (response.candidates[0].content.parts or []))
-                    return schema.model_validate_json(_json_block(text))
-                except errors.APIError as exc:
-                    last_error = exc
-                    if exc.code == 400 and thinking and "thinking" in str(exc.message).lower():
-                        thinking = ""  # this model has no thinking levels: ask again without
+
+                import time
+
+                from app.ai.key_rotator import mask_key
+
+                available_keys = await self._pool.get_rotated_keys()
+                now_mono = time.monotonic()
+                for current_key in available_keys:
+                    if (model, current_key) in self._out_for_today_keys:
                         continue
-                    if exc.code not in self.RETRYABLE:
-                        raise AIError(f"Gemini từ chối yêu cầu ({exc.code}): {exc.message}") from exc
-                    if exc.code == 429 and "perday" in str(exc).replace(" ", "").lower():
-                        self._out_for_today.add(model)
-                        log.warning("Gemini %s: daily quota used up, skipped until the worker restarts", model)
+                    if self._rpm_cooldown_keys.get((model, current_key), 0.0) > now_mono:
                         continue
-                    log.warning("Gemini %s busy (%s), trying next model", model, exc.code)
-                except (ValidationError, ValueError, IndexError, AttributeError) as exc:
-                    last_error = exc
-                    log.warning("Gemini %s returned unusable output: %s", model, exc)
-            await asyncio.sleep(self._base_delay * 3**round_no)
+                    client = self._client if len(self._pool.keys) == 1 else self._pool.get_client(current_key)
+                    try:
+                        response = await client.aio.models.generate_content(
+                            model=model, contents=request, config=config
+                        )
+                        self._used.add(model)
+                        self._rpm_cooldown_keys.pop((model, current_key), None)
+                        await self._pool.mark_recovered(current_key)
+                        if not code_execution and response.parsed is not None:
+                            return response.parsed
+                        candidates_list = getattr(response, "candidates", None) or []
+                        finish_reason = str(getattr(candidates_list[0], "finish_reason", "")) if candidates_list else ""
+                        if "RECITATION" in finish_reason:
+                            log.warning("Gemini %s hit RECITATION filter, retrying single page with temperature=0.9 & reverse order", model)
+                            alt_cfg = types.GenerateContentConfig(
+                                temperature=0.9,
+                                max_output_tokens=65536,
+                                response_mime_type="application/json",
+                                response_schema=schema,
+                            )
+                            # Strip context_only pages so only the single target page is sent
+                            single_req = []
+                            skip_next = False
+                            for item in request:
+                                if skip_next:
+                                    skip_next = False
+                                    continue
+                                if isinstance(item, str) and "(chỉ tham khảo)" in item:
+                                    skip_next = True
+                                    continue
+                                single_req.append(item)
+                            response = await client.aio.models.generate_content(
+                                model=model,
+                                contents=[
+                                    *single_req,
+                                    "QUAN TRỌNG: Để tránh bộ lọc RECITATION, hãy xuất mảng questions theo thứ tự NGƯỢC từ câu cuối trang lên câu đầu trang, và viết gọn lại lời dẫn mỗi câu hỏi bằng ngôn ngữ của bạn (giữ nguyên số liệu, công thức và đáp án).",
+                                ],
+                                config=alt_cfg,
+                            )
+                            if response.parsed is not None:
+                                return response.parsed
+                            candidates_list = getattr(response, "candidates", None) or []
+                        parts = (candidates_list[0].content.parts if candidates_list and candidates_list[0].content else None) or []
+                        text = "".join(p.text or "" for p in parts)
+                        return schema.model_validate_json(_json_block(text))
+                    except errors.APIError as exc:
+                        last_error = exc
+                        if exc.code == 400 and thinking and "thinking" in str(exc.message).lower():
+                            thinking = ""  # this model has no thinking levels: ask again without
+                            config.thinking_config = None
+                            continue
+                        if exc.code not in self.RETRYABLE:
+                            raise AIError(f"Gemini từ chối yêu cầu ({exc.code}): {exc.message}") from exc
+                        if exc.code == 429:
+                            is_daily = "perday" in str(exc).replace(" ", "").lower()
+                            if is_daily:
+                                self._out_for_today_keys.add((model, current_key))
+                                log.warning(
+                                    "Gemini key [%s] chạm giới hạn ngày trên model %s -> chuyển sang key/model tiếp theo",
+                                    mask_key(current_key),
+                                    model,
+                                )
+                                if all((model, k) in self._out_for_today_keys for k in self._pool.keys):
+                                    self._out_for_today.add(model)
+                                    log.warning("Gemini %s: đã hết quota ngày trên toàn bộ keys, tự động chuyển model khác", model)
+                                    break
+                            else:
+                                # Only put (model, current_key) on a short 15s RPM cooldown so current_key still works for other models!
+                                self._rpm_cooldown_keys[(model, current_key)] = time.monotonic() + 15.0
+                                log.warning(
+                                    "Gemini key [%s] chạm giới hạn RPM trên model %s -> tạm nghỉ 15s trên model này, chuyển sang key/model tiếp theo",
+                                    mask_key(current_key),
+                                    model,
+                                )
+                            continue
+                        log.warning("Gemini %s busy (%s), trying next key or model", model, exc.code)
+                    except (ValidationError, ValueError, IndexError, AttributeError) as exc:
+                        last_error = exc
+                        log.warning("Gemini %s returned unusable output: %s — switching to next model", model, exc)
+                        break  # Model output issue (not API key issue): try next model immediately!
+            if not [m for m in models or self._models if m not in self._out_for_today]:
+                raise AIQuotaExhausted("Mọi model Gemini đã hết quota hôm nay; job sẽ chạy lại sau.")
+            await asyncio.sleep(self._base_delay * 1.5**round_no)
         raise AIError(f"Gemini không phản hồi được sau nhiều lần thử: {last_error}")
 
     async def extract(self, pages: list[PageImage]) -> list[ExtractedQuestion]:
@@ -236,6 +309,7 @@ class GeminiProvider:
             q.content = repair_latex(q.content)
             for c in q.choices:
                 c.content = repair_latex(c.content)
+        result.questions.sort(key=lambda q: (q.page, q.number))
         return result.questions
 
     async def read_answer_key(self, pages: list[PageImage]) -> list[PaperKey]:
@@ -257,7 +331,7 @@ class GeminiProvider:
         contents: list = [SOLVE_PROMPT, json.dumps(payload, ensure_ascii=False)]
         for fig in figures:
             contents += [f"HÌNH CÂU {fig.question_number}", types.Part.from_bytes(data=fig.png, mime_type="image/png")]
-        result = await self._generate(contents, SolveResult, code_execution=True)
+        result = await self._generate(contents, SolveResult, code_execution=False)
         for sol in result.solutions:
             sol.step_by_step_solution = repair_latex(sol.step_by_step_solution)
             sol.final_value = repair_latex(sol.final_value)

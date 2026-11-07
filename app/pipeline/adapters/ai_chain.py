@@ -91,17 +91,30 @@ def _parse(items: list[EnrichItem], raw: str) -> list[EnrichResult]:
 
 
 class OpenAICompatEnricher:
-    """Chat-completions providers (Groq, OpenRouter): text only, JSON answer validated like Gemini's."""
+    """Chat-completions providers (Groq, OpenRouter): text only, supports rotating API keys and JSON validation."""
 
     def __init__(
-        self, name: str, base_url: str, api_key: str, model: str, timeout: float = 120, headers: dict | None = None
+        self,
+        name: str,
+        base_url: str,
+        api_key: str | list[str],
+        model: str,
+        timeout: float = 120,
+        headers: dict | None = None,
     ):
+        from app.ai.key_rotator import parse_keys
+
         self.name, self.model, self.vision = name, model, False
         self._url = base_url.rstrip("/") + "/chat/completions"
-        self._headers = headers or {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        self._keys = parse_keys(api_key)
+        self._custom_headers = headers
         self._timeout = timeout
+        self._key_index = 0
 
     async def enrich(self, items: list[EnrichItem]) -> list[EnrichResult]:
+        if not self._keys:
+            raise AIUnavailable(f"{self.name}: Không có API key nào được cấu hình.")
+
         payload = [
             {
                 "ref": i.ref,
@@ -123,19 +136,37 @@ class OpenAICompatEnricher:
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ],
         }
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
+
+        last_status = None
+        # Try all keys in the pool if rate limited
+        for attempt in range(len(self._keys)):
+            current_key = self._keys[(self._key_index + attempt) % len(self._keys)]
+            headers = self._custom_headers or {
+                "Authorization": f"Bearer {current_key}",
+                "Content-Type": "application/json",
+            }
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                try:
+                    response = await client.post(self._url, headers=headers, json=body)
+                except httpx.HTTPError as exc:
+                    raise AIUnavailable(f"{self.name}: {exc}") from exc
+
+            last_status = response.status_code
+            if response.status_code == 429:
+                log.warning("%s key chạm 429 rate limit, tự động xoay vòng sang key tiếp theo...", self.name)
+                continue
+            if response.status_code >= 500:
+                continue
+
+            response.raise_for_status()
+            self._key_index = (self._key_index + attempt + 1) % len(self._keys)
+            content = response.json()["choices"][0]["message"]["content"] or ""
             try:
-                response = await client.post(self._url, headers=self._headers, json=body)
-            except httpx.HTTPError as exc:
-                raise AIUnavailable(f"{self.name}: {exc}") from exc
-        if response.status_code == 429 or response.status_code >= 500:
-            raise AIUnavailable(f"{self.name}: HTTP {response.status_code}")
-        response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"] or ""
-        try:
-            return _parse(items, content)
-        except ValueError as exc:  # malformed JSON: let the next provider try
-            raise AIUnavailable(f"{self.name}: unusable answer ({exc})") from exc
+                return _parse(items, content)
+            except ValueError as exc:  # malformed JSON: let the next provider try
+                raise AIUnavailable(f"{self.name}: unusable answer ({exc})") from exc
+
+        raise AIUnavailable(f"{self.name}: mọi API key đều bị lỗi HTTP {last_status}")
 
 
 class GeminiChainMember:
@@ -147,7 +178,9 @@ class GeminiChainMember:
         from app.pipeline.adapters.gemini import GeminiEnricher
 
         settings = get_settings()
-        provider = GeminiProvider(settings.gemini_api_key, settings.gemini_model_list, max_rounds=1, base_delay=1)
+        provider = GeminiProvider(
+            settings.gemini_api_key_list, settings.gemini_model_list, max_rounds=1, base_delay=1
+        )
         self._inner = GeminiEnricher(provider)
         self.name, self.vision = "gemini", True
 
@@ -226,13 +259,17 @@ def build_chain():
     limits = settings.ai_daily_limit_map
     sizes = settings.ai_batch_size_map
     members: list[tuple[object, int]] = []
-    if settings.gemini_api_key:
-        members.append((GeminiChainMember(), limits.get("gemini", 0), sizes.get("gemini", 15)))
-    if settings.groq_api_key and settings.groq_model:
+    if settings.gemini_api_key_list:
+        gemini_limit = limits.get("gemini", 0) * len(settings.gemini_api_key_list)
+        members.append((GeminiChainMember(), gemini_limit, sizes.get("gemini", 15)))
+    if settings.groq_api_key_list and settings.groq_model:
+        groq_limit = limits.get("groq", 0) * len(settings.groq_api_key_list)
         members.append(
             (
-                OpenAICompatEnricher("groq", settings.groq_base_url, settings.groq_api_key, settings.groq_model),
-                limits.get("groq", 0),
+                OpenAICompatEnricher(
+                    "groq", settings.groq_base_url, settings.groq_api_key_list, settings.groq_model
+                ),
+                groq_limit,
                 sizes.get("groq", 6),
             )
         )
