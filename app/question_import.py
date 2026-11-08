@@ -81,6 +81,7 @@ class ParsedQuestion:
     difficulty: str | None = None  # Difficulty value, or None to use the upload default
     explanation: str = ""
     errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     duplicate: bool = False
 
     @property
@@ -104,6 +105,7 @@ class ParsedQuestion:
             answers=[str(a) for a in data.get("answers", []) if str(a).strip()],
             difficulty=data.get("difficulty") if data.get("difficulty") in Difficulty.__members__ else None,
             explanation=str(data.get("explanation", "")),
+            warnings=[str(w) for w in data.get("warnings", [])],
         )
 
     def stored_choices(self) -> list[dict[str, Any]]:
@@ -153,8 +155,8 @@ def apply_answer(q: ParsedQuestion, raw: str) -> None:
 _Q_START = re.compile(r"^\s*(?:câu|cau|question)\s*(\d+)\s*[:.)\-–]?\s*(.*)$", re.IGNORECASE)
 # Upper-case "A." / "A)" = option; lower-case "a)" / "a." = true/false statement.
 _CHOICE = re.compile(r"^\s*(\*?)\s*([A-Fa-f])\s*[.)]\s*(.*)$", re.DOTALL)
-# Further choices on the same line must be separated by a tab or at least two spaces.
-_INLINE_SPLIT = re.compile(r"(?:\t+|\s{2,})(?=\*?\s*[A-Fa-f]\s*[.)]\s)")
+# Further choices on the same line: separated by tab, 2+ spaces, or space before next option mark.
+_INLINE_SPLIT = re.compile(r"(?:\t+|\s{2,}|\s+(?=\*?[B-Fb-f]\s*[.)]\s))")
 _ANSWER = re.compile(r"^\s*(?:đáp\s*án(?:\s*đúng)?|đa|answer)\s*[:.\-–]\s*(.+?)\s*$", re.IGNORECASE)
 _ANSWER_NO_COLON = re.compile(r"^\s*(?:đáp\s*án(?:\s*đúng)?|đa)\s+([A-Fa-f])\s*\.?\s*$", re.IGNORECASE)
 _LEVEL = re.compile(r"^\s*(?:mức\s*độ|level|difficulty)\s*[:.\-–]\s*(.+?)\s*$", re.IGNORECASE)
@@ -260,7 +262,67 @@ def parse_text(text: str) -> list[ParsedQuestion]:
     return [b.finish() for b in blocks]
 
 
-def _docx_lines(data: bytes) -> str:
+def _clean_pandoc_markdown(md: str) -> str:
+    # 1. Protect choice asterisks so markdown cleaners don't strip them
+    md = re.sub(r"(^|\s)\\?\*(\s*[A-Fa-f]\s*[.)])", r"\1TOKENSTAR\2", md)
+
+    # 2. Drop table divider / border lines produced by pandoc (e.g. --- ---, |---|---|)
+    lines = []
+    for line in md.splitlines():
+        if re.match(r"^\s*[-=|+:]{2,}(?:\s+[-=|+:]{2,})*\s*$", line):
+            continue
+        lines.append(line)
+    text = "\n".join(lines)
+
+    # 3. Unescape math typed as plain text in docx ($ escaped as \$ by pandoc)
+    text = text.replace(r"\$", "$")
+
+    # Inside math blocks $...$ (single line) or $$...$$ (multiline), unescape pandoc backslashes and special characters
+    def _fix_math(match: re.Match[str]) -> str:
+        s = match.group(0)
+        s = re.sub(r"\\\\([a-zA-Z])", r"\\\1", s)
+        s = re.sub(r"\\([\^_{}\[\]|])", r"\1", s)
+        return s
+
+    text = re.sub(r"(\$\$.+?\$\$|\$[^$\n]+?\$)", _fix_math, text, flags=re.DOTALL)
+
+    # 4. Markdown cleaning outside math
+    from app.ai.local_text import _clean
+
+    text = _clean(text)
+
+    # 5. Restore choice asterisks
+    text = text.replace("TOKENSTAR", "*")
+    return text
+
+
+def _docx_lines(data: bytes) -> tuple[str, list[str]]:
+    """Convert .docx to text lines with formulas as LaTeX via pandoc, with python-docx fallback."""
+    import logging
+    import os
+    import tempfile
+
+    warnings: list[str] = []
+
+    # 1. Try pypandoc first to retain OMML math equations as LaTeX $...$
+    try:
+        import pypandoc
+
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+            tmp.write(data)
+            tmp_path = tmp.name
+        try:
+            markdown = pypandoc.convert_file(tmp_path, "markdown", extra_args=["--wrap=none"])
+            if markdown and markdown.strip():
+                cleaned = _clean_pandoc_markdown(markdown)
+                return cleaned, warnings
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+    except Exception as exc:
+        logging.getLogger(__name__).info("pypandoc conversion failed: %s; falling back to python-docx", exc)
+
+    # 2. Fallback to python-docx with math and image detection
     from docx import Document
     from docx.table import Table
     from docx.text.paragraph import Paragraph
@@ -269,6 +331,18 @@ def _docx_lines(data: bytes) -> str:
         doc = Document(io.BytesIO(data))
     except Exception as exc:  # python-docx raises several unrelated types for corrupt files
         raise ImportFileError("Không đọc được file Word. Hãy lưu lại dưới dạng .docx rồi thử lại.") from exc
+
+    # Inspect XML for m:oMath / m:oMathPara and images
+    has_math = any(el.tag.endswith(("oMath", "oMathPara")) for el in doc.element.body.iter())
+    has_images = any(el.tag.endswith(("drawing", "pict")) for el in doc.element.body.iter())
+    if has_math:
+        warnings.append(
+            "Phát hiện công thức toán học (OMML) trong file Word nhưng chế độ dự phòng python-docx không đọc được công thức này. Hãy dùng chức năng 'AI nhập đề'."
+        )
+    if has_images:
+        warnings.append(
+            "Phát hiện hình ảnh trong file Word nhưng chế độ cơ bản không hỗ trợ nhập ảnh. Hãy dùng chức năng 'AI nhập đề'."
+        )
 
     lines: list[str] = []
     # Walk the body in order so paragraphs and tables (e.g. 2×2 choice grids) keep their position.
@@ -285,7 +359,7 @@ def _docx_lines(data: bytes) -> str:
                     seen.add(id(cell._tc))
                     for p in cell.paragraphs:
                         lines.extend(p.text.split("\n"))
-    return "\n".join(lines)
+    return "\n".join(lines), warnings
 
 
 def _decode(data: bytes) -> str:
@@ -397,10 +471,12 @@ def parse_file(filename: str, data: bytes) -> list[ParsedQuestion]:
     name = filename.lower()
     if len(data) > MAX_FILE_BYTES:
         raise ImportFileError(f"File quá lớn (tối đa {MAX_FILE_BYTES // (1024 * 1024)} MB).")
+    file_warnings: list[str] = []
     if name.endswith(".xlsx"):
         questions = parse_xlsx(data)
     elif name.endswith(".docx"):
-        questions = parse_text(_docx_lines(data))
+        text, file_warnings = _docx_lines(data)
+        questions = parse_text(text)
     elif name.endswith(".txt"):
         questions = parse_text(_decode(data))
     else:
@@ -413,4 +489,6 @@ def parse_file(filename: str, data: bytes) -> list[ParsedQuestion]:
         raise ImportFileError(f"File có {len(questions)} câu, vượt giới hạn {MAX_QUESTIONS} câu mỗi lần nhập.")
     for q in questions:
         q.errors += validate(q)
+        if file_warnings:
+            q.warnings = list(file_warnings)
     return questions

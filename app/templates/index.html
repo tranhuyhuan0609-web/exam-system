@@ -93,12 +93,12 @@
       <li>
         {% if kids %}
           <details {% if node.id in open_ids or (not selected and node.depth == 0) %}open{% endif %}>
-            <summary><a href="/?c={{ node.id }}" class="{{ 'current' if selected and selected.id == node.id }}">{{ node.name }}</a>
+            <summary><a href="/?c={{ node.id }}" class="{{ 'current' if selected and selected.id == node.id }}">{{ node.name }}{% if node.default_tier == "PRO" %} <span class="badge" style="background: #fef3c7; color: #b45309; font-weight: 700;">🔒 PRO</span>{% endif %}</a>
               {% if exam_counts.get(node.id) %}<span class="toc-count" title="Số đề có sẵn">{{ exam_counts[node.id] }}</span>{% endif %}</summary>
             {{ tree(node.kids) }}
           </details>
         {% else %}
-          <a href="/?c={{ node.id }}" class="leaf {{ 'current' if selected and selected.id == node.id }}">{{ node.name }}</a>
+          <a href="/?c={{ node.id }}" class="leaf {{ 'current' if selected and selected.id == node.id }}">{{ node.name }}{% if node.default_tier == "PRO" %} <span class="badge" style="background: #fef3c7; color: #b45309; font-weight: 700;">🔒 PRO</span>{% endif %}</a>
           {% if exam_counts.get(node.id) %}<span class="toc-count" title="Số đề có sẵn">{{ exam_counts[node.id] }}</span>{% endif %}
         {% endif %}
       </li>
@@ -191,7 +191,34 @@
 {% if selected or quiz %}
   <div class="card quiz-selected-area" style="margin-bottom: 24px;">
     {% with trail_link_last=False %}{% include "_breadcrumb.html" %}{% endwith %}
-    {% if selected %}<h2 class="subject-title" style="margin-top: 6px;">{{ selected.name }}</h2>{% endif %}
+    {% if selected %}
+      <h2 class="subject-title" style="margin-top: 6px;">
+        {{ selected.name }}
+        {% if selected.default_tier == "PRO" %}
+          <span class="badge" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; font-weight: 700;">🔒 PRO</span>
+        {% endif %}
+      </h2>
+    {% endif %}
+    {% if selected and groups %}
+      <div class="exam-grid mt-3" style="margin-bottom: 16px;">
+        {% for _, group_exams in groups %}
+          {% for exam in group_exams %}
+            <a class="card exam-card portal-exam-card" href="/exams/{{ exam.id }}">
+              <div class="exam-card-header">
+                {% if exam.access_tier == "PRO" %}
+                  <span class="badge" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; font-weight: 700;">🔒 PRO{% if exam.origin_type == "ORIGINAL" %} · Tự biên soạn{% endif %}</span>
+                {% else %}
+                  <span class="badge badge-ok">FREE 100%</span>
+                {% endif %}
+                <span class="exam-attempts-stat">📝 {{ question_counts.get(exam.id, 0) }} câu · ⏱ {{ exam.duration_seconds | duration }}</span>
+              </div>
+              <div class="muted small exam-scope-text">{{ scope_paths.get(scope_of(exam).key, '') }}</div>
+              <h3 class="exam-title-text">{{ exam.title }}</h3>
+            </a>
+          {% endfor %}
+        {% endfor %}
+      </div>
+    {% endif %}
     {% if quiz %}{{ quiz_form() }}{% endif %}
   </div>
 {% endif %}
@@ -571,10 +598,14 @@
           {% for exam in hot_exams %}
             <a class="card exam-card portal-exam-card hot-exam-card" href="/exams/{{ exam.id }}">
               <div class="exam-card-header">
-                {% if loop.index == 1 %}
-                  <span class="badge badge-hot-fire">🔥 TOP 1 HOT</span>
+                {% if exam.access_tier == "PRO" %}
+                  <span class="badge" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; font-weight: 700;">🔒 PRO</span>
+                {% elif loop.index == 1 %}
+                  <span class="badge badge-hot-fire">🔥 TOP 1 HOT · FREE</span>
                 {% elif loop.index <= 3 %}
-                  <span class="badge badge-hot-trending">⭐ Phổ biến</span>
+                  <span class="badge badge-hot-trending">⭐ Phổ biến · FREE</span>
+                {% else %}
+                  <span class="badge badge-ok">FREE</span>
                 {% endif %}
                 <span class="exam-attempts-stat">👥 {{ total_attempts.get(exam.id, 0) }} lượt làm</span>
               </div>
@@ -862,12 +893,14 @@
         {% for exam in hot_exams %}
           <a class="card exam-card portal-exam-card hot-exam-card home-hot-item" data-hot-type="exam" href="/exams/{{ exam.id }}">
             <div class="exam-card-header">
-              {% if loop.index == 1 %}
-                <span class="badge badge-hot-fire">🔥 TOP 1 ĐỀ THI</span>
+              {% if exam.access_tier == "PRO" %}
+                <span class="badge" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; font-weight: 700;">🔒 PRO</span>
+              {% elif loop.index == 1 %}
+                <span class="badge badge-hot-fire">🔥 TOP 1 ĐỀ THI · FREE</span>
               {% elif loop.index <= 3 %}
-                <span class="badge badge-hot-trending">⭐ Đề thi HOT</span>
+                <span class="badge badge-hot-trending">⭐ Đề thi HOT · FREE</span>
               {% else %}
-                <span class="badge">📝 Đề thi</span>
+                <span class="badge badge-ok">📝 Đề thi · FREE</span>
               {% endif %}
               <span class="exam-attempts-stat">👥 {{ total_attempts.get(exam.id, 0) }} lượt làm</span>
             </div>

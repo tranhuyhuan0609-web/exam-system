@@ -17,7 +17,19 @@ from app.application.paper import (
     validate_rules,
 )
 from app.deps import AdminUser, SessionDep
-from app.models import Difficulty, Exam, ExamAttempt, ExamMode, ExamQuestion, ExamVisibility, Question, QuestionSource
+from app.models import (
+    AccessTier,
+    Category,
+    Difficulty,
+    Exam,
+    ExamAttempt,
+    ExamMode,
+    ExamOriginType,
+    ExamQuestion,
+    ExamVisibility,
+    Question,
+    QuestionSource,
+)
 from app.routers.admin.common import clean_text, get_or_404, move, redirect
 from app.scope import Scope, load_categories, resolve_scope, scope_by_id, scope_of, scope_options, scope_paths
 from app.templating import flash, templates
@@ -40,6 +52,10 @@ class ExamForm:
     shuffle_questions: bool = False
     shuffle_choices: bool = False
     allow_custom_parts: bool = True
+    access_tier: str = AccessTier.FREE.value
+    origin_type: str = ExamOriginType.PUBLIC_CRAWLED.value
+    preview_question_count: str = "5"
+    is_solution_pro_only: bool = False
 
     @classmethod
     def from_exam(cls, e: Exam) -> "ExamForm":
@@ -54,6 +70,10 @@ class ExamForm:
             e.shuffle_questions,
             e.shuffle_choices,
             e.allow_custom_parts,
+            e.access_tier.value,
+            e.origin_type.value,
+            str(e.preview_question_count),
+            e.is_solution_pro_only,
         )
 
 
@@ -69,9 +89,19 @@ class ExamValues:
     shuffle_questions: bool
     shuffle_choices: bool
     allow_custom_parts: bool
+    access_tier: AccessTier
+    origin_type: ExamOriginType
+    preview_question_count: int
+    is_solution_pro_only: bool
 
 
 async def _parse(session, form: FormData) -> tuple[ExamForm, ExamValues | None, list[str]]:
+    raw_tier = str(form.get("access_tier", "")).strip()
+    if form.get("is_pro") == "on":
+        raw_tier = AccessTier.PRO.value
+    raw_origin = str(form.get("origin_type", ExamOriginType.PUBLIC_CRAWLED.value)).strip()
+    if form.get("is_pro") == "on" and "origin_type" not in form:
+        raw_origin = ExamOriginType.ORIGINAL.value
     data = ExamForm(
         title=str(form.get("title", "")),
         description=str(form.get("description", "")),
@@ -83,6 +113,10 @@ async def _parse(session, form: FormData) -> tuple[ExamForm, ExamValues | None, 
         shuffle_questions=form.get("shuffle_questions") == "on",
         shuffle_choices=form.get("shuffle_choices") == "on",
         allow_custom_parts=form.get("allow_custom_parts") == "on",
+        access_tier=raw_tier if raw_tier in AccessTier.__members__ else AccessTier.FREE.value,
+        origin_type=raw_origin if raw_origin in ExamOriginType.__members__ else ExamOriginType.PUBLIC_CRAWLED.value,
+        preview_question_count=str(form.get("preview_question_count", "5")).strip() or "5",
+        is_solution_pro_only=form.get("is_solution_pro_only") == "on",
     )
     if data.question_source not in QuestionSource.__members__:
         data.question_source = QuestionSource.FIXED.value
@@ -102,8 +136,15 @@ async def _parse(session, form: FormData) -> tuple[ExamForm, ExamValues | None, 
             max_attempts = int(data.max_attempts)
         else:
             errors.append("Số lần làm tối đa phải là số nguyên ≥ 1 (để trống = không giới hạn).")
+    preview_count = int(data.preview_question_count) if data.preview_question_count.isdigit() else 5
     if errors:
         return data, None, errors
+    # Inherit category's default_tier == PRO when access_tier was not explicitly specified in the form
+    tier = AccessTier(data.access_tier)
+    if not raw_tier and scope is not None:
+        category = await session.get(Category, scope.category_id)
+        if category and category.default_tier == AccessTier.PRO:
+            tier = AccessTier.PRO
     return (
         data,
         ExamValues(
@@ -117,6 +158,10 @@ async def _parse(session, form: FormData) -> tuple[ExamForm, ExamValues | None, 
             data.shuffle_questions,
             data.shuffle_choices,
             data.allow_custom_parts,
+            tier,
+            ExamOriginType(data.origin_type),
+            max(1, min(50, preview_count)),
+            data.is_solution_pro_only,
         ),
         [],
     )
@@ -129,6 +174,10 @@ def _apply(exam: Exam, v: ExamValues) -> None:
     exam.question_source = v.question_source
     exam.shuffle_questions, exam.shuffle_choices = v.shuffle_questions, v.shuffle_choices
     exam.allow_custom_parts = v.allow_custom_parts
+    exam.access_tier = v.access_tier
+    exam.origin_type = v.origin_type
+    exam.preview_question_count = v.preview_question_count
+    exam.is_solution_pro_only = v.is_solution_pro_only
 
 
 async def _matrix_problem(session, scope: Scope, matrix) -> str | None:

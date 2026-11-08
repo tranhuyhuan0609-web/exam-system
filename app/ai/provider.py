@@ -30,6 +30,7 @@ class PageImage:
     number: int  # 1-based page number in the document
     png: bytes
     context_only: bool = False  # included so a question split across pages can be completed
+    text_context: str = ""  # optional text layer used to verify wording and question boundaries
 
 
 @dataclass
@@ -85,11 +86,12 @@ Hướng dẫn chuẩn hoá dữ liệu:
 - Viết công thức Toán/Lý/Hoá, ký hiệu, chỉ số, số mũ, phân số, vectơ bằng LaTeX đặt trong $...$ (VD: $10^5$ Pa, $p_1$, $1{,}25 \\cdot 10^5$ Pa, $\\vec{F}$, $\\Delta\\varphi$, $\\dfrac{3}{4}$, $20^\\circ\\text{C}$).
 - Không dùng \\color / \\textcolor.
 - Bỏ qua tiêu đề trường/sở, logo, watermark, số trang.
-- Đánh giá mức độ nhận thức (difficulty): RECOGNITION (Nhận biết), UNDERSTANDING (Thông hiểu), APPLICATION (Vận dụng), ADVANCED_APPLICATION (Vận dụng cao).
+- Đánh giá mức độ nhận thức (difficulty): RECOGNITION (Nhận biết), UNDERSTANDING (Thông hiểu), APPLICATION (Vận dụng), ADVANCED_APPLICATION (Vận dụng cao), HSG (Học sinh giỏi / Olympic).
+- Phân loại đa chiều: ghi kntt_unit_code theo chuẩn SGK Kết nối tri thức (VD: PHY12-KNTT-C1-B2, MATH12-KNTT-C1-B1), đặt is_thinking_skill = true nếu câu hỏi có tính thực tiễn / thí nghiệm / bảng biểu (phù hợp ĐGTD TSA / ĐGNL HSA), và liệt kê suitable_targets (SGK_KNTT, THPTQG, DGTD_TSA, DGNL_HSA, VAO_10, HSG_TINH, HSG_QG).
 - Không đưa nhãn “A.”, “B.”, “C.”, “D.” hoặc dấu chấm cuối vào trường content của lựa chọn.
 - Câu có các ý a), b), c), d) đúng/sai: đặt type = TRUE_FALSE, đưa từng ý vào choices với nhãn A, B, C, D.
 - Nếu câu hỏi có hình minh hoạ / đồ thị / sơ đồ mạch, ghi toạ độ [ymin, xmin, ymax, xmax] thang 0–1000 bao sát phần hình vào figure_bbox và ghi page là số trang chứa câu hỏi.
-- Để tránh bộ lọc trùng lặp bộ đệm (RECITATION), hãy xuất danh sách trong mảng questions theo thứ tự NGƯỢC từ câu cuối trang lên câu đầu trang."""
+- Giữ nguyên thứ tự xuất hiện từ trên xuống dưới. Không đưa nội dung của câu sau vào câu trước, kể cả khi câu sau bắt đầu giữa trang hoặc không có tiêu đề rõ ràng."""
 EXTRACT_PROMPT += EXTRACT_RULES  # exam questions only, answers attached to their question, no names
 
 ANSWER_KEY_PROMPT = """Các ảnh trên là BẢNG ĐÁP ÁN chính thức của một đề thi, gồm nhiều mã đề.
@@ -110,8 +112,24 @@ và chọn lựa chọn gần nhất.
 4. Câu TRUE_FALSE: xét từng ý a, b, c, d (có tính toán nếu cần), ghi kết luận vào statement_truths theo đúng thứ tự.
    Câu SHORT_ANSWER: ghi CHỈ con số vào short_answer (không đơn vị, dấu phẩy thập phân, làm tròn như đề yêu cầu), correct_label = null; final_value ghi kèm đơn vị.
 5. Đánh giá mức độ: RECOGNITION (nhớ công thức/khái niệm), UNDERSTANDING (áp dụng 1 bước), APPLICATION (nhiều bước, suy luận), \
-ADVANCED_APPLICATION (vận dụng cao: kết hợp nhiều kiến thức, biến đổi phức tạp, tình huống mới).
+ADVANCED_APPLICATION (vận dụng cao: kết hợp nhiều kiến thức, biến đổi phức tạp, tình huống mới), HSG (bài toán Học sinh giỏi Tỉnh / Quốc gia / Chuyên).
+6. Phân loại tọa độ kiến thức SGK Kết nối tri thức (kntt_unit_code, VD: PHY12-KNTT-C1-B2), đánh dấu is_thinking_skill = true nếu câu hỏi rèn tư duy đọc hiểu khoa học / bảng số liệu / thí nghiệm, và gán suitable_targets (SGK_KNTT, THPTQG, DGTD_TSA, DGNL_HSA, VAO_10, HSG_TINH, HSG_QG).
 Công thức trong lời giải viết LaTeX trong $...$; công thức quan trọng có thể đặt riêng dòng bằng $$...$$."""
+
+
+TRANSCRIBE_PROMPT = r"""Ảnh đính kèm là phần cắt riêng của Bài/Câu số {number} trong đề thi (độ phân giải cao >= 2000px).
+Nhiệm vụ DUY NHẤT của bạn là chép lại chính xác nội dung đề bài và các công thức Toán/Lý/Hoá trong ảnh sang LaTeX đặt trong $...$ (hoặc $$...$$ cho công thức riêng dòng).
+Quy tắc:
+- Đề của câu này bắt đầu ngay DƯỚI vạch đỏ ngang (nếu có). Phần phía trên vạch đỏ là cuối câu trước: không chép, TRỪ một công thức riêng dòng bị in lệch lên trên nhưng rõ ràng thuộc câu này (VD: câu viết "Cho đa thức" mà biểu thức đa thức nằm ngay trên vạch).
+- Bài {number} là một đơn vị, các ý 1, 2, a), b), 2a), 3b) nằm nguyên trong nội dung (content) của nó, không tách riêng; mỗi ý bắt đầu một dòng mới.
+- Bỏ tiêu đề "Câu/Bài {number} (x,x điểm)" ở đầu (kể cả khi đánh số La Mã như "Câu II."), bỏ luôn tên chủ đề in kèm tiêu đề (VD: "CƠ HỌC CHẤT ĐIỂM"); chỉ giữ đề dẫn và tất cả các ý.
+- Hình vẽ, sơ đồ chuyển hoá/tổng hợp, công thức cấu tạo, mạch điện, đồ thị: KHÔNG chép hay vẽ lại (không dùng \begin{{CD}}, tikz, chemfig, xymatrix); hình đã được cắt riêng. Chỉ chép chữ và công thức nằm ngoài hình. Bảng số liệu thì chép mỗi hàng một dòng, các ô cách nhau bởi " | ".
+- Xuống dòng bằng ký tự xuống dòng thật, không dùng \\ hay \newline. Nhãn ý viết thường "a)", "1." (không bọc \textbf, không **).
+- Không tự giải bài, không thêm bình luận."""
+
+
+class FormulaTranscription(BaseModel):
+    content: str = ""
 
 
 def _json_block(text: str) -> str:
@@ -179,8 +197,8 @@ class GeminiProvider:
             if not candidates:
                 raise AIQuotaExhausted("Mọi model Gemini đã hết quota hôm nay; job sẽ chạy lại sau.")
             for model in candidates:
-                # A whole exam in one answer: room for it (a cut-off answer is split and asked again by the pipeline)
-                temp = 0.3 if schema is ExtractionResult else 0
+                # Step 5: temperature=0 for deterministic formula transcription & extraction
+                temp = 0.0
                 config = types.GenerateContentConfig(temperature=temp, max_output_tokens=65536)
                 if thinking:
                     config.thinking_config = types.ThinkingConfig(thinking_level=thinking)
@@ -244,7 +262,7 @@ class GeminiProvider:
                                 model=model,
                                 contents=[
                                     *single_req,
-                                    "QUAN TRỌNG: Để tránh bộ lọc RECITATION, hãy xuất mảng questions theo thứ tự NGƯỢC từ câu cuối trang lên câu đầu trang, và viết gọn lại lời dẫn mỗi câu hỏi bằng ngôn ngữ của bạn (giữ nguyên số liệu, công thức và đáp án).",
+                                    "QUAN TRỌNG: Giữ đúng thứ tự từ trên xuống dưới, không gộp hai câu. Chép đủ dữ kiện, công thức và đáp án; không viết tắt.",
                                 ],
                                 config=alt_cfg,
                             )
@@ -305,6 +323,12 @@ class GeminiProvider:
         for page in pages:
             label = f"TRANG {page.number}" + (" (chỉ tham khảo)" if page.context_only else "")
             contents += [label, types.Part.from_bytes(data=page.png, mime_type="image/png")]
+            if page.text_context:
+                contents.append(
+                    "VĂN BẢN ĐỐI CHIẾU CỦA TRANG (chỉ dùng để kiểm tra chữ và ranh giới câu; "
+                    "công thức/hình phải đối chiếu với ảnh):\n"
+                    + page.text_context[:24000]
+                )
         contents.append(EXTRACT_PROMPT)
         result = await self._generate(
             contents, ExtractionResult, models=self._extract_models, thinking=self._extract_thinking
@@ -315,6 +339,24 @@ class GeminiProvider:
                 c.content = repair_latex(c.content)
         result.questions.sort(key=lambda q: (q.page, q.number))
         return result.questions
+
+    async def transcribe_question(self, crop_png: bytes, number: int, raw_text: str = "") -> str:
+        """Step 5: When _broken() reports broken formulas in a single problem, render only that problem's image
+        (>= 2000px) and ask AI at temperature=0 to transcribe its formulas into LaTeX without sending the whole exam."""
+        from google.genai import types
+
+        prompt = TRANSCRIBE_PROMPT.format(number=number)
+        if raw_text.strip():
+            prompt += f"\n\nVăn bản thô đọc từ PDF (chỉ dùng để đối chiếu chữ, công thức hãy nhìn ảnh):\n{raw_text}"
+        contents: list = [
+            f"BÀI {number}",
+            types.Part.from_bytes(data=crop_png, mime_type="image/png"),
+            prompt,
+        ]
+        result = await self._generate(
+            contents, FormulaTranscription, models=self._extract_models, thinking=self._extract_thinking
+        )
+        return repair_latex(result.content.strip())
 
     async def read_answer_key(self, pages: list[PageImage]) -> list[PaperKey]:
         """The official answer table of a paper: every code with its answers. Read by the main models (an answer

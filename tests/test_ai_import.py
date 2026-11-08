@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import select
 
 from app import worker
-from app.ai.pipeline import clean_choice, run_pipeline
+from app.ai.pipeline import _trim_cross_question_overlap, clean_choice, run_pipeline
 from app.ai.provider import AIError, FigureImage, PageImage
 from app.ai.schemas import BoundingBox, ExtractedChoice, ExtractedQuestion, Solution
 from app.config import get_settings
@@ -95,6 +95,30 @@ def test_clean_choice_strips_labels_and_trailing_dots():
     assert clean_choice("A. 8,9 lít.") == "8,9 lít"
     assert clean_choice("$1{,}3V.$") == "$1{,}3V$"
     assert clean_choice("đi qua vị trí cân bằng") == "đi qua vị trí cân bằng"
+
+
+def test_extraction_does_not_append_next_question_to_essay():
+    first = ExtractedQuestion(
+        number=2,
+        page=1,
+        type="ESSAY",
+        content="Cho đa thức P(x). Chứng minh bất đẳng thức. Cho tam giác nhọn ABC nội tiếp đường tròn (O) có AB < AC.",
+        choices=[],
+    )
+    second = ExtractedQuestion(
+        number=3,
+        page=1,
+        type="ESSAY",
+        content="Cho tam giác nhọn ABC nội tiếp đường tròn (O) có AB < AC. Gọi H là trực tâm tam giác ABC.",
+        choices=[],
+    )
+    _trim_cross_question_overlap([first, second])
+    assert first.content.endswith("Chứng minh bất đẳng thức.")
+
+
+def test_page_image_can_carry_text_context():
+    page = PageImage(number=1, png=b"png", text_context="Câu 1. Nội dung chính")
+    assert page.text_context == "Câu 1. Nội dung chính"
 
 
 def test_pipeline_builds_drafts_with_figures_flags_and_answers(tmp_path):

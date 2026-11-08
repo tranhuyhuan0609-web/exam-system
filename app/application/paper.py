@@ -17,7 +17,16 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Difficulty, Exam, ExamAttempt, ExamQuestion, Question, QuestionSource, QuestionType
+from app.models import (
+    AccessTier,
+    Difficulty,
+    Exam,
+    ExamAttempt,
+    ExamQuestion,
+    Question,
+    QuestionSource,
+    QuestionType,
+)
 from app.scope import Scope, resolve_scope, scope_by_id
 
 SECTION_ORDER = {
@@ -94,6 +103,9 @@ async def rule_candidates(
 ) -> list[int]:
     scope = await _rule_scope(session, exam, rule)
     conditions = [Question.is_verified, Question.root_id == exam.root_id, *scope.conditions(Question)]
+    # When building a FREE exam, only draw FREE questions so authored/HSG PRO questions never leak into free papers.
+    if getattr(exam, "access_tier", AccessTier.FREE) == AccessTier.FREE:
+        conditions.append(Question.access_tier == AccessTier.FREE)
     if rule.difficulty:
         conditions.append(Question.difficulty == Difficulty(rule.difficulty))
     elif rule.levels:
@@ -220,6 +232,20 @@ async def question_count(session: AsyncSession, exam: Exam) -> int:
     if exam.question_source == QuestionSource.MATRIX:
         return sum(rule.count for rule in parse_matrix(exam.matrix))
     return len(await fixed_questions(session, exam))
+
+
+async def preview_questions(session: AsyncSession, exam: Exam, limit: int | None = None) -> list[Question]:
+    """Return the first `limit` (default `exam.preview_question_count` = 5) questions of an exam for Freemium teaser."""
+    take = max(0, limit if limit is not None else (exam.preview_question_count or 5))
+    if take == 0:
+        return []
+    if exam.question_source == QuestionSource.MATRIX:
+        try:
+            all_q = await draw_matrix(session, exam, random.Random(exam.id or 0))
+        except PaperError:
+            return []
+        return all_q[:take]
+    return (await fixed_questions(session, exam))[:take]
 
 
 async def available_parts(session: AsyncSession, exam: Exam) -> dict[str, int]:

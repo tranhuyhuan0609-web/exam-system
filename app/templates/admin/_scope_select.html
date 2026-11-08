@@ -1,8 +1,18 @@
-{# Params: name, options, selected, blank (optional label for an empty choice), required (bool) #}
+{# Params: name, options, scope_groups, selected, blank (optional label for an empty choice), required (bool) #}
 <select name="{{ name }}" {% if required %}required{% endif %}>
   {% if blank %}<option value="">{{ blank }}</option>{% endif %}
-  {% for o in options %}
-    <option value="{{ o.key }}" {% if o.key == selected %}selected{% endif %}
-            {% if o.key.startswith('s:') %}class="opt-subject"{% endif %}>{{ o.label }}</option>
-  {% endfor %}
+  {% if scope_groups %}
+    {% for g in scope_groups %}
+      <optgroup label="{{ g.label }}">
+        {% for o in g.options %}
+          <option value="{{ o.key }}" {% if o.key == selected %}selected{% endif %}>{{ o.label }}</option>
+        {% endfor %}
+      </optgroup>
+    {% endfor %}
+  {% elif options %}
+    {% for o in options %}
+      <option value="{{ o.key }}" {% if o.key == selected %}selected{% endif %}
+              {% if o.key.startswith('s:') %}class="opt-subject"{% endif %}>{{ o.label }}</option>
+    {% endfor %}
+  {% endif %}
 </select>

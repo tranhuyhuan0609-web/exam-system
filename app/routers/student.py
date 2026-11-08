@@ -13,13 +13,14 @@ from app.application.custom_quiz import (
     bank_counts,
     create_custom_quiz,
 )
-from app.application.paper import PART_ORDER, available_parts, question_count
+from app.application.paper import PART_ORDER, available_parts, preview_questions, question_count
 from app.application.report import build_report
 from app.application.teacher_tests import results_visible
 from app.attempts import (
     AttemptClosed,
     AttemptError,
     active_attempt,
+    build_snapshot,
     db_now,
     finalize_expired,
     public_questions,
@@ -32,14 +33,19 @@ from app.attempts import (
 from app.deps import ApiUser, CurrentUser, LoggedInUser, SessionDep
 from app.grades_data import PRACTICE_BOXES
 from app.models import (
+    AccessTier,
     AttemptStatus,
     Category,
+    Difficulty,
     Exam,
     ExamAttempt,
     ExamMode,
+    ExamTarget,
     ExamVisibility,
     GradingStatus,
+    KnowledgeUnit,
     Question,
+    QuestionCategory,
     User,
     UserRole,
 )
@@ -143,9 +149,20 @@ async def home(
     exam_counts: dict[int, int] = defaultdict(int)
     # Verified questions per branch too: a category without exams can still host a custom quiz.
     question_totals: dict[int, int] = defaultdict(int)
+    cat_links = (
+        select(Question.id.label("qid"), Question.category_id.label("cid"))
+        .where(Question.is_verified, Question.category_id.is_not(None))
+        .union(
+            select(QuestionCategory.question_id.label("qid"), QuestionCategory.category_id.label("cid"))
+            .join(Question, QuestionCategory.question_id == Question.id)
+            .where(Question.is_verified)
+        )
+        .subquery()
+    )
     for category_id, n in (
         await session.execute(
-            select(Question.category_id, func.count()).where(Question.is_verified).group_by(Question.category_id)
+            select(cat_links.c.cid, func.count(cat_links.c.qid.distinct()))
+            .group_by(cat_links.c.cid)
         )
     ).all():
         if category := nodes.get(category_id):
@@ -166,8 +183,14 @@ async def home(
         by_root[exam.root_id].append(exam)
     groups = [(r, by_root[r.id]) for r in roots if by_root.get(r.id)]
     quiz = None
+    now = await db_now(session) if user else None
+    pro = bool(user and now and user.has_pro(now))
     if selected and question_totals.get(selected.id):
-        quiz = {"bank": await bank_counts(session, selected), "levels": LEVELS, "seconds": SECONDS_PER_QUESTION}
+        quiz = {
+            "bank": await bank_counts(session, selected, include_pro=pro),
+            "levels": LEVELS,
+            "seconds": SECONDS_PER_QUESTION,
+        }
 
     # Calculate total attempts across all students to rank hot exams
     total_attempts: dict[int, int] = dict(
@@ -221,8 +244,10 @@ async def exam_page(request: Request, user: CurrentUser, session: SessionDep, ex
     exam = await _get_visible_exam(session, exam_id, user)
     total_questions = await question_count(session, exam)
     attempts, current, now = [], None, None
+    pro = False
     if user:
         now = await db_now(session)
+        pro = user.has_pro(now)
         await finalize_expired(session, user.id, exam_id, now)
         attempts = (
             await session.scalars(
@@ -233,12 +258,21 @@ async def exam_page(request: Request, user: CurrentUser, session: SessionDep, ex
         ).all()
         current = await active_attempt(session, user.id, exam_id, now)
     used = len(attempts)
+    is_pro_exam = exam.access_tier == AccessTier.PRO
+    preview_items = []
+    if is_pro_exam and not pro:
+        preview_qs = await preview_questions(session, exam)
+        preview_items = public_questions(build_snapshot(preview_qs, shuffle_choices=False))
     return templates.TemplateResponse(
         request,
         "exam.html",
         {
             "user": user,
+            "pro": pro,
             "exam": exam,
+            "is_pro_exam": is_pro_exam,
+            "preview_items": preview_items,
+            "locked_questions_count": max(0, total_questions - len(preview_items)),
             "question_count": total_questions,
             "attempts": attempts,
             "current": current,
@@ -249,6 +283,54 @@ async def exam_page(request: Request, user: CurrentUser, session: SessionDep, ex
             "parts": await available_parts(session, exam),
             "trail": breadcrumb(await load_categories(session, exam.root_id), exam.category_id),
         },
+    )
+
+
+@router.get("/api/exams/{exam_id}/preview")
+async def exam_preview_api(user: CurrentUser, session: SessionDep, exam_id: int):
+    """Freemium JSON preview API: for PRO exams, Free/anonymous users receive only the first N preview questions."""
+    exam = await _get_visible_exam(session, exam_id, user)
+    total = await question_count(session, exam)
+    now = await db_now(session) if user else None
+    pro = bool(user and now and user.has_pro(now))
+    is_pro_exam = exam.access_tier == AccessTier.PRO
+    if is_pro_exam and not pro:
+        qs = await preview_questions(session, exam)
+        items = public_questions(build_snapshot(qs, shuffle_choices=False))
+        return JSONResponse(
+            {
+                "exam_id": exam.id,
+                "title": exam.title,
+                "access_tier": exam.access_tier.value,
+                "origin_type": exam.origin_type.value,
+                "preview_only": True,
+                "preview_question_count": len(items),
+                "total_questions": total,
+                "locked_questions_count": max(0, total - len(items)),
+                "questions": items,
+                "upgrade_url": "/plans",
+                "upgrade_message": (
+                    f"Bạn đang xem thử {len(items)}/{total} câu đầu tiên của đề độc quyền PRO. "
+                    "Nâng cấp tài khoản PRO để mở khóa toàn bộ câu hỏi và làm bài bấm giờ."
+                ),
+            },
+            headers=NO_STORE,
+        )
+    qs = await preview_questions(session, exam, limit=total)
+    items = public_questions(build_snapshot(qs, shuffle_choices=False))
+    return JSONResponse(
+        {
+            "exam_id": exam.id,
+            "title": exam.title,
+            "access_tier": exam.access_tier.value,
+            "origin_type": exam.origin_type.value,
+            "preview_only": False,
+            "preview_question_count": len(items),
+            "total_questions": total,
+            "locked_questions_count": 0,
+            "questions": items,
+        },
+        headers=NO_STORE,
     )
 
 
@@ -290,7 +372,8 @@ async def create_practice(request: Request, user: LoggedInUser, session: Session
         minutes=_int(form.get("minutes")) or None,
     )
     try:
-        exam = await create_custom_quiz(session, user, category, quiz)
+        now = await db_now(session)
+        exam = await create_custom_quiz(session, user, category, quiz, include_pro=user.has_pro(now))
         attempt = await start_or_resume(session, user, exam)
     except (CustomQuizError, AttemptError) as exc:
         await session.rollback()
@@ -411,9 +494,32 @@ async def _result_context(session, user: User, attempt_id: int) -> dict[str, Any
     for row, q in zip(rows, attempt.paper_snapshot["questions"], strict=True):
         row["flagged"] = str(q["id"]) in flagged
         row["seconds"] = times.get(str(q["id"]))
+    pro = user.has_pro(now)
+    if not pro:
+        # Freemium Funnel A: On FREE exams, blur step-by-step AI solutions on the last 5 ADVANCED_APPLICATION
+        # (Vận dụng cao) questions, or on all questions when `exam.is_solution_pro_only` is True.
+        vdc_numbers = [
+            r["number"]
+            for r in rows
+            if r.get("difficulty") == Difficulty.ADVANCED_APPLICATION.value
+            and (r.get("explanation") or (r.get("essay") and r["essay"].get("solution")))
+        ]
+        locked_numbers = (
+            {r["number"] for r in rows}
+            if getattr(exam, "is_solution_pro_only", False)
+            else set(vdc_numbers[-5:])
+        )
+        for r in rows:
+            sol = r.get("explanation") or (r.get("essay") or {}).get("solution")
+            if sol and r["number"] in locked_numbers:
+                r["solution_pro_locked"] = True
+                r["explanation"] = None
+                if r.get("essay") and "solution" in r["essay"]:
+                    r["essay"] = {**r["essay"], "solution": None}
     report = await build_report(session, attempt, rows)
     return {
         "user": user,
+        "pro": pro,
         "attempt": attempt,
         "exam": exam,
         "rows": rows,

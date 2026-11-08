@@ -30,6 +30,30 @@
   <label class="check"><input type="checkbox" name="allow_custom_parts" {% if form.allow_custom_parts %}checked{% endif %}>
     Cho học sinh tự chọn phần muốn làm (chỉ trắc nghiệm, TN + đúng/sai, …)</label>
 </fieldset>
+<fieldset>
+  <legend>Phân quyền Freemium &amp; PRO</legend>
+  <div class="row">
+    <label>Phân hạng truy cập
+      <select name="access_tier">
+        <option value="FREE" {% if form.access_tier != "PRO" %}selected{% endif %}>FREE (Công khai miễn phí)</option>
+        <option value="PRO" {% if form.access_tier == "PRO" %}selected{% endif %}>🔒 PRO (Đề độc quyền / Học sinh giỏi)</option>
+      </select>
+    </label>
+    <label>Nguồn đề
+      <select name="origin_type">
+        <option value="PUBLIC_CRAWLED" {% if form.origin_type != "ORIGINAL" %}selected{% endif %}>Sưu tầm công khai (PUBLIC_CRAWLED)</option>
+        <option value="ORIGINAL" {% if form.origin_type == "ORIGINAL" %}selected{% endif %}>Tự biên soạn độc quyền (ORIGINAL)</option>
+      </select>
+    </label>
+    <label>Số câu xem thử (PRO)
+      <input type="number" name="preview_question_count" value="{{ form.preview_question_count or '5' }}" min="1" max="50">
+    </label>
+  </div>
+  <label class="check">
+    <input type="checkbox" name="is_solution_pro_only" {% if form.is_solution_pro_only %}checked{% endif %}>
+    🔒 Khóa lời giải chi tiết từng bước của toàn bộ đề cho gói PRO (mặc định chỉ khóa 5 câu Vận dụng cao cuối đề)
+  </label>
+</fieldset>
 {% if show_publish %}
   <label class="check"><input type="checkbox" name="is_published" {% if form.is_published %}checked{% endif %}> Công khai cho học sinh</label>
 {% endif %}

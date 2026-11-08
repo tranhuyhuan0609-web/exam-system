@@ -62,7 +62,7 @@
     {% for r in runs %}
       <tr>
         <td>{{ r.id }}</td><td>{{ r.site_id }} <span class="muted small">({{ r.trigger }})</span></td>
-        <td><span class="badge {{ {'DONE': 'badge-ok', 'RUNNING': 'badge-warn', 'QUEUED': 'badge-warn'}.get(r.status, '') }}">{{ r.status }}</span>
+        <td><span class="badge {{ {'DONE': 'badge-ok', 'WARN': 'badge-warn', 'RUNNING': 'badge-warn', 'QUEUED': 'badge-warn', 'FAILED': 'badge-bad'}.get(r.status, '') }}">{{ r.status }}</span>
           {% if r.error %}<div class="small muted" title="{{ r.error }}">{{ r.error[:80] }}</div>{% endif %}</td>
         <td class="num">{{ r.pages_fetched }}</td><td class="num">{{ r.pages_skipped }}</td><td class="num">{{ r.pages_failed }}</td>
         <td class="num">{{ r.docs_published }}</td>

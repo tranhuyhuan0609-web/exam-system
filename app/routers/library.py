@@ -4,16 +4,18 @@ from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 
+from app.application.library_publish import create_exam_from_library_doc
+from app.application.pdf_preview import PREVIEW_MAX_PAGES, ensure_document_preview, stamp_user_watermark
 from app.attempts import db_now
 from app.config import get_settings
 from app.deps import SessionDep, require_user
-from app.infrastructure.storage import get_bronze_storage
-from app.models import LibraryDocument, LibraryKind, LibraryStatus, User, UserRole
+from app.infrastructure.storage import get_bronze_storage, get_storage
+from app.models import AccessTier, LibraryDocument, LibraryKind, LibraryStatus, User, UserRole
 from app.plans import can_download, docs_read_today, open_document
-from app.templating import templates
+from app.templating import flash, templates
 
 router = APIRouter()
 
@@ -31,14 +33,15 @@ PAGE_SIZE = 100
 LibraryUser = Annotated[User, Depends(require_user)]  # any account; reading limits for free ones
 
 
-# The library's sections: what a document is, then its folders (grade, subject, field …) inside.
-SECTIONS = {
-    "sach": ("📘 Sách", (LibraryKind.BOOK,)),
-    "de-thi": ("📝 Đề thi", (LibraryKind.EXAM, LibraryKind.HSG)),
-    "chuyen-de": ("📒 Chuyên đề", (LibraryKind.TOPIC,)),
-    "bai-bao": ("🔬 Bài báo & nghiên cứu", (LibraryKind.PAPER,)),
-    "khac": ("🗂️ Khác", (LibraryKind.OTHER,)),
+# Top-level Library sections and their display icons
+SECTION_ICONS = {
+    "THPTQG": "🎓",
+    "Học sinh giỏi": "🏆",
+    "ĐGTD & ĐGNL": "⚡",
+    "Đề thi Học kỳ": "📑",
+    "Sách & Chuyên đề": "📘",
 }
+SECTION_ORDER = ["THPTQG", "Học sinh giỏi", "ĐGTD & ĐGNL", "Đề thi Học kỳ", "Sách & Chuyên đề"]
 
 
 def _visible(user: User):
@@ -59,29 +62,42 @@ async def library_home(
     page: int = 1,
 ):
     """Sections first, then one folder (or the search results) at a time, in pages."""
-    visible, current = _visible(user), [part for part in folder.split("/") if part] if folder else []
-    page, section = max(1, page), section if section in SECTIONS else ""
+    visible = _visible(user)
+    current = [part for part in folder.split("/") if part] if folder else []
+    page = max(1, page)
     where = [visible]
-    if section:
-        where.append(LibraryDocument.kind.in_(SECTIONS[section][1]))
+    
     sections = []
-    if not section and not q.strip() and not current:  # the library's front page: its sections
-        counts = dict(
+    if not q.strip() and not current:  # Front page: show main exam sections (THPTQG, HSG, ĐGTD...)
+        top_name = LibraryDocument.folder_path[0].astext
+        top_counts = dict(
             (
                 await session.execute(
-                    select(LibraryDocument.kind, func.count()).where(visible).group_by(LibraryDocument.kind)
+                    select(top_name, func.count())
+                    .where(visible, func.jsonb_array_length(LibraryDocument.folder_path) > 0)
+                    .group_by(top_name)
                 )
             ).all()
         )
-        for slug, (label, kinds) in SECTIONS.items():
-            if n := sum(counts.get(kind, 0) for kind in kinds):
-                sections.append((slug, label, n))
+        for name in SECTION_ORDER:
+            icon = SECTION_ICONS.get(name, "📁")
+            n = top_counts.get(name, 0)
+            sections.append((name, f"{icon} {name}", n))
+        for name, n in top_counts.items():
+            if name not in SECTION_ORDER and n > 0:
+                sections.append((name, f"📁 {name}", n))
+
     query = select(LibraryDocument).where(*where)
     if q.strip():
         needle = q.strip().replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
         query = query.where(LibraryDocument.title.ilike(f"%{needle}%"))
+    elif current:
+        depth = len(current)
+        inside = [LibraryDocument.folder_path[i].astext == part for i, part in enumerate(current)]
+        query = query.where(*inside)
     else:
-        query = query.where(LibraryDocument.folder_path == current)
+        query = query.where(LibraryDocument.folder_path == [])
+
     shown = []
     if not sections:
         shown = (
@@ -115,8 +131,8 @@ async def library_home(
             "user": user,
             "docs": shown,
             "sections": sections,
-            "section": section,
-            "section_label": SECTIONS[section][0] if section else "",
+            "section": "",
+            "section_label": "",
             "subfolders": [tuple(row) for row in subfolders],
             "current": current,
             "folder": "/".join(current),
@@ -170,15 +186,121 @@ def _filename(doc: LibraryDocument) -> str:
     return doc.title + ext
 
 
+@router.get("/library/{document_id:int}/preview")
+async def preview_document_page(
+    request: Request, user: LibraryUser, session: SessionDep, document_id: int
+):
+    """Freemium HTML reader page: shows the 2-page preview PDF inline for Free users with a Pro upgrade CTA."""
+    doc = await _document(session, user, document_id)
+    now = await db_now(session)
+    pro = user.has_pro(now)
+    is_pro_doc = doc.access_tier == AccessTier.PRO or doc.kind == LibraryKind.HSG
+    total_pages = None
+    if is_pro_doc and not pro and doc.mime == "application/pdf":
+        sliced = await ensure_document_preview(session, doc, get_bronze_storage(), get_storage())
+        if sliced:
+            _, total_pages = sliced
+    return templates.TemplateResponse(
+        request,
+        "library_preview.html",
+        {
+            "user": user,
+            "doc": doc,
+            "pro": pro,
+            "is_pro_doc": is_pro_doc,
+            "preview_pages": PREVIEW_MAX_PAGES,
+            "total_pages": total_pages,
+            "can_download": can_download(user, doc, now),
+        },
+    )
+
+
+@router.get("/library/{document_id:int}/preview.pdf")
+async def preview_document_pdf(user: LibraryUser, session: SessionDep, document_id: int):
+    """Publicly accessible 2-page watermarked preview PDF for PRO / HSG documents."""
+    doc = await _document(session, user, document_id)
+    if doc.mime != "application/pdf":
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Tài liệu không phải định dạng PDF.")
+    sliced = await ensure_document_preview(session, doc, get_bronze_storage(), get_storage())
+    if sliced is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tạo được bản xem thử.")
+    preview_bytes, total_pages = sliced
+    return Response(
+        preview_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote('Xem-thu-' + _filename(doc))}",
+            "Cache-Control": "public, max-age=3600",
+            "X-Preview-Only": "true",
+            "X-Preview-Pages": str(min(PREVIEW_MAX_PAGES, total_pages)),
+            "X-Total-Pages": str(total_pages),
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.get("/api/library/{document_id:int}/presigned-url")
+async def presigned_document_url(user: LibraryUser, session: SessionDep, document_id: int):
+    """Issue a 60-second presigned URL from the private vault (`bronze-raw`) for active PRO subscribers."""
+    doc = await _document(session, user, document_id)
+    now = await db_now(session)
+    is_pro_doc = doc.access_tier == AccessTier.PRO or doc.kind == LibraryKind.HSG
+    if is_pro_doc and not user.has_pro(now):
+        return JSONResponse(
+            {
+                "detail": "Tài liệu chuyên sâu thuộc gói PRO. Bạn được xem thử 2 trang đầu miễn phí.",
+                "access_tier": "PRO",
+                "preview_url": f"/library/{doc.id}/preview.pdf",
+                "upgrade_url": "/plans",
+            },
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    bronze = get_bronze_storage()
+    signed = bronze.presigned_url(doc.storage_key, expires_seconds=60)
+    return JSONResponse(
+        {
+            "url": signed or f"/library/{doc.id}/view",
+            "expires_in": 60,
+            "access_tier": doc.access_tier.value,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @router.get("/library/{document_id:int}/view")
 async def view_document(user: LibraryUser, session: SessionDep, document_id: int):
-    """Read in the browser (PDF, images). Other formats can only be downloaded, when allowed."""
+    """Read in the browser (PDF, images). For PRO documents, Free accounts receive only the 2-page preview PDF."""
     doc = await _document(session, user, document_id)
     if doc.mime not in INLINE:
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Định dạng này chưa xem trực tuyến được.")
-    if reason := await open_document(session, user, doc, await db_now(session)):
+    now = await db_now(session)
+    is_pro_doc = doc.access_tier == AccessTier.PRO or doc.kind == LibraryKind.HSG
+    if is_pro_doc and not user.has_pro(now):
+        if doc.mime == "application/pdf":
+            sliced = await ensure_document_preview(session, doc, get_bronze_storage(), get_storage())
+            if sliced is not None:
+                preview_bytes, total_pages = sliced
+                return Response(
+                    preview_bytes,
+                    media_type="application/pdf",
+                    headers={
+                        "Content-Disposition": f"inline; filename*=UTF-8''{quote('Xem-thu-' + _filename(doc))}",
+                        "Cache-Control": "private, no-store",
+                        "X-Preview-Only": "true",
+                        "X-Preview-Pages": str(min(PREVIEW_MAX_PAGES, total_pages)),
+                        "X-Total-Pages": str(total_pages),
+                        "X-Content-Type-Options": "nosniff",
+                    },
+                )
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Tài liệu chuyên sâu này thuộc gói PRO. Hãy nâng cấp tài khoản PRO để xem toàn bộ nội dung.",
+        )
+    if reason := await open_document(session, user, doc, now):
         raise HTTPException(status.HTTP_403_FORBIDDEN, reason)
     data = await get_bronze_storage().get(doc.storage_key)
+    if is_pro_doc and doc.mime == "application/pdf":
+        data = stamp_user_watermark(data, f"PRO: {user.email}")
     return Response(
         data,
         media_type=doc.mime,
@@ -203,3 +325,26 @@ async def download_document(user: LibraryUser, session: SessionDep, document_id:
         media_type=doc.mime,
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(_filename(doc))}"},
     )
+
+
+@router.post("/library/{document_id:int}/create-exam")
+@router.get("/library/{document_id:int}/create-exam")
+async def create_exam_from_document_route(
+    request: Request, user: LibraryUser, session: SessionDep, document_id: int
+):
+    """Student creates / opens a practice exam directly from a document in the Library (/library)."""
+    doc = await _document(session, user, document_id)
+    now = await db_now(session)
+    is_pro_doc = doc.access_tier == AccessTier.PRO or doc.kind == LibraryKind.HSG
+    if is_pro_doc and not user.has_pro(now):
+        flash(request, "Tài liệu chuyên sâu này thuộc gói PRO. Hãy nâng cấp tài khoản PRO để tạo đề luyện tập.", "error")
+        return RedirectResponse(f"/library/{doc.id}/preview", status_code=status.HTTP_303_SEE_OTHER)
+
+    exam = await create_exam_from_library_doc(session, doc, user_id=user.id)
+    if exam is None:
+        flash(request, "Tài liệu này chưa có bộ câu hỏi sẵn sàng để tạo đề luyện tập.", "error")
+        return RedirectResponse("/library", status_code=status.HTTP_303_SEE_OTHER)
+
+    await session.commit()
+    flash(request, f"Đã mở đề luyện tập “{exam.title}”.")
+    return RedirectResponse(f"/exams/{exam.id}", status_code=status.HTTP_303_SEE_OTHER)

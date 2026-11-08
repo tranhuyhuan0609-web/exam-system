@@ -28,11 +28,14 @@ app.add_middleware(
     https_only=settings.session_https_only,
 )
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
-# Local storage only: question figures are public (unguessable names); uploads and pages are never mounted.
+# Local storage only: question figures and 2-page PDF previews are public; uploads and pages are never mounted.
 if settings.storage_backend == "local":
     _figures = Path(settings.data_dir) / "media" / "figures"
     _figures.mkdir(parents=True, exist_ok=True)
     app.mount("/media/figures", StaticFiles(directory=_figures), name="figures")
+    _previews = Path(settings.data_dir) / "media" / "previews"
+    _previews.mkdir(parents=True, exist_ok=True)
+    app.mount("/media/previews", StaticFiles(directory=_previews), name="previews")
 
 app.include_router(student.router)
 app.include_router(teacher.router)

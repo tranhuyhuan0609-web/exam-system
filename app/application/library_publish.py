@@ -25,12 +25,14 @@ from app.application.answer_keys import compare, official_answers
 from app.application.exam_pdf import PdfError, Renderer, build_parts, chromium_pdf, exam_html
 from app.infrastructure.storage import get_bronze_storage, get_storage
 from app.models import (
+    AccessTier,
     Category,
     Exam,
     ExamQuestion,
     ImportJob,
     JobStatus,
     LibraryDocument,
+    LibraryKind,
     LibraryStatus,
     Question,
 )
@@ -42,6 +44,7 @@ BLOCKING_FLAGS = {
     "no_match": "đáp án AI tính ra không khớp lựa chọn nào",
     "no_solution": "AI chưa giải được",
     "figure_failed": "chưa cắt được hình",
+    "missing_stem": "câu bắt đầu bằng ý nhỏ mà thiếu đề dẫn",
     "unsupported_type": "có câu tự luận",
     "key_mismatch": "AI giải khác đáp án in trong file",
 }
@@ -136,6 +139,163 @@ def subject_name(names: list[str]) -> str:
 def _plain(text: str) -> str:
     text = unicodedata.normalize("NFD", text.replace("đ", "d").replace("Đ", "D"))
     return "".join(c for c in text if unicodedata.category(c) != "Mn").lower()
+
+
+def resolve_library_folder_hierarchy(
+    filename: str = "",
+    title: str = "",
+    category_names: list[str] | None = None,
+    default_tier: AccessTier = AccessTier.FREE,
+) -> tuple[list[str], LibraryKind, AccessTier]:
+    """Classifies an exam file into the standard Library folder hierarchy:
+    - THPTQG: ["THPTQG", subject]
+    - Học sinh giỏi: ["Học sinh giỏi", "Lớp X", subject] (PRO tier)
+    - ĐGTD & ĐGNL: ["ĐGTD & ĐGNL", exam_name]
+    - Đề thi Học kỳ: ["Đề thi Học kỳ", "Lớp X", subject]
+    - Sách & Chuyên đề: ["Sách & Chuyên đề", category/subject]
+    """
+    combined = " ".join([filename or "", title or "", *(category_names or [])])
+    p = _plain(combined)
+
+    # 1. Detect Subject
+    subject = "Khác"
+    subject_patterns = [
+        (r"\b(tieng trung|tieng trrung|hsk)\b", "Tiếng Trung"),
+        (r"\b(tieng nhat)\b", "Tiếng Nhật"),
+        (r"\b(tieng phap)\b", "Tiếng Pháp"),
+        (r"\b(tieng nga)\b", "Tiếng Nga"),
+        (r"\b(tieng han)\b", "Tiếng Hàn"),
+        (r"\b(tieng duc)\b", "Tiếng Đức"),
+        (r"\b(tieng anh|english|ielts|toeic|vu mai phuong)\b", "Tiếng Anh"),
+        (r"\b(ngu van|van hoc|qandastd-nv|ngu van)\b", "Ngữ văn"),
+        (r"\b(vat li|vat ly)\b", "Vật lí"),
+        (r"\b(hoa hoc)\b", "Hóa học"),
+        (r"\b(sinh hoc)\b", "Sinh học"),
+        (r"\b(tin hoc|lap trinh)\b", "Tin học"),
+        (r"\b(lich su)\b", "Lịch sử"),
+        (r"\b(dia li|dia ly)\b", "Địa lí"),
+        (r"\b(kinh te va phap luat|gdkt&pl|gdcd|giao duc cong dan)\b", "GDCD"),
+        (r"\b(toan|toan hoc)\b", "Toán"),
+        (r"\b(ly)\b", "Vật lí"),
+        (r"\b(hoa)\b", "Hóa học"),
+        (r"\b(sinh)\b", "Sinh học"),
+        (r"\b(van)\b", "Ngữ văn"),
+        (r"\b(su)\b", "Lịch sử"),
+        (r"\b(dia)\b", "Địa lí"),
+        (r"\b(tin)\b", "Tin học"),
+        (r"\b(anh)\b", "Tiếng Anh"),
+    ]
+    for pattern, name in subject_patterns:
+        if re.search(pattern, p):
+            subject = name
+            break
+
+    # 2. Detect Grade
+    grade = None
+    if re.search(r"\b(lop 10|k10|khoi 10|10)\b", p):
+        grade = "Lớp 10"
+    elif re.search(r"\b(lop 11|k11|khoi 11|11)\b", p):
+        grade = "Lớp 11"
+    elif re.search(r"\b(lop 12|k12|khoi 12|12)\b", p):
+        grade = "Lớp 12"
+
+    # 3. Detect Main Section
+    is_hsg = any(
+        kw in p
+        for kw in [
+            "hsg",
+            "hoc sinh gioi",
+            "duyen hai",
+            "dhbb",
+            "hung vuong",
+            "thhv",
+            "chuyen lam son",
+            "hoi cac truong chuyen",
+            "olympic",
+        ]
+    )
+    is_dg = any(
+        kw in p
+        for kw in [
+            "dgnl",
+            "dgtd",
+            "hsa",
+            "tsa",
+            "apt",
+            "danh gia nang luc",
+            "danh gia tu duy",
+            "bo cong an",
+            "bach khoa",
+            "dhbk",
+        ]
+    )
+    is_hocky = any(
+        kw in p
+        for kw in [
+            "giua ky",
+            "cuoi ky",
+            "hoc ky 1",
+            "hoc ky 2",
+            "hk1",
+            "hk2",
+            "gk1",
+            "gk2",
+            "ck1",
+            "ck2",
+            "kiem tra dinh ky",
+            "1 tiet",
+        ]
+    )
+    is_sach = any(
+        kw in p
+        for kw in [
+            "kho sach",
+            "sach giao khoa",
+            "chuyen de",
+            "triet hoc",
+            "tai lieu hsk",
+            "chuong trinh moi",
+            "canh dieu",
+            "ket noi tri thuc",
+            "chan troi sang tao",
+        ]
+    )
+    is_thpt = any(kw in p for kw in ["thptqg", "thpt", "tot nghiep", "quoc gia", "bo gd"])
+
+    if is_hsg or default_tier == AccessTier.PRO:
+        target_grade = grade or "Lớp 11"
+        return ["Học sinh giỏi", target_grade, subject], LibraryKind.HSG, AccessTier.PRO
+
+    if is_dg:
+        exam_name = (
+            "ĐHQG Hà Nội (HSA)"
+            if "hsa" in p
+            else (
+                "ĐHBK Hà Nội (TSA)"
+                if "tsa" in p
+                else (
+                    "Bộ Công An"
+                    if "cong an" in p
+                    else "ĐHQG TP.HCM (APT)"
+                    if "apt" in p
+                    else "ĐGTD & ĐGNL Khác"
+                )
+            )
+        )
+        return ["ĐGTD & ĐGNL", exam_name], LibraryKind.EXAM, AccessTier.FREE
+
+    if is_hocky:
+        target_grade = grade or "Lớp 12"
+        return ["Đề thi Học kỳ", target_grade, subject], LibraryKind.EXAM, AccessTier.FREE
+
+    if is_thpt:
+        return ["THPTQG", subject], LibraryKind.EXAM, AccessTier.FREE
+
+    if is_sach:
+        sub = "Sách giáo khoa" if ("sach" in p or "chuong trinh moi" in p) else subject
+        return ["Sách & Chuyên đề", sub], LibraryKind.BOOK if "sach" in p else LibraryKind.TOPIC, AccessTier.FREE
+
+    return ["THPTQG", subject], LibraryKind.EXAM, AccessTier.FREE
 
 
 async def exam_title(session: AsyncSession, job: ImportJob, doc: LibraryDocument) -> str:
@@ -263,6 +423,7 @@ async def publish_to_library(
             session.add(clean)
         clean.title = answers_title(exam.title) if solutions else exam.title
         clean.kind, clean.folder_path, clean.category_id = doc.kind, doc.folder_path, job.category_id
+        clean.access_tier = exam.access_tier
         clean.checksum, clean.storage_key = hashlib.sha256(pdf).hexdigest(), key
         clean.mime, clean.size = "application/pdf", len(pdf)
         clean.downloadable, clean.license_note = doc.downloadable, source[:300]
@@ -279,3 +440,140 @@ async def publish_to_library(
     await session.flush()
     log.info("Exam %s typeset into the library (%s)", exam.id, doc.title)
     return docs
+
+
+_MIME_BY_EXT = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+
+async def ensure_job_library_document(
+    session: AsyncSession, job: ImportJob, title: str = "", exam_id: int | None = None
+) -> LibraryDocument | None:
+    """Ensure the imported exam file is saved as a PUBLISHED LibraryDocument in the Library (/library).
+    Classifies the document into the standard Library folder hierarchy and links it to its Exam."""
+    from pathlib import PurePath
+
+    doc = await library_document(session, job)
+    category = await session.get(Category, job.category_id) if job.category_id else None
+    ancestors = [c.name for c in await _ancestors(session, category)] if category else []
+    
+    clean_title = (title.strip() or PurePath(job.original_filename or "").stem or f"Đề nhập #{job.id}")[:300]
+    folder_path, kind, tier = resolve_library_folder_hierarchy(
+        filename=job.original_filename or "",
+        title=clean_title,
+        category_names=ancestors,
+        default_tier=job.access_tier,
+    )
+
+    if doc is not None:
+        doc.title = clean_title
+        doc.status = LibraryStatus.PUBLISHED
+        doc.category_id = job.category_id
+        doc.access_tier = tier
+        doc.kind = kind
+        doc.folder_path = folder_path
+        if exam_id:
+            doc.exam_id = exam_id
+        await session.flush()
+        return doc
+
+    file_id = f"import:{job.id}"
+    doc = await session.scalar(select(LibraryDocument).where(LibraryDocument.source_file_id == file_id))
+    storage = get_storage()
+    bronze = get_bronze_storage()
+    raw_bytes = b""
+    try:
+        raw_bytes = await storage.get(job.stored_path)
+    except Exception:
+        raw_bytes = b""
+
+    ext = PurePath(job.original_filename or job.stored_path).suffix.lower() or ".pdf"
+    mime = _MIME_BY_EXT.get(ext, "application/pdf")
+    bronze_key = f"imports/job-{job.id}{ext}"
+    if raw_bytes:
+        await bronze.put(bronze_key, raw_bytes, mime)
+
+    if doc is None:
+        doc = LibraryDocument(
+            source="ai-import",
+            source_file_id=file_id,
+            import_job_id=job.id,
+        )
+        session.add(doc)
+
+    doc.title = clean_title
+    doc.kind = kind
+    doc.status = LibraryStatus.PUBLISHED
+    doc.folder_path = folder_path
+    doc.category_id = job.category_id
+    doc.access_tier = tier
+    if exam_id:
+        doc.exam_id = exam_id
+    doc.storage_key = bronze_key if raw_bytes else job.stored_path
+    doc.mime = mime
+    doc.size = len(raw_bytes)
+    doc.checksum = hashlib.sha256(raw_bytes).hexdigest() if raw_bytes else None
+    doc.downloadable = True
+    await session.flush()
+    return doc
+
+
+async def create_exam_from_library_doc(
+    session: AsyncSession, doc: LibraryDocument, user_id: int | None = None
+) -> Exam | None:
+    """Create (or retrieve) a practice Exam from a LibraryDocument that was imported via AI Import."""
+    if doc.exam_id:
+        existing = await session.get(Exam, doc.exam_id)
+        if existing is not None:
+            if not existing.is_published:
+                existing.is_published = True
+                await session.flush()
+            return existing
+
+    job_id = doc.import_job_id
+    if not job_id and doc.origin_id:
+        origin = await session.get(LibraryDocument, doc.origin_id)
+        if origin:
+            job_id = origin.import_job_id
+    if not job_id:
+        return None
+
+    job = await session.get(ImportJob, job_id)
+    if job is None:
+        return None
+
+    drafts = drafts_of(job)
+    q_ids = [int(d["question_id"]) for d in drafts if d.get("question_id")]
+    questions: list[Question] = []
+    if q_ids:
+        rows = (await session.scalars(select(Question).where(Question.id.in_(q_ids)))).all()
+        by_id = {q.id: q for q in rows}
+        questions = [by_id[qid] for qid in q_ids if qid in by_id]
+    if not questions and drafts:
+        ready_indices = [i for i, d in enumerate(drafts) if not publish_problems(d)]
+        if ready_indices:
+            questions = await publish_drafts(session, job, ready_indices, verified=True, reuse_duplicates=True)
+    if not questions:
+        return None
+
+    subject, _ = await _names(session, job)
+    exam = await create_exam(
+        session,
+        job,
+        questions,
+        title=doc.title[:300],
+        minutes=minutes_for(subject, len(questions)),
+        published=True,
+        user_id=user_id,
+        access_tier=doc.access_tier,
+        origin_type=job.origin_type,
+    )
+    doc.exam_id = exam.id
+    await session.flush()
+    return exam

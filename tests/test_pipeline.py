@@ -289,7 +289,7 @@ def test_html_document_goes_to_the_bank_with_label_dedup_and_rehosted_images(db,
     assert [i.status for i in items] == [CrawlItemStatus.PUBLISHED] * 4  # no AI configured: published as parsed
     questions = db(lambda s: s.scalars(select(Question).order_by(Question.id)))
     assert {q.category_id for q in questions} == {physics["Bài 1: Dao động điều hoà"]}  # "Bài 1" in the title
-    assert all(q.source_type == SourceType.CRAWLER and q.source_url == VJ_URL and q.is_verified for q in questions)
+    assert all(q.source_type == SourceType.CRAWLER and q.source_url == VJ_URL and not q.is_verified for q in questions)
     sa = next(q for q in questions if q.question_type == QuestionType.SHORT_ANSWER)
     assert sa.image_path.startswith("figures/crawl/") and "[[img" not in sa.content
     assert asyncio.run(get_storage().get(sa.image_path)) == b"PNG"  # re-hosted: no dead links

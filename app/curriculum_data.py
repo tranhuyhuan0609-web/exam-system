@@ -2089,7 +2089,7 @@ def generate_default_curriculum(grade_id: str, grade_name: str, subject_name: st
         "grade_id": grade_id,
         "icon": icon,
         "color": "#1e40af",
-        "description": f"Chương trình môn {subject_name} theo định hướng GDPT mới, gồm các chương bài chi tiết, tóm tắt lý thuyết và ngân hàng câu hỏi tự luyện.",
+        "description": f"Chương trình môn {subject_name} {grade_name} chuẩn SGK Kết nối tri thức, gồm các chương bài chi tiết, tóm tắt lý thuyết và ngân hàng câu hỏi tự luyện.",
         "chapters": chapters,
     
     }

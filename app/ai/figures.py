@@ -34,6 +34,8 @@ class PageGeometry:
     figure_png: Path | None = None
     # Text lines, each a list of word boxes. A line that runs outside a figure is question text, not a label.
     lines: list[list[BoundingBox]] = field(default_factory=list)
+    # Embedded raster images (also listed in `graphics`): small ones sitting on a text line are inline formulas.
+    images: list[BoundingBox] = field(default_factory=list)
 
 
 def page_geometry(page) -> PageGeometry:
@@ -71,8 +73,12 @@ def page_geometry(page) -> PageGeometry:
         if box := norm(r.x0, r.y0, r.x1, r.y1):
             geometry.graphics.append(box)
     for info in page.get_image_info():
+        # Ignore 1x1, 2x2 or tiny placeholder dummy images (<= 8px) inserted for inline equations
+        if info.get("width", 0) <= 8 or info.get("height", 0) <= 8:
+            continue
         if box := norm(*info["bbox"]):
             geometry.graphics.append(box)
+            geometry.images.append(box)
     for block in page.get_text("dict")["blocks"]:
         for line in block.get("lines", []):
             boxes = [

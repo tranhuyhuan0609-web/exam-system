@@ -141,6 +141,7 @@ class RawDocument:
     seed_label: str = ""
     # Where the page sits in the source's table of contents: {"root", "series", "chapter", "lesson"}.
     context: dict[str, str] = field(default_factory=dict)
+    published: bool = False
 
     def event(self) -> dict[str, Any]:
         """Kafka message on raw.exam.ingestion: the id only, the payload stays in MongoDB."""

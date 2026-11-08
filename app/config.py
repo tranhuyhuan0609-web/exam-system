@@ -78,6 +78,11 @@ class Settings(BaseSettings):
     gemini_extract_thinking: str = ""
     # LibreOffice binary used to turn .docx (MathType, Word shapes) into PDF.
     soffice_path: str = "soffice"
+
+    @property
+    def effective_soffice_path(self) -> str:
+        from app.ai.extract_engine import find_soffice
+        return find_soffice(self.soffice_path)
     tessdata_dir: str = ""  # Tesseract language data (vie): enables OCR of scanned library PDFs
 
     # Question crawler (app/pipeline): Kafka carries raw pages, MongoDB keeps them (Bronze).

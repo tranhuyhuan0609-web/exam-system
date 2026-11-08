@@ -3,31 +3,171 @@
 {% block title %}Ngân hàng câu hỏi · Quản trị{% endblock %}
 {% block admin_content %}
 <div class="page-head">
-  <h1>Ngân hàng câu hỏi <span class="muted small">({{ total }})</span></h1>
   <div>
-    <a class="btn btn-outline" href="/admin/ai-imports{% if filters.scope %}?scope={{ filters.scope }}{% endif %}">🤖 AI nhập đề</a>
-    <a class="btn btn-outline" href="/admin/questions/import{% if filters.scope %}?scope={{ filters.scope }}{% endif %}">⬆ Nhập từ file</a>
-    <a class="btn" href="/admin/questions/new{% if filters.scope %}?scope={{ filters.scope }}{% endif %}">+ Thêm câu hỏi</a>
+    <h1>Ngân hàng câu hỏi</h1>
+    <p class="muted small">Quản lý và tra cứu toàn bộ kho câu hỏi theo phân loại 3 phần chuẩn SGK Kết nối tri thức.</p>
+  </div>
+  <div>
+    <a class="btn btn-outline" href="/admin/ai-imports{% if effective_scope %}?scope={{ effective_scope }}{% endif %}">🤖 AI nhập đề</a>
+    <a class="btn btn-outline" href="/admin/questions/import{% if effective_scope %}?scope={{ effective_scope }}{% endif %}">⬆ Nhập từ file</a>
+    <a class="btn" href="/admin/questions/new{% if effective_scope %}?scope={{ effective_scope }}{% endif %}">+ Thêm câu hỏi</a>
   </div>
 </div>
 
-<form method="get" action="/admin/questions" class="card filters row">
-  {% with name="scope", options=scope_options, selected=filters.scope, blank="Tất cả môn / chương / bài" %}{% include "admin/_scope_select.html" %}{% endwith %}
-  <select name="difficulty">
-    <option value="">Mọi mức độ</option>
-    {% for d, label in DIFFICULTY_LABELS.items() %}<option value="{{ d.value }}" {% if filters.difficulty == d.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
-  </select>
-  <select name="qtype">
-    <option value="">Mọi dạng câu</option>
-    {% for t, label in TYPE_LABELS.items() %}<option value="{{ t }}" {% if filters.qtype == t %}selected{% endif %}>{{ label }}</option>{% endfor %}
-  </select>
-  <select name="verified">
-    <option value="">Đã duyệt & chưa duyệt</option>
-    <option value="yes" {% if filters.verified == "yes" %}selected{% endif %}>Đã duyệt</option>
-    <option value="no" {% if filters.verified == "no" %}selected{% endif %}>Chưa duyệt</option>
-  </select>
-  <input name="q" value="{{ filters.q }}" placeholder="Tìm trong nội dung…">
-  <button class="btn btn-outline">Lọc</button>
+<form method="get" action="/admin/questions" class="q-filter-box" id="q-filter-form">
+  <input type="hidden" name="section" id="section-select" value="{{ filters.section }}">
+  <input type="hidden" name="scope" id="scope-select" value="{{ effective_scope }}">
+
+  <!-- TẦNG 1: Chọn 1 trong 3 nhóm lớn (Tab Links) -->
+  <div class="section-tabs-bar">
+    <a href="/admin/questions?section=all" class="section-tab-btn {% if filters.section == 'all' %}active{% endif %}">
+      🌐 Tất cả ngân hàng
+    </a>
+    <a href="/admin/questions?section=curriculum" class="section-tab-btn {% if filters.section == 'curriculum' %}active{% endif %}">
+      📘 Phần 1: Bám sát chương trình học (Lớp 1 - 12)
+    </a>
+    <a href="/admin/questions?section=major_exam" class="section-tab-btn {% if filters.section == 'major_exam' %}active{% endif %}">
+      🎯 Phần 2: Kỳ thi quan trọng (THPTQG • ĐGTD • ĐGNL • Vào 10)
+    </a>
+    <a href="/admin/questions?section=olympiad" class="section-tab-btn {% if filters.section == 'olympiad' %}active{% endif %}">
+      🏆 Phần 3: Bồi dưỡng Học sinh giỏi (HSG & Chuyên)
+    </a>
+  </div>
+
+  <!-- TẦNG 2: Điều hướng tuần tự theo từng phần -->
+  <div class="drilldown-container">
+    {% if filters.section == 'curriculum' or filters.section == 'all' %}
+    <!-- Phần 1: Bám sát CT học (Lớp -> Môn -> Chương -> Bài) -->
+    <div id="curriculum-steps" class="drilldown-row">
+      <div class="filter-step">
+        <label>🏷️ 1. Chọn Lớp</label>
+        <select name="grade" id="filter-grade" onchange="onGradeChange(this.value)">
+          <option value="">— Tất cả các lớp (1 - 12) —</option>
+          {% for g in range(1, 13) %}
+            <option value="{{ g }}" {% if active_drilldown.grade == g|string %}selected{% endif %}>Lớp {{ g }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filter-step">
+        <label>📚 2. Chọn Môn học</label>
+        <select name="subject_id" id="filter-subject" onchange="onSubjectChange(this.value)">
+          <option value="">— Tất cả môn —</option>
+        </select>
+      </div>
+
+      <div class="filter-step">
+        <label>📑 3. Chọn Chương / Đề định kỳ</label>
+        <select name="chapter_id" id="filter-chapter" onchange="onChapterChange(this.value)">
+          <option value="">— Tất cả chương —</option>
+        </select>
+      </div>
+
+      <div class="filter-step">
+        <label>📖 4. Chọn Bài học / Đề thi</label>
+        <select name="lesson_id" id="filter-lesson">
+          <option value="">— Tất cả bài học / đề thi —</option>
+        </select>
+      </div>
+    </div>
+
+    {% elif filters.section == 'major_exam' %}
+    <!-- Phần 2: Kỳ thi quan trọng (Kỳ thi -> Môn thi) -->
+    <div id="major-exam-steps" class="drilldown-row">
+      <div class="filter-step">
+        <label>🎯 1. Chọn Kỳ thi quan trọng</label>
+        <select name="target" id="filter-major-target">
+          <option value="">— Tất cả kỳ thi quan trọng —</option>
+          {% for ex in catalog.major_exams %}
+            <option value="{{ ex.code }}" {% if active_drilldown.target == ex.code %}selected{% endif %}>{{ ex.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filter-step">
+        <label>📚 2. Chọn Môn thi</label>
+        <select name="exam_subject" id="filter-major-subject">
+          <option value="">— Tất cả môn thi —</option>
+          <option value="TOAN" {% if active_drilldown.exam_subject == "TOAN" %}selected{% endif %}>Toán học</option>
+          <option value="VAT_LI" {% if active_drilldown.exam_subject == "VAT_LI" %}selected{% endif %}>Vật lí</option>
+          <option value="HOA_HOC" {% if active_drilldown.exam_subject == "HOA_HOC" %}selected{% endif %}>Hóa học</option>
+          <option value="SINH_HOC" {% if active_drilldown.exam_subject == "SINH_HOC" %}selected{% endif %}>Sinh học</option>
+          <option value="TIENG_ANH" {% if active_drilldown.exam_subject == "TIENG_ANH" %}selected{% endif %}>Tiếng Anh</option>
+          <option value="NGU_VAN" {% if active_drilldown.exam_subject == "NGU_VAN" %}selected{% endif %}>Ngữ văn</option>
+          <option value="LICH_SU" {% if active_drilldown.exam_subject == "LICH_SU" %}selected{% endif %}>Lịch sử</option>
+          <option value="DIA_LI" {% if active_drilldown.exam_subject == "DIA_LI" %}selected{% endif %}>Địa lí</option>
+          <option value="KHTN" {% if active_drilldown.exam_subject == "KHTN" %}selected{% endif %}>Khoa học tự nhiên</option>
+        </select>
+      </div>
+    </div>
+
+    {% elif filters.section == 'olympiad' %}
+    <!-- Phần 3: Học sinh giỏi (Cấp độ -> Môn thi) -->
+    <div id="olympiad-steps" class="drilldown-row">
+      <div class="filter-step">
+        <label>🏆 1. Chọn Cấp độ Học sinh giỏi</label>
+        <select name="target" id="filter-olympiad-target">
+          <option value="">— Tất cả cấp độ HSG & Chuyên —</option>
+          {% for ol in catalog.olympiads %}
+            <option value="{{ ol.code }}" {% if active_drilldown.target == ol.code %}selected{% endif %}>{{ ol.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="filter-step">
+        <label>📚 2. Chọn Môn thi</label>
+        <select name="exam_subject" id="filter-olympiad-subject">
+          <option value="">— Tất cả môn thi —</option>
+          <option value="TOAN" {% if active_drilldown.exam_subject == "TOAN" %}selected{% endif %}>Toán học</option>
+          <option value="VAT_LI" {% if active_drilldown.exam_subject == "VAT_LI" %}selected{% endif %}>Vật lí</option>
+          <option value="HOA_HOC" {% if active_drilldown.exam_subject == "HOA_HOC" %}selected{% endif %}>Hóa học</option>
+          <option value="SINH_HOC" {% if active_drilldown.exam_subject == "SINH_HOC" %}selected{% endif %}>Sinh học</option>
+          <option value="TIN_HOC" {% if active_drilldown.exam_subject == "TIN_HOC" %}selected{% endif %}>Tin học</option>
+          <option value="TIENG_ANH" {% if active_drilldown.exam_subject == "TIENG_ANH" %}selected{% endif %}>Tiếng Anh</option>
+          <option value="NGU_VAN" {% if active_drilldown.exam_subject == "NGU_VAN" %}selected{% endif %}>Ngữ văn</option>
+          <option value="LICH_SU" {% if active_drilldown.exam_subject == "LICH_SU" %}selected{% endif %}>Lịch sử</option>
+          <option value="DIA_LI" {% if active_drilldown.exam_subject == "DIA_LI" %}selected{% endif %}>Địa lí</option>
+        </select>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- TẦNG 3: Bộ lọc phụ & Tìm kiếm -->
+  <div class="secondary-filter-row">
+    <select name="difficulty" title="Mức độ">
+      <option value="">Mọi mức độ</option>
+      {% for d, label in DIFFICULTY_LABELS.items() %}
+        <option value="{{ d.value }}" {% if filters.difficulty == d.value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="qtype" title="Dạng câu hỏi">
+      <option value="">Mọi dạng câu</option>
+      {% for t, label in TYPE_LABELS.items() %}
+        <option value="{{ t }}" {% if filters.qtype == t %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="verified" title="Trạng thái kiểm duyệt">
+      <option value="">Đã duyệt & chưa duyệt</option>
+      <option value="yes" {% if filters.verified == "yes" %}selected{% endif %}>Đã duyệt</option>
+      <option value="no" {% if filters.verified == "no" %}selected{% endif %}>Chưa duyệt</option>
+    </select>
+
+    <input class="search-input" name="q" value="{{ filters.q }}" placeholder="🔍 Tìm theo nội dung câu hỏi, công thức LaTeX…">
+    <button type="submit" class="btn">Lọc</button>
+    <a href="/admin/questions" class="btn btn-outline">↺ Đặt lại</a>
+  </div>
+
+  <!-- TẦNG 4: Breadcrumb & Kết quả -->
+  <div class="breadcrumb-count-bar">
+    <div class="bc-path">
+      <span>📌 Đang lọc:</span>
+      <strong>{{ breadcrumb_label }}</strong>
+    </div>
+    <div class="bc-count">Tìm thấy {{ total }} câu hỏi</div>
+  </div>
 </form>
 
 {% for q in questions %}
@@ -36,6 +176,23 @@
       <span class="muted">#{{ q.id }}</span>
       <span class="badge type-badge">{{ TYPE_LABELS[q.question_type] }}</span>
       <span class="badge diff-{{ q.difficulty | lower }}">{{ DIFFICULTY_LABELS[q.difficulty] }}</span>
+      {% set targets = q_targets.get(q.id, []) %}
+      {% if 'THPTQG' in targets %}
+        <span class="badge badge-target-thptqg" title="Phù hợp ôn luyện Kỳ thi Tốt nghiệp THPT Quốc gia">🎯 THPTQG</span>
+      {% endif %}
+      {% if 'HSG_TINH' in targets or 'HSG_QG' in targets or 'OLYMPIAD_CHUYEN' in targets %}
+        <span class="badge badge-target-hsg" title="Phù hợp Bồi dưỡng Học sinh giỏi & Đội tuyển">🏆 HSG</span>
+      {% endif %}
+      {% if 'DGTD_TSA' in targets or 'DGNL_HSA' in targets or 'DGNL_VNUHCM' in targets %}
+        <span class="badge badge-target-dgtd" title="Phù hợp Đánh giá tư duy TSA & Đánh giá năng lực HSA">⚡ ĐGTD/ĐGNL</span>
+      {% endif %}
+      {% if 'VAO_10' in targets or 'VAO_10_CHUYEN' in targets %}
+        <span class="badge badge-target-vao10" title="Phù hợp ôn thi Tuyển sinh vào Lớp 10">🏫 Vào 10</span>
+      {% endif %}
+      {% set topic = ku_names.get(q.id) or (q.knowledge_unit_id and ku_names.get(q.knowledge_unit_id)) %}
+      {% if topic %}
+        <span class="badge badge-topic" title="Chuyên đề kiến thức SGK">📘 {{ topic }}</span>
+      {% endif %}
       <span class="muted small">{{ scope_paths.get(scope_of(q).key, '') }}</span>
       <span class="badge source-badge">{{ SOURCE_LABELS[q.source_type] }}</span>
       <span class="grow"></span>
@@ -70,4 +227,111 @@
   {% if page < pages %}<a href="{{ page_url(page + 1) }}">Sau →</a>{% endif %}
 </nav>
 {% endif %}
+
+<script id="catalog-data" type="application/json">
+  {{ catalog_json | safe }}
+</script>
+<script id="active-drilldown-data" type="application/json">
+  {{ active_drilldown | tojson | safe }}
+</script>
+
+<script>
+  (function () {
+    const catalogEl = document.getElementById("catalog-data");
+    const activeEl = document.getElementById("active-drilldown-data");
+    if (!catalogEl || !activeEl) return;
+
+    const catalog = JSON.parse(catalogEl.textContent || "{}");
+    const active = JSON.parse(activeEl.textContent || "{}");
+
+    const gradeSelect = document.getElementById("filter-grade");
+    const subjectSelect = document.getElementById("filter-subject");
+    const chapterSelect = document.getElementById("filter-chapter");
+    const lessonSelect = document.getElementById("filter-lesson");
+
+    // Grade -> Subject -> Chapter -> Lesson
+    window.onGradeChange = function (grade, preselectSubjectId) {
+      if (!subjectSelect || !chapterSelect || !lessonSelect) return;
+      subjectSelect.innerHTML = '<option value="">— Tất cả môn —</option>';
+      chapterSelect.innerHTML = '<option value="">— Tất cả chương —</option>';
+      lessonSelect.innerHTML = '<option value="">— Tất cả bài học / đề thi —</option>';
+
+      if (!grade || !catalog.grades || !catalog.grades[grade]) return;
+      const subjects = catalog.grades[grade].subjects || [];
+      subjects.forEach(s => {
+        const opt = document.createElement("option");
+        opt.value = s.id;
+        opt.textContent = s.name;
+        if (String(preselectSubjectId || active.subject_id) === String(s.id)) {
+          opt.selected = true;
+        }
+        subjectSelect.appendChild(opt);
+      });
+
+      if (subjectSelect.value) {
+        onSubjectChange(subjectSelect.value, active.chapter_id);
+      }
+    };
+
+    window.onSubjectChange = function (subjectId, preselectChapterId) {
+      if (!chapterSelect || !lessonSelect) return;
+      chapterSelect.innerHTML = '<option value="">— Tất cả chương —</option>';
+      lessonSelect.innerHTML = '<option value="">— Tất cả bài học / đề thi —</option>';
+
+      if (!gradeSelect) return;
+      const grade = gradeSelect.value;
+      if (!grade || !subjectId || !catalog.grades || !catalog.grades[grade]) return;
+
+      const subjects = catalog.grades[grade].subjects || [];
+      const currentSubj = subjects.find(s => String(s.id) === String(subjectId));
+      if (!currentSubj || !currentSubj.chapters) return;
+
+      currentSubj.chapters.forEach(ch => {
+        const opt = document.createElement("option");
+        opt.value = ch.id;
+        opt.textContent = ch.name;
+        if (String(preselectChapterId || active.chapter_id) === String(ch.id)) {
+          opt.selected = true;
+        }
+        chapterSelect.appendChild(opt);
+      });
+
+      if (chapterSelect.value) {
+        onChapterChange(chapterSelect.value, active.lesson_id);
+      }
+    };
+
+    window.onChapterChange = function (chapterId, preselectLessonId) {
+      if (!lessonSelect) return;
+      lessonSelect.innerHTML = '<option value="">— Tất cả bài học / đề thi —</option>';
+
+      if (!gradeSelect || !subjectSelect) return;
+      const grade = gradeSelect.value;
+      const subjectId = subjectSelect.value;
+      if (!grade || !subjectId || !chapterId || !catalog.grades || !catalog.grades[grade]) return;
+
+      const subjects = catalog.grades[grade].subjects || [];
+      const currentSubj = subjects.find(s => String(s.id) === String(subjectId));
+      if (!currentSubj || !currentSubj.chapters) return;
+
+      const currentChapter = currentSubj.chapters.find(c => String(c.id) === String(chapterId));
+      if (!currentChapter || !currentChapter.lessons) return;
+
+      currentChapter.lessons.forEach(les => {
+        const opt = document.createElement("option");
+        opt.value = les.id;
+        opt.textContent = les.name;
+        if (String(preselectLessonId || active.lesson_id) === String(les.id)) {
+          opt.selected = true;
+        }
+        lessonSelect.appendChild(opt);
+      });
+    };
+
+    // Initial state setup on page load
+    if (gradeSelect && active.grade) {
+      onGradeChange(active.grade, active.subject_id);
+    }
+  })();
+</script>
 {% endblock %}

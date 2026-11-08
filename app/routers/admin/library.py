@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from app.config import get_settings
 from app.deps import AdminUser, SessionDep
 from app.infrastructure.storage import get_bronze_storage, get_storage
-from app.models import LibraryDocument, LibraryKind, LibraryStatus
+from app.models import AccessTier, LibraryDocument, LibraryKind, LibraryStatus
 from app.pipeline.use_cases.drive_sync import load_sources
 from app.pipeline.use_cases.library_split import split_stored
 from app.routers.admin.common import redirect
@@ -83,6 +83,10 @@ async def library_bulk(request: Request, user: AdminUser, session: SessionDep):
             doc.downloadable = False
         elif action.startswith("kind:") and action[5:] in LibraryKind.__members__:
             doc.kind = LibraryKind(action[5:])
+            if doc.kind == LibraryKind.HSG:
+                doc.access_tier = AccessTier.PRO
+        elif action.startswith("tier:") and action[5:] in AccessTier.__members__:
+            doc.access_tier = AccessTier(action[5:])
     await session.commit()
     flash(request, f"Đã cập nhật {len(docs)} tài liệu.")
     return redirect(_back(form))

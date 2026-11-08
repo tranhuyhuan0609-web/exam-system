@@ -32,10 +32,11 @@ class UserRole(StrEnum):
 
 
 class Difficulty(StrEnum):
-    RECOGNITION = "RECOGNITION"  # Nhận biết
-    UNDERSTANDING = "UNDERSTANDING"  # Thông hiểu
-    APPLICATION = "APPLICATION"  # Vận dụng
-    ADVANCED_APPLICATION = "ADVANCED_APPLICATION"  # Vận dụng cao
+    RECOGNITION = "RECOGNITION"  # Nhận biết (NB)
+    UNDERSTANDING = "UNDERSTANDING"  # Thông hiểu (TH)
+    APPLICATION = "APPLICATION"  # Vận dụng (VD)
+    ADVANCED_APPLICATION = "ADVANCED_APPLICATION"  # Vận dụng cao (VDC)
+    HSG = "HSG"  # Học sinh giỏi / Olympic (HSG)
 
 
 class QuestionType(StrEnum):
@@ -68,6 +69,21 @@ class ExamVisibility(StrEnum):
     PRIVATE = "PRIVATE"  # a teacher's test: never listed, students join with the link + access code
 
 
+class AccessTier(StrEnum):
+    FREE = "FREE"  # public exams / free questions / free study materials
+    PRO = "PRO"  # authored exclusive exams / HSG materials / Pro-only questions
+
+
+class ExamOriginType(StrEnum):
+    PUBLIC_CRAWLED = "PUBLIC_CRAWLED"  # crawled or collected public exams
+    ORIGINAL = "ORIGINAL"  # authored / exclusive exams created by the platform
+
+
+class QuestionOriginType(StrEnum):
+    PUBLIC = "PUBLIC"  # public bank question (usable in FREE matrix exams)
+    AUTHORED = "AUTHORED"  # authored / HSG exclusive question (PRO tier)
+
+
 EMBEDDING_DIM = 768
 
 
@@ -75,6 +91,7 @@ class CrawlRunStatus(StrEnum):
     QUEUED = "QUEUED"  # requested from the admin page; the scheduler starts it
     RUNNING = "RUNNING"
     DONE = "DONE"
+    WARN = "WARN"
     FAILED = "FAILED"
 
 
@@ -161,6 +178,10 @@ class Category(TimestampMixin, Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
     path: Mapped[str] = mapped_column(String(500), index=True, default="")
     depth: Mapped[int] = mapped_column(Integer, default=0)  # 0 = root (subject)
+    # If a category (e.g. "Bồi dưỡng Học Sinh Giỏi") is set to PRO, exams/materials/questions under it inherit PRO.
+    default_tier: Mapped[AccessTier] = mapped_column(
+        _enum(AccessTier, "access_tier"), default=AccessTier.FREE, server_default=AccessTier.FREE.value
+    )
 
     @property
     def root_id(self) -> int:
@@ -177,6 +198,12 @@ class Question(TimestampMixin, UpdatedAtMixin, Base):
     # The subject (root category) and the most specific category the question belongs to.
     root_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"), index=True)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"), index=True)
+    # Single-source-of-truth SGK Kết nối tri thức coordinate (Môn -> Lớp -> Chương -> Bài).
+    knowledge_unit_id: Mapped[int | None] = mapped_column(
+        ForeignKey("knowledge_units.id", ondelete="SET NULL"), index=True
+    )
+    # Marks questions with strong reasoning / practical / graph-reading skills (suited for ĐGTD TSA / ĐGNL HSA).
+    is_thinking_skill: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", index=True)
     difficulty: Mapped[Difficulty] = mapped_column(_enum(Difficulty, "difficulty"))
     question_type: Mapped[QuestionType] = mapped_column(
         _enum(QuestionType, "question_type"),
@@ -199,10 +226,24 @@ class Question(TimestampMixin, UpdatedAtMixin, Base):
     source_type: Mapped[SourceType] = mapped_column(
         _enum(SourceType, "source_type"), default=SourceType.MANUAL, server_default=SourceType.MANUAL.value
     )
+    access_tier: Mapped[AccessTier] = mapped_column(
+        _enum(AccessTier, "question_access_tier"),
+        default=AccessTier.FREE,
+        server_default=AccessTier.FREE.value,
+        index=True,
+    )
+    origin_type: Mapped[QuestionOriginType] = mapped_column(
+        _enum(QuestionOriginType, "question_origin_type"),
+        default=QuestionOriginType.PUBLIC,
+        server_default=QuestionOriginType.PUBLIC.value,
+    )
     # SHA-256 of the normalised type + text + options (app/domain/question_hash.py), for exact-duplicate checks.
     content_hash: Mapped[str | None] = mapped_column(String(64), index=True)
     # Only verified questions can be put into exams; crawled questions start unverified.
     is_verified: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # Provenance and reliability indicators
+    answer_source: Mapped[str | None] = mapped_column(String(50), default=None, server_default=None)
+    explanation_by_ai: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Crawled questions: the page they came from (attribution).
     source_url: Mapped[str | None] = mapped_column(String(500))
     # Gemini embedding of the normalised text, for semantic duplicate detection (pgvector, cosine).
@@ -216,6 +257,15 @@ class Question(TimestampMixin, UpdatedAtMixin, Base):
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
     )
+
+
+class QuestionCategory(Base):
+    """Many-to-many link between questions and categories."""
+
+    __tablename__ = "question_categories"
+
+    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True, index=True)
 
 
 class Exam(TimestampMixin, UpdatedAtMixin, Base):
@@ -251,6 +301,21 @@ class Exam(TimestampMixin, UpdatedAtMixin, Base):
         index=True,
     )
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    origin_type: Mapped[ExamOriginType] = mapped_column(
+        _enum(ExamOriginType, "exam_origin_type"),
+        default=ExamOriginType.PUBLIC_CRAWLED,
+        server_default=ExamOriginType.PUBLIC_CRAWLED.value,
+    )
+    access_tier: Mapped[AccessTier] = mapped_column(
+        _enum(AccessTier, "exam_access_tier"),
+        default=AccessTier.FREE,
+        server_default=AccessTier.FREE.value,
+        index=True,
+    )
+    # Freemium teaser: how many first questions a Free student can preview on a PRO exam.
+    preview_question_count: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
+    # Even on a FREE exam, step-by-step AI solutions can be locked for PRO.
+    is_solution_pro_only: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # PRIVATE tests: the link carries access_token; students also type access_code.
     access_token: Mapped[str | None] = mapped_column(String(32), unique=True)
     access_code: Mapped[str | None] = mapped_column(String(12))
@@ -334,6 +399,7 @@ class ImportJob(Base):
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     original_filename: Mapped[str] = mapped_column(String(300))
     stored_path: Mapped[str] = mapped_column(String(300))  # relative to data_dir
+    solution_stored_path: Mapped[str | None] = mapped_column(String(300), nullable=True)  # optional answer/marking scheme file
     status: Mapped[JobStatus] = mapped_column(_enum(JobStatus, "job_status"), default=JobStatus.QUEUED)
     stage: Mapped[str | None] = mapped_column(String(200))  # human-readable progress, e.g. "Đang giải câu 6–10"
     progress_done: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
@@ -343,6 +409,14 @@ class ImportJob(Base):
     root_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"))
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"))
     default_difficulty: Mapped[Difficulty] = mapped_column(_enum(Difficulty, "difficulty"))
+    access_tier: Mapped[AccessTier] = mapped_column(
+        _enum(AccessTier, "job_access_tier"), default=AccessTier.FREE, server_default=AccessTier.FREE.value
+    )
+    origin_type: Mapped[ExamOriginType] = mapped_column(
+        _enum(ExamOriginType, "job_origin_type"),
+        default=ExamOriginType.PUBLIC_CRAWLED,
+        server_default=ExamOriginType.PUBLIC_CRAWLED.value,
+    )
     # Draft questions produced by the pipeline and edited during review (see app/ai/pipeline.py).
     drafts: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, server_default="[]")
     # "BANK": questions for the bank (admin, library). "SIMILAR": a teacher's paper, read only to write `versions`
@@ -503,6 +577,15 @@ class LibraryDocument(Base):
     year: Mapped[int | None] = mapped_column(Integer)
     language: Mapped[str | None] = mapped_column(String(10))
     storage_key: Mapped[str] = mapped_column(String(300))  # in the bronze-raw bucket
+    # Public 2-page watermarked preview PDF (in exam-media / public storage) for Freemium HSG / PRO documents.
+    preview_storage_key: Mapped[str | None] = mapped_column(String(300))
+    access_tier: Mapped[AccessTier] = mapped_column(
+        _enum(AccessTier, "library_access_tier"),
+        default=AccessTier.FREE,
+        server_default=AccessTier.FREE.value,
+        index=True,
+    )
+    content_markdown: Mapped[str | None] = mapped_column(Text)
     mime: Mapped[str] = mapped_column(String(120))
     size: Mapped[int] = mapped_column(Integer, default=0)
     downloadable: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
@@ -558,6 +641,74 @@ class AICache(Base):
     __tablename__ = "ai_cache"
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
-    kind: Mapped[str] = mapped_column(String(16))  # "extract" | "solve"
+    kind: Mapped[str] = mapped_column(String(32))  # "extract" | "solve" | "transcribe"
     value: Mapped[Any] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TargetGroupCategory(StrEnum):
+    CURRICULUM = "CURRICULUM"  # Mục 1: Bám sát CT học (SGK Kết nối tri thức)
+    MAJOR_EXAM = "MAJOR_EXAM"  # Mục 2: Kỳ thi quan trọng (THPTQG, ĐGTD TSA, ĐGNL HSA, Vào 10)
+    OLYMPIAD = "OLYMPIAD"  # Mục 3: Bồi dưỡng Học sinh giỏi & Chuyên (HSG Tỉnh, HSG Quốc gia)
+
+
+class KnowledgeUnit(Base):
+    """1. Bảng Cây Kiến Thức Chuẩn SGK Kết Nối Tri Thức (Tọa độ kiến thức gốc: Môn -> Lớp -> Chương -> Bài)."""
+
+    __tablename__ = "knowledge_units"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_units.id", ondelete="CASCADE"), index=True)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"), index=True)
+    subject: Mapped[str] = mapped_column(String(50), index=True)  # 'PHYSICS', 'MATH', 'CHEMISTRY', 'ENGLISH'...
+    grade: Mapped[int] = mapped_column(Integer, index=True)  # 9, 10, 11, 12
+    unit_type: Mapped[str] = mapped_column(String(20))  # 'CHAPTER', 'LESSON', 'TOPIC'
+    code: Mapped[str | None] = mapped_column(String(50), unique=True, index=True)  # e.g. 'PHY12-KNTT-C1-B2'
+    name: Mapped[str] = mapped_column(String(255))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class ExamTarget(Base):
+    """2. Bảng Các Mục Tiêu / Kỳ Thi (3 trụ cột: CURRICULUM, MAJOR_EXAM, OLYMPIAD)."""
+
+    __tablename__ = "exam_targets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(
+        String(30), unique=True, index=True
+    )  # 'SGK_KNTT', 'THPTQG', 'DGTD_TSA', 'DGNL_HSA', 'VAO_10', 'HSG_TINH', 'HSG_QG'
+    group_category: Mapped[str] = mapped_column(
+        String(30), index=True
+    )  # 'CURRICULUM' | 'MAJOR_EXAM' | 'OLYMPIAD'
+    name: Mapped[str] = mapped_column(String(255))
+    access_tier: Mapped[AccessTier] = mapped_column(
+        _enum(AccessTier, "target_access_tier"), default=AccessTier.FREE, server_default=AccessTier.FREE.value
+    )
+
+
+class TargetCurriculumMapping(Base):
+    """3. Bảng Quy Tắc Kế Thừa Tự Động (Cầu nối tự động giữa SGK KNTT và Kỳ thi THPTQG / Vào 10)."""
+
+    __tablename__ = "target_curriculum_mappings"
+
+    target_id: Mapped[int] = mapped_column(ForeignKey("exam_targets.id", ondelete="CASCADE"), primary_key=True)
+    knowledge_unit_id: Mapped[int] = mapped_column(
+        ForeignKey("knowledge_units.id", ondelete="CASCADE"), primary_key=True
+    )
+    # Allowed difficulties inherited automatically, e.g. ['RECOGNITION', 'UNDERSTANDING', 'APPLICATION', 'ADVANCED_APPLICATION']
+    # (or ['NB', 'TH', 'VD', 'VDC']), excluding ['HSG'] from standard THPTQG exams.
+    allowed_difficulties: Mapped[list[str]] = mapped_column(
+        JSONB,
+        default=lambda: ["RECOGNITION", "UNDERSTANDING", "APPLICATION", "ADVANCED_APPLICATION"],
+    )
+
+
+class QuestionTargetTag(Base):
+    """4. Bảng Gắn Nhãn Đặc Thù (Cho ĐGTD TSA, ĐGNL HSA, HSG Tỉnh / Quốc gia)."""
+
+    __tablename__ = "question_target_tags"
+
+    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True)
+    target_id: Mapped[int] = mapped_column(
+        ForeignKey("exam_targets.id", ondelete="CASCADE"), primary_key=True, index=True
+    )

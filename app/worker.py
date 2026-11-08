@@ -178,9 +178,10 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
                 page_count, drafts = await run_pipeline(
                     job_id=job.id,
                     source_key=job.stored_path,
+                    solution_key=job.solution_stored_path,
                     storage=get_storage(),
                     provider=provider,
-                    soffice=settings.soffice_path,
+                    soffice=settings.effective_soffice_path,
                     default_difficulty=job.default_difficulty.value,
                     progress=progress,
                     solve=(job.purpose == "SIMILAR" or getattr(provider, "is_fake", False)),
@@ -202,7 +203,7 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
             log.exception("Job %s crashed", job_id)
             job.status, job.error, job.stage = JobStatus.FAILED, f"Lỗi hệ thống: {exc}", "Lỗi"
         else:
-            job.status, job.page_count, job.drafts = JobStatus.DONE, page_count, drafts
+            job.status, job.error, job.page_count, job.drafts = JobStatus.DONE, None, page_count, drafts
             job.stage = f"Đã đọc {len(drafts)} câu từ {page_count} trang" if drafts else "Không tìm thấy câu hỏi nào"
             if codes is not None:
                 job.stage = f"Đã đọc đáp án chính thức của {codes} mã đề"

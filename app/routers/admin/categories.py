@@ -14,7 +14,7 @@ from app.application.categories import (
     unique_slug,
 )
 from app.deps import AdminUser, SessionDep
-from app.models import Category, Exam, Question
+from app.models import AccessTier, Category, Exam, Question
 from app.routers.admin.common import clean_text, get_or_404, redirect
 from app.scope import load_categories, scope_options, walk
 from app.templating import flash, templates
@@ -63,14 +63,26 @@ async def categories_page(request: Request, user: AdminUser, session: SessionDep
 
 
 @router.post("/categories")
-async def create(request: Request, session: SessionDep, name: TextForm, parent_id: TextForm = "", slug: TextForm = ""):
+async def create(
+    request: Request,
+    session: SessionDep,
+    name: TextForm,
+    parent_id: TextForm = "",
+    slug: TextForm = "",
+    default_tier: TextForm = "",
+):
     clean = clean_text(name, 300)
     if not clean:
         flash(request, "Tên mục không hợp lệ (1–300 ký tự).", "error")
         return redirect(_back())
     parent = await get_or_404(session, Category, int(parent_id)) if parent_id.isdigit() else None
+    tier = AccessTier(default_tier) if default_tier in AccessTier.__members__ else None
     category = await create_category(
-        session, clean, parent, slug=None if parent else await unique_slug(session, slugify(slug or clean))
+        session,
+        clean,
+        parent,
+        slug=None if parent else await unique_slug(session, slugify(slug or clean)),
+        default_tier=tier,
     )
     await session.commit()
     flash(request, f"Đã thêm “{clean}”" + (f" vào “{parent.name}”." if parent else " (môn học mới)."))
@@ -78,7 +90,14 @@ async def create(request: Request, session: SessionDep, name: TextForm, parent_i
 
 
 @router.post("/categories/{category_id:int}")
-async def rename(request: Request, session: SessionDep, category_id: int, name: TextForm, description: TextForm = ""):
+async def rename(
+    request: Request,
+    session: SessionDep,
+    category_id: int,
+    name: TextForm,
+    description: TextForm = "",
+    default_tier: TextForm = "",
+):
     category = await get_or_404(session, Category, category_id)
     clean = clean_text(name, 300)
     if not clean:
@@ -86,6 +105,8 @@ async def rename(request: Request, session: SessionDep, category_id: int, name: 
         return redirect(_back(category_id))
     category.name = clean
     category.description = description.strip() or category.description
+    if default_tier in AccessTier.__members__:
+        category.default_tier = AccessTier(default_tier)
     if category.parent_id is None:
         category.slug = await unique_slug(session, slugify(clean), exclude_id=category.id)
     await session.commit()

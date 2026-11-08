@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.title }} · Xem tài liệu{% endblock %}
+{% block container_class %}wide{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="muted small" style="margin: 0 0 6px;"><a href="/library">← Quay lại Thư viện</a></p>
+    <h1>{{ doc.title }}
+      {% if is_pro_doc %}
+        <span class="badge" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; font-weight: 700;">🔒 PRO</span>
+      {% else %}
+        <span class="badge badge-ok">FREE</span>
+      {% endif %}
+    </h1>
+    {% if doc.license_note or doc.source %}
+      <div class="muted small">{{ doc.license_note or doc.source }}</div>
+    {% endif %}
+  </div>
+  <div class="row">
+    {% if is_pro_doc and not pro %}
+      <a class="btn" href="/plans" style="background: linear-gradient(135deg, #f59e0b, #d97706); border: none;">🚀 Nâng cấp PRO để mở khóa toàn bộ</a>
+    {% else %}
+      <a class="btn btn-outline btn-small" href="/library/{{ doc.id }}/view" target="_blank" rel="noopener">Mở tab PDF toàn màn hình ↗</a>
+      {% if can_download %}<a class="btn btn-small" href="/library/{{ doc.id }}/download">📥 Tải về</a>{% endif %}
+    {% endif %}
+  </div>
+</div>
+
+{% if is_pro_doc and not pro %}
+  <div class="card" style="border-left: 5px solid #f59e0b; background: #fffbeb; margin-bottom: 16px;">
+    <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;">
+      <div>
+        <strong style="color: #92400e;">👀 Bạn đang xem thử {{ preview_pages }} trang đầu tiên miễn phí</strong>
+        {% if total_pages and total_pages > preview_pages %}
+          <span class="muted small" style="color: #78350f;"> · Còn {{ total_pages - preview_pages }}/{{ total_pages }} trang chuyên sâu bị khóa</span>
+        {% endif %}
+        <p class="small" style="margin: 4px 0 0; color: #78350f;">
+          Tài liệu Học sinh giỏi &amp; Chuyên đề độc quyền thuộc gói <strong>PRO</strong>. Bạn có thể đọc trước {{ preview_pages }} trang đầu bên dưới để đánh giá chất lượng tài liệu.
+        </p>
+      </div>
+      <a class="btn btn-small" href="/plans" style="background: #d97706; border-color: #d97706;">🔓 Mở khóa trọn bộ ({{ total_pages or "Đầy đủ" }} trang)</a>
+    </div>
+  </div>
+{% endif %}
+
+{% if doc.content_markdown %}
+  <div class="card">
+    <div class="q-content">{{ doc.content_markdown }}</div>
+  </div>
+{% endif %}
+
+<div class="card" style="padding: 0; overflow: hidden;">
+  <iframe
+    src="{{ '/library/' ~ doc.id ~ '/preview.pdf' if (is_pro_doc and not pro) else '/library/' ~ doc.id ~ '/view' }}"
+    title="{{ doc.title }}"
+    style="width: 100%; height: 78vh; border: 0; display: block;">
+  </iframe>
+</div>
+
+{% if is_pro_doc and not pro %}
+  <div class="card" style="text-align: center; padding: 28px 20px; background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%); border: 1px solid #fcd34d;">
+    <h2 style="margin: 0 0 8px; color: #92400e;">🔒 Mở khóa {{ (total_pages - preview_pages) if (total_pages and total_pages > preview_pages) else "toàn bộ các" }} trang tiếp theo của tài liệu này</h2>
+    <p class="muted" style="max-width: 640px; margin: 0 auto 16px; color: #78350f;">
+      Nâng cấp tài khoản <strong>PRO</strong> để đọc toàn văn chuyên đề Học sinh giỏi, lời giải chi tiết từng bước và luyện không giới hạn toàn bộ kho đề độc quyền.
+    </p>
+    <a class="btn" href="/plans" style="background: linear-gradient(135deg, #f59e0b, #d97706); border: none; font-weight: 700; padding: 10px 24px;">
+      💎 Nâng cấp tài khoản PRO ngay →
+    </a>
+  </div>
+{% endif %}
+{% endblock %}
+
