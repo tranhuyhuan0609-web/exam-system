@@ -268,6 +268,25 @@ def parse_figure_captions(text: str) -> dict[str, str]:
     return mapping
 
 
+_STEM_OPENING = re.compile(
+    r"^(?:cho|một|mot|trong|xét|xet|tính|tinh|tìm|tim|giải|giai|chứng minh|người ta|nguoi ta|có|hai|ba|biết|"
+    r"khi|hãy|hay|với|voi|gọi|goi|trên|tren|ở|o|dùng|đặt|đề|nêu|viết|hình|bảng|năm|nghiên cứu|các|những|\d)\b",
+    re.IGNORECASE,
+)
+
+
+def is_section_title(text: str) -> bool:
+    """Whether the rest of a heading line ("Câu I. (4,0 điểm) CƠ HỌC CHẤT ĐIỂM") is a section title, not the
+    first words of the question ("Câu 2 (4,0 điểm). Cho đa thức ...")."""
+    text = " ".join(text.split()).strip(" .:-–—")
+    letters = [c for c in text if c.isalpha()]
+    if not letters or len(text) > 90 or "$" in text:
+        return False
+    if all(c.isupper() for c in letters):
+        return True
+    return not _STEM_OPENING.match(text) and not text.endswith(("?", ":"))
+
+
 def strip_topic(content: str, topic: str | None) -> str:
     """Drop the section title from the start of a question's text (it is kept apart, for classification)."""
     if not topic:
@@ -575,6 +594,8 @@ def parse_essay_html(document: str, media_dir: Path | None = None) -> EssayPaper
 
         content = _clean_lines(text)
         title = header_parsed[2] if header_parsed else ""
+        if title and not is_section_title(title):
+            title = ""
         if title:
             content = strip_topic(content, title)
         if len(content) < 15:
@@ -1350,8 +1371,10 @@ def read_essay_pdf(path: Path, dpi: int = 300) -> EssayPaper | None:
         body_parts: list[str] = []
         inline_sol_parts: list[str] = []
         in_inline_key = False
-        if q_title:
+        if q_title and is_section_title(q_title):
             topics[idx] = q_title
+        elif q_title:
+            body_parts.append(q_title)  # the question starts on its heading line
         for ln in block_lines[1:]:
             if _END_MARKER.match(ln.text):
                 break

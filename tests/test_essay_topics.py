@@ -25,3 +25,13 @@ def test_draft_keeps_topic_apart_from_content():
     draft = _draft(q, None, None, False, "HSG", topic="CƠ HỌC CHẤT ĐIỂM")
     assert draft["content"] == "Một vật được ném xiên với vận tốc 20 m/s."
     assert draft["topic_title"] == "CƠ HỌC CHẤT ĐIỂM"
+
+
+def test_only_section_titles_count_as_topics_not_the_first_words_of_a_question():
+    from app.ai.essay_exam import is_section_title
+
+    assert is_section_title("CƠ HỌC CHẤT ĐIỂM")
+    assert is_section_title("Trao đổi nước, dinh dưỡng khoáng và nitrogen ở thực vật")
+    assert not is_section_title("Cho đa thức")
+    assert not is_section_title("Cho dãy số thực được xác định bởi công thức truy hồi sau:")
+    assert not is_section_title("Một hình chữ nhật gồm hai ô vuông đơn vị hoặc được gọi là")
