@@ -35,3 +35,11 @@ def test_only_section_titles_count_as_topics_not_the_first_words_of_a_question()
     assert not is_section_title("Cho đa thức")
     assert not is_section_title("Cho dãy số thực được xác định bởi công thức truy hồi sau:")
     assert not is_section_title("Một hình chữ nhật gồm hai ô vuông đơn vị hoặc được gọi là")
+
+
+def test_headings_without_points_are_trusted_only_as_a_numbered_run():
+    from app.ai.essay_exam import plain_header_hits
+
+    texts = ["Câu 1: Một nêm", "x", "Câu 2: Hai vật", "Bài 3: lạc", "y", "Câu 3. Cho", "theo Câu 5: z"]
+    assert [(i, n) for i, n, _, _ in plain_header_hits(texts)] == [(0, 1), (2, 2), (5, 3)]
+    assert plain_header_hits(["Câu 2: chỉ một dòng"]) == []

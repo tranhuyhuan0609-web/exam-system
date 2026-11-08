@@ -59,6 +59,12 @@ HEADER_TITLE_POINTS = re.compile(
     re.IGNORECASE,
 )
 
+# A heading without points: "Câu 1: Một nêm ...", "Bài 2. Cho ...". Only trusted as a run numbered 1, 2, 3, ...
+HEADER_PLAIN = re.compile(
+    r"^\s*(?P<kind>Bài|Câu)\s*(?P<num>\d{1,2}|I{1,3}|IV|VI{0,3}|IX|X)\s*[.:]\s*(?P<rest>.*)$",
+    re.IGNORECASE,
+)
+
 _QUESTION = re.compile(r"^\s*(?:câu|bài)\s*(\d{1,2}|I{1,3}|IV|VI{0,3}|IX|X)\b\s*[.:)]?", re.I)
 _POINTS = re.compile(r"^\s*[(\[]?\s*(\d+(?:[.,]\d+)?)\s*(?:điểm|đ)\s*[)\]]?\s*(?:[-–—.:]\s*)?", re.I)
 _KEY_HEADING = re.compile(
@@ -226,6 +232,25 @@ def extract_matrix_difficulty(text: str) -> str | None:
                 best_rank = _LEVEL_RANK[mapped]
                 best_diff = mapped
     return best_diff
+
+
+def plain_header_hits(texts: list[str]) -> list[tuple[int, int, None, str]]:
+    """Headings without points ("Câu 1:", "Bài 2."), kept only as an unbroken run 1, 2, 3, ... of the most used
+    kind, so a "Câu 3" quoted inside a question or a stray "Bài 3:" between "Câu 6" and "Câu 7" is not a split.
+    Returns (line index, number, None, text after the heading)."""
+    found = [(i, m) for i, text in enumerate(texts) if (m := HEADER_PLAIN.match(text))]
+    if not found:
+        return []
+    kinds = [m.group("kind").casefold() for _, m in found]
+    kind = max(set(kinds), key=kinds.count)
+    hits: list[tuple[int, int, None, str]] = []
+    expected = 1
+    for i, m in found:
+        if m.group("kind").casefold() != kind or _number(m.group("num")) != expected:
+            continue
+        hits.append((i, expected, None, m.group("rest").strip()))
+        expected += 1
+    return hits if len(hits) >= 2 else []
 
 
 def match_essay_header(line: str) -> tuple[int, float | None, str] | None:
@@ -892,6 +917,7 @@ def _has_image_block_in_slices(
 
 
 CONTEXT_ABOVE = 60  # 0–1000: strip above a question sent with its transcription crop (misplaced formulas)
+FIGURE_ABOVE_HEADING = 25  # 0-1000: a figure beside a question may start this far above its heading line
 BARRIER_LINE_WIDTH = 280  # a text line this wide (0–1000) is question text: a figure band never spans it
 LABEL_LINE_WIDTH = 150  # a text line up to this wide next to a figure is a label/reagent; wider ones must lie inside it
 BAND_GAP = 90  # graphics this close vertically, with no question text between them, are one figure
@@ -948,27 +974,36 @@ def _is_inline_image(box: BoundingBox, lines: list[BoundingBox]) -> bool:
     )
 
 
-def figure_bands(geom: PageGeometry, slice_ymin: int, slice_ymax: int) -> list[BoundingBox]:
-    """Boxes of the uncaptioned figures inside one question slice of a page (0–1000 scale).
+@dataclass
+class FigureBand:
+    box: BoundingBox  # the figure with its labels and caption (0-1000)
+    masks: list[BoundingBox] = field(default_factory=list)  # question text inside the box: painted white
 
-    Structural formulas and reaction schemes are drawn as hundreds of short bond strokes with their
-    atom labels and reagents as separate text, so per-cluster crops break them into unreadable pieces.
-    Here graphics are grouped into horizontal bands: clusters are merged downwards until a wide line of
-    question text separates them, and the short text lines inside a band (labels, reagents, compound
-    names) are kept with it. Small rasters sitting on a text line are inline formulas and are ignored.
+
+def _overlaps(a: BoundingBox, b: BoundingBox, margin: int = 2) -> bool:
+    return (
+        a.xmin < b.xmax + margin and b.xmin < a.xmax + margin and a.ymin < b.ymax + margin and b.ymin < a.ymax + margin
+    )
+
+
+def figure_band_crops(geom: PageGeometry, slice_ymin: int, slice_ymax: int) -> list[FigureBand]:
+    """The figures of one question slice of a page, as whole bands (0-1000 scale).
+
+    Structural formulas and reaction schemes are drawn as hundreds of short bond strokes with their atom labels
+    and reagents as separate text, so per-cluster crops break them into unreadable pieces. Graphics are grouped
+    into horizontal bands: clusters are merged downwards until a line of question text separates them, and the
+    short text lines around a band (labels, reagents, captions "Hinh 2") are kept with it.
+
+    A figure belongs to the question in which its top lies and may run below that question's text (figures set
+    beside the text often do). Question text that ends up inside the box (text beside the figure) is returned
+    as masks, painted white rather than cropped away, so the drawing itself is never cut. Small rasters are
+    inline formulas (MathType) and never make a figure on their own.
     """
     rows = _visual_rows(geom.lines)
-    lines = [_line_box(ln) for ln in rows]
-    slice_lines = [ln for ln in lines if slice_ymin - 10 <= (ln.ymin + ln.ymax) / 2 <= slice_ymax + 15]
-    inline = {id(b) for b in geom.images if _is_inline_image(b, lines)}
+    row_boxes = [_line_box(r) for r in rows]
+    inline = {id(b) for b in geom.images if _is_inline_image(b, row_boxes)}
     small = {id(b) for b in geom.images if b.ymax - b.ymin <= FORMULA_IMAGE_HEIGHT}
-    graphics = [
-        g
-        for g in geom.graphics
-        if id(g) not in inline
-        and (slice_ymin - 10) <= (g.ymin + g.ymax) / 2 <= (slice_ymax + 15)
-        and max(g.ymax - g.ymin, g.xmax - g.xmin) >= 3
-    ]
+    graphics = [g for g in geom.graphics if id(g) not in inline and max(g.ymax - g.ymin, g.xmax - g.xmin) >= 3]
     if not graphics:
         return []
 
@@ -980,7 +1015,7 @@ def figure_bands(geom: PageGeometry, slice_ymin: int, slice_ymax: int) -> list[B
             if max(0, max(g.ymin, c["ymin"]) - min(g.ymax, c["ymax"])) <= 30
             and max(0, max(g.xmin, c["xmin"]) - min(g.xmax, c["xmax"])) <= 35
         ]
-        item = {"ymin": g.ymin, "xmin": g.xmin, "ymax": g.ymax, "xmax": g.xmax, "n": 1, "solid": id(g) not in small}
+        item = {"ymin": g.ymin, "xmin": g.xmin, "ymax": g.ymax, "xmax": g.xmax, "items": [g], "solid": id(g) not in small}
         if not near:
             clusters.append(item)
             continue
@@ -990,20 +1025,50 @@ def figure_bands(geom: PageGeometry, slice_ymin: int, slice_ymax: int) -> list[B
         for c in [*near[1:], item]:
             head["ymin"], head["xmin"] = min(head["ymin"], c["ymin"]), min(head["xmin"], c["xmin"])
             head["ymax"], head["xmax"] = max(head["ymax"], c["ymax"]), max(head["xmax"], c["xmax"])
-            head["n"] += c["n"]
+            head["items"].extend(c["items"])
             head["solid"] = head["solid"] or c["solid"]
 
     def real(c: dict[str, Any]) -> bool:
         h, w = c["ymax"] - c["ymin"], c["xmax"] - c["xmin"]
-        return c["solid"] and ((h >= 20 and w >= 20 and c["n"] >= 2) or (h >= 35 and w >= 35))
+        return c["solid"] and ((h >= 20 and w >= 20 and len(c["items"]) >= 2) or (h >= 35 and w >= 35))
 
-    clusters = [c for c in clusters if real(c) and c["ymax"] >= slice_ymin]
-    barriers = [
-        _line_box(ln)
-        for ln in rows
-        if _is_prose(ln) and slice_ymin - 10 <= (_line_box(ln).ymin + _line_box(ln).ymax) / 2 <= slice_ymax + 15
-    ]
-    barrier_ids = {(b.ymin, b.xmin, b.ymax, b.xmax) for b in barriers}
+    def split_at_boundaries(c: dict[str, Any]) -> list[dict[str, Any]]:
+        """Two figures set one under the other beside the text of two questions can touch within the clustering
+        distance: split a cluster at a vertical gap that holds this question's start or end."""
+        items = sorted(c["items"], key=lambda b: b.ymin)
+        parts: list[list[BoundingBox]] = [[items[0]]]
+        bottom = items[0].ymax
+        for item in items[1:]:
+            if item.ymin > bottom and any(bottom - 8 <= y <= item.ymin + 8 for y in (slice_ymin, slice_ymax)):
+                parts.append([item])
+            else:
+                parts[-1].append(item)
+            bottom = max(bottom, item.ymax)
+        if len(parts) == 1:
+            return [c]
+        return [
+            {
+                "ymin": min(b.ymin for b in part),
+                "xmin": min(b.xmin for b in part),
+                "ymax": max(b.ymax for b in part),
+                "xmax": max(b.xmax for b in part),
+                "items": part,
+                "solid": any(id(b) not in small for b in part),
+            }
+            for part in parts
+        ]
+
+    clusters = [part for c in clusters for part in split_at_boundaries(c)]
+    # A figure belongs to the question in which its top lies; it may start a little above the heading line.
+    clusters = [c for c in clusters if real(c) and slice_ymin - FIGURE_ABOVE_HEADING <= c["ymin"] < slice_ymax - 8]
+    if not clusters:
+        return []
+
+    barriers = [_line_box(r) for r in rows if _is_prose(r)]
+    barrier_keys = {(b.ymin, b.xmin, b.ymax, b.xmax) for b in barriers}
+
+    def on_prose_row(ln: BoundingBox) -> bool:
+        return any(min(b.ymax, ln.ymax) - max(b.ymin, ln.ymin) > 0.5 * (ln.ymax - ln.ymin) for b in barriers)
 
     bands: list[dict[str, Any]] = []
     for c in sorted(clusters, key=lambda c: c["ymin"]):
@@ -1020,53 +1085,88 @@ def figure_bands(geom: PageGeometry, slice_ymin: int, slice_ymax: int) -> list[B
                     last[k] = min(last[k], c[k])
                 for k in ("ymax", "xmax"):
                     last[k] = max(last[k], c[k])
+                last["items"] = [*last["items"], *c["items"]]
                 continue
         bands.append(dict(c))
 
-    boxes: list[BoundingBox] = []
+    results: list[FigureBand] = []
     for band in bands:
-        for _ in range(4):  # pull in labels and reagents written as text around the drawing
+        drawing = BoundingBox(ymin=band["ymin"], xmin=band["xmin"], ymax=band["ymax"], xmax=band["xmax"])
+        for _ in range(4):  # pull in labels, reagents and the caption written as text around the drawing
             grown = False
-            for ln in slice_lines:
-                if (ln.ymin, ln.xmin, ln.ymax, ln.xmax) in barrier_ids:
+            for ln in row_boxes:
+                if (ln.ymin, ln.xmin, ln.ymax, ln.xmax) in barrier_keys:
                     continue
                 centre = (ln.ymin + ln.ymax) / 2
-                if not band["ymin"] - 18 <= centre <= band["ymax"] + 18:
+                if not band["ymin"] - 18 <= centre <= band["ymax"] + 18 or centre < slice_ymin - 10:
                     continue
                 if max(ln.xmin, band["xmin"] - 40) >= min(ln.xmax, band["xmax"] + 40):
                     continue
-                inside = band["xmin"] - 10 <= ln.xmin and ln.xmax <= band["xmax"] + 10
-                if ln.xmax - ln.xmin > LABEL_LINE_WIDTH and not inside:
-                    continue
-                # The tail of a question line split by inline formula images sits next to the figure on the same
-                # row as that line: it is question text, not a label (labels lie inside the drawing).
-                if not inside and any(
-                    min(b.ymax, ln.ymax) - max(b.ymin, ln.ymin) > 0.5 * (ln.ymax - ln.ymin) for b in barriers
-                ):
-                    continue
+                inside = drawing.xmin - 10 <= ln.xmin and ln.xmax <= drawing.xmax + 10
+                if not inside and (ln.xmax - ln.xmin > LABEL_LINE_WIDTH or on_prose_row(ln)):
+                    continue  # question text beside the figure (or the tail of such a line), not a label
                 if ln.ymin < band["ymin"] or ln.xmin < band["xmin"] or ln.ymax > band["ymax"] or ln.xmax > band["xmax"]:
                     band["ymin"], band["xmin"] = min(band["ymin"], ln.ymin), min(band["xmin"], ln.xmin)
                     band["ymax"], band["xmax"] = max(band["ymax"], ln.ymax), max(band["xmax"], ln.xmax)
                     grown = True
             if not grown:
                 break
-        xmin = band["xmin"]
-        for ln in barriers:  # question text running beside the figure: keep it out of the crop
-            beside = ln.xmax < (band["xmin"] + band["xmax"]) / 2  # text on the left, figure on the right
-            if beside and max(band["ymin"], ln.ymin) < min(band["ymax"], ln.ymax) and ln.xmin < xmin <= ln.xmax + 10:
-                xmin = max(xmin, ln.xmax + 4)
-        if band["xmax"] - xmin < 20:
-            continue
-        boxes.append(
-            BoundingBox(
-                ymin=max(band["ymin"], max(0, slice_ymin - 8)),
-                xmin=xmin,
-                ymax=min(band["ymax"], min(1000, slice_ymax + 15)),
-                xmax=band["xmax"],
-            )
+        box = BoundingBox(
+            ymin=max(band["ymin"], max(0, slice_ymin - 8)), xmin=band["xmin"], ymax=band["ymax"], xmax=band["xmax"]
         )
-    return boxes
+        if box.xmax - box.xmin < 20:
+            continue
+        # Question text inside the box: the words of prose lines, and the tails of prose lines, not touching the
+        # drawing.
+        masks: list[BoundingBox] = []
+        for row in rows:
+            rb = _line_box(row)
+            if not _overlaps(rb, box, 0):
+                continue
+            prose = (rb.ymin, rb.xmin, rb.ymax, rb.xmax) in barrier_keys
+            outside = not (drawing.xmin - 10 <= rb.xmin and rb.xmax <= drawing.xmax + 10)
+            if not prose and not (outside and on_prose_row(rb)):
+                continue
+            for word in row:
+                if not any(_overlaps(word, g) for g in band["items"]):
+                    masks.append(word)
+        results.append(FigureBand(box=box, masks=masks))
+    return results
 
+
+def figure_bands(geom: PageGeometry, slice_ymin: int, slice_ymax: int) -> list[BoundingBox]:
+    """Boxes of the figures of one question slice of a page (see figure_band_crops)."""
+    return [band.box for band in figure_band_crops(geom, slice_ymin, slice_ymax)]
+
+
+def _cut_band(img: Image.Image, band: FigureBand) -> Image.Image | None:
+    if band.masks:
+        img = img.copy()
+        draw = ImageDraw.Draw(img)
+        w, h = img.size
+        for m in band.masks:
+            draw.rectangle(
+                (m.xmin * w / 1000 - 2, m.ymin * h / 1000 - 2, m.xmax * w / 1000 + 2, m.ymax * h / 1000 + 2),
+                fill=(255, 255, 255),
+            )
+    return cut(img, band.box, pad_x=8, pad_y=8)
+
+
+def _stack(images: list[Image.Image]) -> bytes:
+    """One PNG with the figures of a question stacked top to bottom, centred."""
+    if len(images) == 1:
+        final_img = images[0]
+    else:
+        max_w = max(c.width for c in images)
+        total_h = sum(c.height for c in images) + 16 * (len(images) - 1)
+        final_img = Image.new("RGB", (max_w, total_h), (255, 255, 255))
+        y_off = 0
+        for c in images:
+            final_img.paste(c, ((max_w - c.width) // 2, y_off))
+            y_off += c.height + 16
+    out = io.BytesIO()
+    final_img.save(out, format="PNG", optimize=True)
+    return out.getvalue()
 
 
 def _crop_block_figures(
@@ -1083,7 +1183,23 @@ def _crop_block_figures(
     cropped_imgs: list[Image.Image] = []
     first_bbox: BoundingBox | None = None
 
-    # Priority 1: Caption-Anchored Graphic Extraction if specific figures are referenced
+    # Priority 1: whole figure bands (drawing + labels + its "Hình N" caption), captioned or not.
+    for page_num, slice_ymin, slice_ymax in slices:
+        if not (1 <= page_num <= len(geometries)):
+            continue
+        img = clean_images.get(page_num)
+        if img is None:
+            continue
+        for band in figure_band_crops(geometries[page_num - 1], slice_ymin, slice_ymax):
+            fig_crop = _cut_band(img, band)
+            if fig_crop is not None:
+                cropped_imgs.append(fig_crop)
+                if first_bbox is None:
+                    first_bbox = band.box
+    if cropped_imgs:
+        return _stack(cropped_imgs), first_bbox
+
+    # Priority 2: Caption-Anchored Graphic Extraction if specific figures are referenced
     if target_caps and page_blocks and page_rects:
         for cap in target_caps:
             cap_rx = re.compile(r"\b" + re.escape(cap) + r"\b", re.I)
@@ -1210,20 +1326,6 @@ def _crop_block_figures(
             final_img.save(out, format="PNG", optimize=True)
             return out.getvalue(), first_bbox
 
-    # Priority 2: diagrams without a "Hình N" caption (chemistry schemes, structural formulas, unlabeled sketches).
-    for page_num, slice_ymin, slice_ymax in slices:
-        if not (1 <= page_num <= len(geometries)):
-            continue
-        img = clean_images.get(page_num)
-        if img is None:
-            continue
-        for band in figure_bands(geometries[page_num - 1], slice_ymin, slice_ymax):
-            fig_crop = cut(img, band, pad_x=8, pad_y=8)
-            if fig_crop is not None:
-                cropped_imgs.append(fig_crop)
-                if first_bbox is None:
-                    first_bbox = band
-
     if not cropped_imgs:
         return None, None
     if len(cropped_imgs) == 1:
@@ -1309,6 +1411,10 @@ def read_essay_pdf(path: Path, dpi: int = 300) -> EssayPaper | None:
             if parsed := match_essay_header(ln.text):
                 header_hits.append((i, parsed[0], parsed[1], parsed[2]))
 
+        plain_headers = False
+        if not header_hits:
+            header_hits = plain_header_hits([ln.text for ln in lines[: key_idx if key_idx is not None else len(lines)]])
+            plain_headers = bool(header_hits)
         if key_idx is not None and not header_hits:
             return EssayPaper([], key_only=True)
         if not header_hits:
@@ -1371,7 +1477,11 @@ def read_essay_pdf(path: Path, dpi: int = 300) -> EssayPaper | None:
         body_parts: list[str] = []
         inline_sol_parts: list[str] = []
         in_inline_key = False
-        if q_title and is_section_title(q_title):
+        # Without points, the heading line carries the start of the question; only a capitalised title is a topic.
+        title_is_topic = q_title and (
+            is_section_title(q_title) if not plain_headers else q_title.isupper() and len(q_title) <= 90
+        )
+        if title_is_topic:
             topics[idx] = q_title
         elif q_title:
             body_parts.append(q_title)  # the question starts on its heading line

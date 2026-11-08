@@ -222,27 +222,26 @@ def docx_to_markdown_latex(docx_path: Path | str) -> str:
 def pdf_to_continuous_text(pdf_path: Path | str) -> str:
     """PyMuPDF đọc luồng văn bản xuyên suốt tất cả các trang, loại bỏ Header/Footer và tiêu đề đầu trang 1."""
     import pymupdf
-    doc = pymupdf.open(pdf_path)
-    full_pages_text = []
+    with pymupdf.open(pdf_path) as doc:
+        full_pages_text = []
 
-    for page_idx, page in enumerate(doc):
-        # Cắt bỏ 50px mép trên (chứa "PRO: admin...") và 50px mép dưới (chứa "Trang 1/3")
-        clean_rect = pymupdf.Rect(0, 50, page.rect.width, max(50.0, page.rect.height - 50))
-        blocks = page.get_text("blocks", clip=clean_rect)
-        blocks.sort(key=lambda b: (round(b[1], 1), round(b[0], 1)))
+        for page_idx, page in enumerate(doc):
+            # Cắt bỏ 50px mép trên (chứa "PRO: admin...") và 50px mép dưới (chứa "Trang 1/3")
+            clean_rect = pymupdf.Rect(0, 50, page.rect.width, max(50.0, page.rect.height - 50))
+            blocks = page.get_text("blocks", clip=clean_rect)
+            blocks.sort(key=lambda b: (round(b[1], 1), round(b[0], 1)))
 
-        page_lines = []
-        for b in blocks:
-            text = b[4].strip()
-            # Bỏ qua khối tiêu đề trường/kỳ thi ở đầu trang 1
-            if page_idx == 0 and any(k in text.upper() for k in ["KỲ THI CHỌN", "ĐỀ CHÍNH THỨC", "THỜI GIAN LÀM BÀI", "HƯỚNG DẪN CHẤM ĐỀ"]):
-                continue
-            page_lines.append(text)
+            page_lines = []
+            for b in blocks:
+                text = b[4].strip()
+                # Bỏ qua khối tiêu đề trường/kỳ thi ở đầu trang 1
+                if page_idx == 0 and any(k in text.upper() for k in ["KỲ THI CHỌN", "ĐỀ CHÍNH THỨC", "THỜI GIAN LÀM BÀI", "HƯỚNG DẪN CHẤM ĐỀ"]):
+                    continue
+                page_lines.append(text)
 
-        full_pages_text.append("\n".join(page_lines))
+            full_pages_text.append("\n".join(page_lines))
 
-    doc.close()
-    return "\n".join(full_pages_text)
+        return "\n".join(full_pages_text)
 
 
 # ==============================================================================
@@ -251,58 +250,61 @@ def pdf_to_continuous_text(pdf_path: Path | str) -> str:
 
 CAPTION_REGEX = re.compile(r"(?:^|\b)((?:Hình|Sơ đồ|Đồ thị)\s*\d+(?:[\.\,]\d+|[a-zA-Z])?)\b", re.IGNORECASE)
 
+
 def extract_figures_by_caption(pdf_path: Path | str) -> dict[str, bytes]:
     """Quét nhãn chú thích 'Hình X', 'Hình 2a', 'Hình 1.1' trên bản PDF và chụp vùng hình tương ứng.
     Bỏ qua logo ở y0 < 160 trên trang 1.
     Trả về dict: {'Hình 1': png_bytes, 'Hình 2a': png_bytes, 'Hình 1.1': png_bytes}
     """
     import pymupdf
-    doc = pymupdf.open(pdf_path)
-    figure_map: dict[str, bytes] = {}
+    with pymupdf.open(pdf_path) as doc:
+        figure_map: dict[str, bytes] = {}
 
-    for page_idx, page in enumerate(doc):
-        # 1. Danh sách các ảnh Raster nhúng trên trang (bỏ qua logo ở y0 < 160 trang 1)
-        raster_boxes = []
-        for img in page.get_images(full=True):
-            rects = page.get_image_rects(img[0])
-            if rects:
-                r = rects[0]
-                if not (page_idx == 0 and r.y0 < 160):
-                    raster_boxes.append(r)
+        for page_idx, page in enumerate(doc):
+            # 1. Danh sách các ảnh Raster nhúng trên trang (bỏ qua logo ở y0 < 160 trang 1)
+            raster_boxes = []
+            for img in page.get_images(full=True):
+                rects = page.get_image_rects(img[0])
+                if rects:
+                    r = rects[0]
+                    if not (page_idx == 0 and r.y0 < 160):
+                        raster_boxes.append(r)
 
-        # 2. Quét các dòng chữ chứa caption
-        blocks = page.get_text("blocks")
-        for b in blocks:
-            match = CAPTION_REGEX.search(b[4])
-            if not match:
-                continue
-            fig_label = re.sub(r"\s+", " ", match.group(1).strip())
-            fig_label = fig_label[0].upper() + fig_label[1:]
-            cap_rect = pymupdf.Rect(b[:4])
+            # 2. Quét các dòng chữ chứa caption
+            blocks = page.get_text("blocks")
+            for b in blocks:
+                match = CAPTION_REGEX.search(b[4])
+                if not match:
+                    continue
+                fig_label = re.sub(r"\s+", " ", match.group(1).strip())
+                fig_label = fig_label[0].upper() + fig_label[1:]
+                cap_rect = pymupdf.Rect(b[:4])
 
-            # Tìm ảnh raster nằm ngay sát phía trên chú thích này
-            matched_raster = None
-            for r_box in raster_boxes:
-                if abs(r_box.y1 - cap_rect.y0) < 90 and abs(r_box.x0 - cap_rect.x0) < 220:
-                    matched_raster = r_box
-                    break
+                # Tìm ảnh raster nằm ngay sát phía trên chú thích này
+                matched_raster = None
+                for r_box in raster_boxes:
+                    if abs(r_box.y1 - cap_rect.y0) < 90 and abs(r_box.x0 - cap_rect.x0) < 220:
+                        matched_raster = r_box
+                        break
 
-            if matched_raster:
-                crop_rect = matched_raster
-            else:
-                # Nếu là hình vẽ Vector / Word Shapes, chụp khung phía trên dòng chữ caption
-                crop_rect = pymupdf.Rect(
-                    max(cap_rect.x0 - 80, 20),
-                    max(cap_rect.y0 - 240, 50),
-                    min(cap_rect.x1 + 140, page.rect.width - 20),
-                    cap_rect.y0 + 2,
-                )
+                if matched_raster:
+                    crop_rect = matched_raster
+                else:
+                    # Nếu là hình vẽ Vector / Word Shapes, chụp khung phía trên dòng chữ caption
+                    crop_rect = pymupdf.Rect(
+                        max(cap_rect.x0 - 80, 20),
+                        max(cap_rect.y0 - 240, 50),
+                        min(cap_rect.x1 + 140, page.rect.width - 20),
+                        cap_rect.y0 + 2,
+                    )
 
-            pix = page.get_pixmap(clip=crop_rect, dpi=300)
-            figure_map[fig_label] = pix.tobytes("png")
+                crop_rect = pymupdf.Rect(crop_rect) & page.rect
+                if crop_rect.is_empty or crop_rect.width < 5 or crop_rect.height < 5:
+                    continue  # a caption at the very top of a page: nothing above it to cut
+                pix = page.get_pixmap(clip=crop_rect, dpi=300)
+                figure_map[fig_label] = pix.tobytes("png")
 
-    doc.close()
-    return figure_map
+        return figure_map
 
 
 def extract_chemistry_schemes(pdf_path: Path | str) -> list[tuple[int, float, bytes]]:
