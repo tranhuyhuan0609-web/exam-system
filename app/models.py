@@ -248,8 +248,8 @@ class Question(TimestampMixin, UpdatedAtMixin, Base):
     explanation_by_ai: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Crawled questions: the page they came from (attribution).
     source_url: Mapped[str | None] = mapped_column(String(500))
-    # Gemini embedding of the normalised text, for semantic duplicate detection (JSONB or pgvector).
-    embedding: Mapped[list[float] | None] = mapped_column(JSONB, deferred=True)
+    # Gemini embedding of the normalised text, for semantic duplicate detection (pgvector, cosine).
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), deferred=True)
 
     # Self-Healing & Quality Audit State Machine
     # Statuses: 'PENDING', 'FONT_OR_TAXONOMY_FIXED', 'SUSPECT_SOURCE_ERROR', 'VERIFIED_BY_CONSENSUS', 'NEEDS_HUMAN_REVIEW'
@@ -268,6 +268,12 @@ class Question(TimestampMixin, UpdatedAtMixin, Base):
     )
 
     __table_args__ = (
+        Index(
+            "ix_questions_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
         Index("ix_questions_target_tags_gin", "target_tags", postgresql_using="gin"),
     )
 

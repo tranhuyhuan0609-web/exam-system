@@ -29,7 +29,13 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -r requirements-dev.txt
+      # Gate 1: static checks and architecture boundaries.
       - run: ruff check .
+      - name: Module boundaries (.importlinter)
+        run: lint-imports
+      - name: Release gate ids match platform_manifest.yaml
+        run: bash ci/check_gate_ids.sh
+      # Gate 2: schema.
       - name: Migrations apply cleanly and match the models
         run: |
           alembic upgrade head
