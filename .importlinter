@@ -68,3 +68,21 @@ forbidden_modules =
 ; allowed_importers =
 ;     app.modules.<name>
 ;     app.model_registry
+
+[importlinter:contract:internal-quality]
+name = quality internals are private to the module
+type = protected
+protected_modules =
+    app.modules.quality.internal
+allowed_importers =
+    app.modules.quality
+    app.model_registry
+
+[importlinter:contract:internal-attempts]
+name = attempts internals are private to the module
+type = protected
+protected_modules =
+    app.modules.attempts.internal
+allowed_importers =
+    app.modules.attempts
+    app.model_registry
