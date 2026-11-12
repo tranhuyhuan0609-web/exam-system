@@ -22,14 +22,19 @@ from app.models import AnswerKey, ImportJob, LibraryDocument
 log = logging.getLogger(__name__)
 MAX_PAGES = 4  # an answer table is one or two pages
 _KEY_TITLE = re.compile(r"(?:đáp|dap)\s*(?:án|an)", re.IGNORECASE)
-_NOT_A_TABLE = re.compile(r"chi\s*ti[ếe]t|l[ờo]i\s*gi[ảa]i|h[ưu][ớo]ng\s*d[ẫa]n", re.IGNORECASE)
+_NOT_A_TABLE = re.compile(
+    r"chi\s*ti[ếe]t|l[ờo]i\s*gi[ảa]i|h[ưu][ớo]ng\s*d[ẫa]n|bi[ểe]u\s*[đd]i[ểe]m",
+    re.IGNORECASE,
+)
 _CODE = re.compile(r"(?<!\d)(\d{3,4})(?!\d)")
 TRUE, FALSE = set("ĐDTđdt"), set("SFsf")
 
 
 def is_answer_key(doc: LibraryDocument) -> bool:
-    """ "4. Đáp án Toán THPTQG2024", "Dap an, thang diem": an answer table. Worked solutions ("Đáp án chi tiết",
-    "Lời giải", or a part cut from a bundle) are not."""
+    """ "4. Đáp án Toán THPTQG2024", "Dap an, thang diem": an answer table (PDF/image). Worked solutions ("Đáp án chi tiết",
+    "Lời giải", "Biểu điểm", or a .docx marking scheme / part cut from a bundle) are not."""
+    if doc.mime and doc.mime not in ("application/pdf", "image/png", "image/jpeg"):
+        return False
     title = unicodedata.normalize("NFC", doc.title)
     return doc.parent_id is None and bool(_KEY_TITLE.search(title)) and not _NOT_A_TABLE.search(title)
 

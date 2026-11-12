@@ -187,14 +187,25 @@ async def import_confirm(request: Request, user: AdminUser, session: SessionDep)
     selected = sorted({int(v) for v in form.getlist("selected") if str(v).isdigit()})
     default_difficulty = Difficulty(settings.default_difficulty)
     created: list[Question] = []
+    from app.models import QuestionCategory
+
     for index in selected:
         if index >= len(payload) or not isinstance(payload[index], dict):
             continue
         parsed = ParsedQuestion.from_dict(payload[index])
         if validate(parsed):  # re-check: the payload came back from the browser
             continue
-        created.append(
-            Question(
+        chash = content_hash(parsed.type, parsed.content.strip(), parsed.choices)
+        existing_q = await session.scalar(select(Question).where(Question.content_hash == chash).limit(1))
+        if existing_q:
+            # Duplicate content_hash: link to category instead of skipping
+            if scope.category_id:
+                link = await session.get(QuestionCategory, (existing_q.id, scope.category_id))
+                if not link:
+                    session.add(QuestionCategory(question_id=existing_q.id, category_id=scope.category_id))
+            created.append(existing_q)
+        else:
+            new_q = Question(
                 root_id=scope.root_id,
                 category_id=scope.category_id,
                 difficulty=Difficulty(parsed.difficulty) if parsed.difficulty else default_difficulty,
@@ -204,14 +215,17 @@ async def import_confirm(request: Request, user: AdminUser, session: SessionDep)
                 accepted_answers=parsed.answers if parsed.type == QuestionType.SHORT_ANSWER else None,
                 explanation=parsed.explanation.strip() or None,
                 source_type=SourceType.FILE_IMPORT,
-                content_hash=content_hash(parsed.type, parsed.content.strip(), parsed.choices),
+                content_hash=chash,
             )
-        )
+            session.add(new_q)
+            await session.flush()
+            if scope.category_id:
+                session.add(QuestionCategory(question_id=new_q.id, category_id=scope.category_id))
+            created.append(new_q)
     if not created:
         flash(request, "Không có câu hợp lệ nào được chọn để nhập.", "error")
         return redirect("/admin/questions/import?" + urlencode({"scope": scope.key}))
 
-    session.add_all(created)
     await session.flush()
 
     exam = None

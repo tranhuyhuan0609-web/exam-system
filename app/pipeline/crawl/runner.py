@@ -57,8 +57,30 @@ async def _finish(run_id: int, stats: dict, error: str | None) -> None:
         run.pages_failed = int(stats.get("pages/failed", 0))
         run.docs_published = int(stats.get("bronze/published", 0))
         run.finished_at = datetime.now(UTC)
-        run.error = error
-        run.status = CrawlRunStatus.FAILED if error else CrawlRunStatus.DONE
+
+        log_errors = int(stats.get("log_count/ERROR", 0))
+        items_dropped = int(stats.get("item_dropped_count", 0))
+
+        if error:
+            run.status = CrawlRunStatus.FAILED
+            run.error = error
+        elif log_errors > 0 or items_dropped > 0 or run.pages_failed > 0:
+            warn_parts = []
+            if log_errors > 0:
+                warn_parts.append(f"{log_errors} lỗi log")
+            if items_dropped > 0:
+                warn_parts.append(f"{items_dropped} item bị loại")
+            if run.pages_failed > 0:
+                warn_parts.append(f"{run.pages_failed} trang tải thất bại")
+            run.error = "Cảnh báo: " + ", ".join(warn_parts)
+            if run.docs_published == 0 and run.pages_fetched == 0:
+                run.status = CrawlRunStatus.FAILED
+            else:
+                run.status = CrawlRunStatus.WARN
+        else:
+            run.status = CrawlRunStatus.DONE
+            run.error = None
+
         site = await session.get(CrawlerSite, run.site_id)
         site.last_run_at = run.finished_at
         await session.commit()

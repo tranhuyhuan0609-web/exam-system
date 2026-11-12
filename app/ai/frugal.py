@@ -29,6 +29,7 @@ from app.models import Question, QuestionType
 
 log = logging.getLogger(__name__)
 LABELS = "ABCDEF"
+CACHE_SCHEMA_VERSION = "2026-11-08-extraction-v2"
 Lookup = Callable[[list[ExtractedQuestion]], Awaitable[dict[int, Solution]]]  # position in the batch -> solution
 
 
@@ -63,8 +64,16 @@ def _from_bank(q: ExtractedQuestion, bank: Question) -> Solution | None:
 
 
 async def bank_lookup(session: AsyncSession, root_id: int) -> Lookup:
-    """Answers from the bank of this subject, matched on the question text and its set of options."""
-    rows = await session.scalars(select(Question).where(Question.root_id == root_id, Question.is_verified))
+    """Answers from the bank of this subject, matched on the question text and its set of options.
+    Only draws from high-reliability questions (verified, human-written explanation, not unverified single-source crawler).
+    """
+    stmt = select(Question).where(
+        Question.root_id == root_id,
+        Question.is_verified.is_(True),
+        Question.explanation_by_ai.is_(False),
+        (Question.answer_source.is_(None) | (Question.answer_source != "single_source")),
+    )
+    rows = await session.scalars(stmt)
     bank: dict[tuple[str, str], list[Question]] = {}
     for question in rows:
         bank.setdefault(_key(question.question_type.value, question.content), []).append(question)
@@ -223,7 +232,17 @@ class FrugalProvider:
         return self.inner.models_used | self._used
 
     async def extract(self, pages: list[PageImage]) -> list[ExtractedQuestion]:
-        key = digest("extract", EXTRACT_PROMPT, *(f"{p.number}|{p.context_only}".encode() + p.png for p in pages))
+        key = digest(
+            CACHE_SCHEMA_VERSION,
+            "extract",
+            EXTRACT_PROMPT,
+            *(
+                f"{p.number}|{p.context_only}".encode()
+                + p.text_context.encode("utf-8")
+                + p.png
+                for p in pages
+            ),
+        )
         if self.cache and (hit := await self.cache.get(key)) is not None:
             self.cached += len(pages)
             self._used.add("bộ nhớ đệm")
@@ -252,6 +271,19 @@ class FrugalProvider:
 
     async def read_answer_key(self, pages: list[PageImage]):
         return await self.inner.read_answer_key(pages)  # the reference for every check: Gemini only
+
+    async def transcribe_question(self, crop_png: bytes, number: int, raw_text: str = "") -> str:
+        if not hasattr(self.inner, "transcribe_question"):
+            return raw_text
+        key = digest(CACHE_SCHEMA_VERSION, "transcribe", str(number), raw_text, crop_png)
+        if self.cache and (hit := await self.cache.get(key)) is not None:
+            self.cached += 1
+            self._used.add("bộ nhớ đệm")
+            return str(hit)
+        text = await self.inner.transcribe_question(crop_png, number, raw_text)
+        if self.cache and text:
+            await self.cache.put(key, "transcribe", text)
+        return text
 
     async def _try(self, solvers: list[ChatModel], questions, todo: list[int], figures, solved: dict) -> list[int]:
         idx = 0
@@ -309,7 +341,13 @@ class FrugalProvider:
     def _solve_key(self, q: ExtractedQuestion, figures: list[FigureImage]) -> str:
         figure = next((f.png for f in figures if f.question_number == q.number), b"")
         payload = q.model_dump(include={"type", "content", "choices"}, mode="json")
-        return digest("solve", SOLVE_PROMPT, json.dumps(payload, ensure_ascii=False, sort_keys=True), figure)
+        return digest(
+            CACHE_SCHEMA_VERSION,
+            "solve",
+            SOLVE_PROMPT,
+            json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            figure,
+        )
 
     async def solve(self, questions: list[ExtractedQuestion], figures: list[FigureImage]) -> list[Solution]:
         solved: dict[int, Solution] = await self.lookup(questions) if self.lookup else {}

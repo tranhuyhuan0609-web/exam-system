@@ -30,7 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.storage import Storage
-from app.models import LibraryDocument, LibraryKind, LibraryStatus
+from app.models import AccessTier, LibraryDocument, LibraryKind, LibraryStatus
 from app.pipeline.adapters.drive import Drive, DriveBlocked, DriveError
 from app.pipeline.domain.models import RawDocument, doc_id
 from app.pipeline.ports import RawStore
@@ -48,8 +48,12 @@ KEEP = {  # what the library stores (preview: PDF; the rest is download-only)
     "application/vnd.google-apps.presentation": ".pdf",
     "image/png": ".png",
     "image/jpeg": ".jpg",
+    "application/zip": ".zip",
+    "application/x-zip-compressed": ".zip",
+    "application/x-rar-compressed": ".rar",
+    "application/vnd.rar": ".rar",
 }
-IMPORTABLE = {".pdf", ".docx", ".png", ".jpg"}  # what the AI exam import reads
+IMPORTABLE = {".pdf", ".docx", ".doc", ".png", ".jpg", ".zip", ".rar"}  # what the AI exam import reads
 INDEX_ONLY_NOTE = "Chỉ lập chỉ mục: sách có bản quyền, chưa sao chép về hệ thống"
 
 Event = dict[str, Any]
@@ -101,11 +105,21 @@ def _key(name: str) -> str:
 
 
 async def _walk(drive: Drive, folder_id: str, path: list[str]):
-    for item in await drive.children(folder_id):
+    items = await drive.children(folder_id)
+    # Step 1: Detect docx stems in this folder to avoid downloading duplicate .pdf files
+    docx_stems = {
+        PurePosixPath(item.name).stem.casefold()
+        for item in items
+        if not item.is_folder and KEEP.get(item.mime) == ".docx"
+    }
+    for item in items:
         if item.is_folder:
             async for found in _walk(drive, item.id, [*path, item.name]):
                 yield found
         else:
+            # Drop duplicate .pdf if .docx exists in the same folder
+            if KEEP.get(item.mime) == ".pdf" and PurePosixPath(item.name).stem.casefold() in docx_stems:
+                continue
             yield path, item
 
 
@@ -223,6 +237,7 @@ async def ingest_library_event(
     if existing is None:  # an admin's later decisions (status, download) are not overwritten
         doc.status, doc.downloadable = rule.status, rule.downloadable
         doc.license_note = rule.license_note or None
+        doc.access_tier = AccessTier.PRO if rule.kind == LibraryKind.HSG else AccessTier.FREE
         if event.get("index_only"):
             doc.status, doc.downloadable, doc.license_note = LibraryStatus.HIDDEN, False, INDEX_ONLY_NOTE
         session.add(doc)
@@ -232,7 +247,10 @@ async def ingest_library_event(
     where = unicodedata.normalize("NFC", " / ".join([*path, name]))
     target = next((t for t in rule.targets if re.search(t.match, where, re.I)), None)
     if target:
-        doc.category_id = (await ensure_path(session, target.category)).id
+        cat = await ensure_path(session, target.category)
+        doc.category_id = cat.id
+        if cat.default_tier == AccessTier.PRO or rule.kind == LibraryKind.HSG:
+            doc.access_tier = AccessTier.PRO
     await session.flush()
     data = await bronze.get(doc.storage_key)
     # A bundle of many exams becomes one document (and one AI import) per exam.

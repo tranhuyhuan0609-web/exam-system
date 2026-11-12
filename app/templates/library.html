@@ -20,47 +20,76 @@
 {% endif %}
 
 {% if sections %}
-  <div class="library-folders">
+  <div class="library-folders" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-top: 14px;">
     {% for slug, label, n in sections %}
-      <a class="card library-folder" href="/library?section={{ slug }}"><strong>{{ label }}</strong> <span class="muted small">{{ n }}</span></a>
+      <a class="card library-folder" href="/library?folder={{ slug | urlencode }}" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; text-decoration: none; border-radius: 10px; transition: transform .15s, box-shadow .15s;">
+        <span style="font-size: 1.1rem; font-weight: 700;">{{ label }}</span>
+        <span class="badge" style="background: #e0e7ff; color: #3730a3; font-weight: 600;">{{ n }} tài liệu</span>
+      </a>
     {% endfor %}
   </div>
 {% else %}
-<nav class="breadcrumb small">
-  <a href="/library">Thư viện</a>
-  {% if section %} › <a href="/library?section={{ section }}">{{ section_label }}</a>{% endif %}
-  {% for part in current %} › <a href="/library?section={{ section }}&folder={{ current[:loop.index] | join('/') | urlencode }}">{{ part }}</a>{% endfor %}
+<nav class="breadcrumb small" style="margin-bottom: 14px;">
+  <a href="/library">📚 Thư viện</a>
+  {% for part in current %} › <a href="/library?folder={{ current[:loop.index] | join('/') | urlencode }}"><strong>{{ part }}</strong></a>{% endfor %}
 </nav>
 
 {% if subfolders and not q %}
-  <div class="library-folders">
+  <div class="library-folders" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px;">
     {% for name, n in subfolders %}
-      <a class="card library-folder" href="/library?section={{ section }}&folder={{ (current + [name]) | join('/') | urlencode }}">📁 {{ name }} <span class="muted small">{{ n }}</span></a>
+      {% set is_pro_folder = "HSG" in name.upper() or "CHUYÊN" in name.upper() or "OLYMPIC" in name.upper() or "HỌC SINH GIỎI" in name.upper() %}
+      <a class="card library-folder" href="/library?folder={{ (current + [name]) | join('/') | urlencode }}" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; text-decoration: none; border-radius: 8px;">
+        <span>📁 {{ name }}</span>
+        <span class="row" style="gap: 6px; align-items: center;">
+          {% if is_pro_folder %}<span class="badge" style="background: #fef3c7; color: #b45309; font-weight: 700;">🔒 PRO</span>{% endif %}
+          <span class="muted small">{{ n }}</span>
+        </span>
+      </a>
     {% endfor %}
   </div>
 {% endif %}
 
 <div class="card">
   <table class="table">
-    <thead><tr><th>Tài liệu</th><th>Loại</th><th>Nguồn</th><th></th></tr></thead>
+    <thead><tr><th>Tài liệu</th><th>Phân hạng</th><th>Loại</th><th>Nguồn</th><th></th></tr></thead>
     <tbody>
     {% for d in docs %}
+      {% set is_pro_doc = (d.access_tier == "PRO" or d.kind == "HSG") %}
       <tr>
         <td><strong>{{ d.title }}</strong>{% if d.status != "PUBLISHED" %} <span class="badge badge-warn">Chờ duyệt</span>{% endif %}
           {% if not d.storage_key %} <span class="badge">Chưa có file</span>{% endif %}
           {% if d.authors or d.year %}<div class="muted small">{{ d.authors or "" }}{% if d.authors and d.year %} · {% endif %}{{ d.year or "" }}</div>{% endif %}
           {% if q %}<div class="muted small">{{ d.folder_path | join(" › ") }}</div>{% endif %}</td>
+        <td class="small">
+          {% if is_pro_doc %}
+            <span class="badge" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; font-weight: 700;">🔒 PRO</span>
+          {% else %}
+            <span class="badge badge-ok">FREE</span>
+          {% endif %}
+        </td>
         <td class="small">{{ KIND_LABELS[d.kind] }}</td>
         <td class="small muted">{{ d.license_note or d.source }}{% if d.source_url and user.role == "ADMIN" %} · <a href="{{ d.source_url }}" target="_blank" rel="noopener noreferrer">gốc</a>{% endif %}</td>
         <td class="row">
-          {% if d.storage_key and d.mime in ("application/pdf", "image/png", "image/jpeg") %}<a class="btn btn-small" href="/library/{{ d.id }}/view" target="_blank" rel="noopener">Xem</a>{% endif %}
+          {% if d.storage_key and d.mime in ("application/pdf", "image/png", "image/jpeg") %}
+            {% if is_pro_doc and not pro %}
+              <a class="btn btn-small" href="/library/{{ d.id }}/preview" style="background: #d97706; border-color: #d97706;">👁 Xem thử 2 trang đầu</a>
+            {% else %}
+              <a class="btn btn-small" href="/library/{{ d.id }}/view" target="_blank" rel="noopener">Xem</a>
+            {% endif %}
+          {% endif %}
           {% if d.id in pairs %}<a class="btn btn-outline btn-small" href="/library/{{ pairs[d.id][1] }}/view" target="_blank" rel="noopener">{{ pairs[d.id][0] }}</a>{% endif %}
-          {% if d.exam_id %}<a class="btn btn-outline btn-small" href="/exams/{{ d.exam_id }}">Làm online</a>{% endif %}
+          {% if d.exam_id %}
+            <a class="btn btn-outline btn-small" href="/exams/{{ d.exam_id }}">Làm online</a>
+          {% elif d.import_job_id %}
+            <form method="post" action="/library/{{ d.id }}/create-exam" style="display:inline">
+              <button class="btn btn-small" type="submit">🎯 Tạo đề luyện tập</button>
+            </form>
+          {% endif %}
           {% if d.id in downloadable %}<a class="btn btn-outline btn-small" href="/library/{{ d.id }}/download">Tải về</a>{% endif %}
         </td>
       </tr>
     {% else %}
-      <tr><td colspan="4" class="muted">{{ "Không tìm thấy tài liệu nào." if q else ("Chọn một thư mục ở trên." if subfolders else "Thư mục này chưa có tài liệu.") }}</td></tr>
+      <tr><td colspan="5" class="muted">{{ "Không tìm thấy tài liệu nào." if q else ("Chọn một thư mục ở trên." if subfolders else "Thư mục này chưa có tài liệu.") }}</td></tr>
     {% endfor %}
     </tbody>
   </table>

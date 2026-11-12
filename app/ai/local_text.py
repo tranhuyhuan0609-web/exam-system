@@ -48,6 +48,11 @@ class LocalExam:
     source: str = ""  # "docx" | "pdf-text"
     explanations: dict[int, str] = field(default_factory=dict)  # question index -> marking scheme in the file
     points: dict[int, float] = field(default_factory=dict)  # question index -> points printed in the paper
+    figure_captions: dict[int, dict[str, str]] = field(default_factory=dict)  # question index -> {"Hình 1.1": "stem"}
+    broken_crops: dict[int, bytes] = field(default_factory=dict)  # question index -> >=2000px PNG for formula OCR
+    matrix_difficulties: dict[int, str] = field(default_factory=dict)  # question index -> difficulty from matrix tag
+    question_flags: dict[int, list[str]] = field(default_factory=dict)  # question index -> ["missing_stem", ...]
+    topics: dict[int, str] = field(default_factory=dict)  # question index -> section title (classification only)
     key_only: bool = False  # a marking scheme / answer file without the questions: nothing to import
 
 
@@ -115,6 +120,42 @@ def _answer_table(text: str) -> dict[int, str]:
     return pairs
 
 
+def _answer_explanations(text: str) -> dict[int, str]:
+    """Extract detailed solutions written after the answer table ('Câu 1: ...', 'Lời giải:...')."""
+    from app.ai.essay_exam import clean_paper_text
+
+    starts = list(_QUESTION.finditer(text))
+    if not starts:
+        return {}
+    explanations: dict[int, str] = {}
+    for k, m in enumerate(starts):
+        end = starts[k + 1].start() if k + 1 < len(starts) else len(text)
+        q_num = int(m.group(1))
+        body = text[m.end() : end].strip()
+        body = re.sub(r"^\s*(?:chọn|đáp án)\s*[A-D]\s*[.:,-]?\s*", "", body, flags=re.I)
+        body = re.sub(r"^\s*(?:lời giải|hướng dẫn giải)\s*[:.]?\s*", "", body, flags=re.I)
+        cleaned = clean_paper_text(body)
+        if len(cleaned) >= 12:
+            explanations[q_num] = cleaned
+    return explanations
+
+
+def _from_essay(essay, source: str) -> LocalExam:
+    return LocalExam(
+        questions=essay.questions,
+        figures=dict(essay.figures),
+        source=source,
+        explanations=dict(essay.explanations),
+        points=dict(essay.points),
+        figure_captions=dict(essay.figure_captions),
+        broken_crops=dict(essay.broken_crops),
+        matrix_difficulties=dict(essay.matrix_difficulties),
+        question_flags=dict(essay.question_flags),
+        topics=dict(essay.topics),
+        key_only=essay.key_only,
+    )
+
+
 def parse_text_exam(markdown: str, images: dict[str, bytes] | None = None) -> LocalExam | None:
     """Cut a paper's text into questions; None when the reading is not confident enough to be used."""
     images = images or {}
@@ -134,9 +175,14 @@ def parse_text_exam(markdown: str, images: dict[str, bytes] | None = None) -> Lo
         if found:
             tail_at = min(tail_at, found[0].start())
     answer_table = _answer_table(text[tail_at:]) if tail_at < len(text) else {}
+    answer_explanations = _answer_explanations(text[tail_at:]) if tail_at < len(text) else {}
     parts = [(m.start(), (m.group(2) or "").casefold()) for m in _PART.finditer(text)]
 
+    from app.ai.essay_exam import extract_matrix_difficulty
+
     questions, answers, figures = [], {}, {}
+    explanations: dict[int, str] = {}
+    matrix_difficulties: dict[int, str] = {}
     mc_total = mc_complete = 0
     for k, start in enumerate(starts):
         end = starts[k + 1].start() if k + 1 < len(starts) else tail_at
@@ -145,6 +191,7 @@ def parse_text_exam(markdown: str, images: dict[str, bytes] | None = None) -> Lo
         pictures = [path for path, _ in _IMAGE.findall(block)]
         block = _IMAGE.sub(" ", block)
         number = int(start.group(1))
+        mat_diff = extract_matrix_difficulty(block)
         option = _options(block)
         statements = None if option else _statements(block)
         if option:
@@ -170,13 +217,18 @@ def parse_text_exam(markdown: str, images: dict[str, bytes] | None = None) -> Lo
                 page=1,
                 type=kind,
                 content=stem,
+                difficulty=mat_diff,
                 choices=[ExtractedChoice(label="ABCD"[i], content=c) for i, c in enumerate(choices)],
             )
         )
+        if mat_diff:
+            matrix_difficulties[index] = mat_diff
         if kind == "MULTIPLE_CHOICE" and underlined is not None:
             answers[index] = "ABCD"[underlined]
         elif kind == "MULTIPLE_CHOICE" and number in answer_table and len(questions) <= len(starts):
             answers[index] = answer_table[number]
+        if number in answer_explanations and len(questions) <= len(starts):
+            explanations[index] = answer_explanations[number]
         picture = next((images[p] for p in pictures if p in images), None)
         if picture is not None:
             figures[index] = picture
@@ -184,7 +236,13 @@ def parse_text_exam(markdown: str, images: dict[str, bytes] | None = None) -> Lo
             return None  # a figure we could not take: the page images will show it
     if not mc_total or mc_complete / mc_total < MIN_COMPLETE:
         return None
-    return LocalExam(questions, answers, figures)
+    return LocalExam(
+        questions,
+        answers,
+        figures,
+        explanations=explanations,
+        matrix_difficulties=matrix_difficulties,
+    )
 
 
 def _to_png(data: bytes) -> bytes | None:
@@ -200,18 +258,31 @@ def _to_png(data: bytes) -> bytes | None:
 
 
 def read_docx(path: Path) -> LocalExam | None:
+    from app.application.exam_pdf import docx_has_mathtype_or_shapes
+
+    if docx_has_mathtype_or_shapes(path):
+        log.info("%s contains MathType OLE / Word Shapes; delegating to LibreOffice -> PDF conversion", path.name)
+        return None
+
     import pypandoc
 
     with tempfile.TemporaryDirectory(prefix="docx-text-") as media:
         try:
             markdown = pypandoc.convert_file(
-                str(path), "markdown", extra_args=["--wrap=none", f"--extract-media={media}"]
+                str(path),
+                to="markdown-simple_tables-multiline_tables-grid_tables",
+                extra_args=["--wrap=none", f"--extract-media={media}"],
             )
         except (RuntimeError, OSError) as exc:
             log.info("pandoc could not read %s: %s", path.name, exc)
             return None
         referenced = [p for p, _ in _IMAGE.findall(markdown)]
         if any(p.lower().endswith((".wmf", ".emf")) for p in referenced):
+            from app.ai.essay_exam import read_essay_docx
+
+            essay = read_essay_docx(path)
+            if essay is not None:
+                return _from_essay(essay, "docx")
             return None  # MathType formulas are pictures here: the text alone would miss them
         images = {}
         for ref in referenced:
@@ -219,14 +290,12 @@ def read_docx(path: Path) -> LocalExam | None:
             if file.exists() and (png := _to_png(file.read_bytes())) is not None:
                 images[ref] = png
     exam = parse_text_exam(markdown, images)
-    if exam is None:  # an essay paper ("Câu 1 (4,0 điểm)"), possibly with its marking scheme after it
+    if exam is None:  # an essay paper ("Bài 1 (5,0 điểm)" / "Câu 1 (4,0 điểm)"), possibly with marking scheme
         from app.ai.essay_exam import read_essay_docx
 
         essay = read_essay_docx(path)
         if essay is not None:
-            exam = LocalExam(
-                essay.questions, explanations=essay.explanations, points=essay.points, key_only=essay.key_only
-            )
+            exam = _from_essay(essay, "docx")
     if exam:
         exam.source = "docx"
     return exam
@@ -244,6 +313,16 @@ def _broken(text: str) -> bool:
 
 def read_pdf_text(path: Path) -> LocalExam | None:
     import pymupdf
+    from app.ai.essay_exam import read_essay_pdf
+
+    # Step 1-5: Try structured essay PDF extraction with PyMuPDF get_text("dict") + geometry first
+    try:
+        essay = read_essay_pdf(path)
+    except Exception as exc:  # noqa: BLE001
+        log.info("read_essay_pdf failed on %s: %s", path.name, exc)
+        essay = None
+    if essay is not None:
+        return _from_essay(essay, "pdf-text")
 
     with pymupdf.open(path) as pdf:
         pages = [page.get_text("text") for page in pdf]
@@ -257,6 +336,15 @@ def read_pdf_text(path: Path) -> LocalExam | None:
 
 def read_locally(path: Path) -> LocalExam | None:
     suffix = path.suffix.lower()
+    if suffix == ".doc":
+        from app.ai.extract_engine import convert_doc_to_docx
+        try:
+            with tempfile.TemporaryDirectory(prefix="doc2docx-") as tmp:
+                converted = convert_doc_to_docx(path, tmp)
+                return read_docx(converted)
+        except Exception as exc:
+            log.warning("Could not convert .doc %s: %s", path.name, exc)
+            return None
     if suffix == ".docx":
         return read_docx(path)
     if suffix == ".pdf":

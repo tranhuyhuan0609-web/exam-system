@@ -38,25 +38,15 @@ include:
     kind: HSG
     status: PUBLISHED
     license_note: Đề thi HSG đã công bố
-    targets:  # first match wins: Địa lí before Vật lí ("Địa lý" holds "lý")
+    targets:  # Tạm thời chỉ bóc tách 4 môn trọng tâm: Toán, Vật lí, Hoá học, Sinh học
       - match: 'to[aá]n'
         category: [Luyện thi HSG, Toán, Duyên hải & ĐBBB 2024]
-      - match: '[đd][iị]a\s*l[iíý]|(^|[^a-zà-ỹ])[đd][iị]a([^a-zà-ỹ]|$)'
-        category: [Luyện thi HSG, Địa lí, Duyên hải & ĐBBB 2024]
       - match: 'v[aậ]t\s*l[iíyý]|(^|[^a-zà-ỹ])l[ýí]([^a-zà-ỹ]|$)'
         category: [Luyện thi HSG, Vật lí, Duyên hải & ĐBBB 2024]
       - match: 'h[oóòọ]a\s*h[oọ]c|(^|[^a-zà-ỹ])h[oóòọ]a([^a-zà-ỹ]|$)'
         category: [Luyện thi HSG, Hoá học, Duyên hải & ĐBBB 2024]
       - match: 'sinh\s*h[oọ]c|(^|[^a-zà-ỹ])sinh([^a-zà-ỹ]|$)'
         category: [Luyện thi HSG, Sinh học, Duyên hải & ĐBBB 2024]
-      - match: 'l[iị]ch\s*s[uử]|(^|[^a-zà-ỹ])s[uử]([^a-zà-ỹ]|$)'
-        category: [Luyện thi HSG, Lịch sử, Duyên hải & ĐBBB 2024]
-      - match: 'ng[uữ]\s*v[aă]n|(^|[^a-zà-ỹ])v[aă]n([^a-zà-ỹ]|$)'
-        category: [Luyện thi HSG, Ngữ văn, Duyên hải & ĐBBB 2024]
-      - match: 'ti[eế]ng\s*anh|(^|[^a-zà-ỹ])anh([^a-zà-ỹ]|$)'
-        category: [Luyện thi HSG, Tiếng Anh, Duyên hải & ĐBBB 2024]
-      - match: 'tin\s*h[oọ]c|(^|[^a-zà-ỹ])tin([^a-zà-ỹ]|$)'
-        category: [Luyện thi HSG, Tin học, Duyên hải & ĐBBB 2024]
   - folder: "1. Khối 10 - Chương trình mới"
     kind: TOPIC
     status: PENDING_REVIEW

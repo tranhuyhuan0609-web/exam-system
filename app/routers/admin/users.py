@@ -9,6 +9,7 @@ from app.attempts import db_now
 from app.deps import AdminUser, SessionDep
 from app.models import User, UserRole
 from app.routers.admin.common import get_or_404, redirect
+from app.security import verify_csrf_token
 from app.templating import flash, templates
 
 router = APIRouter()
@@ -57,8 +58,12 @@ async def list_users(request: Request, user: AdminUser, session: SessionDep, fil
 async def set_pro(request: Request, user: AdminUser, session: SessionDep, user_id: int):
     target = await get_or_404(session, User, user_id)
     form = await request.form()
-    days = int(str(form.get("days") or "0")) if str(form.get("days") or "0").isdigit() else 0
     back = _back(form)
+    submitted_token = str(form.get("csrf_token") or "")
+    if submitted_token and not verify_csrf_token(request, submitted_token):
+        flash(request, "Lỗi bảo mật: CSRF token không khớp.", "error")
+        return redirect(back)
+    days = int(str(form.get("days") or "0")) if str(form.get("days") or "0").isdigit() else 0
     if target.role == UserRole.ADMIN:
         flash(request, "Quản trị viên đã có toàn quyền, không cần gói Pro.", "error")
         return redirect(back)
@@ -79,8 +84,12 @@ async def set_pro(request: Request, user: AdminUser, session: SessionDep, user_i
 async def set_role(request: Request, user: AdminUser, session: SessionDep, user_id: int):
     target = await get_or_404(session, User, user_id)
     form = await request.form()
-    role = str(form.get("role") or "")
     back = _back(form)
+    submitted_token = str(form.get("csrf_token") or "")
+    if submitted_token and not verify_csrf_token(request, submitted_token):
+        flash(request, "Lỗi bảo mật: CSRF token không khớp.", "error")
+        return redirect(back)
+    role = str(form.get("role") or "")
     if target.role == UserRole.ADMIN or role not in (UserRole.STUDENT, UserRole.TEACHER):
         flash(request, "Không đổi được vai trò này.", "error")
         return redirect(back)

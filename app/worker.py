@@ -40,6 +40,9 @@ AUTO_SUBMIT_SECONDS = 60
 ESSAY_SECONDS = 5
 # A PROCESSING job untouched for this long belongs to a worker that died; put it back in the queue.
 STALE_AFTER = timedelta(minutes=15)
+# Background self-healing and auto-verification pipeline intervals
+JOB1_AUDIT_INTERVAL_SECONDS = 180  # Job 1 (Font & Taxonomy Healer): every 3 minutes (batch 20)
+JOB2_AUDIT_INTERVAL_SECONDS = 300  # Job 2 (Double-Blind Consensus Solver): every 5 minutes (batch 8)
 
 _shared_provider: GeminiProvider | None = None
 _shared_provider_sig: tuple | None = None
@@ -178,9 +181,10 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
                 page_count, drafts = await run_pipeline(
                     job_id=job.id,
                     source_key=job.stored_path,
+                    solution_key=job.solution_stored_path,
                     storage=get_storage(),
                     provider=provider,
-                    soffice=settings.soffice_path,
+                    soffice=settings.effective_soffice_path,
                     default_difficulty=job.default_difficulty.value,
                     progress=progress,
                     solve=(job.purpose == "SIMILAR" or getattr(provider, "is_fake", False)),
@@ -202,7 +206,7 @@ async def process(job_id: int, provider: AIProvider | None = None) -> None:
             log.exception("Job %s crashed", job_id)
             job.status, job.error, job.stage = JobStatus.FAILED, f"Lỗi hệ thống: {exc}", "Lỗi"
         else:
-            job.status, job.page_count, job.drafts = JobStatus.DONE, page_count, drafts
+            job.status, job.error, job.page_count, job.drafts = JobStatus.DONE, None, page_count, drafts
             job.stage = f"Đã đọc {len(drafts)} câu từ {page_count} trang" if drafts else "Không tìm thấy câu hỏi nào"
             if codes is not None:
                 job.stage = f"Đã đọc đáp án chính thức của {codes} mã đề"
@@ -286,6 +290,50 @@ async def ai_jobs_loop(once: bool = False) -> None:
         await asyncio.sleep(POLL_SECONDS)
 
 
+async def job1_taxonomy_healer_loop() -> None:
+    """Independent background loop for Job 1: Heals font, LaTeX, and taxonomy every 3 minutes (batch 20)."""
+    while True:
+        try:
+            await asyncio.sleep(JOB1_AUDIT_INTERVAL_SECONDS)
+            async with SessionLocal() as session:
+                from app.ai.background_audit_jobs import run_job1_taxonomy_and_font_healer
+
+                res = await run_job1_taxonomy_and_font_healer(session, batch_size=20)
+                if res.get("processed_count", 0) > 0:
+                    log.info("Job 1 sweep: %s", res.get("message"))
+        except Exception:
+            log.exception("Job 1 Taxonomy & Font Healer loop failed")
+
+
+async def job2_double_blind_loop() -> None:
+    """Independent background loop for Job 2: Double-blind solves questions and auto-publishes every 5 minutes (batch 8)."""
+    while True:
+        try:
+            await asyncio.sleep(JOB2_AUDIT_INTERVAL_SECONDS)
+            async with SessionLocal() as session:
+                from app.ai.background_audit_jobs import run_job2_double_blind_verify_and_publish
+
+                res = await run_job2_double_blind_verify_and_publish(session, batch_size=8)
+                if res.get("processed_count", 0) > 0:
+                    log.info("Job 2 sweep: %s", res.get("message"))
+        except Exception:
+            log.exception("Job 2 Double-Blind Solver loop failed")
+
+
+async def audit_self_healing_once() -> None:
+    """One-shot sweep running Job 1 (batch 20) followed by Job 2 (batch 8)."""
+    from app.ai.background_audit_jobs import (
+        run_job1_taxonomy_and_font_healer,
+        run_job2_double_blind_verify_and_publish,
+    )
+
+    async with SessionLocal() as session:
+        res1 = await run_job1_taxonomy_and_font_healer(session, batch_size=20)
+        log.info("Job 1: %s", res1.get("message"))
+        res2 = await run_job2_double_blind_verify_and_publish(session, batch_size=8)
+        log.info("Job 2: %s", res2.get("message"))
+
+
 async def run(once: bool = False) -> None:
     log.info("Worker started (models: %s)", get_settings().gemini_models)
     if requeued := await requeue_stale(all_processing=True):
@@ -293,10 +341,18 @@ async def run(once: bool = False) -> None:
     if once:
         await auto_submit_once()
         await essay_grading_once()
+        await audit_self_healing_once()
         await ai_jobs_loop(once=True)
         return
-    # Independent loops: 2 parallel AI import workers, auto-submit sweep every minute, AI essay grading.
-    await asyncio.gather(ai_jobs_loop(), ai_jobs_loop(), auto_submit_loop(), essay_grading_loop())
+    # Independent loops: 2 parallel AI import workers, auto-submit sweep, AI essay grading, and 2 self-healing jobs.
+    await asyncio.gather(
+        ai_jobs_loop(),
+        ai_jobs_loop(),
+        auto_submit_loop(),
+        essay_grading_loop(),
+        job1_taxonomy_healer_loop(),
+        job2_double_blind_loop(),
+    )
 
 
 def main() -> None:

@@ -71,8 +71,14 @@ class BronzePipeline:
         is_new = await self.store.save(doc)
         stats.inc_value("bronze/new" if is_new else "bronze/unchanged")
         if is_new and item["role"] != "listing":
-            await self.bus.publish(RAW_TOPIC, doc.event(), key=doc.id)
-            stats.inc_value("bronze/published")
+            try:
+                await self.bus.publish(RAW_TOPIC, doc.event(), key=doc.id)
+                if hasattr(self.store, "mark_published"):
+                    await self.store.mark_published(doc.id, True)
+                stats.inc_value("bronze/published")
+            except Exception as exc:
+                stats.inc_value("bronze/publish_failed")
+                stats.inc_value("log_count/ERROR")
         return {"url": item["url"], "doc_id": doc.id, "new": is_new}  # keep the HTML out of Scrapy's logs
 
     async def close_spider(self, spider):
@@ -80,3 +86,26 @@ class BronzePipeline:
             await self.bus.stop()
         if self.store is not None and hasattr(self.store, "close"):
             await self.store.close()
+
+
+async def replay_unpublished_docs(store=None, bus=None, limit: int = 100) -> int:
+    """Scan Mongo for raw documents whose Kafka ingestion event was not published and replay them."""
+    if store is None:
+        from app.pipeline.adapters.mongo import MongoRawStore
+
+        store = MongoRawStore()
+    if bus is None:
+        from app.pipeline.adapters.kafka import KafkaBus
+
+        bus = await KafkaBus().start()
+
+    docs = await store.get_unpublished(limit=limit)
+    replayed = 0
+    for doc in docs:
+        try:
+            await bus.publish(RAW_TOPIC, doc.event(), key=doc.id)
+            await store.mark_published(doc.id, True)
+            replayed += 1
+        except Exception:
+            pass
+    return replayed

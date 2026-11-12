@@ -1,0 +1,260 @@
+{% extends "admin/_layout.html" %}
+{% set active = "audit" %}
+{% block title %}Kiểm toán & Tự chữa lành Dữ liệu · Quản trị{% endblock %}
+{% block admin_content %}
+<div class="page-head">
+  <div>
+    <h1>🛡️ Kiểm toán & Tự chữa lành Dữ liệu</h1>
+    <p class="muted small">Pipeline tự chữa lành 2 Jobs: Quét sửa lỗi Font / LaTeX / Bảng số liệu & Giải lại độc lập 2 lần (Double-Blind Consensus) tự động duyệt.</p>
+  </div>
+  <div style="display: flex; gap: 8px;">
+    <form method="post" action="/admin/audit-queue/run-job1" class="inline">
+      <button class="btn btn-outline" type="submit" title="Quét phát hiện lỗi font, khôi phục LaTeX, đối chiếu chủ đề">▶ Chạy Job 1: Sửa Font & Phân loại (15 câu)</button>
+    </form>
+    <form method="post" action="/admin/audit-queue/run-job2" class="inline">
+      <button class="btn" type="submit" title="AI giải độc lập không nhìn đáp án; tự động duyệt khi đồng thuận 2 lần">▶ Chạy Job 2: Giải lại & Đối chiếu (10 câu)</button>
+    </form>
+  </div>
+</div>
+
+<!-- KPI Summary Cards -->
+<div class="audit-kpi-grid">
+  <div class="audit-kpi-card {% if tab == 'review' %}active{% endif %}">
+    <div class="kpi-num color-danger">{{ cnt_review }}</div>
+    <div class="kpi-label">⚠️ Cần Admin xem xét</div>
+    <div class="kpi-sub">Lệch kết quả 2 lần AI giải</div>
+  </div>
+  <div class="audit-kpi-card {% if tab == 'suspect' %}active{% endif %}">
+    <div class="kpi-num color-warning">{{ cnt_suspect_source }}</div>
+    <div class="kpi-label">🚨 Nghi đề/đáp án web sai</div>
+    <div class="kpi-sub">AI giải khác đáp án gốc web</div>
+  </div>
+  <div class="audit-kpi-card {% if tab == 'table' %}active{% endif %}">
+    <div class="kpi-num color-info">{{ cnt_missing_table }}</div>
+    <div class="kpi-label">📋 Thiếu bảng số liệu</div>
+    <div class="kpi-sub">Cần lấy bảng từ URL gốc</div>
+  </div>
+  <div class="audit-kpi-card {% if tab == 'healed' %}active{% endif %}">
+    <div class="kpi-num color-purple">{{ cnt_healed }}</div>
+    <div class="kpi-label">🛠️ Đã sửa font & chủ đề</div>
+    <div class="kpi-sub">Sẵn sàng đưa vào Job 2</div>
+  </div>
+  <div class="audit-kpi-card {% if tab == 'consensus' %}active{% endif %}">
+    <div class="kpi-num color-success">{{ cnt_consensus }}</div>
+    <div class="kpi-label">✅ Tự động duyệt (Đồng thuận)</div>
+    <div class="kpi-sub">2 lần giải ra kết quả trùng khớp</div>
+  </div>
+  <div class="audit-kpi-card {% if tab == 'pending' %}active{% endif %}">
+    <div class="kpi-num color-muted">{{ cnt_pending }}</div>
+    <div class="kpi-label">⏳ Chờ quét kiểm toán</div>
+    <div class="kpi-sub">Câu hỏi mới nạp vào kho</div>
+  </div>
+</div>
+
+{% if suggested_topics %}
+<div class="card" style="margin-bottom: 20px; border-left: 4px solid #3b82f6;">
+  <strong>💡 Chủ đề mới do AI đề xuất từ các đề thi chuyên sâu / HSG:</strong>
+  <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">
+    {% for tname, count in suggested_topics.items() %}
+      <span class="badge" style="background: #e0f2fe; color: #0369a1; padding: 5px 10px; font-size: 0.88rem;">
+        📌 {{ tname }} <strong style="margin-left: 4px;">({{ count }} câu)</strong>
+      </span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Tab Bar -->
+<div class="section-tabs-bar" style="margin-bottom: 16px;">
+  <a href="/admin/audit-queue?tab=review" class="section-tab-btn {% if tab == 'review' %}active{% endif %}">
+    ⚠️ Cần duyệt tay ({{ cnt_review }})
+  </a>
+  <a href="/admin/audit-queue?tab=suspect" class="section-tab-btn {% if tab == 'suspect' %}active{% endif %}">
+    🚨 Nghi đáp án web sai ({{ cnt_suspect_source }})
+  </a>
+  <a href="/admin/audit-queue?tab=table" class="section-tab-btn {% if tab == 'table' %}active{% endif %}">
+    📋 Thiếu bảng ({{ cnt_missing_table }})
+  </a>
+  <a href="/admin/audit-queue?tab=healed" class="section-tab-btn {% if tab == 'healed' %}active{% endif %}">
+    🛠️ Đã sửa font / chủ đề ({{ cnt_healed }})
+  </a>
+  <a href="/admin/audit-queue?tab=consensus" class="section-tab-btn {% if tab == 'consensus' %}active{% endif %}">
+    ✅ Đã duyệt đồng thuận ({{ cnt_consensus }})
+  </a>
+  <a href="/admin/audit-queue?tab=pending" class="section-tab-btn {% if tab == 'pending' %}active{% endif %}">
+    ⏳ Chờ quét ({{ cnt_pending }})
+  </a>
+</div>
+
+<!-- Questions List -->
+{% if questions %}
+  {% for q in questions %}
+    <div class="card question" style="margin-bottom: 16px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px;">
+      <div class="q-meta" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px;">
+        <span class="muted font-mono">#{{ q.id }}</span>
+        <span class="badge type-badge">{{ TYPE_LABELS[q.question_type] }}</span>
+        <span class="badge diff-{{ q.difficulty | lower }}">{{ DIFFICULTY_LABELS[q.difficulty] }}</span>
+
+        <!-- Quality Flags -->
+        {% for flag in (q.quality_flags or []) %}
+          {% if flag == 'AI_DISAGREEMENT' %}
+            <span class="badge" style="background: #fee2e2; color: #dc2626; font-weight: 600;">⚠️ 2 lần AI giải lệch nhau</span>
+          {% elif flag == 'SUSPECT_SOURCE_ERROR' %}
+            <span class="badge" style="background: #fef3c7; color: #b45309; font-weight: 600;">🚨 Nghi đáp án web sai</span>
+          {% elif flag == 'MISSING_TABLE' %}
+            <span class="badge" style="background: #fed7aa; color: #c2410c; font-weight: 600;">📋 Thiếu bảng số liệu</span>
+          {% elif flag == 'BROKEN_FONT' %}
+            <span class="badge" style="background: #f3e8ff; color: #7e22ce;">🔤 Lỗi font TCVN3/Mojibake</span>
+          {% elif flag == 'MISSING_MATH' %}
+            <span class="badge" style="background: #ede9fe; color: #6d28d9;">📐 Vỡ ký tự Toán/LaTeX</span>
+          {% endif %}
+        {% endfor %}
+
+        {% if q.audit_status == 'VERIFIED_BY_CONSENSUS' %}
+          <span class="badge" style="background: #dcfce7; color: #15803d; font-weight: 600;">✓ Đồng thuận AI</span>
+        {% elif q.audit_status == 'NEEDS_HUMAN_REVIEW' %}
+          <span class="badge" style="background: #fee2e2; color: #b91c1c;">Cần Admin duyệt</span>
+        {% endif %}
+
+        {% set topic = ku_map.get(q.knowledge_unit_id) %}
+        {% if topic %}
+          <span class="badge badge-topic" style="background: #e0f2fe; color: #0369a1;">📘 {{ topic }}</span>
+        {% endif %}
+
+        <span class="grow"></span>
+        <a href="/admin/questions/{{ q.id }}/edit" class="btn btn-small btn-outline" target="_blank">Chỉnh sửa</a>
+      </div>
+
+      <!-- Double-Blind Comparison Box -->
+      {% if q.first_ai_answer or q.second_ai_answer %}
+        <div class="solve-comparison-banner" style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 16px;">
+          <div><strong>🤖 Đối chiếu kết quả giải:</strong></div>
+          {% if q.first_ai_answer %}
+            <div>Lần 1 (AI): <strong style="color: #2563eb; font-size: 1.1rem; padding: 2px 6px; background: #eff6ff; border-radius: 4px;">{{ q.first_ai_answer }}</strong></div>
+          {% endif %}
+          {% if q.second_ai_answer %}
+            <div>Lần 2 (AI): <strong style="color: {% if q.first_ai_answer == q.second_ai_answer %}#16a34a{% else %}#dc2626{% endif %}; font-size: 1.1rem; padding: 2px 6px; background: #eff6ff; border-radius: 4px;">{{ q.second_ai_answer }}</strong></div>
+          {% else %}
+            <div class="muted small"><em>(Đang chờ lượt giải thứ 2 để đối chiếu)</em></div>
+          {% endif %}
+
+          {% set web_ans = '' %}
+          {% for c in (q.choices or []) %}
+            {% if c.is_correct %}{% set web_ans = c.id | upper %}{% endif %}
+          {% endfor %}
+          {% if web_ans %}
+            <div style="margin-left: auto;">Đáp án web gốc: <span class="badge" style="background: #f1f5f9; color: #475569;">{{ web_ans }}</span></div>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      <!-- Question Content -->
+      <div class="q-content math" style="font-size: 1.02rem; margin-bottom: 12px; line-height: 1.6;">{{ q.content | format_q_content | safe }}</div>
+
+      <!-- Choices -->
+      {% if q.question_type == "TRUE_FALSE" %}
+        <ol class="q-choices" type="a">
+          {% for c in q.choices %}<li class="math">{{ c.content }} <span class="tf-truth {{ 't' if c.is_correct else 'f' }}">— {{ "Đúng" if c.is_correct else "Sai" }}</span></li>{% endfor %}
+        </ol>
+      {% elif q.question_type == "SHORT_ANSWER" %}
+        <p class="small"><strong>Đáp án:</strong> {{ (q.accepted_answers or []) | join(" hoặc ") }}</p>
+      {% else %}
+        <ol class="q-choices" type="A">
+          {% for c in q.choices %}<li class="math {% if c.is_correct %}correct{% endif %}">{{ c.content }}</li>{% endfor %}
+        </ol>
+      {% endif %}
+
+      <!-- Explanation -->
+      {% if q.explanation %}
+        <details style="margin-top: 10px; background: #fdfdfd; padding: 8px 12px; border-radius: 6px; border: 1px dashed #cbd5e1;">
+          <summary style="cursor: pointer; font-weight: 500; color: #475569;">💡 Lời giải chi tiết {% if q.explanation_by_ai %}<span class="badge" style="background: #e0e7ff; color: #4338ca;">Lời giải AI</span>{% endif %}</summary>
+          <div class="math" style="margin-top: 8px; white-space: pre-wrap;">{{ q.explanation }}</div>
+        </details>
+      {% endif %}
+
+      <!-- 1-Click Resolve Action Bar -->
+      {% if q.audit_status == 'NEEDS_HUMAN_REVIEW' or 'SUSPECT_SOURCE_ERROR' in (q.quality_flags or []) %}
+        <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #f1f5f9; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <span style="font-weight: 600; font-size: 0.9rem;">Duyệt nhanh đáp án:</span>
+          {% if q.first_ai_answer %}
+            <form method="post" action="/admin/audit-queue/{{ q.id }}/resolve" class="inline">
+              <input type="hidden" name="action" value="first">
+              <button class="btn btn-small btn-outline" style="border-color: #2563eb; color: #2563eb;">✓ Chốt theo Lần 1 ({{ q.first_ai_answer }})</button>
+            </form>
+          {% endif %}
+          {% if q.second_ai_answer and q.second_ai_answer != q.first_ai_answer %}
+            <form method="post" action="/admin/audit-queue/{{ q.id }}/resolve" class="inline">
+              <input type="hidden" name="action" value="second">
+              <button class="btn btn-small btn-outline" style="border-color: #16a34a; color: #16a34a;">✓ Chốt theo Lần 2 ({{ q.second_ai_answer }})</button>
+            </form>
+          {% endif %}
+          <form method="post" action="/admin/audit-queue/{{ q.id }}/resolve" class="inline" style="display: flex; gap: 4px;">
+            <input type="hidden" name="action" value="custom">
+            <input type="text" name="custom_answer" placeholder="A/B/C/D" style="width: 70px; padding: 4px 8px; text-transform: uppercase;" required>
+            <button class="btn btn-small">Chốt</button>
+          </form>
+        </div>
+      {% endif %}
+    </div>
+  {% endfor %}
+
+  <!-- Pagination -->
+  {% if pages > 1 %}
+    <nav class="pager">
+      {% if page > 1 %}<a href="/admin/audit-queue?tab={{ tab }}&page={{ page - 1 }}">← Trước</a>{% endif %}
+      <span>Trang {{ page }} / {{ pages }}</span>
+      {% if page < pages %}<a href="/admin/audit-queue?tab={{ tab }}&page={{ page + 1 }}">Sau →</a>{% endif %}
+    </nav>
+  {% endif %}
+
+{% else %}
+  <div class="card muted" style="text-align: center; padding: 40px;">
+    <h3>🎉 Tuyệt vời! Không có câu hỏi nào trong mục này.</h3>
+    <p class="small">Kho dữ liệu sạch sẽ, không có lỗi cần giải quyết.</p>
+  </div>
+{% endif %}
+
+<style>
+.audit-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.audit-kpi-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+.audit-kpi-card.active {
+  border-color: #2563eb;
+  background: #f8faff;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
+}
+.kpi-num {
+  font-size: 1.8rem;
+  font-weight: 700;
+  line-height: 1.1;
+  margin-bottom: 4px;
+}
+.kpi-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #334155;
+}
+.kpi-sub {
+  font-size: 0.76rem;
+  color: #64748b;
+  margin-top: 3px;
+}
+.color-danger { color: #dc2626; }
+.color-warning { color: #d97706; }
+.color-info { color: #ea580c; }
+.color-purple { color: #7c3aed; }
+.color-success { color: #16a34a; }
+.color-muted { color: #64748b; }
+</style>
+{% endblock %}

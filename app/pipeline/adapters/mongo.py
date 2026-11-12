@@ -26,6 +26,7 @@ def _to_doc(row: dict[str, Any]) -> RawDocument:
         title=row.get("title", ""),
         seed_label=row.get("seed_label", ""),
         context=row.get("context") or {},
+        published=row.get("published", False),
     )
 
 
@@ -41,6 +42,7 @@ class MongoRawStore:
     async def _ensure_indexes(self) -> None:
         if not self._indexed:
             await self.docs.create_index([("site_id", ASCENDING), ("url", ASCENDING), ("fetched_at", DESCENDING)])
+            await self.docs.create_index([("published", ASCENDING), ("fetched_at", DESCENDING)])
             await self.dlq.create_index([("replayed", ASCENDING), ("created_at", DESCENDING)])
             self._indexed = True
 
@@ -59,6 +61,7 @@ class MongoRawStore:
             "title": doc.title,
             "seed_label": doc.seed_label,
             "context": doc.context,
+            "published": getattr(doc, "published", False),
         }
         try:
             await self.docs.insert_one(row)
@@ -73,6 +76,15 @@ class MongoRawStore:
     async def get(self, doc_id: str) -> RawDocument | None:
         row = await self.docs.find_one({"_id": doc_id})
         return _to_doc(row) if row else None
+
+    async def mark_published(self, doc_id: str, published: bool = True) -> None:
+        await self._ensure_indexes()
+        await self.docs.update_one({"_id": doc_id}, {"$set": {"published": published}})
+
+    async def get_unpublished(self, limit: int = 100) -> list[RawDocument]:
+        await self._ensure_indexes()
+        cursor = self.docs.find({"published": {"$ne": True}}).sort("fetched_at", DESCENDING).limit(limit)
+        return [_to_doc(row) async for row in cursor]
 
     async def fetched_since(self, site_id: str, since: datetime, with_context: bool = False) -> set[str]:
         await self._ensure_indexes()

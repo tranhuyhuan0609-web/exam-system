@@ -21,7 +21,14 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from app.ai.essay_exam import clean_paper_text
+from app.ai.essay_exam import (
+    clean_paper_text,
+    extract_matrix_difficulty,
+    has_missing_stem,
+    parse_figure_captions,
+    references_figure,
+    strip_topic,
+)
 from app.ai.figures import crop_figure
 from app.ai.local_text import read_locally
 from app.ai.normalize import NormalizeError, thumbnail_bytes, to_page_images
@@ -44,6 +51,7 @@ FLAG_LABELS = {
     "no_match": "Kết quả AI tính ra không khớp lựa chọn nào — hãy kiểm tra lại đáp án.",
     "no_solution": "AI chưa giải được câu này — hãy tự chọn đáp án và viết lời giải.",
     "figure_failed": "Câu có hình vẽ nhưng cắt hình không thành công.",
+    "missing_stem": "Câu bắt đầu bằng ý nhỏ (1., a)) mà thiếu đoạn đề dẫn — hãy kiểm tra lại đề bài.",
     "duplicate": "Ngân hàng đã có câu giống hệt (cùng nội dung và lựa chọn).",
     "key_mismatch": "Khác đáp án chính thức của đề: kiểm tra đề bài (AI có thể đã đọc sai) và đáp án.",
 }
@@ -59,10 +67,10 @@ def page_key(job_id: int, page: int) -> str:
     return f"{pages_prefix(job_id)}page-{page:03d}.png"
 
 
-_QUESTION_LABEL = re.compile(r"^\s*Câu\s*\d+\s*[:.)]\s*", re.IGNORECASE)  # the number is shown by the app
+_QUESTION_LABEL = re.compile(
+    r"^\s*(?:Câu|Bài)\s*(?:\d+|[IVXL]+\b)\s*[.:]?\s*(?:\([^)]*điểm\))?\s*[:.)–-]?\s*", re.IGNORECASE
+)  # the number is shown by the app
 _TRAILING_DOT_IN_MATH = re.compile(r"\.(\s*\}?\s*\$)$")
-
-
 def clean_choice(text: str) -> str:
     """Drop a leading "A." label and the trailing full stop printed after each option."""
     text = re.sub(r"^\s*[A-F]\s*[.)]\s+", "", text.strip())
@@ -73,6 +81,47 @@ def clean_choice(text: str) -> str:
 def _same_question(a: ExtractedQuestion, b: ExtractedQuestion) -> bool:
     # Numbering restarts per section in the new THPT format, so match on content as well as number.
     return a.number == b.number and a.content[:60] == b.content[:60]
+
+
+def _tokens(text: str) -> list[str]:
+    return [re.sub(r"^[^\w]+|[^\w]+$", "", token.casefold()) for token in text.split()]
+
+
+def _trim_cross_question_overlap(questions: list[ExtractedQuestion]) -> None:
+    """Prevent vision extraction from appending the next essay question to the current one.
+
+    This happens frequently when several HSG problems share one page and the model
+    continues reading after a visual boundary.  The next question is already
+    present as a separate result, so a long token overlap in the current result's
+    tail is safe to remove.
+    """
+    for current, following in zip(questions, questions[1:]):
+        if current.page != following.page or current.number >= following.number:
+            continue
+        current_tokens = _tokens(current.content)
+        next_tokens = _tokens(following.content)
+        if len(current_tokens) < 20 or len(next_tokens) < 8:
+            continue
+        best: tuple[int, int] | None = None
+        for start in range(min(8, len(next_tokens))):
+            for length in range(min(30, len(next_tokens) - start), 7, -1):
+                needle = next_tokens[start : start + length]
+                if current_tokens[-length:] == needle:
+                    best = (start, length)
+                    break
+            if best:
+                break
+        if not best:
+            continue
+        start, length = best
+        overlap_start = len(current_tokens) - length
+        # The next question can begin in the middle of a sentence when the
+        # model omitted its printed "Câu N" heading, so do not require the
+        # overlap to start after the exact midpoint.
+        if overlap_start < len(current_tokens) * 0.30:
+            continue
+        raw_tokens = list(re.finditer(r"\S+", current.content))
+        current.content = current.content[: raw_tokens[overlap_start].start()].rstrip()
 
 
 def _chunks(pages: list[Path], size: int = EXTRACT_CHUNK_PAGES) -> list[list[PageImage]]:
@@ -88,6 +137,24 @@ def _chunks(pages: list[Path], size: int = EXTRACT_CHUNK_PAGES) -> list[list[Pag
     return groups
 
 
+def _text_contexts(source: Path, page_count: int) -> list[str]:
+    """Read an available text layer without making it authoritative over the page image."""
+    try:
+        if source.suffix.lower() == ".docx":
+            from app.ai.extract_engine import docx_to_markdown_latex
+
+            text = docx_to_markdown_latex(source)
+            return [text] + [""] * max(0, page_count - 1)
+        if source.suffix.lower() == ".pdf":
+            import pymupdf
+
+            with pymupdf.open(source) as document:
+                return [page.get_text("text")[:24000] for page in document]
+    except Exception as exc:
+        log.info("Could not read optional text context from %s: %s", source.name, exc)
+    return [""] * page_count
+
+
 def _tables(content: str, figure: str | None) -> str:
     """LaTeX tabulars as table rows; a variation table already drawn in the question's figure is not repeated."""
     is_variation = bool(re.search(r"[ns][ew]arrow|infty", content))
@@ -101,49 +168,120 @@ def _draft(
     figure_failed: bool,
     default: str,
     key: str | None = None,
+    *,
+    matrix_difficulty: str | None = None,
+    extra_flags: list[str] | None = None,
+    figure_captions: dict[str, str] | None = None,
+    topic: str | None = None,
 ):
-    """`key`: the answer / marking scheme printed in the file for this question (it becomes the explanation)."""
+    """`key`: the answer / marking scheme printed in the file for this question (it becomes the explanation).
+    `topic`: the section title of the heading ("CƠ HỌC CHẤT ĐIỂM"): it classifies the question but is not its text."""
     choices = [clean_choice(c.content) for c in q.choices]
     flags: list[str] = []
-    correct, truths, answers = None, [], []
     if q.type == "ESSAY" and (key or solution is not None):
         pass  # an essay: its marking scheme, or the AI's model answer (no option to match)
+    elif q.type != "ESSAY" and key and solution is None:
+        pass  # explanation/key came directly from the file
     elif solution is None:
         flags.append("no_solution")
     elif q.type == "TRUE_FALSE":
-        truths = list(solution.statement_truths or [])
-        if len(truths) != len(choices):
+        truths_list = list(solution.statement_truths or [])
+        if len(truths_list) != len(choices):
             flags.append("no_solution")
-            truths = []
     elif q.type == "SHORT_ANSWER":
         number = extract_number(solution.short_answer or "") or extract_number(solution.final_value or "")
-        answers = [number] if number else []
-        if not answers:
+        if not number:
             flags.append("no_solution")
     else:
-        if solution.correct_label is not None:
-            index = "ABCDEF".index(solution.correct_label)
-            correct = index if index < len(choices) else None
-        if not solution.matches_an_option or correct is None:
+        idx = "ABCDEF".index(solution.correct_label) if solution.correct_label is not None else len(choices)
+        if not solution.matches_an_option or idx >= len(choices):
             flags.append("no_match")
-    if figure_failed:
+
+    correct, truths, answers = None, [], []
+    if solution is not None:
+        if q.type == "TRUE_FALSE":
+            t = list(solution.statement_truths or [])
+            truths = t if len(t) == len(choices) else []
+        elif q.type == "SHORT_ANSWER":
+            num = extract_number(solution.short_answer or "") or extract_number(solution.final_value or "")
+            answers = [num] if num else []
+        elif q.type != "ESSAY" and solution.correct_label is not None:
+            idx = "ABCDEF".index(solution.correct_label)
+            correct = idx if idx < len(choices) else None
+
+    if figure_failed and "figure_failed" not in flags:
         flags.append("figure_failed")
+    for fl in extra_flags or []:
+        if fl not in flags:
+            flags.append(fl)
+
+    mat_diff = matrix_difficulty or extract_matrix_difficulty(q.content)
+    cleaned_content = _tables(
+        strip_topic(clean_paper_text(_QUESTION_LABEL.sub("", q.content.strip(), count=1)), topic), figure
+    )
+    classified = f"{topic}\n{cleaned_content}" if topic else cleaned_content
+    from app.application.knowledge_linker import infer_knowledge_metadata
+
+    if mat_diff:
+        # Step 7: Difficulty printed in the exam matrix wins
+        final_diff = mat_diff
+        difficulty_from_matrix = True
+        meta = infer_knowledge_metadata(classified, final_diff)
+    elif q.type == "ESSAY":
+        # Step 7: Never let AI guess difficulty for HSG / essay questions; leave to Admin's selection
+        final_diff = default
+        difficulty_from_matrix = False
+        meta = infer_knowledge_metadata(classified, final_diff)
+    else:
+        raw_diff = (solution.difficulty if solution else None) or q.difficulty or default
+        meta = infer_knowledge_metadata(classified, raw_diff)
+        final_diff = raw_diff if raw_diff == "HSG" else meta["difficulty"]
+        difficulty_from_matrix = False
+
+    unit_code = (
+        (solution.kntt_unit_code if solution and solution.kntt_unit_code else None)
+        or q.kntt_unit_code
+        or meta["kntt_unit_code"]
+    )
+    is_thinking = bool(
+        (solution and solution.is_thinking_skill) or q.is_thinking_skill or meta["is_thinking_skill"]
+    )
+    suitable_targets = list(
+        (solution.suitable_targets if solution and solution.suitable_targets else None)
+        or q.suitable_targets
+        or meta["suitable_targets"]
+    )
+    captions = figure_captions if figure_captions is not None else parse_figure_captions(cleaned_content)
+    expl_text = clean_paper_text(key) if key else (solution.step_by_step_solution.strip() if solution else "")
+    from app.ai.extract_engine import extract_short_answer_value
+    inferred_val = extract_short_answer_value(expl_text) if expl_text else None
+    sol_short = (solution.short_answer if solution else None) or inferred_val
+    sol_final = (solution.final_value if solution else None) or inferred_val
+    if not answers and inferred_val:
+        answers = [inferred_val]
+
     return {
         "number": q.number,
         "page": q.page,
         "type": q.type,
-        "content": _tables(clean_paper_text(_QUESTION_LABEL.sub("", q.content.strip(), count=1)), figure),
+        "content": cleaned_content,
         "choices": choices,
         "correct": correct,
         "truths": truths,
         "answers": answers,
-        "short_answer": solution.short_answer if solution else None,
-        "final_value": solution.final_value if solution else None,
-        "explanation": latex_tables(
-            clean_paper_text(key) if key else (solution.step_by_step_solution.strip() if solution else "")
-        ),
-        "difficulty": (solution.difficulty if solution else None) or q.difficulty or default,
+        "short_answer": sol_short,
+        "final_value": sol_final,
+        "explanation": latex_tables(expl_text),
+        "difficulty": final_diff,
+        "difficulty_from_matrix": difficulty_from_matrix,
+        "kntt_unit_code": unit_code,
+        "is_thinking_skill": is_thinking,
+        "suitable_targets": suitable_targets,
+        "topic_name": meta.get("topic_name"),
+        "topic_title": topic,
+        "access_tier": "PRO" if final_diff == "HSG" else "FREE",
         "figure": figure,
+        "figure_captions": captions,
         "figure_bbox": q.figure_bbox.model_dump() if q.figure_bbox else None,  # model's box, for re-cropping
         "flags": flags,
         "key_from_file": bool(key),  # the explanation is the answer / marking scheme printed in the file
@@ -160,6 +298,14 @@ def normalize_draft(draft: dict[str, Any]) -> dict[str, Any]:
         d["answers"] = [number] if d.get("type") == "SHORT_ANSWER" and number else []
     if d.get("type") in ("TRUE_FALSE", "SHORT_ANSWER", "ESSAY"):
         d["flags"] = [f for f in d.get("flags", []) if f != "unsupported_type"]
+    if "suitable_targets" not in d or "is_thinking_skill" not in d or "kntt_unit_code" not in d or "topic_name" not in d:
+        from app.application.knowledge_linker import infer_knowledge_metadata
+
+        meta = infer_knowledge_metadata(d.get("content", ""), d.get("difficulty"))
+        d.setdefault("kntt_unit_code", meta["kntt_unit_code"])
+        d.setdefault("is_thinking_skill", meta["is_thinking_skill"])
+        d.setdefault("suitable_targets", meta["suitable_targets"])
+        d.setdefault("topic_name", meta.get("topic_name"))
     return d
 
 
@@ -227,6 +373,7 @@ async def run_pipeline(
     default_difficulty: str,
     progress: Progress,
     solve: bool = True,
+    solution_key: str | None = None,
 ) -> tuple[int, list[dict[str, Any]]]:
     """Process one upload. Returns (page_count, drafts). Raises NormalizeError / AIError on failure.
     `solve=False` saves AI calls: only the questions whose answer is not printed in the file are solved.
@@ -239,8 +386,101 @@ async def run_pipeline(
         await progress("Đang chuyển file thành ảnh từng trang…", 0, 1)
         source = work / ("source" + Path(source_key).suffix.lower())
         source.write_bytes(await storage.get(source_key))
+
+        paired_solution_file: Path | None = None
+
+        # Step 1: Chuẩn hóa file nén (.zip, .rar) tự động bung nén và ghép cặp Đề + Đáp án
+        if source.suffix.lower() in (".zip", ".rar"):
+            from app.ai.extract_engine import pair_exam_and_solution_files, unpack_archive
+            archive_dir = work / "unpacked"
+            unpacked_files = unpack_archive(source, archive_dir)
+            pairs = pair_exam_and_solution_files(unpacked_files, soffice)
+            if not pairs:
+                raise NormalizeError("Gói nén không chứa file đề thi (.docx, .doc, .pdf) hợp lệ.")
+            source = pairs[0][0]
+            if pairs[0][1] and not solution_key:
+                paired_solution_file = pairs[0][1]
+
+        # Tải file đáp án đi kèm nếu được chỉ định riêng
+        if solution_key:
+            sol_ext = Path(solution_key).suffix.lower()
+            paired_solution_file = work / f"solution{sol_ext}"
+            paired_solution_file.write_bytes(await storage.get(solution_key))
+
         # Word files and PDFs with a text layer are read on this machine when that works: no AI call to read them.
-        local = await asyncio.to_thread(read_locally, source)
+        from app.ai.extract_engine import has_mathtype_ole
+        from universal_ingestor import UniversalExamAndMaterialIngestor
+
+        universal = UniversalExamAndMaterialIngestor()
+        doc_type = universal.detect_document_type(str(source))
+
+        # Nhánh 1: Hướng dẫn chấm dạng Bảng 3 cột (.docx)
+        if doc_type == "HDC_TABLE_DOCX":
+            await progress("Đang bóc tách bảng hướng dẫn chấm 3 cột…", 0, 1)
+            hdc_rows = universal.parse_hdc_table_docx(str(source))
+            drafts = []
+            for idx, r in enumerate(hdc_rows):
+                ans = r.get("short_answer_value")
+                sub = r.get("sub_index", "")
+                main_q = r.get("main_question", "")
+                label = f"Câu {main_q}" if main_q else ""
+                if sub and sub != main_q:
+                    label = f"{label} ({sub})" if label else f"Ý {sub}"
+                pts = r.get("points", "")
+                content = f"{label}\nThang điểm: {pts}" if pts else label
+                drafts.append({
+                    "number": idx + 1,
+                    "page": 1,
+                    "type": "SHORT_ANSWER" if ans else "ESSAY",
+                    "content": content or f"Câu {idx + 1}",
+                    "choices": [],
+                    "correct": None,
+                    "truths": [],
+                    "answers": [ans] if ans else [],
+                    "short_answer": ans,
+                    "final_value": ans,
+                    "explanation": r.get("solution_content", ""),
+                    "difficulty": default_difficulty,
+                    "figure": None,
+                    "flags": [],
+                    "question_id": None,
+                })
+            pages, _ = await to_page_images(source, work / "pages", soffice)
+            for number, page in enumerate(pages, start=1):
+                await storage.put(page_key(job_id, number), page.read_bytes(), "image/png")
+            return len(pages), drafts
+
+        # Nhánh 2: Ảnh chụp đề thi (.jpg, .png) -> Làm trắng nền
+        if doc_type == "PHOTO_EXAM":
+            await progress("Đang làm trắng nền ảnh chụp và lọc nhiễu…", 0, 1)
+            photo_info = universal.preprocess_photo_exam(str(source), doc_id=f"job_{job_id}")
+            if photo_info.get("whitened_image") and Path(photo_info["whitened_image"]).exists():
+                source = Path(photo_info["whitened_image"])
+
+        # Nhánh 3: Chuyên đề Lý thuyết & Luyện dạng bài kiểu VietJack
+        if doc_type == "VIETJACK_THEORY_WORKSHEET":
+            await progress("Đang bóc tách Chuyên đề Lý thuyết & Ngân hàng câu hỏi…", 0, 1)
+            pdf_path = universal.convert_to_pdf(str(source))
+            pages_cnt, drafts, article_data = universal.parse_vietjack_study_guide(pdf_path)
+
+            pages, _ = await to_page_images(Path(pdf_path), work / "pages", soffice)
+            for number, page in enumerate(pages, start=1):
+                await storage.put(page_key(job_id, number), page.read_bytes(), "image/png")
+
+            from app.db import SessionLocal
+            from app.models import ImportJob
+            async with SessionLocal() as db_session:
+                db_job = await db_session.get(ImportJob, job_id)
+                if db_job:
+                    db_job.doc_type = "STUDY_GUIDE"
+                    db_job.knowledge_article_data = article_data
+                    await db_session.commit()
+
+            return len(pages), drafts
+
+        local = None if source.suffix.lower() == ".docx" and has_mathtype_ole(source) else await asyncio.to_thread(
+            read_locally, source
+        )
         if local is not None and local.key_only:  # an answer / marking-scheme file: no question to import
             await progress("Tệp hướng dẫn chấm / đáp án: không có câu hỏi để nhập", 1, 1)
             return 0, []
@@ -253,6 +493,18 @@ async def run_pipeline(
                 if local is None:
                     raise
                 pages, geometries = [], []  # no LibreOffice here: the text is enough, only review images are missing
+
+        # Fallback: if pandoc HTML could not parse a complex .docx (e.g. WMF shapes or nested math tables),
+        # but LibreOffice successfully converted .docx -> .pdf in to_page_images, re-try read_locally on the generated PDF!
+        if local is None and source.suffix.lower() == ".docx" and pages:
+            pdf_candidate = work / "pages" / f"{source.stem}.pdf"
+            if not pdf_candidate.exists():
+                # Locate any generated PDF in the temp directory if available
+                candidates = list(work.glob("**/*.pdf"))
+                if candidates:
+                    pdf_candidate = candidates[0]
+            if pdf_candidate.exists():
+                local = await asyncio.to_thread(read_locally, pdf_candidate)
         for number, page in enumerate(pages, start=1):
             await storage.put(page_key(job_id, number), page.read_bytes(), "image/png")
 
@@ -267,7 +519,28 @@ async def run_pipeline(
                 key = f"figures/{job_id}-{index + 1}-{secrets.token_hex(6)}.png"
                 await storage.put(key, png, "image/png")
                 figure_bytes[index], figure_keys[index] = png, key
+            # Step 5: When _broken() detected broken formulas in specific questions, send only each broken question's
+            # >=2000px crop to AI (temperature=0) to transcribe formulas into LaTeX without sending the whole exam.
+            for index, crop_png in local.broken_crops.items():
+                if index < len(extracted) and hasattr(provider, "transcribe_question"):
+                    q_num = extracted[index].number
+                    await progress(f"AI đang chép lại công thức câu {q_num} sang LaTeX…", index, len(extracted))
+                    try:
+                        transcribed = await provider.transcribe_question(crop_png, q_num, extracted[index].content)
+                        if transcribed:
+                            clean_trans = _QUESTION_LABEL.sub("", transcribed.strip(), count=1).strip()
+                            extracted[index].content = strip_topic(clean_trans or transcribed, local.topics.get(index))
+                    except AIQuotaExhausted:
+                        raise
+                    except Exception:
+                        log.warning("Could not transcribe broken formulas of question %s in job %s", q_num, job_id)
         chunks = [] if local is not None else _chunks(pages)
+        if chunks:
+            contexts = await asyncio.to_thread(_text_contexts, source, len(pages))
+            for chunk in chunks:
+                for page in chunk:
+                    if page.number <= len(contexts):
+                        page.text_context = contexts[page.number - 1]
         for i, chunk in enumerate(chunks):
             first, last = chunk[0].number, max(p.number for p in chunk if not p.context_only)
             await progress(f"AI đang đọc trang {first}–{last} / {len(pages)}…", i, len(chunks))
@@ -278,8 +551,11 @@ async def run_pipeline(
                     extracted.append(q)
         if not extracted:
             return len(pages), []
+        _trim_cross_question_overlap(extracted)
 
         for index, q in enumerate(extracted):
+            if index in figure_bytes:
+                continue  # Đã có hình chính xác từ local.figures (read_essay_pdf), giữ nguyên không ghi đè
             if q.figure_bbox is None or not pages:
                 continue
             crop = work / "figures" / f"{index + 1}.png"
@@ -291,10 +567,119 @@ async def run_pipeline(
             else:
                 failed.add(index)
 
-        keys = {i: (local.explanations.get(i) if local else None) or q.key for i, q in enumerate(extracted)}
+        # Step 3: Quét hình vẽ theo caption "Hình X" trên PDF (file PDF gốc hoặc PDF do LibreOffice sinh ra)
+        pdf_target = None
+        if source.suffix.lower() == ".pdf" and source.exists():
+            pdf_target = source
+        elif (work / "pages" / f"{source.stem}.pdf").exists():
+            pdf_target = work / "pages" / f"{source.stem}.pdf"
+        else:
+            pdf_list = list(work.glob("**/*.pdf"))
+            if pdf_list:
+                pdf_target = pdf_list[0]
+
+        if pdf_target and pdf_target.exists():
+            from app.ai.extract_engine import extract_chemistry_schemes, extract_figures_by_caption
+            try:
+                caption_figs = await asyncio.to_thread(extract_figures_by_caption, pdf_target)
+                for index, q in enumerate(extracted):
+                    if index in figure_bytes:
+                        continue
+                    cleaned_body = q.content
+                    for fig_label, fig_png in caption_figs.items():
+                        if re.search(rf"\b{re.escape(fig_label)}\b", cleaned_body, re.I):
+                            key = f"figures/{job_id}-{index + 1}-{secrets.token_hex(6)}.png"
+                            figure_bytes[index] = fig_png
+                            await storage.put(key, fig_png, "image/png")
+                            figure_keys[index] = key
+                            if index in failed:
+                                failed.remove(index)
+                            break
+                # Chemistry schemes without a "Hình N" caption: the local reader crops them per question
+                # (figure_bands). Only the AI-read path, which has no question regions, falls back to a page scan.
+                source_name = Path(source_key).stem.casefold()
+                is_chemistry_source = any(token in source_name for token in ("hoa", "hóa", "chem"))
+                if is_chemistry_source and local is None:
+                    schemes = await asyncio.to_thread(extract_chemistry_schemes, pdf_target)
+                    by_page: dict[int, list[bytes]] = {}
+                    for page_number, _, png in schemes:
+                        by_page.setdefault(page_number, []).append(png)
+                    for index, q in enumerate(extracted):
+                        if index in figure_bytes or q.page not in by_page:
+                            continue
+                        figure_bytes[index] = by_page[q.page][0]
+                        key = f"figures/{job_id}-{index + 1}-{secrets.token_hex(6)}.png"
+                        await storage.put(key, figure_bytes[index], "image/png")
+                        figure_keys[index] = key
+            except Exception as exc:
+                log.warning("extract_figures_by_caption failed: %s", exc)
+
+        # Step 5: Nếu có file đáp án đi kèm, đọc lời giải trực tiếp để ghép vào đề
+        paired_keys: dict[int, str] = {}
+        paired_keys_by_index: list[str] = []
+        if paired_solution_file and paired_solution_file.exists():
+            sol_local = await asyncio.to_thread(read_locally, paired_solution_file)
+            if sol_local and sol_local.explanations:
+                paired_keys = sol_local.explanations
+                paired_keys_by_index = [
+                    sol_local.explanations[number]
+                    for number in sorted(sol_local.explanations)
+                ]
+            elif sol_local and sol_local.questions:
+                paired_keys = {q.number: q.content for q in sol_local.questions}
+                paired_keys_by_index = [q.content for q in sol_local.questions]
+            else:
+                try:
+                    from app.ai.extract_engine import (
+                        docx_to_markdown_latex,
+                        pdf_to_continuous_text,
+                        split_into_structured_questions,
+                    )
+                    if paired_solution_file.suffix.lower() == ".docx":
+                        sol_text = await asyncio.to_thread(docx_to_markdown_latex, paired_solution_file)
+                    elif paired_solution_file.suffix.lower() == ".pdf":
+                        sol_text = await asyncio.to_thread(pdf_to_continuous_text, paired_solution_file)
+                    else:
+                        sol_text = ""
+                    if sol_text:
+                        parsed_ans = split_into_structured_questions(sol_text)
+                        paired_keys_by_index = [a.content for a in parsed_ans]
+                        for a in parsed_ans:
+                            paired_keys.setdefault(a.number, a.content)
+                except Exception as exc:
+                    log.warning("Could not parse paired solution file %s: %s", paired_solution_file.name, exc)
+
+        # Step 4: Flag questions mentioning "như hình" without a figure, or starting with "1." without a stem,
+        # and exclude flagged questions from AI solving.
+        pre_flags: dict[int, list[str]] = {}
+        for i, q in enumerate(extracted):
+            q_flags = list((local.question_flags.get(i) if local else None) or [])
+            cleaned_q = clean_paper_text(_QUESTION_LABEL.sub("", q.content.strip(), count=1))
+            if references_figure(cleaned_q) and i not in figure_bytes:
+                failed.add(i)
+                if "figure_failed" not in q_flags:
+                    q_flags.append("figure_failed")
+            if q.type == "ESSAY" and has_missing_stem(cleaned_q):
+                if "missing_stem" not in q_flags:
+                    q_flags.append("missing_stem")
+            if q_flags:
+                pre_flags[i] = q_flags
+
+        keys = {}
+        for i, q in enumerate(extracted):
+            local_key = local.explanations.get(i) if local else None
+            paired_key = paired_keys.get(q.number)
+            if not local_key and i < len(paired_keys_by_index):
+                paired_key = paired_keys_by_index[i]
+            keys[i] = local_key or paired_key or paired_keys.get(i) or q.key
         solutions: dict[int, Solution] = {}
-        # Essays whose marking scheme is in the file need no AI answer
-        to_solve = [i for i, q in enumerate(extracted) if not (q.type == "ESSAY" and keys.get(i))]
+        # Step 4 & Step 7: Questions with embedded answers/marking schemes in the file, or flagged with
+        # missing_stem / figure_failed, are NOT sent to AI to solve.
+        to_solve = [
+            i
+            for i, q in enumerate(extracted)
+            if not keys.get(i) and i not in failed and not pre_flags.get(i)
+        ]
         if not solve:  # the file's own answers are enough where it has them
             printed_in_file = set(local.answers if local else {}) | {
                 i for i, q in enumerate(extracted) if q.key_label or (q.type != "MULTIPLE_CHOICE" and keys.get(i))
@@ -327,7 +712,18 @@ async def run_pipeline(
                     solutions[i] = answers[position]
 
         drafts = [
-            _draft(q, solutions.get(i), figure_keys.get(i), i in failed, default_difficulty, keys.get(i))
+            _draft(
+                q,
+                solutions.get(i),
+                figure_keys.get(i),
+                i in failed,
+                default_difficulty,
+                keys.get(i),
+                matrix_difficulty=(local.matrix_difficulties.get(i) if local else None),
+                extra_flags=pre_flags.get(i),
+                figure_captions=(local.figure_captions.get(i) if local else None),
+                topic=(local.topics.get(i) if local else None),
+            )
             for i, q in enumerate(extracted)
         ]
         printed = dict(local.answers) if local else {}

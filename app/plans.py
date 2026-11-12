@@ -55,6 +55,8 @@ async def check_exam_quota(session: AsyncSession, user: User, exam: Exam, now: d
     """None when the user may start a new attempt, else the reason shown to them."""
     if exam.visibility == ExamVisibility.PRIVATE or unlimited(user, now):
         return None
+    # Lock user row to prevent concurrent race conditions from bypassing daily limit
+    await session.scalar(select(User.id).where(User.id == user.id).with_for_update())
     limit = get_settings().free_exams_per_day
     if await exams_used_today(session, user, now) >= limit:
         return f"Tài khoản miễn phí được làm {limit} đề mỗi ngày. Nâng cấp Pro để luyện đề không giới hạn."
@@ -71,6 +73,8 @@ async def open_document(session: AsyncSession, user: User, doc: LibraryDocument,
     """Count a read (opening the same document again the same day is free). None = allowed."""
     if unlimited(user, now):
         return None
+    # Lock user row to prevent concurrent race conditions
+    await session.scalar(select(User.id).where(User.id == user.id).with_for_update())
     day = vn_day(now)
     seen = await session.scalar(
         select(LibraryView.id).where(

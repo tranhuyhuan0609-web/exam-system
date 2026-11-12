@@ -24,6 +24,7 @@ DIFFICULTY_LABELS = {
     "UNDERSTANDING": "Thông hiểu",
     "APPLICATION": "Vận dụng",
     "ADVANCED_APPLICATION": "Vận dụng cao",
+    "HSG": "Học sinh giỏi (HSG)",
 }
 # (minimum score on the 10-point scale, label, css class)
 RANKS = [

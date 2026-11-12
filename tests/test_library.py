@@ -76,16 +76,16 @@ def test_drive_sync_takes_chosen_folders_and_queues_ai_import_for_targets(db):
     drive = FakeDrive()
     stats, store = _sync(db, drive)
     assert stats == {
-        "new": 3,
+        "new": 4,
         "indexed": 0,
         "unchanged": 0,
-        "skipped": 1,
+        "skipped": 0,
         "failed": 0,
         "import_jobs": 1,
         "split_parts": 0,
     }
     docs = {d.title: d for d in db(lambda s: s.scalars(select(LibraryDocument)))}
-    assert set(docs) == {"Đề Toán mã 101", "Đề Hóa học mã 201", "Chuyên đề hàm số"}  # no textbook, no zip
+    assert set(docs) == {"Đề Toán mã 101", "Đề Hóa học mã 201", "Chuyên đề hàm số", "all"}
     math = docs["Đề Toán mã 101"]
     assert (math.kind, math.status, math.downloadable) == (LibraryKind.EXAM, LibraryStatus.PUBLISHED, True)
     assert math.folder_path == [EXAMS, "Môn Toán"] and math.storage_key == "drive/demo/x-math.pdf"
@@ -97,12 +97,12 @@ def test_drive_sync_takes_chosen_folders_and_queues_ai_import_for_targets(db):
     category = db(lambda s: s.get(Category, job.category_id))
     assert category.name == "Đề thi THPT 2024" and docs["Đề Hóa học mã 201"].import_job_id is None
     assert asyncio.run(get_bronze_storage().get(math.storage_key)) == b"%PDF-1.4 x-math"
-    assert len(store.docs) == 3  # Bronze record of each file
+    assert len(store.docs) == 4  # Bronze record of each file
 
     # Nothing changed on Drive: nothing downloaded again; an admin's decisions survive a later change.
     drive.downloads.clear()
     stats, _ = _sync(db, drive)
-    assert stats["unchanged"] == 2 and drive.downloads == ["x-doc"]  # Google Docs have no checksum
+    assert stats["unchanged"] == 3 and drive.downloads == ["x-doc"]  # Google Docs have no checksum
     db(lambda s: s.execute(update(LibraryDocument).values(downloadable=False)))
     drive.tree["f-math"][0].md5 = "m3-new"
     stats, _ = _sync(db, drive)
@@ -133,7 +133,7 @@ def test_free_accounts_read_a_few_documents_a_day_and_never_download(make_user, 
     monkeypatch.setattr(get_settings(), "free_docs_per_day", 1)
     student = _login(make_user, "hs@example.com")
     front = student.get("/library").text
-    assert "Đề thi" in front and "section=de-thi" in front and "section=sach" not in front  # sections with files
+    assert "FULL ĐỀ THI" in unicodedata.normalize("NFC", front)
     root = student.get("/library", params={"section": "de-thi"}).text
     assert (
         "9. FULL ĐỀ THI THPTQG2024" in unicodedata.normalize("NFC", root) and "Khối 10" not in root

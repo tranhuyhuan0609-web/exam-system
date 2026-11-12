@@ -76,11 +76,39 @@ def extract_number(text: str) -> str | None:
     return normalize_short_answer(match.group()) if match else None
 
 
+def _parse_numeric_fraction(text: str) -> float | None:
+    """Parses decimal or fractional string (e.g. '0.5', '0,5', '1/2', '-3/4') to float."""
+    s = str(text).strip().replace("−", "-").replace(",", ".").replace(" ", "")
+    if "/" in s:
+        parts = s.split("/")
+        if len(parts) == 2:
+            try:
+                num = float(parts[0])
+                den = float(parts[1])
+                if den != 0:
+                    return num / den
+            except ValueError:
+                pass
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
 def short_answer_matches(given: Any, accepted: list[str]) -> bool:
     if not isinstance(given, str) or not given.strip():
         return False
     candidate = normalize_short_answer(given)
-    return any(candidate == normalize_short_answer(a) for a in accepted)
+    if any(candidate == normalize_short_answer(a) for a in accepted):
+        return True
+    # Mathematical equivalence fallback (e.g. '0,5' and '1/2')
+    given_num = _parse_numeric_fraction(given)
+    if given_num is not None:
+        for a in accepted:
+            a_num = _parse_numeric_fraction(a)
+            if a_num is not None and abs(given_num - a_num) <= 1e-4:
+                return True
+    return False
 
 
 def split_accepted(raw: str) -> list[str]:

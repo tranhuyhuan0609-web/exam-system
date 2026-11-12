@@ -25,7 +25,7 @@
     <div>
       Lưu vào: <strong>{{ scope_path }}</strong>
       {% if settings.create_exam %} · tạo đề <strong>“{{ settings.exam_title }}”</strong> ({{ settings.duration_minutes }} phút{{ ", công khai" if settings.publish else ", nháp" }}){% endif %}
-      <div class="muted small">Câu trùng được bỏ chọn sẵn; bạn vẫn có thể tick để nhập.</div>
+      <div class="muted small">Câu trùng khi chọn nhập sẽ được tự động liên kết thêm vào mục này (không tạo câu hỏi thừa).</div>
     </div>
     <div class="row">
       <label class="check"><input type="checkbox" id="check-all-valid"> Chọn tất cả câu hợp lệ</label>
@@ -44,6 +44,7 @@
         {% if q.duplicate %}<span class="badge badge-warn">Trùng</span>{% endif %}
       </div>
       {% if q.errors %}<ul class="q-errors">{% for e in q.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+      {% if q.warnings %}<ul class="q-errors" style="background:#fef3c7;border-color:#fde68a;">{% for w in q.warnings %}<li style="color:#b45309;">⚠️ {{ w }}</li>{% endfor %}</ul>{% endif %}
       <div class="q-content math">{{ q.content }}</div>
       {% if q.type == "TRUE_FALSE" %}
         <ol class="q-choices" type="a">

@@ -32,7 +32,9 @@
       {% for d in docs %}
         <tr>
           <td><input type="checkbox" name="ids" value="{{ d.id }}"></td>
-          <td><strong>{{ d.title }}</strong>{% if d.parent_id %} <span class="badge">trang {{ d.page_from }}–{{ d.page_to }}</span>{% endif %}{% if not d.storage_key %} <span class="badge badge-warn" title="Sách có bản quyền: chỉ lưu tên và link, không sao chép file">chỉ mục lục</span>{% endif %}
+          <td><strong>{{ d.title }}</strong>
+            {% if d.access_tier == "PRO" or d.kind == "HSG" %}<span class="badge" style="background: #fef3c7; color: #b45309; font-weight: 700;">🔒 PRO</span>{% else %}<span class="badge badge-ok">FREE</span>{% endif %}
+            {% if d.parent_id %} <span class="badge">trang {{ d.page_from }}–{{ d.page_to }}</span>{% endif %}{% if not d.storage_key %} <span class="badge badge-warn" title="Sách có bản quyền: chỉ lưu tên và link, không sao chép file">chỉ mục lục</span>{% endif %}
             <div class="small">{% if d.mime == "application/pdf" and d.storage_key %}<a href="/library/{{ d.id }}/view" target="_blank" rel="noopener">xem</a> · {% endif %}<a href="{{ d.source_url }}" target="_blank" rel="noopener noreferrer">gốc trên Drive</a>
               {% if d.import_job_id %} · <a href="/admin/ai-imports/{{ d.import_job_id }}">AI nhập đề #{{ d.import_job_id }}</a>{% endif %}</div></td>
           <td class="small muted">{{ d.folder_path | join(" › ") }}</td>
@@ -52,6 +54,8 @@
       <button class="btn btn-outline btn-small" name="action" value="hide">Ẩn</button>
       <button class="btn btn-outline btn-small" name="action" value="allow_download">Cho tải về</button>
       <button class="btn btn-outline btn-small" name="action" value="view_only">Chỉ xem</button>
+      <button class="btn btn-outline btn-small" name="action" value="tier:PRO">🔒 Đặt là PRO</button>
+      <button class="btn btn-outline btn-small" name="action" value="tier:FREE">Đặt là FREE</button>
       <button class="btn btn-outline btn-small" name="action" value="split" title="Tìm “Đề số…”, “Mã đề…” và cắt mỗi đề thành một tài liệu">✂ Tách đề</button>
       <select name="action" onchange="this.form.requestSubmit()" style="width: auto">
         <option value="">Đổi loại…</option>

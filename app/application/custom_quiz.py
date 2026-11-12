@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.paper import PART_ORDER, MatrixRule
-from app.models import Category, Difficulty, Exam, ExamMode, ExamVisibility, Question, QuestionSource, User
+from app.models import AccessTier, Category, Difficulty, Exam, ExamMode, ExamVisibility, Question, QuestionSource, User
 from app.scope import scope_for
 
 # Suggested time per question (seconds), roughly the THPT pace of each part.
@@ -24,20 +24,30 @@ SECONDS_PER_QUESTION = {
 }
 MAX_QUESTIONS = 100
 MAX_MINUTES = 180
-LEVELS = [d.value for d in Difficulty]
+LEVELS = [
+    Difficulty.RECOGNITION.value,
+    Difficulty.UNDERSTANDING.value,
+    Difficulty.APPLICATION.value,
+    Difficulty.ADVANCED_APPLICATION.value,
+]
 
 
 class CustomQuizError(Exception):
     """The quiz cannot be built as asked; the message is user-facing."""
 
 
-async def bank_counts(session: AsyncSession, category: Category) -> dict[str, dict[str, int]]:
+async def bank_counts(
+    session: AsyncSession, category: Category, *, include_pro: bool = True
+) -> dict[str, dict[str, int]]:
     """Verified questions in the category's branch: {question type: {difficulty: count}}, THPT part order."""
     scope = scope_for(category)
+    where = [Question.is_verified, *scope.conditions(Question)]
+    if not include_pro:
+        where.append(Question.access_tier == AccessTier.FREE)
     rows = (
         await session.execute(
             select(Question.question_type, Question.difficulty, func.count())
-            .where(Question.is_verified, *scope.conditions(Question))
+            .where(*where)
             .group_by(Question.question_type, Question.difficulty)
         )
     ).all()
@@ -90,8 +100,10 @@ def describe(counts: dict[str, int]) -> str:
     return " + ".join(f"{n} {TYPE_NAMES[t]}" for t in PART_ORDER if (n := counts.get(t)))
 
 
-async def create_custom_quiz(session: AsyncSession, user: User, category: Category, request: QuizRequest) -> Exam:
-    bank = await bank_counts(session, category)
+async def create_custom_quiz(
+    session: AsyncSession, user: User, category: Category, request: QuizRequest, *, include_pro: bool = True
+) -> Exam:
+    bank = await bank_counts(session, category, include_pro=include_pro)
     if errors := validate(request, bank):
         raise CustomQuizError(" ".join(errors))
     counts = {t: n for t in PART_ORDER if (n := request.counts.get(t, 0)) > 0}
@@ -108,6 +120,7 @@ async def create_custom_quiz(session: AsyncSession, user: User, category: Catego
         description=describe(counts),
         exam_mode=ExamMode.PRACTICE,
         visibility=ExamVisibility.PERSONAL,
+        access_tier=AccessTier.PRO if include_pro else AccessTier.FREE,
         duration_seconds=minutes * 60,
         max_attempts=None,
         is_published=False,

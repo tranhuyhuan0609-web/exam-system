@@ -36,6 +36,7 @@
         <td>
           {% if u.role != "ADMIN" %}
             <form method="post" action="/admin/users/{{ u.id }}/pro" class="row inline-form">
+              {{ csrf_input(request) }}
               <input type="hidden" name="back" value="{{ back }}">
               <select name="days">
                 <option value="30">+30 ngày</option><option value="90">+90 ngày</option><option value="365">+1 năm</option>
@@ -44,6 +45,7 @@
             </form>
             {% if pro %}
               <form method="post" action="/admin/users/{{ u.id }}/pro" class="inline" data-confirm="Tắt gói Pro của {{ u.full_name }}?">
+                {{ csrf_input(request) }}
                 <input type="hidden" name="back" value="{{ back }}"><input type="hidden" name="days" value="0">
                 <button class="link">Tắt Pro</button>
               </form>
@@ -51,6 +53,7 @@
           {% endif %}
           {% if u.role != "ADMIN" %}
             <form method="post" action="/admin/users/{{ u.id }}/role" class="inline">
+              {{ csrf_input(request) }}
               <input type="hidden" name="back" value="{{ back }}">
               <input type="hidden" name="role" value="{{ 'STUDENT' if u.role == 'TEACHER' else 'TEACHER' }}">
               <button class="link small">{{ "Chuyển thành học sinh" if u.role == "TEACHER" else "Chuyển thành giáo viên" }}</button>

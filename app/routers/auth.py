@@ -1,3 +1,6 @@
+import time
+from collections import defaultdict
+from threading import Lock
 from typing import Annotated
 
 from email_validator import EmailNotValidError, validate_email
@@ -12,6 +15,52 @@ from app.security import DUMMY_HASH, hash_password, normalize_email, password_pr
 from app.templating import templates
 
 router = APIRouter()
+
+# --------------------------------------------------------------------------
+# Rate Limiting for /login (Brute-Force & Credential Stuffing Protection)
+# --------------------------------------------------------------------------
+_LOGIN_ATTEMPTS_IP: dict[str, list[float]] = defaultdict(list)
+_LOGIN_ATTEMPTS_EMAIL: dict[str, list[float]] = defaultdict(list)
+_RATE_LIMIT_LOCK = Lock()
+
+MAX_FAILED_ATTEMPTS_PER_IP = 10
+MAX_FAILED_ATTEMPTS_PER_EMAIL = 5
+RATE_LIMIT_WINDOW_SECONDS = 300  # 5 minutes
+
+
+def _get_client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _check_rate_limit(ip: str, email_norm: str) -> str | None:
+    now = time.monotonic()
+    with _RATE_LIMIT_LOCK:
+        _LOGIN_ATTEMPTS_IP[ip] = [t for t in _LOGIN_ATTEMPTS_IP[ip] if now - t < RATE_LIMIT_WINDOW_SECONDS]
+        _LOGIN_ATTEMPTS_EMAIL[email_norm] = [
+            t for t in _LOGIN_ATTEMPTS_EMAIL[email_norm] if now - t < RATE_LIMIT_WINDOW_SECONDS
+        ]
+
+        if len(_LOGIN_ATTEMPTS_IP[ip]) >= MAX_FAILED_ATTEMPTS_PER_IP:
+            return "Quá nhiều lần đăng nhập không thành công từ địa chỉ IP này. Vui lòng thử lại sau 5 phút."
+        if len(_LOGIN_ATTEMPTS_EMAIL[email_norm]) >= MAX_FAILED_ATTEMPTS_PER_EMAIL:
+            return "Tài khoản tạm thời bị giới hạn do nhập sai mật khẩu nhiều lần. Vui lòng thử lại sau 5 phút."
+    return None
+
+
+def _record_failed_attempt(ip: str, email_norm: str) -> None:
+    now = time.monotonic()
+    with _RATE_LIMIT_LOCK:
+        _LOGIN_ATTEMPTS_IP[ip].append(now)
+        _LOGIN_ATTEMPTS_EMAIL[email_norm].append(now)
+
+
+def _clear_failed_attempts(ip: str, email_norm: str) -> None:
+    with _RATE_LIMIT_LOCK:
+        _LOGIN_ATTEMPTS_IP.pop(ip, None)
+        _LOGIN_ATTEMPTS_EMAIL.pop(email_norm, None)
 
 
 def _home_for(user: User) -> str:
@@ -39,15 +88,31 @@ async def login(
     password: Annotated[str, Form()],
     next: Annotated[str, Form()] = "",
 ):
-    user = await session.scalar(select(User).where(User.email == normalize_email(email)))
+    ip = _get_client_ip(request)
+    email_norm = normalize_email(email)
+
+    # 1. Check rate limits
+    if limit_error := _check_rate_limit(ip, email_norm):
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {"next": next, "email": email, "error": limit_error},
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        )
+
+    user = await session.scalar(select(User).where(User.email == email_norm))
     password_ok = verify_password(password, user.password_hash if user else DUMMY_HASH)
     if user is None or not password_ok or not user.is_active:
+        _record_failed_attempt(ip, email_norm)
         return templates.TemplateResponse(
             request,
             "login.html",
             {"next": next, "email": email, "error": "Email hoặc mật khẩu không đúng."},
             status_code=status.HTTP_400_BAD_REQUEST,
         )
+
+    # Successful login: reset failed counters
+    _clear_failed_attempts(ip, email_norm)
     _log_in(request, user)
     return RedirectResponse(safe_next_url(next, _home_for(user)), status.HTTP_303_SEE_OTHER)
 

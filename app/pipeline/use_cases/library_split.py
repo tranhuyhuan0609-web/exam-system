@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.normalize import NormalizeError, docx_to_pdf
 from app.config import get_settings
-from app.models import Category, Difficulty, ImportJob, JobStatus, LibraryDocument
+from app.models import AccessTier, Category, Difficulty, ExamOriginType, ImportJob, JobStatus, LibraryDocument
 from app.pipeline.domain.exam_split import Segment, find_exams
 
 log = logging.getLogger(__name__)
@@ -98,6 +98,7 @@ async def split_document(
             title=segment.label,
             kind=doc.kind,
             status=doc.status,
+            access_tier=doc.access_tier,
             folder_path=[*doc.folder_path, doc.title],
             category_id=doc.category_id,
             source=doc.source,
@@ -136,6 +137,8 @@ async def queue_import(
         root_id=category.root_id,
         category_id=category.id,
         default_difficulty=Difficulty.UNDERSTANDING,
+        access_tier=getattr(category, "default_tier", AccessTier.FREE) or AccessTier.FREE,
+        origin_type=ExamOriginType.PUBLIC_CRAWLED,
     )
     session.add(job)
     await session.flush()

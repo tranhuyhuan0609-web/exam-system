@@ -503,6 +503,14 @@ async def advance(
         same = same_item
     if same is not None:
         item.status, item.duplicate_of, item.similarity = CrawlItemStatus.DUPLICATE, same, 1
+        # When content_hash duplicates, link to the new category instead of ignoring
+        target_category = await label(session, config, item.source_url, item.source_title, item.source_context)
+        if target_category is not None:
+            from app.models import QuestionCategory
+
+            existing_link = await session.get(QuestionCategory, (same, target_category.id))
+            if not existing_link:
+                session.add(QuestionCategory(question_id=same, category_id=target_category.id))
         return
     # Step 2: semantic match (cosine similarity on Gemini embeddings, pgvector HNSW index). Embeddings of short
     # physics questions on one topic are all close (~0.92+), and "gia tốc cực tiểu" vs "li độ cực tiểu" scores 0.97
@@ -551,6 +559,13 @@ async def advance(
 async def publish(
     session: AsyncSession, item: CrawledQuestion, category: Category, vector: list[float] | None = None
 ) -> Question:
+    from app.models import QuestionCategory
+
+    explanation_ai = bool(getattr(item, "explanation_by_ai", False))
+    ans_source = getattr(item, "answer_source", None) or "single_source"
+    # Đặt is_verified=False khi đáp án chỉ đến từ một nguồn, hoặc khi lời giải do AI viết
+    verified = False if (ans_source == "single_source" or explanation_ai) else True
+
     question = Question(
         root_id=category.root_id,
         category_id=category.id,
@@ -560,15 +575,18 @@ async def publish(
         choices=item.choices,
         accepted_answers=item.accepted_answers,
         explanation=item.explanation,
+        explanation_by_ai=explanation_ai,
+        answer_source=ans_source,
         image_path=item.image_path,
         source_type=SourceType.CRAWLER,
         source_url=item.source_url,
         content_hash=item.content_hash,
-        is_verified=True,
+        is_verified=verified,
         embedding=vector,
     )
     session.add(question)
     await session.flush()
+    session.add(QuestionCategory(question_id=question.id, category_id=category.id))
     item.question_id = question.id
     item.category_id = category.id
     item.status = CrawlItemStatus.PUBLISHED
@@ -692,10 +710,18 @@ async def reprocess(session: AsyncSession, deps: SilverDeps, item: CrawledQuesti
 
 
 async def reparse_site(session: AsyncSession, deps: SilverDeps, site_id: str) -> int:
-    """Medallion payoff: run the (improved) parser over every Bronze document again, without crawling."""
+    """Medallion payoff: run the (improved) parser over every Bronze document again, without crawling.
+    Deduplicates Bronze documents by URL and keeps only the latest version (maximum fetched_at).
+    """
     count = 0
     config = await _config(session, site_id)
+    latest_by_url: dict[str, RawDocument] = {}
     async for doc in deps.store.iter_site(site_id):
+        prev = latest_by_url.get(doc.url)
+        if prev is None or (doc.fetched_at and (prev.fetched_at is None or doc.fetched_at > prev.fetched_at)):
+            latest_by_url[doc.url] = doc
+
+    for doc in latest_by_url.values():
         rule = config.rule_for(doc.url)
         # Bronze also keeps listings and seed indexes; only question pages are parsed (as for a crawl)
         if doc.kind == "html" and rule is not None and rule.kind == "detail":

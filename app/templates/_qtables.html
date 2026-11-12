@@ -2,9 +2,32 @@
    real tables before KaTeX runs; formulas inside cells are still typeset. Lines that only hold one cell, or a
    single such line, stay text. Included by _katex.html (site) and pdf/exam.html (printed papers). #}
 <style>
-  table.q-table { border-collapse: collapse; margin: 6px 0; font-size: 0.95em; white-space: normal; }
-  table.q-table td { border: 1px solid #9ca3af; padding: 3px 8px; vertical-align: top; }
-  table.q-table tr:first-child td { font-weight: 600; background: rgba(127, 127, 127, 0.08); }
+  table.q-table {
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 0.96em;
+    white-space: normal;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  table.q-table td {
+    border: 1px solid #cbd5e1;
+    padding: 6px 12px;
+    vertical-align: middle;
+    text-align: center;
+  }
+  table.q-table tr:first-child td {
+    font-weight: 600;
+    background: #f1f5f9;
+    color: #1e293b;
+  }
+  table.q-table tr td:first-child {
+    font-weight: 600;
+    background: #f8fafc;
+    text-align: left;
+  }
   table.q-table td.num { text-align: right; }
 </style>
 <script>
@@ -37,7 +60,8 @@
       return table;
     };
     const convert = (node) => {  // one text node -> text and tables
-      const lines = node.nodeValue.split("\n");
+      const rawText = (node.nodeValue || "").replace(/\r?\n\s*\|\s*\r?\n/g, " | ");
+      const lines = rawText.split("\n");
       const out = document.createDocumentFragment();
       let text = [], rows = [];
       const flushRows = () => {
@@ -61,7 +85,11 @@
       if (el.dataset.qTables) continue;
       el.dataset.qTables = "1";
       for (const node of [...el.childNodes]) {
-        if (node.nodeType === Node.TEXT_NODE && node.nodeValue.includes(" | ") && node.nodeValue.includes("\n")) {
+        if (
+          node.nodeType === Node.TEXT_NODE &&
+          (node.nodeValue.includes(" | ") || /\r?\n\s*\|\s*\r?\n/.test(node.nodeValue)) &&
+          node.nodeValue.includes("\n")
+        ) {
           node.replaceWith(convert(node));
         }
       }

@@ -40,13 +40,13 @@
       {% if r.seconds %}<span class="muted small">⏱ {{ r.seconds | duration }}</span>{% endif %}
       {% if r.number in slowest %}<span class="badge slow-badge">🐢 Chậm</span>{% endif %}
     </div>
-    <div class="q-content">{{ r.content }}</div>
+    <div class="q-content">{{ r.content | format_q_content | safe }}</div>
     {% if r.image_url %}<img class="q-figure" src="{{ r.image_url }}" alt="Hình vẽ câu {{ r.number }}">{% endif %}
 
     {% if r.type == "ESSAY" %}
       <div class="essay-review">
         <div class="essay-answer"><div class="muted small">Bài làm của em</div>
-          <div class="q-content">{{ r.answer or "— (bỏ trống)" }}</div></div>
+          <div class="q-content">{{ (r.answer | format_q_content | safe) if r.answer else "— (bỏ trống)" }}</div></div>
         {% if r.essay %}
           <div class="essay-feedback"><div class="muted small">🤖 Nhận xét của AI · {{ "%g" % r.points }}/{{ "%g" % r.max_points }} điểm</div>
             <div class="q-content">{{ r.essay.feedback }}</div></div>
@@ -88,7 +88,19 @@
       </div>
     {% endif %}
 
-    {% if solution %}
+    {% if r.solution_pro_locked %}
+      <div class="solution solution-pro-locked" style="position: relative; overflow: hidden; border: 1px solid #fcd34d; background: #fffbeb; border-radius: 10px; padding: 16px;">
+        <div class="muted small" style="color: #92400e; font-weight: 600;">📖 Lời giải chi tiết từng bước bởi AI (Vận dụng cao · PRO)</div>
+        <div style="filter: blur(5px); user-select: none; pointer-events: none; opacity: 0.65; margin: 8px 0 12px;" aria-hidden="true">
+          Áp dụng định luật bảo toàn và phương pháp biến đổi tương đương, ta thiết lập hệ phương trình trạng thái cho quá trình chuyển dịch cân bằng và suy ra biểu thức cực trị cần tìm...
+        </div>
+        <div style="text-align: center; padding-top: 4px;">
+          <a class="btn btn-small" href="/plans" style="background: linear-gradient(135deg, #f59e0b, #d97706); border: none; font-weight: 700;">
+            🔒 Mở khóa tài khoản PRO để xem phương pháp giải nhanh câu này
+          </a>
+        </div>
+      </div>
+    {% elif solution %}
       <div class="solution">
         <div class="muted small">📖 Lời giải chi tiết{% if not r.explanation %} (AI){% endif %}</div>
         <div class="q-content">{{ solution }}</div>

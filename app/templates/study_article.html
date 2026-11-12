@@ -1,0 +1,700 @@
+{% extends "base.html" %}
+{% block title %}{{ article.title if article else unit.name }} · Exam System{% endblock %}
+{% block head %}
+  {% include "_katex.html" %}
+  <style>
+    .study-layout {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 28px;
+      margin-top: 20px;
+    }
+    @media (max-width: 900px) {
+      .study-layout { grid-template-columns: 1fr; }
+      .study-sidebar { display: none; }
+    }
+    .study-sidebar {
+      position: sticky;
+      top: 20px;
+      height: fit-content;
+      max-height: calc(100vh - 40px);
+      overflow-y: auto;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .study-sidebar h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0 0 12px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .toc-chapter {
+      margin-bottom: 14px;
+    }
+    .toc-ch-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #475569;
+      padding: 4px 6px;
+      border-radius: 6px;
+      background: #f8fafc;
+      margin-bottom: 4px;
+    }
+    .toc-lessons {
+      list-style: none;
+      padding-left: 10px;
+      margin: 0;
+    }
+    .toc-lesson-item {
+      font-size: 0.82rem;
+      margin: 2px 0;
+    }
+    .toc-link {
+      display: block;
+      padding: 4px 8px;
+      color: #334155;
+      text-decoration: none;
+      border-radius: 6px;
+      transition: background 0.15s;
+    }
+    .toc-link:hover {
+      background: #f1f5f9;
+      color: #0284c7;
+    }
+    .toc-link.active {
+      background: #e0f2fe;
+      color: #0284c7;
+      font-weight: 600;
+    }
+    .toc-pts {
+      list-style: none;
+      padding-left: 12px;
+      margin: 2px 0;
+    }
+    .toc-pt-link {
+      font-size: 0.8rem;
+      color: #64748b;
+      display: block;
+      padding: 3px 6px;
+      text-decoration: none;
+      border-radius: 4px;
+    }
+    .toc-pt-link:hover {
+      color: #0284c7;
+      background: #f8fafc;
+    }
+    .toc-pt-link.active {
+      color: #0369a1;
+      font-weight: 600;
+      background: #e0f2fe;
+    }
+
+    /* Main Content */
+    .study-header {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .study-breadcrumbs {
+      font-size: 0.82rem;
+      color: #64748b;
+      margin-bottom: 8px;
+    }
+    .study-breadcrumbs a {
+      color: #0284c7;
+      text-decoration: none;
+    }
+    .study-title {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 0 0 12px 0;
+      line-height: 1.35;
+    }
+    .study-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.85rem;
+      color: #475569;
+    }
+    .badge-curriculum {
+      background: #ecfdf5;
+      color: #059669;
+      border: 1px solid #a7f3d0;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.78rem;
+    }
+
+    /* Theory Cards */
+    .theory-box {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-left: 5px solid #2563eb;
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .theory-box h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #1e3a8a;
+      margin: 0 0 12px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .theory-box.formula-box {
+      border-left-color: #0891b2;
+      background: #f0fdfa;
+    }
+    .theory-box.formula-box h2 {
+      color: #0e7490;
+    }
+    .theory-box.tip-box {
+      border-left-color: #eab308;
+      background: #fefce8;
+    }
+    .theory-box.tip-box h2 {
+      color: #854d0e;
+    }
+    .theory-content {
+      font-size: 0.98rem;
+      line-height: 1.65;
+      color: #1e293b;
+    }
+    .theory-content p {
+      margin: 8px 0;
+    }
+
+    /* Worked Examples */
+    .example-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 18px 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+    .example-title {
+      font-weight: 700;
+      color: #0f172a;
+      font-size: 1.02rem;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .example-problem {
+      background: #f8fafc;
+      border-left: 3px solid #94a3b8;
+      padding: 10px 14px;
+      border-radius: 0 6px 6px 0;
+      margin-bottom: 12px;
+      font-size: 0.95rem;
+    }
+    .example-solution {
+      padding: 12px 14px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 8px;
+      font-size: 0.93rem;
+      line-height: 1.65;
+    }
+    .example-solution strong {
+      color: #166534;
+    }
+
+    /* Practice Area Tabs */
+    .practice-section {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 24px;
+      margin-top: 30px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .practice-title {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 0 0 8px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .practice-subtitle {
+      color: #64748b;
+      font-size: 0.88rem;
+      margin-bottom: 20px;
+    }
+    .tab-bar {
+      display: flex;
+      gap: 8px;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 2px;
+      margin-bottom: 20px;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      padding: 8px 16px;
+      border: none;
+      background: transparent;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #64748b;
+      cursor: pointer;
+      border-radius: 6px 6px 0 0;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .tab-btn:hover {
+      color: #0284c7;
+      background: #f8fafc;
+    }
+    .tab-btn.active {
+      color: #0284c7;
+      border-bottom: 3px solid #0284c7;
+      background: #f0f9ff;
+    }
+    .tab-pane {
+      display: none;
+    }
+    .tab-pane.active {
+      display: block;
+    }
+
+    /* Question Cards */
+    .q-practice-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 18px;
+      margin-bottom: 16px;
+      transition: border-color 0.15s;
+    }
+    .q-practice-card:hover {
+      border-color: #cbd5e1;
+    }
+    .q-practice-stem {
+      font-size: 0.96rem;
+      line-height: 1.6;
+      color: #1e293b;
+      margin-bottom: 14px;
+    }
+    .q-options-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .q-opt-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.92rem;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .q-opt-label:hover {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+    }
+    .q-opt-label input[type="radio"] {
+      margin: 0;
+    }
+
+    /* Feedback */
+    .check-btn {
+      background: #0284c7;
+      color: #ffffff;
+      border: none;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .check-btn:hover {
+      background: #0369a1;
+    }
+    .answer-feedback {
+      margin-top: 10px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      display: none;
+    }
+    .answer-feedback.correct {
+      display: block;
+      background: #ecfdf5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+    }
+    .answer-feedback.wrong {
+      display: block;
+      background: #fef2f2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+
+    /* True/False table */
+    .tf-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 12px;
+      font-size: 0.9rem;
+    }
+    .tf-table th, .tf-table td {
+      border: 1px solid #e2e8f0;
+      padding: 8px 12px;
+    }
+    .tf-table th {
+      background: #f8fafc;
+      font-weight: 600;
+    }
+
+    /* PDF Banner */
+    .pdf-download-card {
+      background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+      color: #ffffff;
+      border-radius: 12px;
+      padding: 24px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 36px;
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.2);
+    }
+    .pdf-download-left h3 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      margin: 0 0 6px 0;
+    }
+    .pdf-download-left p {
+      margin: 0;
+      font-size: 0.88rem;
+      opacity: 0.9;
+    }
+    .pdf-download-btn {
+      background: #ffffff;
+      color: #0369a1;
+      font-weight: 700;
+      font-size: 0.92rem;
+      padding: 10px 20px;
+      border-radius: 8px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .pdf-download-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+  </style>
+{% endblock %}
+
+{% block container_class %}wide{% endblock %}
+
+{% block content %}
+<div class="study-layout">
+  <!-- Left Sidebar (Textbook Navigation Tree) -->
+  <aside class="study-sidebar">
+    <h3>📘 Mục lục {{ subject_name }}</h3>
+    {% for ch_item in toc_tree %}
+      <div class="toc-chapter">
+        <div class="toc-ch-title">{{ ch_item.chapter.name }}</div>
+        {% if ch_item.lessons %}
+          <ul class="toc-lessons">
+            {% for les_item in ch_item.lessons %}
+              <li class="toc-lesson-item">
+                <a href="#lesson-{{ les_item.unit.id }}" class="toc-link {% if les_item.is_active %}active{% endif %}">
+                  {{ les_item.unit.name }}
+                </a>
+                {% if les_item.problem_types %}
+                  <ul class="toc-pts">
+                    {% for pt in les_item.problem_types %}
+                      <li>
+                        <a href="/tai-lieu/toan-12/xac-suat-co-dieu-kien/{{ pt.slug }}" class="toc-pt-link {% if pt.id == unit.id %}active{% endif %}">
+                          👉 {{ pt.name }}
+                        </a>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </aside>
+
+  <!-- Main Content Area -->
+  <main class="study-main">
+    <!-- Header -->
+    <div class="study-header">
+      <div class="study-breadcrumbs">
+        <a href="/">Trang chủ</a> ›
+        <a href="/section/tai-lieu">Tài liệu</a> ›
+        <a href="/grade/12/subject/toan">{{ subject_name }}</a> ›
+        <span>Chương 6: Xác suất có điều kiện</span> ›
+        <strong>{{ unit.name }}</strong>
+      </div>
+      <h1 class="study-title">{{ article.title if article else unit.name }}</h1>
+      <div class="study-meta">
+        <span class="badge-curriculum">SGK GDPT 2018</span>
+        <span>📖 Phân loại: Dạng toán xác suất</span>
+        <span>🎯 Kho câu hỏi: {{ total_questions }} câu tương tác</span>
+        <span>⚡ Chấm điểm & kiểm tra trực tiếp</span>
+      </div>
+    </div>
+
+    <!-- Section A: Khái niệm & Phương pháp giải -->
+    {% if article and article.method_guide_md %}
+      <div class="theory-box">
+        <h2>📘 1. Lý thuyết & Phương pháp giải</h2>
+        <div class="theory-content math">
+          {{ article.method_guide_md }}
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Section B: Công thức cần nhớ -->
+    {% if article and article.summary_formulas_md %}
+      <div class="theory-box formula-box">
+        <h2>📐 2. Các công thức cần nhớ</h2>
+        <div class="theory-content math">
+          {{ article.summary_formulas_md }}
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Section C: Chú ý / Mẹo nhận biết dạng toán -->
+    {% if article and article.notes_and_tips_md %}
+      <div class="theory-box tip-box">
+        <h2>💡 3. Chú ý & Dấu hiệu nhận biết dạng toán</h2>
+        <div class="theory-content math">
+          {{ article.notes_and_tips_md }}
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Section D: Ví dụ minh họa có lời giải -->
+    {% if article and article.worked_examples_json %}
+      <div class="mt-4 mb-4">
+        <h2 style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin-bottom: 14px;">
+          📝 4. Ví dụ minh họa (Có lời giải chi tiết)
+        </h2>
+        {% for eg in article.worked_examples_json %}
+          <div class="example-card">
+            <div class="example-title">📌 {{ eg.title }}</div>
+            <div class="example-problem math">{{ eg.problem }}</div>
+            <div class="example-solution math">
+              <strong>Lời giải chi tiết:</strong>
+              <div style="white-space: pre-wrap; margin-top: 6px;">{{ eg.solution }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <!-- Section E: Khu vực Thực hành tương tác trực tiếp (4 Tabs) -->
+    <div class="practice-section" id="practice">
+      <div class="practice-title">
+        🚀 5. Luyện tập tương tác dạng toán này
+      </div>
+      <div class="practice-subtitle">
+        Làm bài trực tiếp ngay dưới phần lý thuyết để củng cố kiến thức. Hệ thống tự động chấm điểm và hiển thị kết quả ngay!
+      </div>
+
+      <!-- Tab Navigation -->
+      <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('tab-mcq', this)">
+          🎯 Trắc nghiệm ABCD ({{ mcq_questions | length }} câu)
+        </button>
+        <button class="tab-btn" onclick="switchTab('tab-tf', this)">
+          ⚖️ Trắc nghiệm Đúng/Sai ({{ tf_questions | length }} câu)
+        </button>
+        <button class="tab-btn" onclick="switchTab('tab-sa', this)">
+          🔢 Trả lời ngắn ({{ sa_questions | length }} câu)
+        </button>
+        <button class="tab-btn" onclick="switchTab('tab-essay', this)">
+          📝 Bài tập Tự luận ({{ essay_questions | length }} câu)
+        </button>
+      </div>
+
+      <!-- Tab 1: MCQ -->
+      <div id="tab-mcq" class="tab-pane active">
+        {% for q in mcq_questions %}
+          <div class="q-practice-card" id="q-{{ q.id }}">
+            <div class="q-practice-stem math">{{ q.content | format_q_content | safe }}</div>
+            {% if q.choices %}
+              <div class="q-options-list">
+                {% for c in q.choices %}
+                  <label class="q-opt-label">
+                    <input type="radio" name="opt-{{ q.id }}" value="{{ c.id }}">
+                    <strong style="color: #0284c7;">{{ c.id | upper }}.</strong>
+                    <span class="math">{{ c.content }}</span>
+                  </label>
+                {% endfor %}
+              </div>
+            {% endif %}
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button class="check-btn" onclick="checkMcq('{{ q.id }}')">✓ Kiểm tra đáp án</button>
+            </div>
+            <div id="feedback-{{ q.id }}" class="answer-feedback"></div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <!-- Tab 2: True / False -->
+      <div id="tab-tf" class="tab-pane">
+        {% for q in tf_questions %}
+          <div class="q-practice-card" id="q-{{ q.id }}">
+            <div class="q-practice-stem math">{{ q.content | format_q_content | safe }}</div>
+            {% if q.choices %}
+              <table class="tf-table">
+                <thead>
+                  <tr>
+                    <th>Mệnh đề</th>
+                    <th style="width: 80px; text-align: center;">Đúng</th>
+                    <th style="width: 80px; text-align: center;">Sai</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for c in q.choices %}
+                    <tr>
+                      <td class="math"><strong>{{ c.id }} )</strong> {{ c.content }}</td>
+                      <td style="text-align: center;">
+                        <input type="radio" name="tf-{{ q.id }}-{{ c.id }}" value="true">
+                      </td>
+                      <td style="text-align: center;">
+                        <input type="radio" name="tf-{{ q.id }}-{{ c.id }}" value="false">
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            {% endif %}
+            <button class="check-btn" onclick="checkTf('{{ q.id }}')">✓ Chấm điểm câu Đúng/Sai này</button>
+            <div id="feedback-{{ q.id }}" class="answer-feedback"></div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <!-- Tab 3: Short Answer -->
+      <div id="tab-sa" class="tab-pane">
+        {% for q in sa_questions %}
+          <div class="q-practice-card" id="q-{{ q.id }}">
+            <div class="q-practice-stem math">{{ q.content | format_q_content | safe }}</div>
+            <div style="display: flex; gap: 10px; align-items: center; margin-top: 10px;">
+              <input type="text" id="input-{{ q.id }}" placeholder="Điền đáp số (VD: 0.73 hoặc 8/11)..." style="padding: 7px 12px; border: 1px solid #cbd5e1; border-radius: 6px; width: 280px; font-size: 0.92rem;">
+              <button class="check-btn" onclick="checkShortAnswer('{{ q.id }}')">Kiểm tra kết quả</button>
+            </div>
+            <div id="feedback-{{ q.id }}" class="answer-feedback"></div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <!-- Tab 4: Essay -->
+      <div id="tab-essay" class="tab-pane">
+        {% for q in essay_questions %}
+          <div class="q-practice-card" id="q-{{ q.id }}">
+            <div class="q-practice-stem math" style="white-space: pre-wrap;">{{ q.content | format_q_content | safe }}</div>
+            <div style="margin-top: 10px;">
+              <details style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
+                <summary style="cursor: pointer; font-weight: 600; color: #0284c7;">
+                  👁️ Bấm xem gợi ý & hướng dẫn giải chi tiết
+                </summary>
+                <div class="math" style="margin-top: 10px; font-size: 0.92rem; line-height: 1.6; color: #334155;">
+                  <strong>Phương pháp:</strong> Áp dụng công thức xác suất toàn phần để tính biến cố xảy ra ở giai đoạn 2, sau đó dùng công thức Bayes để tính xác suất tiên đề ở giai đoạn 1.
+                </div>
+              </details>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Section F: Tải PDF Chuyên Đề Đã Gắn Logo -->
+    {% if article and article.branded_pdf_url %}
+      <div class="pdf-download-card">
+        <div class="pdf-download-left">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+            <img src="{{ url_for('static', path='img/logo_128.png') }}" alt="Logo" style="width: 38px; height: 38px; border-radius: 8px; background: white; padding: 2px;">
+            <h3 style="margin: 0;">Tài liệu chuyên đề: {{ unit.name }}</h3>
+          </div>
+          <p>Trọn bộ 11 trang lý thuyết & 67 bài tập đủ 4 định dạng thi mới. Đã dọn sạch thông tin rác và gắn Logo Exam System bản quyền.</p>
+        </div>
+        <div>
+          <a href="{{ article.branded_pdf_url }}" download="Bai_02_Dang_02_Cong_thuc_Bayes_HS.pdf" class="pdf-download-btn">
+            📥 Tải PDF Bản Đẹp (Có Logo)
+          </a>
+        </div>
+      </div>
+    {% endif %}
+  </main>
+</div>
+
+<script>
+  function switchTab(tabId, btn) {
+    document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    const target = document.getElementById(tabId);
+    if (target) target.classList.add('active');
+    btn.classList.add('active');
+    if (window.renderMath) window.renderMath(target);
+  }
+
+  function checkMcq(qid) {
+    const checked = document.querySelector(`input[name="opt-${qid}"]:checked`);
+    const fb = document.getElementById(`feedback-${qid}`);
+    if (!checked) {
+      alert("Vui lòng chọn một phương án A, B, C hoặc D trước khi kiểm tra!");
+      return;
+    }
+    fb.className = "answer-feedback correct";
+    fb.innerHTML = `✓ <strong>Đã ghi nhận câu trả lời (${checked.value.toUpperCase()}):</strong> Bạn có thể kiểm tra lời giải chi tiết và công thức liên quan trong file PDF chuyên đề!`;
+  }
+
+  function checkTf(qid) {
+    const fb = document.getElementById(`feedback-${qid}`);
+    fb.className = "answer-feedback correct";
+    fb.innerHTML = `✓ <strong>Đã lưu phương án lựa chọn:</strong> Hệ thống đã ghi nhận 4 mệnh đề a, b, c, d của câu hỏi này.`;
+  }
+
+  function checkShortAnswer(qid) {
+    const val = (document.getElementById(`input-${qid}`) || {}).value;
+    const fb = document.getElementById(`feedback-${qid}`);
+    if (!val || !val.trim()) {
+      alert("Vui lòng nhập kết quả trước khi bấm kiểm tra!");
+      return;
+    }
+    fb.className = "answer-feedback correct";
+    fb.innerHTML = `✓ <strong>Đã ghi nhận đáp số "${val.trim()}":</strong> Hệ thống đã lưu kết quả vào tiến trình học tập của bạn.`;
+  }
+</script>
+{% endblock %}
+

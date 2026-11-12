@@ -7,7 +7,8 @@ from pydantic import BaseModel, Field
 
 ChoiceLabel = Literal["A", "B", "C", "D", "E", "F"]
 QuestionType = Literal["MULTIPLE_CHOICE", "TRUE_FALSE", "SHORT_ANSWER", "ESSAY"]
-DifficultyName = Literal["RECOGNITION", "UNDERSTANDING", "APPLICATION", "ADVANCED_APPLICATION"]
+DifficultyName = Literal["RECOGNITION", "UNDERSTANDING", "APPLICATION", "ADVANCED_APPLICATION", "HSG"]
+TargetCodeName = Literal["SGK_KNTT", "THPTQG", "DGTD_TSA", "DGNL_HSA", "VAO_10", "HSG_TINH", "HSG_QG"]
 
 
 class BoundingBox(BaseModel):
@@ -34,7 +35,19 @@ class ExtractedQuestion(BaseModel):
     difficulty: DifficultyName | None = Field(
         default=None,
         description="Mức độ nhận thức của câu: RECOGNITION (Nhận biết), UNDERSTANDING (Thông hiểu), "
-        "APPLICATION (Vận dụng), ADVANCED_APPLICATION (Vận dụng cao)",
+        "APPLICATION (Vận dụng), ADVANCED_APPLICATION (Vận dụng cao), HSG (Học sinh giỏi / Olympic)",
+    )
+    kntt_unit_code: str | None = Field(
+        default=None,
+        description="Mã bài học SGK Kết nối tri thức (VD: PHY12-KNTT-C1-B2, MATH12-KNTT-C1-B1) nếu xác định được",
+    )
+    is_thinking_skill: bool = Field(
+        default=False,
+        description="True nếu câu hỏi đánh giá tư duy, đọc hiểu khoa học, phân tích thí nghiệm/đồ thị (TSA/HSA)",
+    )
+    suitable_targets: list[str] = Field(
+        default_factory=list,
+        description="Các kỳ thi phù hợp: SGK_KNTT, THPTQG, DGTD_TSA, DGNL_HSA, VAO_10, HSG_TINH, HSG_QG",
     )
     content: str = Field(description="Nguyên văn đề bài tiếng Việt, mọi công thức/ký hiệu/số mũ viết LaTeX trong $...$")
     choices: list[ExtractedChoice] = Field(description="Các lựa chọn theo thứ tự; rỗng nếu không phải trắc nghiệm")
@@ -77,7 +90,19 @@ class Solution(BaseModel):
     )
     difficulty: DifficultyName = Field(
         description="RECOGNITION = Nhận biết, UNDERSTANDING = Thông hiểu, APPLICATION = Vận dụng, "
-        "ADVANCED_APPLICATION = Vận dụng cao"
+        "ADVANCED_APPLICATION = Vận dụng cao, HSG = Học sinh giỏi / Chuyên"
+    )
+    kntt_unit_code: str | None = Field(
+        default=None,
+        description="Mã bài học SGK Kết nối tri thức (VD: PHY12-KNTT-C1-B2, MATH12-KNTT-C1-B1) nếu xác định được",
+    )
+    is_thinking_skill: bool = Field(
+        default=False,
+        description="True nếu câu hỏi có tính thực tiễn, mô hình hóa, phân tích bảng biểu/thí nghiệm (TSA/HSA)",
+    )
+    suitable_targets: list[str] = Field(
+        default_factory=list,
+        description="Các mục tiêu kỳ thi phù hợp: SGK_KNTT, THPTQG, DGTD_TSA, DGNL_HSA, VAO_10, HSG_TINH, HSG_QG",
     )
 
 

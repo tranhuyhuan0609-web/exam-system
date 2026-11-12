@@ -13,15 +13,20 @@ from app import question_rules as rules
 from app.ai.normalize import SUPPORTED_EXTENSIONS
 from app.ai.pipeline import FLAG_LABELS, page_key, pages_prefix
 from app.application.ai_publish import create_exam, drafts_of, publish_drafts, publish_problems
-from app.application.library_publish import publish_to_library
+from app.application.library_publish import ensure_job_library_document, publish_to_library
 from app.config import get_settings
 from app.deps import AdminUser, SessionDep
 from app.domain.question_hash import hash_of_choices
-from app.infrastructure.storage import StorageError, get_storage
+from app.infrastructure.storage import StorageError, get_bronze_storage, get_storage
 from app.models import (
+    AccessTier,
+    Category,
     Difficulty,
+    ExamOriginType,
     ImportJob,
     JobStatus,
+    KnowledgeArticle,
+    KnowledgeUnit,
     Question,
     QuestionType,
 )
@@ -82,7 +87,9 @@ async def create_job(
     session: SessionDep,
     scope: Annotated[str, Form()] = "",
     default_difficulty: Annotated[str, Form()] = Difficulty.UNDERSTANDING.value,
+    is_pro: Annotated[str, Form()] = "",
     file: Annotated[UploadFile | None, File()] = None,
+    solution_file: Annotated[UploadFile | None, File()] = None,
 ):
     back = "/admin/ai-imports?" + urlencode({"scope": scope})
     target = await resolve_scope(session, scope)
@@ -91,31 +98,63 @@ async def create_job(
         return redirect(back)
     if default_difficulty not in Difficulty.__members__:
         default_difficulty = Difficulty.UNDERSTANDING.value
+    if target.root_id == 111 or "/111/" in target.path:
+        if default_difficulty in (Difficulty.UNDERSTANDING.value, Difficulty.RECOGNITION.value, Difficulty.HSG.value):
+            default_difficulty = Difficulty.ADVANCED_APPLICATION.value
     name = (file.filename or "") if file else ""
     suffix = PurePath(name).suffix.lower()
     if suffix not in SUPPORTED_EXTENSIONS:
-        flash(request, "Hãy chọn file PDF, Word (.docx) hoặc ảnh (PNG/JPG).", "error")
+        flash(request, "Hãy chọn file PDF, Word (.docx, .doc), file nén (.zip, .rar) hoặc ảnh (PNG/JPG).", "error")
         return redirect(back)
     data = await file.read(MAX_UPLOAD_BYTES + 1)
     if not data or len(data) > MAX_UPLOAD_BYTES:
         flash(request, f"File rỗng hoặc lớn hơn {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.", "error")
         return redirect(back)
 
-    relative = f"raw/{secrets.token_hex(12)}{suffix}"
-    await get_storage().put(relative, data, file.content_type or "application/octet-stream")
+    # Xử lý file đáp án đi kèm nếu có
+    sol_relative: str | None = None
+    if solution_file and solution_file.filename:
+        sol_name = solution_file.filename
+        sol_suffix = PurePath(sol_name).suffix.lower()
+        if sol_suffix in SUPPORTED_EXTENSIONS:
+            sol_data = await solution_file.read(MAX_UPLOAD_BYTES + 1)
+            if sol_data and len(sol_data) <= MAX_UPLOAD_BYTES:
+                sol_token = secrets.token_hex(12)
+                sol_relative = f"raw/{sol_token}{sol_suffix}"
+                sol_mime = solution_file.content_type or "application/octet-stream"
+                await get_storage().put(sol_relative, sol_data, sol_mime)
+
+    category = await session.get(Category, target.category_id)
+    pro_selected = is_pro.lower() in ("on", "1", "true") or (
+        category is not None and category.default_tier == AccessTier.PRO
+    )
+    access_tier = AccessTier.PRO if pro_selected else AccessTier.FREE
+    origin_type = ExamOriginType.ORIGINAL if is_pro.lower() in ("on", "1", "true") else ExamOriginType.PUBLIC_CRAWLED
+
+    token = secrets.token_hex(12)
+    relative = f"raw/{token}{suffix}"
+    content_type = file.content_type or "application/octet-stream"
+    await get_storage().put(relative, data, content_type)
+    if access_tier == AccessTier.PRO:
+        # Also archive the original file in the private PRO vault (`bronze-raw`)
+        await get_bronze_storage().put(f"authored-exams/{token}{suffix}", data, content_type)
     job = ImportJob(
         created_by=user.id,
         original_filename=name[:300],
         stored_path=relative,
+        solution_stored_path=sol_relative,
         status=JobStatus.QUEUED,
         stage="Đang chờ worker xử lý…",
         root_id=target.root_id,
         category_id=target.category_id,
         default_difficulty=Difficulty(default_difficulty),
+        access_tier=access_tier,
+        origin_type=origin_type,
     )
     session.add(job)
     await session.commit()
-    flash(request, f"Đã tải lên “{name}”. AI đang xử lý, trang sẽ tự cập nhật.")
+    msg = f"Đã tải lên “{name}”" + (f" kèm đáp án “{solution_file.filename}”." if sol_relative else ".")
+    flash(request, f"{msg} Hệ thống đang bóc tách tự động, trang sẽ tự cập nhật.")
     return redirect(f"/admin/ai-imports/{job.id}")
 
 
@@ -212,7 +251,9 @@ async def update_draft(request: Request, session: SessionDep, job_id: int, index
         draft["difficulty"] = difficulty
     if form.get("remove_figure") == "on":
         draft["figure"] = None
-    draft["flags"] = [f for f in draft.get("flags", []) if f not in ("no_match", "no_solution")]  # reviewed by a human
+    draft["flags"] = [
+        f for f in draft.get("flags", []) if f not in ("no_match", "no_solution", "missing_stem", "figure_failed")
+    ]  # reviewed by a human
     draft["edited"] = True
     job.drafts = drafts
     await session.commit()
@@ -225,31 +266,66 @@ async def update_draft(request: Request, session: SessionDep, job_id: int, index
 async def publish(request: Request, user: AdminUser, session: SessionDep, job_id: int):
     job = await _job_or_404(session, job_id)
     form = await request.form()
+    if form.get("is_pro") == "on":
+        job.access_tier = AccessTier.PRO
+        job.origin_type = ExamOriginType.ORIGINAL
     selected = sorted({int(v) for v in form.getlist("selected") if str(v).isdigit()})
     created = await publish_drafts(session, job, selected, verified=True)  # an admin reviewed it on this screen
     if not created:
         flash(request, "Không có câu hợp lệ nào được chọn.", "error")
         return redirect(f"/admin/ai-imports/{job_id}")
 
+    title = clean_text(str(form.get("exam_title", "")), 300) or PurePath(job.original_filename).stem[:300]
+
+    # Every AI import publish automatically creates an Exam and saves to the appropriate Library folder
+    create_exam_flag = form.get("create_exam") != "off"  # default to creating exam
     exam = None
-    if form.get("create_exam") == "on":
-        title = clean_text(str(form.get("exam_title", "")), 300) or PurePath(job.original_filename).stem[:300]
+    if create_exam_flag:
         minutes = str(form.get("duration_minutes", "")).strip()
+        exam_minutes = int(minutes) if minutes.isdigit() and 1 <= int(minutes) <= 600 else max(15, len(created) * 3)
         exam = await create_exam(
             session,
             job,
             created,
             title=title,
-            minutes=int(minutes) if minutes.isdigit() and 1 <= int(minutes) <= 600 else 15,
-            published=form.get("publish_exam") == "on",
+            minutes=exam_minutes,
+            published=form.get("publish_exam") != "off",
             user_id=user.id,
+            access_tier=job.access_tier,
+            origin_type=job.origin_type,
         )
-        await publish_to_library(session, job, exam)  # a library file: its clean PDFs replace the original
-    await session.commit()
+
+    doc = await ensure_job_library_document(session, job, title=title, exam_id=exam.id if exam else None)
     if exam:
-        flash(request, f"Đã đưa {len(created)} câu vào ngân hàng và tạo đề “{exam.title}”.")
+        await publish_to_library(session, job, exam)  # typeset clean PDFs without headers/logos
+
+    # If this import job contains structured VietJack-style Study Guide / Theory data:
+    if job.knowledge_article_data:
+        ku = await session.scalar(select(KnowledgeUnit).where(KnowledgeUnit.code == "MATH12-KNTT-C6-B2-D2"))
+        if ku:
+            for q in created:
+                q.knowledge_unit_id = ku.id
+
+            article = await session.scalar(select(KnowledgeArticle).where(KnowledgeArticle.knowledge_unit_id == ku.id))
+            if not article:
+                article = KnowledgeArticle(knowledge_unit_id=ku.id, title=job.knowledge_article_data.get("title", title))
+                session.add(article)
+            article.title = job.knowledge_article_data.get("title", title)
+            article.method_guide_md = job.knowledge_article_data.get("method_guide_md")
+            article.summary_formulas_md = job.knowledge_article_data.get("summary_formulas_md")
+            article.notes_and_tips_md = job.knowledge_article_data.get("notes_and_tips_md")
+            article.worked_examples_json = job.knowledge_article_data.get("worked_examples_json", [])
+            article.branded_pdf_url = job.knowledge_article_data.get("branded_pdf_url")
+
+    await session.commit()
+    if job.knowledge_article_data:
+        flash(request, f"🚀 Đã xuất bản thành công vào Ngân hàng Tài liệu & Ngân hàng Câu hỏi ({len(created)} câu)! Học sinh có thể làm bài tương tác trực tiếp tại: /tai-lieu/toan-12/xac-suat-co-dieu-kien/dang-2-cong-thuc-bayes")
+        return redirect(f"/admin/ai-imports/{job_id}")
+    if exam:
+        folder_display = " › ".join(doc.folder_path) if doc and doc.folder_path else "Thư viện"
+        flash(request, f"Đã đưa {len(created)} câu vào ngân hàng, xuất đề “{exam.title}” và lưu vào mục: {folder_display}.")
         return redirect(f"/admin/exams/{exam.id}")
-    flash(request, f"Đã đưa {len(created)} câu vào ngân hàng câu hỏi.")
+    flash(request, f"Đã đưa {len(created)} câu vào ngân hàng câu hỏi và lưu đề vào Thư viện tài liệu.")
     return redirect(f"/admin/ai-imports/{job_id}")
 
 

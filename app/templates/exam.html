@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ exam.title }} · Exam System{% endblock %}
+{% block head %}{% if preview_items %}{% include "_katex.html" %}{% endif %}{% endblock %}
 {% block content %}
 {% with trail_link_last=True %}{% include "_breadcrumb.html" %}{% endwith %}
 
@@ -7,6 +8,11 @@
   <h1>{{ exam.title }}
     {% if exam.visibility == "PERSONAL" %}<span class="badge">Bài tự tạo · chỉ bạn thấy</span>
     {% elif not exam.is_published %}<span class="badge">Nháp (chỉ admin thấy)</span>{% endif %}
+    {% if is_pro_exam %}
+      <span class="badge" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; font-weight: 700;">🔒 PRO{% if exam.origin_type == "ORIGINAL" %} · Tự biên soạn{% endif %}</span>
+    {% else %}
+      <span class="badge badge-ok">FREE</span>
+    {% endif %}
   </h1>
   {% if exam.description %}<p>{{ exam.description }}</p>{% endif %}
 
@@ -16,7 +22,18 @@
     <div class="stat"><div class="stat-num">{{ attempts | length }}<span class="muted small"> / {{ exam.max_attempts or "∞" }}</span></div><div class="muted">Lượt đã làm</div></div>
   </div>
 
-  {% if not user %}
+  {% if is_pro_exam and not pro %}
+    <div class="card" style="border-left: 5px solid #f59e0b; background: #fffbeb; margin: 12px 0;">
+      <strong style="color: #92400e;">🔒 Đề thi độc quyền / Học sinh giỏi (Gói PRO)</strong>
+      <p class="small" style="margin: 6px 0 12px; color: #78350f;">
+        Bạn đang dùng tài khoản <strong>Miễn phí (FREE)</strong>. Hệ thống mở sẵn <strong>{{ preview_items | length }}/{{ question_count }} câu hỏi đầu tiên</strong> bên dưới để bạn đọc thử và trải nghiệm chất lượng đề.
+      </p>
+      <div class="row">
+        <a class="btn" href="/plans" style="background: linear-gradient(135deg, #f59e0b, #d97706); border: none;">💎 Nâng cấp PRO để làm trọn bộ đề</a>
+        {% if preview_items %}<a class="btn btn-outline" href="#pro-preview-questions">👀 Xem thử {{ preview_items | length }} câu đầu ↓</a>{% endif %}
+      </div>
+    </div>
+  {% elif not user %}
     <a class="btn" href="/login?next=/exams/{{ exam.id }}">Đăng nhập để làm bài</a>
   {% elif current %}
     <form method="post" action="/exams/{{ exam.id }}/start">
@@ -81,6 +98,48 @@
     </script>
   {% endif %}
 </div>
+
+{% if is_pro_exam and not pro and preview_items %}
+<div class="card" id="pro-preview-questions">
+  <div class="page-head">
+    <h2>👀 Xem thử {{ preview_items | length }}/{{ question_count }} câu hỏi đầu tiên</h2>
+    <span class="badge" style="background: #fef3c7; color: #b45309; font-weight: 700;">Bản xem thử Freemium</span>
+  </div>
+  {% for q in preview_items %}
+    <section class="card question-card" style="margin-bottom: 12px;">
+      <div class="q-number">Câu {{ q.number }} <span class="badge type-badge">{{ TYPE_LABELS[q.type] }}</span></div>
+      <div class="q-content">{{ q.content | format_q_content | safe }}</div>
+      {% if q.image_url %}<img class="q-figure" src="{{ q.image_url }}" alt="Hình vẽ câu {{ q.number }}">{% endif %}
+      {% if q.type == "MULTIPLE_CHOICE" and q.choices %}
+        <div class="choice-list">
+          {% for c in q.choices %}
+            <div class="choice">
+              <span class="choice-letter">{{ "ABCDEF"[loop.index0] }}</span>
+              <span class="choice-text">{{ c.content }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% elif q.type == "TRUE_FALSE" and q.choices %}
+        <ol class="q-choices" type="a">
+          {% for c in q.choices %}<li class="choice-text">{{ c.content }}</li>{% endfor %}
+        </ol>
+      {% endif %}
+    </section>
+  {% endfor %}
+
+  {% if locked_questions_count > 0 %}
+    <div class="card" style="text-align: center; padding: 28px 20px; background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%); border: 1px dashed #f59e0b; margin-top: 16px;">
+      <h3 style="margin: 0 0 8px; color: #92400e;">🔒 Còn {{ locked_questions_count }} câu hỏi nâng cao (Từ câu {{ (preview_items | length) + 1 }} đến câu {{ question_count }}) đang bị khóa</h3>
+      <p class="small" style="max-width: 600px; margin: 0 auto 14px; color: #78350f;">
+        Mở khóa tài khoản <strong>PRO</strong> để làm trực tuyến toàn bộ {{ question_count }} câu, bấm giờ phòng thi chuẩn và xem phương pháp giải nhanh chi tiết từng bước.
+      </p>
+      <a class="btn" href="/plans" style="background: linear-gradient(135deg, #f59e0b, #d97706); border: none; font-weight: 700;">
+        🔓 Mở khóa tài khoản PRO để xem toàn bộ đề →
+      </a>
+    </div>
+  {% endif %}
+</div>
+{% endif %}
 
 {% if attempts %}
 <div class="card">

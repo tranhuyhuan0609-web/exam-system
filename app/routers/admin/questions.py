@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass, field
 from typing import Annotated, Any
 from urllib.parse import urlencode
@@ -9,9 +10,21 @@ from starlette.datastructures import FormData
 from app import question_rules as rules
 from app.deps import AdminUser, SessionDep
 from app.domain.question_hash import hash_of_choices
-from app.models import QUESTION_MAX_CHOICES, Difficulty, Exam, ExamQuestion, Question, QuestionType
+from app.models import Category, QUESTION_MAX_CHOICES, Difficulty, Exam, ExamQuestion, Question, QuestionType
 from app.routers.admin.common import get_or_404, redirect
-from app.scope import Scope, load_categories, resolve_scope, scope_of, scope_options, scope_paths
+from app.scope import (
+    Scope,
+    SectionScope,
+    TargetScope,
+    build_drilldown_conditions,
+    get_all_scope_paths,
+    get_drilldown_catalog,
+    get_section_scope_data,
+    load_categories,
+    resolve_scope,
+    scope_of,
+    scope_options,
+)
 from app.templating import flash, templates
 from app.text import like_pattern
 
@@ -132,6 +145,13 @@ async def list_questions(
     request: Request,
     user: AdminUser,
     session: SessionDep,
+    section: str = "",
+    grade: str = "",
+    subject_id: str = "",
+    chapter_id: str = "",
+    lesson_id: str = "",
+    target: str = "",
+    exam_subject: str = "",
     scope: str = "",
     difficulty: str = "",
     qtype: str = "",
@@ -139,13 +159,70 @@ async def list_questions(
     q: str = "",
     page: int = 1,
 ):
-    conditions = []
+    # Backward compatibility: resolve legacy or direct `scope` parameter
+    if scope and not (grade or subject_id or chapter_id or lesson_id or target):
+        if scope.startswith("c:"):
+            raw_id = scope[2:]
+            if raw_id.isdigit():
+                c_item = await session.get(Category, int(raw_id))
+                if c_item:
+                    section = "curriculum"
+                    if c_item.depth == 2:
+                        lesson_id = str(c_item.id)
+                        chapter_id = str(c_item.parent_id or "")
+                    elif c_item.depth == 1:
+                        chapter_id = str(c_item.id)
+                    elif c_item.depth == 0:
+                        subject_id = str(c_item.id)
+        elif scope.startswith("target:"):
+            t_code = scope[7:]
+            if any(h in t_code for h in ("HSG", "OLYMPIAD")):
+                section = "olympiad"
+            else:
+                section = "major_exam"
+            target = t_code
+        elif scope == "section:major_exam":
+            section = "major_exam"
+        elif scope == "section:olympiad":
+            section = "olympiad"
+
+    if not section:
+        section = "all"
+
+    # Reset cross-section filter parameters to avoid leaks between tabs
+    if section in ("major_exam", "olympiad"):
+        grade = ""
+        subject_id = ""
+        chapter_id = ""
+        lesson_id = ""
+    elif section == "curriculum":
+        target = ""
+        exam_subject = ""
+    elif section == "all":
+        grade = ""
+        subject_id = ""
+        chapter_id = ""
+        lesson_id = ""
+        target = ""
+        exam_subject = ""
+
+    # Build primary drill-down conditions and breadcrumb
+    conditions, breadcrumb_label, active_drilldown = await build_drilldown_conditions(
+        session,
+        section=section,
+        grade=grade,
+        subject_id=subject_id,
+        chapter_id=chapter_id,
+        lesson_id=lesson_id,
+        target=target,
+        exam_subject=exam_subject,
+    )
+
+    # Secondary filters
     if verified in ("yes", "no"):
         conditions.append(Question.is_verified == (verified == "yes"))
     if qtype in QuestionType.__members__:
         conditions.append(Question.question_type == QuestionType(qtype))
-    if selected := await resolve_scope(session, scope):
-        conditions += selected.conditions(Question)
     if difficulty in Difficulty.__members__:
         conditions.append(Question.difficulty == Difficulty(difficulty))
     if q.strip():
@@ -164,8 +241,73 @@ async def list_questions(
         )
     ).all()
 
-    subjects = await load_categories(session)
-    filters = {"scope": scope, "difficulty": difficulty, "qtype": qtype, "verified": verified, "q": q}
+    # Pre-fetch KnowledgeUnit names and Target Tags for fast multi-dimensional badge rendering
+    q_ids = [item.id for item in questions]
+    ku_ids = [item.knowledge_unit_id for item in questions if item.knowledge_unit_id]
+    ku_map: dict[int, str] = {}
+    if ku_ids:
+        from app.models import KnowledgeUnit
+        ku_rows = (await session.execute(
+            select(KnowledgeUnit.id, KnowledgeUnit.name).where(KnowledgeUnit.id.in_(ku_ids))
+        )).all()
+        ku_map = {row[0]: row[1] for row in ku_rows}
+
+    q_targets_map: dict[int, list[str]] = {}
+    if q_ids:
+        from app.models import ExamTarget, QuestionTargetTag
+        target_rows = (await session.execute(
+            select(QuestionTargetTag.question_id, ExamTarget.code)
+            .join(ExamTarget, QuestionTargetTag.target_id == ExamTarget.id)
+            .where(QuestionTargetTag.question_id.in_(q_ids))
+        )).all()
+        for q_id, t_code in target_rows:
+            q_targets_map.setdefault(q_id, []).append(t_code)
+
+    # Heuristic fallback for existing un-tagged questions based on knowledge linking
+    from app.application.knowledge_linker import infer_knowledge_metadata
+    for item_q in questions:
+        inferred = infer_knowledge_metadata(item_q.content, item_q.difficulty)
+        if item_q.id not in q_targets_map or not q_targets_map[item_q.id]:
+            q_targets_map[item_q.id] = [t for t in inferred.get("suitable_targets", []) if t != "SGK_KNTT"]
+        if item_q.id not in ku_map and inferred.get("topic_name"):
+            ku_map[item_q.id] = inferred["topic_name"]
+
+    # Determine effective scope key for action buttons (+ Thêm câu hỏi, 🤖 AI nhập đề)
+    if lesson_id:
+        effective_scope = f"c:{lesson_id}"
+    elif chapter_id:
+        effective_scope = f"c:{chapter_id}"
+    elif subject_id:
+        effective_scope = f"c:{subject_id}"
+    elif target:
+        effective_scope = f"target:{target}"
+    else:
+        effective_scope = scope
+
+    catalog = await get_drilldown_catalog(session)
+    all_roots = await load_categories(session)
+    all_paths = await get_all_scope_paths(session, all_roots)
+
+    filters = {
+        "section": section,
+        "grade": active_drilldown["grade"],
+        "subject_id": active_drilldown["subject_id"],
+        "chapter_id": active_drilldown["chapter_id"],
+        "lesson_id": active_drilldown["lesson_id"],
+        "target": active_drilldown["target"],
+        "exam_subject": active_drilldown["exam_subject"],
+        "difficulty": difficulty,
+        "qtype": qtype,
+        "verified": verified,
+        "q": q if isinstance(q, str) else "",
+    }
+
+    # Query string generator for pagination
+    def build_page_url(p: int) -> str:
+        clean_params = {k: v for k, v in filters.items() if v}
+        clean_params["page"] = p
+        return "/admin/questions?" + urlencode(clean_params)
+
     return templates.TemplateResponse(
         request,
         "admin/questions.html",
@@ -176,10 +318,16 @@ async def list_questions(
             "page": page,
             "pages": pages,
             "filters": filters,
-            "page_url": lambda p: "/admin/questions?" + urlencode({**filters, "page": p}),
-            "scope_options": scope_options(subjects),
-            "scope_paths": scope_paths(subjects),
+            "page_url": build_page_url,
+            "active_drilldown": active_drilldown,
+            "breadcrumb_label": breadcrumb_label,
+            "effective_scope": effective_scope,
+            "catalog": catalog,
+            "catalog_json": json.dumps(catalog),
+            "scope_paths": all_paths,
             "scope_of": scope_of,
+            "ku_names": ku_map,
+            "q_targets": q_targets_map,
         },
     )
 
@@ -198,6 +346,11 @@ async def create_question(request: Request, user: AdminUser, session: SessionDep
     question = Question()
     _apply(question, data, scope)
     session.add(question)
+    await session.flush()
+    from app.models import QuestionCategory
+
+    if scope.category_id:
+        session.add(QuestionCategory(question_id=question.id, category_id=scope.category_id))
     await session.commit()
     flash(request, f"Đã thêm câu hỏi #{question.id}.")
     if form.get("action") == "new":

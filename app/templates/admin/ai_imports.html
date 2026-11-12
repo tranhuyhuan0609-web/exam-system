@@ -15,7 +15,10 @@
       <tbody>
       {% for job in jobs %}
         <tr>
-          <td><a href="/admin/ai-imports/{{ job.id }}"><strong>{{ job.original_filename }}</strong></a></td>
+          <td>
+            <a href="/admin/ai-imports/{{ job.id }}"><strong>{{ job.original_filename }}</strong></a>
+            {% if job.access_tier == "PRO" %}<span class="badge" style="background: #fef3c7; color: #b45309; font-weight: 700;">🔒 PRO</span>{% endif %}
+          </td>
           <td class="small muted">{{ scope_paths.get(scope_of(job).key, '') }}</td>
           <td>{% include "admin/_job_status.html" %}</td>
           <td class="num">{{ (job.drafts or []) | length }}</td>
@@ -31,26 +34,38 @@
   <aside>
     <form method="post" action="/admin/ai-imports" enctype="multipart/form-data" class="card">
       <h2>Tải đề lên</h2>
-      <label>File đề <span class="muted small">({{ extensions }}, ≤ {{ max_mb }} MB)</span>
-        <input type="file" name="file" accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.webp" required>
+      <label>1. File đề thi <span class="muted small">({{ extensions }}, ≤ {{ max_mb }} MB)</span>
+        <input type="file" name="file" accept=".pdf,.docx,.doc,.zip,.rar,.png,.jpg,.jpeg,.webp" required>
+        <span class="muted small" style="display:block; margin-top:2px;">(Hỗ trợ nén .zip / .rar chứa cả đề + đáp án để tự động ghép cặp)</span>
       </label>
-      <label>Lưu câu hỏi vào
+      <label>2. File Đáp án / Hướng dẫn chấm <span class="badge" style="background:#e0f2fe; color:#0369a1; font-size:11px;">Tùy chọn</span>
+        <input type="file" name="solution_file" accept=".pdf,.docx,.doc,.pdf">
+        <span class="muted small" style="display:block; margin-top:2px;">(Nếu đề và đáp án là 2 file riêng, tải kèm ở đây để tự ghép câu &amp; không tốn quota AI)</span>
+      </label>
+      <label>3. Lưu câu hỏi vào
         {% with name="scope", options=scope_options, selected=selected_scope, blank="— Chọn —", required=True %}{% include "admin/_scope_select.html" %}{% endwith %}
       </label>
-      <label>Mức độ mặc định
+      <label>4. Mức độ mặc định
         <select name="default_difficulty">
           {% for d, label in DIFFICULTY_LABELS.items() %}<option value="{{ d.value }}" {% if d.value == "UNDERSTANDING" %}selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
       </label>
-      <button class="btn full">⬆ Tải lên & để AI xử lý</button>
+      <label class="check" style="margin: 10px 0;">
+        <input type="checkbox" name="is_pro">
+        <span>🔒 <strong>Đây là đề độc quyền / Tài liệu Pro</strong> (Lưu kho Private &amp; gắn nhãn PRO)</span>
+      </label>
+      <button class="btn full">⬆ Tải lên &amp; Tự động bóc tách (0 quota AI)</button>
     </form>
     <div class="card small">
-      <h3>AI sẽ làm gì?</h3>
+      <h3>Quy trình bóc tách tự động 6 bước:</h3>
       <ol>
-        <li>Chuyển file thành ảnh từng trang. File Word đi qua LibreOffice, nhờ vậy công thức MathType vẫn giữ nguyên.</li>
-        <li>Đọc đề sang chữ và công thức LaTeX, cắt riêng hình vẽ của từng câu.</li>
-        <li>Giải từng câu, có chạy code Python để tính số, rồi viết lời giải chi tiết.</li>
-        <li>Lưu thành <strong>bản nháp</strong>. Bạn duyệt, sửa nếu cần, rồi mới đưa vào ngân hàng câu hỏi.</li>
+        <li><strong>Chuẩn hóa &amp; Ghép cặp:</strong> Tự bung nén .zip/.rar, ưu tiên .docx hơn .pdf, nâng cấp .doc lên .docx, tự động nhận diện cặp Đề + Đáp án.</li>
+        <li><strong>Đọc chữ &amp; Bảng (0 API):</strong> Pandoc OMML chuyển sang LaTeX chuẩn, bảng phức tạp thành HTML Table giữ nguyên cấu trúc.</li>
+        <li><strong>Cắt hình vẽ chuẩn xác:</strong> Bắt theo chú thích caption "Hình X" trên PDF (cắt cả Raster và Vector Word Shapes), lọc bỏ logo.</li>
+        <li><strong>Tách câu hỏi lớn &amp; ý nhỏ:</strong> Regex State Machine bóc tách phần dẫn (stem) và các ý 1., 2., a), b).</li>
+        <li><strong>Ghép đáp án tự động:</strong> Ghép trực tiếp HDC vào từng ý, trích xuất số kết quả cho câu điền đáp số.</li>
+        <li><strong>Băm SHA-256:</strong> Chống trùng lặp tuyệt đối và liên kết cây mục lục SGK Kết nối tri thức.</li>
+      </ol>
       </ol>
       <p class="muted">Một đề 8–10 câu mất khoảng 1–3 phút.</p>
     </div>

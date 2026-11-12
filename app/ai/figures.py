@@ -34,6 +34,8 @@ class PageGeometry:
     figure_png: Path | None = None
     # Text lines, each a list of word boxes. A line that runs outside a figure is question text, not a label.
     lines: list[list[BoundingBox]] = field(default_factory=list)
+    # Embedded raster images (also listed in `graphics`): small ones sitting on a text line are inline formulas.
+    images: list[BoundingBox] = field(default_factory=list)
 
 
 def page_geometry(page) -> PageGeometry:
@@ -71,8 +73,12 @@ def page_geometry(page) -> PageGeometry:
         if box := norm(r.x0, r.y0, r.x1, r.y1):
             geometry.graphics.append(box)
     for info in page.get_image_info():
+        # Ignore 1x1, 2x2 or tiny placeholder dummy images (<= 8px) inserted for inline equations
+        if info.get("width", 0) <= 8 or info.get("height", 0) <= 8:
+            continue
         if box := norm(*info["bbox"]):
             geometry.graphics.append(box)
+            geometry.images.append(box)
     for block in page.get_text("dict")["blocks"]:
         for line in block.get("lines", []):
             boxes = [
@@ -111,6 +117,48 @@ def remove_light_text(page) -> int:
             text=pymupdf.PDF_REDACT_TEXT_REMOVE,
         )
     return count
+
+
+def extract_unlabeled_diagrams(page, min_paths: int = 4) -> list[BoundingBox]:
+    """Cluster vector drawings (organic chemistry reactions, physics circuits) without 'Hình X' captions.
+    Uses page.cluster_drawings() in PyMuPDF to detect graphic clusters and returns BoundingBoxes."""
+    import fitz
+
+    width, height = page.rect.width, page.rect.height
+    diagram_boxes = []
+
+    try:
+        clusters = page.cluster_drawings()
+    except Exception:
+        clusters = []
+
+    for rect in clusters:
+        # Ignore full-page frames or tiny lines
+        area = rect.width * rect.height
+        if area < 0.01 * (width * height) or area > 0.45 * (width * height):
+            continue
+
+        bbox = BoundingBox(
+            ymin=round(max(0, rect.y0) / height * 1000),
+            xmin=round(max(0, rect.x0) / width * 1000),
+            ymax=round(min(height, rect.y1) / height * 1000),
+            xmax=round(min(width, rect.x1) / width * 1000),
+        )
+        diagram_boxes.append(bbox)
+
+    return diagram_boxes
+
+
+def redact_diagram_interior_text(page, diagram_rects) -> None:
+    """Redacts noise text inside complex diagram clusters before OCR/text extraction."""
+    import fitz
+
+    for d_rect in diagram_rects:
+        for block in page.get_text("blocks"):
+            b_rect = fitz.Rect(block[:4])
+            if d_rect.contains(b_rect):
+                page.add_redact_annot(b_rect)
+    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
 
 
 def _area(b: BoundingBox) -> int:

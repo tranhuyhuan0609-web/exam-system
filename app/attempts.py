@@ -19,7 +19,7 @@ from app.application.paper import (
     shuffled_choices,
 )
 from app.infrastructure.storage import media_url
-from app.models import AttemptStatus, Exam, ExamAttempt, GradingStatus, Question, QuestionType, User
+from app.models import AccessTier, AttemptStatus, Exam, ExamAttempt, GradingStatus, Question, QuestionType, User
 from app.plans import check_exam_quota
 from app.question_rules import (
     ESSAY_ANSWER_MAX_LEN,
@@ -134,6 +134,12 @@ async def start_or_resume(session: AsyncSession, user: User, exam: Exam, parts: 
         raise AttemptError("Chưa đến giờ làm bài.")
     if exam.available_until is not None and now >= exam.available_until:
         raise AttemptError("Bài kiểm tra đã đóng.")
+    if getattr(exam, "access_tier", AccessTier.FREE) == AccessTier.PRO and not user.has_pro(now):
+        preview_n = getattr(exam, "preview_question_count", 5) or 5
+        raise AttemptError(
+            f"Đề thi độc quyền này thuộc gói PRO. Bạn có thể đọc thử {preview_n} câu đầu trên trang đề "
+            "hoặc nâng cấp tài khoản PRO để làm toàn bộ đề."
+        )
     if reason := await check_exam_quota(session, user, exam, now):  # free accounts: N new exams a day
         raise AttemptError(reason)
 
@@ -423,6 +429,7 @@ def review(attempt: ExamAttempt) -> list[dict[str, Any]]:
             {
                 "number": number,
                 "type": kind,
+                "difficulty": q.get("difficulty"),
                 "content": q["content"],
                 "choices": q["choices"],
                 "explanation": q.get("explanation"),

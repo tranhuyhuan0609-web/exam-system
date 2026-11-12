@@ -11,6 +11,7 @@ import asyncio
 import io
 import json
 import shutil
+from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Protocol
@@ -18,12 +19,15 @@ from typing import Protocol
 from app.config import get_settings
 
 PUBLIC_PREFIX = "figures/"
+PREVIEW_PREFIX = "previews/"
 
 
 class Storage(Protocol):
     async def put(self, key: str, data: bytes, content_type: str = "application/octet-stream") -> None: ...
 
     async def get(self, key: str) -> bytes: ...
+
+    async def iter_stream(self, key: str, chunk_size: int = 64 * 1024): ...
 
     async def exists(self, key: str) -> bool: ...
 
@@ -32,6 +36,10 @@ class Storage(Protocol):
     async def delete_prefix(self, prefix: str) -> None: ...
 
     def public_url(self, key: str) -> str: ...
+
+    def presigned_url(
+        self, key: str, expires_seconds: int = 60, download_filename: str | None = None
+    ) -> str | None: ...
 
 
 class StorageError(Exception):
@@ -65,6 +73,17 @@ class LocalStorage:
         except FileNotFoundError as exc:
             raise StorageError(f"Not found: {key}") from exc
 
+    async def iter_stream(self, key: str, chunk_size: int = 64 * 1024):
+        path = self.path(key)
+        if not path.is_file():
+            raise StorageError(f"Not found: {key}")
+        with open(path, "rb") as f:
+            while True:
+                chunk = await asyncio.to_thread(f.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+
     async def exists(self, key: str) -> bool:
         return self.path(key).is_file()
 
@@ -78,6 +97,11 @@ class LocalStorage:
 
     def public_url(self, key: str) -> str:
         return "/media/" + _check_key(key)
+
+    def presigned_url(
+        self, key: str, expires_seconds: int = 60, download_filename: str | None = None
+    ) -> str | None:
+        return None
 
     def iter_keys(self):
         for path in self.root.rglob("*"):
@@ -111,7 +135,10 @@ class S3Storage:
                     "Effect": "Allow",
                     "Principal": {"AWS": ["*"]},
                     "Action": ["s3:GetObject"],
-                    "Resource": [f"arn:aws:s3:::{self.bucket}/{PUBLIC_PREFIX}*"],
+                    "Resource": [
+                        f"arn:aws:s3:::{self.bucket}/{PUBLIC_PREFIX}*",
+                        f"arn:aws:s3:::{self.bucket}/{PREVIEW_PREFIX}*",
+                    ],
                 }
             ],
         }
@@ -142,6 +169,24 @@ class S3Storage:
         except S3Error as exc:
             raise StorageError(f"Not found: {key}") from exc
 
+    async def iter_stream(self, key: str, chunk_size: int = 64 * 1024):
+        from minio.error import S3Error
+        self._ensure_bucket()
+        try:
+            response = self.client.get_object(self.bucket, _check_key(key))
+        except S3Error as exc:
+            raise StorageError(f"Not found: {key}") from exc
+
+        try:
+            while True:
+                chunk = await asyncio.to_thread(response.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            response.close()
+            response.release_conn()
+
     async def exists(self, key: str) -> bool:
         from minio.error import S3Error
 
@@ -167,6 +212,21 @@ class S3Storage:
 
     def public_url(self, key: str) -> str:
         return f"{self.public_base}/{self.bucket}/{_check_key(key)}"
+
+    def presigned_url(
+        self, key: str, expires_seconds: int = 60, download_filename: str | None = None
+    ) -> str | None:
+        """Short-lived (default 60s) presigned S3 GET URL for private vault objects (exam-pro-vault / bronze-raw)."""
+        self._ensure_bucket()
+        headers = {}
+        if download_filename:
+            headers["response-content-disposition"] = f'attachment; filename="{download_filename}"'
+        return self.client.presigned_get_object(
+            self.bucket,
+            _check_key(key),
+            expires=timedelta(seconds=max(10, expires_seconds)),
+            response_headers=headers or None,
+        )
 
 
 @lru_cache

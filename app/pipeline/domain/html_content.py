@@ -139,6 +139,20 @@ class _Writer:
             self.newline()
             self.text(el.tail)
             return
+        if tag == "table":
+            self.newline()
+            for tr in el.xpath(".//tr"):
+                cells = tr.xpath("./td|./th")
+                if not cells:
+                    continue
+                for i, c in enumerate(cells):
+                    if i > 0:
+                        self.parts.append(" | ")
+                    self._walk_cell(c)
+                self.newline()
+            self.newline()
+            self.text(el.tail)
+            return
         block = tag in BLOCK_TAGS
         if block:
             self.newline()
@@ -150,6 +164,88 @@ class _Writer:
         if block:
             self.newline()
         self.text(el.tail)
+
+    def _walk_cell(self, el) -> None:
+        if _skip(el):
+            if el.tail:
+                t = " ".join(el.tail.split())
+                if t:
+                    self.parts.append(f" {t}")
+            return
+        tag = etree.QName(el.tag).localname.lower() if isinstance(el.tag, str) else ""
+        if tag == "input":
+            if (el.get("type") or "text").lower() == "text":
+                self.parts.append(f" {BLANK} ")
+            if el.tail:
+                t = " ".join(el.tail.split())
+                if t:
+                    self.parts.append(f" {t}")
+            return
+        if tag == "math":
+            latex = mathml_to_latex(etree.tostring(el, encoding="unicode", with_tail=False))
+            if latex:
+                display = el.get("display") == "block"
+                self.parts.append(f" $${latex}$$ " if display else f"${latex}$")
+            if el.tail:
+                t = " ".join(el.tail.split())
+                if t:
+                    self.parts.append(f" {t}")
+            return
+        if tag in ("sup", "sub"):
+            inner = " ".join("".join(el.itertext()).split())
+            if inner:
+                script = _latex_escape(inner)
+                if re.search(r"[^\x00-\x7f]", inner) and not re.search(r"[α-ωΑ-Ω]", inner):
+                    script = r"\text{" + script + "}"
+                self.parts.append(("$^{" if tag == "sup" else "$_{") + script + "}$")
+            if el.tail:
+                t = " ".join(el.tail.split())
+                if t:
+                    self.parts.append(f" {t}")
+            return
+        if tag in ("u", "ins"):
+            inner = "".join(el.itertext())
+            if inner.strip():
+                self.parts.append(r"$\underline{\text{" + _latex_escape(inner) + "}}$")
+            if el.tail:
+                t = " ".join(el.tail.split())
+                if t:
+                    self.parts.append(f" {t}")
+            return
+        if tag == "img":
+            src = el.get("data-src") or el.get("src") or ""
+            latex = latex_alt(el.get("alt") or "")
+            if latex:
+                self.parts.append(f"${latex}$")
+            elif src and not src.startswith("data:"):
+                self.images.append(
+                    ImageRef(
+                        urljoin(self.base_url, src), el.get("alt") or "", _int(el.get("width")), _int(el.get("height"))
+                    )
+                )
+                self.parts.append(f"[[img:{len(self.images) - 1}]]")
+            if el.tail:
+                t = " ".join(el.tail.split())
+                if t:
+                    self.parts.append(f" {t}")
+            return
+        if tag == "br":
+            self.parts.append(" ")
+            if el.tail:
+                t = " ".join(el.tail.split())
+                if t:
+                    self.parts.append(f" {t}")
+            return
+        if el.text:
+            t = " ".join(el.text.split())
+            if t:
+                self.parts.append(t if not self.parts or self.parts[-1].endswith((" ", "|")) else f" {t}")
+        for child in el:
+            self._walk_cell(child)
+        if el.tail:
+            t = " ".join(el.tail.split())
+            if t:
+                self.parts.append(f" {t}")
 
     def result(self) -> Content:
         raw = "".join(self.parts)

@@ -3,7 +3,25 @@
 {% include "_qtables.html" %}
 <script>
   window.renderMath = function (el) {
+    if (!el) el = document.body;
     if (window.qTables) window.qTables(el);  // "a | b" lines -> tables, before formulas
+
+    // Auto-wrap raw LaTeX commands that are missing $ delimiters inside question content & choices
+    try {
+      const items = el.querySelectorAll ? el.querySelectorAll('.math, .q-content, .q-choices li, .choices li, .katex-render') : [];
+      items.forEach(function (node) {
+        if (node.querySelector && node.querySelector('.katex')) return;
+        let txt = node.textContent;
+        if (txt && txt.includes('\\') && !txt.includes('$') && !txt.includes('\\(') && !txt.includes('\\[') && !txt.includes('$$')) {
+          if (/\\[a-zA-Z]+/.test(txt) && !node.children.length) {
+            node.textContent = '$' + txt.trim() + '$';
+          }
+        }
+      });
+    } catch (e) {
+      console.warn("Auto-wrap latex warning:", e);
+    }
+
     if (!window.renderMathInElement) return;
     renderMathInElement(el, {
       delimiters: [

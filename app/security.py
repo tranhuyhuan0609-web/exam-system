@@ -1,4 +1,8 @@
+import hmac
+import secrets
+
 import bcrypt
+from starlette.requests import Request
 
 MIN_PASSWORD_LENGTH = 8
 # bcrypt only looks at the first 72 bytes; reject longer input instead of silently truncating.
@@ -38,3 +42,24 @@ def safe_next_url(next_url: str | None, default: str = "/") -> str:
     if next_url and next_url.startswith("/") and not next_url.startswith("//") and "\\" not in next_url:
         return next_url
     return default
+
+
+def get_or_create_csrf_token(request: Request) -> str:
+    """Returns or generates a session-bound CSRF token."""
+    if "session" not in request.scope:
+        return ""
+    token = request.session.get("_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session["_csrf_token"] = token
+    return token
+
+
+def verify_csrf_token(request: Request, submitted_token: str | None) -> bool:
+    """Constant-time verification of CSRF token against session."""
+    if not submitted_token or "session" not in request.scope:
+        return False
+    expected = request.session.get("_csrf_token")
+    if not expected:
+        return False
+    return hmac.compare_digest(expected, submitted_token)

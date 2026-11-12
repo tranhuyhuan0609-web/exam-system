@@ -1,6 +1,7 @@
 """Admin: library documents imported from Google Drive — review rights, publish/hide, allow downloads, sync."""
 
-import subprocess
+import asyncio
+import logging
 import sys
 
 from fastapi import APIRouter, Request
@@ -9,7 +10,7 @@ from sqlalchemy import func, select
 from app.config import get_settings
 from app.deps import AdminUser, SessionDep
 from app.infrastructure.storage import get_bronze_storage, get_storage
-from app.models import LibraryDocument, LibraryKind, LibraryStatus
+from app.models import AccessTier, LibraryDocument, LibraryKind, LibraryStatus
 from app.pipeline.use_cases.drive_sync import load_sources
 from app.pipeline.use_cases.library_split import split_stored
 from app.routers.admin.common import redirect
@@ -83,9 +84,29 @@ async def library_bulk(request: Request, user: AdminUser, session: SessionDep):
             doc.downloadable = False
         elif action.startswith("kind:") and action[5:] in LibraryKind.__members__:
             doc.kind = LibraryKind(action[5:])
+            if doc.kind == LibraryKind.HSG:
+                doc.access_tier = AccessTier.PRO
+        elif action.startswith("tier:") and action[5:] in AccessTier.__members__:
+            doc.access_tier = AccessTier(action[5:])
     await session.commit()
     flash(request, f"Đã cập nhật {len(docs)} tài liệu.")
     return redirect(_back(form))
+
+
+async def _reap_drive_sync(source_id: str) -> None:
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "app.pipeline",
+            "drive-sync",
+            source_id,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.wait()
+    except Exception as exc:
+        logging.getLogger("app.routers.admin.library").warning("drive-sync failed for %s: %s", source_id, exc)
 
 
 @router.post("/library/sync/{source_id}")
@@ -97,7 +118,7 @@ async def library_sync(request: Request, user: AdminUser, source_id: str):
     if not get_settings().google_drive_api_key:
         flash(request, "Chưa có GOOGLE_DRIVE_API_KEY trong .env.", "error")
         return redirect("/admin/library")
-    # Runs in its own process (long download); results appear on this page as files arrive.
-    subprocess.Popen([sys.executable, "-m", "app.pipeline", "drive-sync", source_id])  # noqa: S603 - fixed argv
+    # Runs in a tracked background task; proc.wait() collects exit code so no zombie process is created.
+    asyncio.create_task(_reap_drive_sync(source_id))
     flash(request, f"Đang đồng bộ “{sources[source_id].name}” từ Google Drive. Tải lại trang sau ít phút.")
     return redirect("/admin/library")

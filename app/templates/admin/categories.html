@@ -12,8 +12,13 @@
       </form>
       <form method="post" action="/admin/categories/{{ node.id }}" class="row grow cat-name">
         <input name="name" value="{{ node.name }}" required maxlength="300" class="{{ 'input-title' if depth == 0 }}">
+        <select name="default_tier" class="small" style="width: auto;">
+          <option value="FREE" {% if node.default_tier != "PRO" %}selected{% endif %}>FREE</option>
+          <option value="PRO" {% if node.default_tier == "PRO" %}selected{% endif %}>🔒 PRO</option>
+        </select>
         <button class="btn btn-outline btn-small">Lưu tên</button>
       </form>
+      {% if node.default_tier == "PRO" %}<span class="badge" style="background: #fef3c7; color: #b45309; font-weight: 700;">🔒 PRO</span>{% endif %}
       <a class="small" href="/admin/questions?scope=c:{{ node.id }}" title="Câu hỏi trong nhánh này">{{ t[0] }} câu</a>
       <span class="small muted">· {{ t[1] }} đề</span>
       <details class="cat-actions">
