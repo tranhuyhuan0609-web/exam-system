@@ -1,6 +1,7 @@
 import asyncio
 import os
 import tempfile
+from pathlib import Path
 
 # Must be set before any app module is imported (settings and engine are created at import time).
 os.environ["APP_ENV"] = "test"
@@ -11,13 +12,17 @@ os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://exam:exam@localhost:5432/exam_test"
 )
 
+ROOT = Path(__file__).resolve().parent.parent
+
 import asyncpg  # noqa: E402
 import pytest  # noqa: E402
+from alembic.config import Config as AlembicConfig  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import ScalarResult, text  # noqa: E402
 from sqlalchemy.engine import make_url  # noqa: E402
 
-from app import models  # noqa: E402, F401
+from alembic import command  # noqa: E402
+from app import model_registry  # noqa: E402, F401
 from app.db import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import User, UserRole  # noqa: E402
@@ -36,23 +41,33 @@ async def _ensure_database() -> None:
         await conn.close()
 
 
-async def _reset_schema() -> None:
+async def _drop_schema() -> None:
     async with engine.begin() as conn:
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))  # questions.embedding
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text("DROP SCHEMA public CASCADE"))
+        await conn.execute(text("CREATE SCHEMA public"))
+
+
+def _migrate() -> None:
+    """Build the schema the way production does: functions, roles, RLS and triggers live only in migrations."""
+    command.upgrade(AlembicConfig(str(ROOT / "alembic.ini")), "head")
+
+
+# Tables whose rows are seeded by migrations and must survive between tests.
+SEEDED_TABLES = {"tenants", "fts_dictionary_versions"}
 
 
 async def _truncate_all() -> None:
-    tables = ", ".join(t.name for t in Base.metadata.sorted_tables)
+    tables = ", ".join(t.name for t in Base.metadata.sorted_tables if t.name not in SEEDED_TABLES)
     async with engine.begin() as conn:
         await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+        await conn.execute(text("DELETE FROM tenants WHERE id <> system_public_tenant_id()"))
 
 
 @pytest.fixture(scope="session", autouse=True)
 def _database():
     asyncio.run(_ensure_database())
-    asyncio.run(_reset_schema())
+    asyncio.run(_drop_schema())
+    _migrate()
 
 
 @pytest.fixture(autouse=True)

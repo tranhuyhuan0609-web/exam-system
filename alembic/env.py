@@ -6,7 +6,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-from app import models  # noqa: F401  (registers all tables on Base.metadata)
+from app import model_registry  # noqa: F401  (registers all tables on Base.metadata)
 from app.config import get_settings
 from app.db import Base
 
@@ -17,7 +17,7 @@ config = context.config
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
@@ -56,8 +56,27 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+# Indexes that migrations create with raw SQL or options the legacy models do not declare.
+# They are wanted in the database; autogenerate must not propose dropping them.
+DB_ONLY_INDEXES = {
+    "ix_answer_keys_source_document_id",
+    "ix_library_documents_folder_path",
+    "ix_library_documents_kind",
+    "ix_library_documents_origin_id",
+    "ix_library_documents_pending_file",
+    "ix_library_documents_title_trgm",
+    "ix_library_views_document_id",
+}
+
+
+def include_object(obj, name, type_, reflected, compare_to) -> bool:
+    return not (type_ == "index" and reflected and compare_to is None and name in DB_ONLY_INDEXES)
+
+
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    context.configure(
+        connection=connection, target_metadata=target_metadata, compare_type=True, include_object=include_object
+    )
 
     with context.begin_transaction():
         context.run_migrations()

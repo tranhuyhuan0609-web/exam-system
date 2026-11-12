@@ -31,9 +31,27 @@ forbidden_modules =
 [importlinter:contract:modules-not-on-legacy]
 name = V11.3 modules do not reach into the legacy ORM models, routers or use cases
 type = forbidden
+; Direct imports only: app.db -> app.config still pulls in legacy code lazily.
+allow_indirect_imports = True
 source_modules =
     app.modules
 forbidden_modules =
+    app.models
+    app.routers
+    app.application
+    app.pipeline
+    app.ai
+    app.attempts
+
+[importlinter:contract:platform-is-kernel]
+name = app.platform is the shared kernel and knows no business module or legacy code
+type = forbidden
+; Direct imports only: app.db -> app.config still pulls in legacy code lazily.
+allow_indirect_imports = True
+source_modules =
+    app.platform
+forbidden_modules =
+    app.modules
     app.models
     app.routers
     app.application
@@ -49,3 +67,4 @@ forbidden_modules =
 ;     app.modules.<name>.internal
 ; allowed_importers =
 ;     app.modules.<name>
+;     app.model_registry
