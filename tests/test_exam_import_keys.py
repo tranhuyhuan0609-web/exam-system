@@ -280,11 +280,13 @@ def test_essay_pdf_code_first_7_steps_and_flags(tmp_path):
 
 def test_library_first_publish_and_student_create_exam(admin_client, make_user, db):
     """Publishing an AI import saves the document to the Library (/library); students go to /library to create an exam."""  # noqa: E501
+    from datetime import timedelta
+
     from fastapi.testclient import TestClient
-    from sqlalchemy import select
+    from sqlalchemy import func, select, update
 
     from app.main import app
-    from app.models import Difficulty, Exam, ImportJob, JobStatus, LibraryDocument, UserRole
+    from app.models import Difficulty, Exam, ImportJob, JobStatus, LibraryDocument, User, UserRole
     from tests.factories import make_tree
 
     async def seed_job(s):
@@ -334,6 +336,14 @@ def test_library_first_publish_and_student_create_exam(admin_client, make_user, 
 
     # Student visits /library and clicks "Tạo đề luyện tập" on the document
     make_user("student_lib@example.com", role=UserRole.STUDENT)
+    # An HSG document is PRO material: only a student with an active PRO plan may turn it into an exam.
+    db(
+        lambda s: s.execute(
+            update(User)
+            .where(User.email == "student_lib@example.com")
+            .values(pro_until=func.now() + timedelta(days=30))
+        )
+    )
     student = TestClient(app)
     student.post("/login", data={"email": "student_lib@example.com", "password": "password123"})
 
