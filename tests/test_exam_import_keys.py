@@ -140,3 +140,41 @@ def test_library_names_are_exam_subject_number():
     assert exam_code(["Luyện thi HSG", "Vật lí", "Duyên hải & ĐBBB 2024"]) == "HSG-DHBB"
     assert exam_code(["Ôn thi vào 10 – Toán"]) == "TS10"
     assert subject_name(["Luyện thi HSG", "Địa lý", "x"]) == "Địa lí"
+
+
+def test_a_variation_table_in_latex_becomes_table_rows_or_goes_when_the_figure_shows_it():
+    from app.ai.pipeline import _tables
+    from app.domain.latex import repair_latex
+
+    # What a model sent, once JSON-decoded: "\nearrow" lost its backslash-n to a line break
+    raw = (
+        r"Cho bảng biến thiên: \begin{center} \begin{tabular}{|c|ccc|} \hline $x$ & $-\infty$ & 1 & $+\infty$ "
+        r"\\ \hline $f(x)$ & 3 & " + "\n" + r"earrow & | \\ \hline \end{tabular} \end{center} Tiệm cận đứng là"
+    )
+    fixed = repair_latex(raw)
+    assert r"\nearrow" in fixed
+    rows = _tables(fixed, figure=None)
+    assert "tabular" not in rows and r"$x$ | $-\infty$ | 1 | $+\infty$" in rows
+    assert r"$f(x)$ | 3 | $\nearrow$ | ‖" in rows  # the double bar is a cell, not a column separator
+    assert _tables(fixed, figure="figures/1.png") == "Cho bảng biến thiên:\nTiệm cận đứng là"
+
+
+def test_a_gemini_timeout_moves_to_the_next_model_instead_of_failing_the_file():
+    import pytest
+
+    from app.ai.provider import AIError, GeminiProvider
+    from app.ai.schemas import ExtractionResult
+
+    calls = []
+
+    class Models:
+        async def generate_content(self, model, contents, config):
+            calls.append(model)
+            raise TimeoutError
+
+    provider = GeminiProvider("k", ["a", "b"], base_delay=0, max_rounds=1)
+    fake = type("C", (), {"aio": type("A", (), {"models": Models()})()})()
+    provider._client = provider._pool._clients["k"] = fake  # one key: the provider's own client
+    with pytest.raises(AIError, match="quá thời gian chờ"):
+        asyncio.run(provider._generate(["x"], ExtractionResult, models=["a", "b"]))
+    assert calls == ["a", "b"]  # every model tried, then a clear error (no empty "Lỗi hệ thống")
