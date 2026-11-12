@@ -19,11 +19,19 @@ File `chapters/04_postgresql_ddl_rls_grants.sql` được áp nguyên văn lên 
 - `ulp_exam_session_rw`, `ulp_worker_ingestion`, `ulp_system_scheduler`, `ulp_analytics_ro` nhận `42501` trên hai bảng đáp án.
 - `ulp_worker_grading` của tenant B đọc được khóa đáp án đề hệ thống, không đọc được của tenant A.
 - `ulp_system_scheduler` thấy 0 dòng khi chưa khai `app.system_job`, thấy đúng dữ liệu của job đã khai.
-- Quyền của 5 role worker khớp 141/141 dòng với `tests/security/grants_manifest.csv`.
+- Quyền của 5 role worker khớp từng dòng với `tests/security/grants_manifest.csv`.
 - Cổng xuất bản: `PUBLISHED` bị `CheckViolation` khi `rights_status` là `PENDING_REVIEW`, `RESTRICTED`, `TAKEDOWN` hoặc chưa `VERIFIED`.
 - `audit_events` chặn `UPDATE`/`DELETE`; `verify_rls_hardening.sql` chạy sạch.
 
-## Lỗi của đặc tả (đang là xfail trong bộ test, chờ quyết định)
+## Lỗi của đặc tả — đã sửa trong DDL ngày 13/11/2026
+
+Ba lỗi dưới đây đã được vá trong `chapters/04_postgresql_ddl_rls_grants.sql` và trong file tổng; các test tương ứng
+giờ là test hồi quy (57 test qua, không còn xfail). Builder dùng lại cho migration của từng module:
+`partition_lockdown()`, `invoker_view()` trong `app/platform/rls.py`.
+
+Hệ quả của F-02: view đọc bằng quyền người gọi nên `ulp_analytics_ro` được cấp thêm `SELECT` đúng 9 cột view công bố
+trên `question_versions` và 2 cột khóa (`id`, `tenant_id`) trên `questions`. RLS vẫn áp dụng, nên role này chỉ còn thấy
+học liệu hệ thống đã xuất bản (trước đây thấy mọi tenant). `grants_manifest.csv` đã cập nhật (152 dòng).
 
 | Mã | Mức | Hiện tượng đã tái hiện | Nguyên nhân | Cách sửa đề xuất |
 |---|---|---|---|---|
