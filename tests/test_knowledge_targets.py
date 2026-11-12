@@ -3,7 +3,6 @@
 
 from datetime import timedelta
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 
@@ -19,7 +18,6 @@ from app.models import (
     AccessTier,
     Difficulty,
     ImportJob,
-    JobStatus,
     KnowledgeUnit,
     Question,
     QuestionType,
@@ -291,9 +289,7 @@ def test_admin_question_bank_3_part_toc_and_target_filter(db, make_user):
     and filtering by target scopes (THPTQG, HSG_TINH)."""
     from app.scope import (
         TargetScope,
-        get_admin_scope_groups,
         get_section_scope_data,
-        load_categories,
         resolve_scope,
     )
 

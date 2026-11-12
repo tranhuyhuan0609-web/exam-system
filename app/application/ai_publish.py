@@ -58,7 +58,7 @@ def _question(job: ImportJob, d: dict, verified: bool) -> Question:
         default=job.default_difficulty,
     )
     if job.root_id == 111 or resolved_diff == Difficulty.HSG:
-        if resolved_diff in (Difficulty.HSG, Difficulty.UNDERSTANDING, Difficulty.RECOGNITION) or not d.get("difficulty_from_matrix"):
+        if resolved_diff in (Difficulty.HSG, Difficulty.UNDERSTANDING, Difficulty.RECOGNITION) or not d.get("difficulty_from_matrix"):  # noqa: E501
             resolved_diff = Difficulty.ADVANCED_APPLICATION
     meta = infer_knowledge_metadata(d.get("content", ""), resolved_diff)
     is_thinking = bool(d.get("is_thinking_skill") or meta.get("is_thinking_skill"))

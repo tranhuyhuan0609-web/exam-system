@@ -20,7 +20,7 @@ def test_roman_question_heading_is_removed_from_transcribed_text():
 
 def test_draft_keeps_topic_apart_from_content():
     q = ExtractedQuestion(
-        number=1, page=1, type="ESSAY", content="CƠ HỌC CHẤT ĐIỂM\nMột vật được ném xiên với vận tốc 20 m/s.", choices=[]
+        number=1, page=1, type="ESSAY", content="CƠ HỌC CHẤT ĐIỂM\nMột vật được ném xiên với vận tốc 20 m/s.", choices=[]  # noqa: E501
     )
     draft = _draft(q, None, None, False, "HSG", topic="CƠ HỌC CHẤT ĐIỂM")
     assert draft["content"] == "Một vật được ném xiên với vận tốc 20 m/s."

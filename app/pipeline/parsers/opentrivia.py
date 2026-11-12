@@ -36,7 +36,7 @@ def parse(html: str, url: str) -> ParsedPage:
     questions: list[ParsedQuestion] = []
     category_title = ""
 
-    for index, item in enumerate(results, start=1):
+    for index, item in enumerate(results, start=1):  # noqa: B007
         if not isinstance(item, dict):
             continue
 
@@ -69,7 +69,7 @@ def parse(html: str, url: str) -> ParsedPage:
             all_opts = [correct_ans, *incorrect_answers]
             # Deterministic pseudo-random shuffle based on question hash so order is stable
             def opt_rank(opt: str) -> str:
-                return hashlib.sha256(f"{question_text}:{opt}".encode("utf-8")).hexdigest()
+                return hashlib.sha256(f"{question_text}:{opt}".encode()).hexdigest()  # noqa: B023
 
             sorted_opts = sorted(all_opts, key=opt_rank)
             letters = "abcdefgh"
@@ -83,7 +83,7 @@ def parse(html: str, url: str) -> ParsedPage:
                 })
             q_type = "MULTIPLE_CHOICE"
 
-        stable_id = f"opentdb-{hashlib.sha1(f'{category}:{question_text}'.encode('utf-8')).hexdigest()[:14]}"
+        stable_id = f"opentdb-{hashlib.sha1(f'{category}:{question_text}'.encode()).hexdigest()[:14]}"
         explanation = f"Đáp án chính xác: {correct_ans}.\nLĩnh vực: {category}.\nMức độ nhận thức: {difficulty}."
 
         questions.append(

@@ -1,8 +1,8 @@
+import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
-import uuid
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -21,7 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -252,7 +252,7 @@ class Question(TimestampMixin, UpdatedAtMixin, Base):
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), deferred=True)
 
     # Self-Healing & Quality Audit State Machine
-    # Statuses: 'PENDING', 'FONT_OR_TAXONOMY_FIXED', 'SUSPECT_SOURCE_ERROR', 'VERIFIED_BY_CONSENSUS', 'NEEDS_HUMAN_REVIEW'
+    # Statuses: 'PENDING', 'FONT_OR_TAXONOMY_FIXED', 'SUSPECT_SOURCE_ERROR', 'VERIFIED_BY_CONSENSUS', 'NEEDS_HUMAN_REVIEW'  # noqa: E501
     audit_status: Mapped[str] = mapped_column(String(30), default="PENDING", server_default="PENDING", index=True)
     ai_attempt_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     first_ai_answer: Mapped[str | None] = mapped_column(String(255), default=None, server_default=None)
@@ -284,7 +284,7 @@ class QuestionCategory(Base):
     __tablename__ = "question_categories"
 
     question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True)
-    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True, index=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True, index=True)  # noqa: E501
 
 
 class Exam(TimestampMixin, UpdatedAtMixin, Base):
@@ -418,7 +418,7 @@ class ImportJob(Base):
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     original_filename: Mapped[str] = mapped_column(String(300))
     stored_path: Mapped[str] = mapped_column(String(300))  # relative to data_dir
-    solution_stored_path: Mapped[str | None] = mapped_column(String(300), nullable=True)  # optional answer/marking scheme file
+    solution_stored_path: Mapped[str | None] = mapped_column(String(300), nullable=True)  # optional answer/marking scheme file  # noqa: E501
     status: Mapped[JobStatus] = mapped_column(_enum(JobStatus, "job_status"), default=JobStatus.QUEUED)
     stage: Mapped[str | None] = mapped_column(String(200))  # human-readable progress, e.g. "Đang giải câu 6–10"
     progress_done: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
@@ -674,7 +674,7 @@ class TargetGroupCategory(StrEnum):
 
 
 class KnowledgeUnit(Base):
-    """1. Bảng Cây Kiến Thức Chuẩn SGK Kết Nối Tri Thức (Tọa độ kiến thức gốc: Môn -> Lớp -> Chương -> Bài -> Dạng bài)."""
+    """1. Bảng Cây Kiến Thức Chuẩn SGK Kết Nối Tri Thức (Tọa độ kiến thức gốc: Môn -> Lớp -> Chương -> Bài -> Dạng bài)."""  # noqa: E501
 
     __tablename__ = "knowledge_units"
 
@@ -696,8 +696,8 @@ class KnowledgeArticle(Base):
     __tablename__ = "knowledge_articles"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    knowledge_unit_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_units.id", ondelete="CASCADE"), index=True, default=None)
-    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"), index=True, default=None)
+    knowledge_unit_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_units.id", ondelete="CASCADE"), index=True, default=None)  # noqa: E501
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"), index=True, default=None)  # noqa: E501
     title: Mapped[str] = mapped_column(String(255))
     summary_formulas_md: Mapped[str | None] = mapped_column(Text)
     method_guide_md: Mapped[str | None] = mapped_column(Text)
@@ -736,7 +736,7 @@ class TargetCurriculumMapping(Base):
     knowledge_unit_id: Mapped[int] = mapped_column(
         ForeignKey("knowledge_units.id", ondelete="CASCADE"), primary_key=True
     )
-    # Allowed difficulties inherited automatically, e.g. ['RECOGNITION', 'UNDERSTANDING', 'APPLICATION', 'ADVANCED_APPLICATION']
+    # Allowed difficulties inherited automatically, e.g. ['RECOGNITION', 'UNDERSTANDING', 'APPLICATION', 'ADVANCED_APPLICATION']  # noqa: E501
     # (or ['NB', 'TH', 'VD', 'VDC']), excluding ['HSG'] from standard THPTQG exams.
     allowed_difficulties: Mapped[list[str]] = mapped_column(
         JSONB,

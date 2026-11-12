@@ -313,6 +313,7 @@ def _broken(text: str) -> bool:
 
 def read_pdf_text(path: Path) -> LocalExam | None:
     import pymupdf
+
     from app.ai.essay_exam import read_essay_pdf
 
     # Step 1-5: Try structured essay PDF extraction with PyMuPDF get_text("dict") + geometry first

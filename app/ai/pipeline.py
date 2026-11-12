@@ -95,7 +95,7 @@ def _trim_cross_question_overlap(questions: list[ExtractedQuestion]) -> None:
     present as a separate result, so a long token overlap in the current result's
     tail is safe to remove.
     """
-    for current, following in zip(questions, questions[1:]):
+    for current, following in zip(questions, questions[1:]):  # noqa: B905
         if current.page != following.page or current.number >= following.number:
             continue
         current_tokens = _tokens(current.content)
@@ -298,7 +298,7 @@ def normalize_draft(draft: dict[str, Any]) -> dict[str, Any]:
         d["answers"] = [number] if d.get("type") == "SHORT_ANSWER" and number else []
     if d.get("type") in ("TRUE_FALSE", "SHORT_ANSWER", "ESSAY"):
         d["flags"] = [f for f in d.get("flags", []) if f != "unsupported_type"]
-    if "suitable_targets" not in d or "is_thinking_skill" not in d or "kntt_unit_code" not in d or "topic_name" not in d:
+    if "suitable_targets" not in d or "is_thinking_skill" not in d or "kntt_unit_code" not in d or "topic_name" not in d:  # noqa: E501
         from app.application.knowledge_linker import infer_knowledge_metadata
 
         meta = infer_knowledge_metadata(d.get("content", ""), d.get("difficulty"))
@@ -495,7 +495,7 @@ async def run_pipeline(
                 pages, geometries = [], []  # no LibreOffice here: the text is enough, only review images are missing
 
         # Fallback: if pandoc HTML could not parse a complex .docx (e.g. WMF shapes or nested math tables),
-        # but LibreOffice successfully converted .docx -> .pdf in to_page_images, re-try read_locally on the generated PDF!
+        # but LibreOffice successfully converted .docx -> .pdf in to_page_images, re-try read_locally on the generated PDF!  # noqa: E501
         if local is None and source.suffix.lower() == ".docx" and pages:
             pdf_candidate = work / "pages" / f"{source.stem}.pdf"
             if not pdf_candidate.exists():

@@ -15,4 +15,9 @@ testpaths = ["tests"]
 "app/ai/provider.py" = ["E501"]
 "app/ai/schemas.py" = ["E501"]
 "app/import_templates.py" = ["E501"]
+# Curriculum catalogues: long Vietnamese titles kept on one line.
+"app/curriculum_data.py" = ["E501"]
+"app/sections_data.py" = ["E501"]
+"app/domain/k12_curriculum_data.py" = ["E501"]
+"scripts/full_k12_data.py" = ["E501"]
 "tests/test_pipeline*.py" = ["E501"]  # HTML fixtures in the shape of the source sites

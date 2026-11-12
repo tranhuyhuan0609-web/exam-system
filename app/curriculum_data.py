@@ -2103,7 +2103,7 @@ def ensure_chapter_exams(curriculum: dict[str, Any]) -> dict[str, Any]:
         # Look for existing review or exam lesson
         exam_les = next(
             (
-                l for l in lessons
+                l for l in lessons  # noqa: E741
                 if l.get("is_exam")
                 or "ôn tập" in l.get("title", "").lower()
                 or "tự luyện" in l.get("title", "").lower()

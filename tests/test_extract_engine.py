@@ -1,13 +1,14 @@
-import pytest
 from pathlib import Path
+
 from app.ai.extract_engine import (
+    extract_short_answer_value,
     has_mathtype_ole,
     is_solution_name,
     pair_exam_and_solution_files,
-    split_into_structured_questions,
-    extract_short_answer_value,
     pair_solutions_into_questions,
+    split_into_structured_questions,
 )
+
 
 def test_is_solution_name():
     assert is_solution_name("ĐÁP ÁN LÝ 11.docx")

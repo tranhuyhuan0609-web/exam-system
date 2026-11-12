@@ -1,0 +1,51 @@
+; Module boundaries for the ULP V11.3 modular monolith (guardrail 6: zero shared table ownership).
+; Checked by `lint-imports` in CI gate 1.
+;
+; Layout of a module package, app/modules/<name>/:
+;   public.py    the only entry point other modules may import (application service + DTOs)
+;   router.py    FastAPI routes, mounted by app.main
+;   internal/    ORM models, repositories, domain logic: private to the module
+;
+; Every package under app/modules needs its own "protected" contract below;
+; tests/test_architecture.py fails when one is missing.
+
+[importlinter]
+root_package = app
+include_external_packages = False
+
+[importlinter:contract:contracts-are-leaf]
+name = app.contracts holds shared Pydantic/event contracts and depends on no application code
+type = forbidden
+source_modules =
+    app.contracts
+forbidden_modules =
+    app.modules
+    app.routers
+    app.application
+    app.infrastructure
+    app.pipeline
+    app.ai
+    app.models
+    app.db
+
+[importlinter:contract:modules-not-on-legacy]
+name = V11.3 modules do not reach into the legacy ORM models, routers or use cases
+type = forbidden
+source_modules =
+    app.modules
+forbidden_modules =
+    app.models
+    app.routers
+    app.application
+    app.pipeline
+    app.ai
+    app.attempts
+
+; --- one "protected" contract per module, added when the module lands ---------------------
+; [importlinter:contract:internal-<name>]
+; name = <name> internals are private to the module
+; type = protected
+; protected_modules =
+;     app.modules.<name>.internal
+; allowed_importers =
+;     app.modules.<name>

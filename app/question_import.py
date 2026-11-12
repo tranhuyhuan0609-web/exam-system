@@ -337,11 +337,11 @@ def _docx_lines(data: bytes) -> tuple[str, list[str]]:
     has_images = any(el.tag.endswith(("drawing", "pict")) for el in doc.element.body.iter())
     if has_math:
         warnings.append(
-            "Phát hiện công thức toán học (OMML) trong file Word nhưng chế độ dự phòng python-docx không đọc được công thức này. Hãy dùng chức năng 'AI nhập đề'."
+            "Phát hiện công thức toán học (OMML) trong file Word nhưng chế độ dự phòng python-docx không đọc được công thức này. Hãy dùng chức năng 'AI nhập đề'."  # noqa: E501
         )
     if has_images:
         warnings.append(
-            "Phát hiện hình ảnh trong file Word nhưng chế độ cơ bản không hỗ trợ nhập ảnh. Hãy dùng chức năng 'AI nhập đề'."
+            "Phát hiện hình ảnh trong file Word nhưng chế độ cơ bản không hỗ trợ nhập ảnh. Hãy dùng chức năng 'AI nhập đề'."  # noqa: E501
         )
 
     lines: list[str] = []

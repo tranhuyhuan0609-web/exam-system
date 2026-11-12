@@ -32,7 +32,7 @@ TRUE, FALSE = set("ĐDTđdt"), set("SFsf")
 
 def is_answer_key(doc: LibraryDocument) -> bool:
     """ "4. Đáp án Toán THPTQG2024", "Dap an, thang diem": an answer table (PDF/image). Worked solutions ("Đáp án chi tiết",
-    "Lời giải", "Biểu điểm", or a .docx marking scheme / part cut from a bundle) are not."""
+    "Lời giải", "Biểu điểm", or a .docx marking scheme / part cut from a bundle) are not."""  # noqa: E501
     if doc.mime and doc.mime not in ("application/pdf", "image/png", "image/jpeg"):
         return False
     title = unicodedata.normalize("NFC", doc.title)

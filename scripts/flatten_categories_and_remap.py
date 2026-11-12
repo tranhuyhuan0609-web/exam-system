@@ -3,13 +3,15 @@
 2. Remapping and merging all questions from other textbooks ('Cánh diều', 'Chân trời sáng tạo') into their matching KNTT chapters.
 3. Deleting all dummy intermediate book nodes ('Kết nối tri thức', 'Cánh diều', 'Chân trời sáng tạo').
 4. Recalculating path, depth, and position for all categories in the database.
-"""
+"""  # noqa: E501
 
 import asyncio
+
 from sqlalchemy import delete, select, update
+
 from app.db import SessionLocal, engine
-from app.models import Category, Question, Exam
 from app.domain.cross_curriculum_mapper import map_other_book_to_kntt
+from app.models import Category, Exam, Question
 
 
 async def flatten_and_remap():
@@ -68,14 +70,14 @@ async def flatten_and_remap():
                             .where(Exam.category_id.in_(b_ch_all_ids))
                             .values(category_id=target_ch.id)
                         )
-                        print(f"   [Hợp nhất] '{b_ch.name}' ({b_cat.name}) -> '{target_ch.name}' (KNTT) [{res.rowcount} câu]")
+                        print(f"   [Hợp nhất] '{b_ch.name}' ({b_cat.name}) -> '{target_ch.name}' (KNTT) [{res.rowcount} câu]")  # noqa: E501
                         # Delete the other book chapter and its child lessons
                         await session.execute(delete(Category).where(Category.id.in_(b_ch_all_ids)))
                         deleted_categories_count += len(b_ch_all_ids)
                     else:
                         # No direct match found: promote it directly to s_root so no questions are lost
                         b_ch.parent_id = s_root.id
-                        print(f"   [Giữ lại] '{b_ch.name}' không có đối ứng KNTT -> chuyển trực tiếp dưới môn '{s_root.name}'")
+                        print(f"   [Giữ lại] '{b_ch.name}' không có đối ứng KNTT -> chuyển trực tiếp dưới môn '{s_root.name}'")  # noqa: E501
 
                 # Delete the other book category wrapper
                 await session.execute(delete(Category).where(Category.id == b_cat.id))
@@ -115,7 +117,7 @@ async def flatten_and_remap():
         # 3. Recalculate path, depth, and position for all categories
         print("-> Đang cập nhật lại path, depth, position cho toàn bộ cây danh mục...")
         all_cats = (await session.scalars(select(Category))).all()
-        by_id = {c.id: c for c in all_cats}
+        by_id = {c.id: c for c in all_cats}  # noqa: F841
         children_by_parent: dict[int | None, list[Category]] = {}
         for c in all_cats:
             children_by_parent.setdefault(c.parent_id, []).append(c)

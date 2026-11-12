@@ -306,7 +306,7 @@ async def job1_taxonomy_healer_loop() -> None:
 
 
 async def job2_double_blind_loop() -> None:
-    """Independent background loop for Job 2: Double-blind solves questions and auto-publishes every 5 minutes (batch 8)."""
+    """Independent background loop for Job 2: Double-blind solves questions and auto-publishes every 5 minutes (batch 8)."""  # noqa: E501
     while True:
         try:
             await asyncio.sleep(JOB2_AUDIT_INTERVAL_SECONDS)

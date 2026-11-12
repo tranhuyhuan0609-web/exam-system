@@ -75,7 +75,7 @@ def search_research_papers(query: str, limit: int = 10, page: int = 1) -> list[d
                 "title": item.get("display_name") or item.get("title") or "Nghiên cứu học thuật",
                 "authors": ", ".join(authors) if authors else "Nhiều tác giả",
                 "year": item.get("publication_year") or 2024,
-                "abstract": abstract or "Tài liệu học thuật toàn văn, bao quát các nghiên cứu và thực nghiệm chuyên sâu.",
+                "abstract": abstract or "Tài liệu học thuật toàn văn, bao quát các nghiên cứu và thực nghiệm chuyên sâu.",  # noqa: E501
                 "pdf_url": pdf_url,
                 "doi": item.get("doi"),
                 "landing_url": landing_url,
@@ -130,7 +130,7 @@ def search_books(query: str, limit: int = 12, page: int = 1) -> list[dict[str, A
             results.append({
                 "title": doc.get("title") or "Sách giáo trình điện tử",
                 "author": ", ".join(authors[:2]) if authors else "Nhiều tác giả",
-                "year": doc.get("first_publish_year") or (doc.get("publish_year", [2022])[0] if doc.get("publish_year") else 2022),
+                "year": doc.get("first_publish_year") or (doc.get("publish_year", [2022])[0] if doc.get("publish_year") else 2022),  # noqa: E501
                 "cover_url": cover_url,
                 "read_url": read_url,
                 "publisher": publishers[0] if publishers else "NXB Giáo Dục / Quốc Tế",

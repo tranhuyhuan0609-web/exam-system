@@ -13,10 +13,8 @@ from collections import Counter
 from datetime import datetime
 
 from sqlalchemy import delete, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.knowledge_linker import (
-    SUBJECT_CODE_MAP,
     infer_knowledge_metadata,
     seed_knowledge_architecture,
 )
@@ -71,11 +69,11 @@ def _detect_subject_and_grade(
     else:
         # Infer from question content
         c_low = content.lower()
-        if any(w in c_low for w in ("kim loại", "axit", "ancol", "este", "este", "phản ứng", "dung dịch", "mol/l", "fe", "cu", "al", "h2so4", "naoh")):
+        if any(w in c_low for w in ("kim loại", "axit", "ancol", "este", "este", "phản ứng", "dung dịch", "mol/l", "fe", "cu", "al", "h2so4", "naoh")):  # noqa: E501
             subject = "CHEMISTRY"
-        elif any(w in c_low for w in ("dao động", "con lắc", "chu kì", "bước sóng", "tần số", "điện áp", "điện trở", "quang phổ", "tụ điện")):
+        elif any(w in c_low for w in ("dao động", "con lắc", "chu kì", "bước sóng", "tần số", "điện áp", "điện trở", "quang phổ", "tụ điện")):  # noqa: E501
             subject = "PHYSICS"
-        elif any(w in c_low for w in ("hàm số", "nguyên hàm", "tích phân", "đồng biến", "nghịch biến", "tiệm cận", "đồ thị", "phương trình")):
+        elif any(w in c_low for w in ("hàm số", "nguyên hàm", "tích phân", "đồng biến", "nghịch biến", "tiệm cận", "đồ thị", "phương trình")):  # noqa: E501
             subject = "MATH"
         elif any(w in c_low for w in ("gen", "nhiễm sắc thể", "adn", "arn", "đột biến", "quần thể")):
             subject = "BIOLOGY"

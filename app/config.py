@@ -72,10 +72,10 @@ class Settings(BaseSettings):
     # AI import (Gemini). Supports multiple keys for rotation (comma/semicolon/newline-separated).
     gemini_api_key: str = ""
     gemini_api_keys: str = ""
-    gemini_models: str = "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.5-flash,gemini-3.6-flash,gemini-3.8-flash"
+    gemini_models: str = "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.5-flash,gemini-3.6-flash,gemini-3.8-flash"  # noqa: E501
     # Reading exam pages (transcription): cheaper models first. Free quotas are per model, so several also
     # mean more free requests a day. Thinking is billed as output: little of it for transcription.
-    gemini_extract_models: str = "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.5-flash,gemini-3.6-flash,gemini-3.8-flash"
+    gemini_extract_models: str = "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.5-flash,gemini-3.6-flash,gemini-3.8-flash"  # noqa: E501
     gemini_extract_thinking: str = ""
     # LibreOffice binary used to turn .docx (MathType, Word shapes) into PDF.
     soffice_path: str = "soffice"

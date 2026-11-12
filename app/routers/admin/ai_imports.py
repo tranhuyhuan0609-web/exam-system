@@ -308,7 +308,7 @@ async def publish(request: Request, user: AdminUser, session: SessionDep, job_id
 
             article = await session.scalar(select(KnowledgeArticle).where(KnowledgeArticle.knowledge_unit_id == ku.id))
             if not article:
-                article = KnowledgeArticle(knowledge_unit_id=ku.id, title=job.knowledge_article_data.get("title", title))
+                article = KnowledgeArticle(knowledge_unit_id=ku.id, title=job.knowledge_article_data.get("title", title))  # noqa: E501
                 session.add(article)
             article.title = job.knowledge_article_data.get("title", title)
             article.method_guide_md = job.knowledge_article_data.get("method_guide_md")
@@ -319,11 +319,11 @@ async def publish(request: Request, user: AdminUser, session: SessionDep, job_id
 
     await session.commit()
     if job.knowledge_article_data:
-        flash(request, f"🚀 Đã xuất bản thành công vào Ngân hàng Tài liệu & Ngân hàng Câu hỏi ({len(created)} câu)! Học sinh có thể làm bài tương tác trực tiếp tại: /tai-lieu/toan-12/xac-suat-co-dieu-kien/dang-2-cong-thuc-bayes")
+        flash(request, f"🚀 Đã xuất bản thành công vào Ngân hàng Tài liệu & Ngân hàng Câu hỏi ({len(created)} câu)! Học sinh có thể làm bài tương tác trực tiếp tại: /tai-lieu/toan-12/xac-suat-co-dieu-kien/dang-2-cong-thuc-bayes")  # noqa: E501
         return redirect(f"/admin/ai-imports/{job_id}")
     if exam:
         folder_display = " › ".join(doc.folder_path) if doc and doc.folder_path else "Thư viện"
-        flash(request, f"Đã đưa {len(created)} câu vào ngân hàng, xuất đề “{exam.title}” và lưu vào mục: {folder_display}.")
+        flash(request, f"Đã đưa {len(created)} câu vào ngân hàng, xuất đề “{exam.title}” và lưu vào mục: {folder_display}.")  # noqa: E501
         return redirect(f"/admin/exams/{exam.id}")
     flash(request, f"Đã đưa {len(created)} câu vào ngân hàng câu hỏi và lưu đề vào Thư viện tài liệu.")
     return redirect(f"/admin/ai-imports/{job_id}")
