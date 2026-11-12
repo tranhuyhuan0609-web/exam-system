@@ -7,16 +7,18 @@ published automatically when its key is known and every answer agrees; otherwise
 with the disagreements marked (flag "key_mismatch", the official answer next to the AI's).
 """
 
+import io
 import logging
 import re
 import unicodedata
 
-import pymupdf
+from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.provider import PageImage
+from app.infrastructure.pdf_engine import PDFEngineAdapter
 from app.models import AnswerKey, ImportJob, LibraryDocument
 
 log = logging.getLogger(__name__)
@@ -47,13 +49,17 @@ def paper_code(title: str) -> str | None:
 
 def document_pages(data: bytes, mime: str) -> list[PageImage]:
     if mime == "application/pdf":
-        with pymupdf.open(stream=data, filetype="pdf") as pdf:
+        with PDFEngineAdapter.open(data) as pdf:
             return [
-                PageImage(number=i + 1, png=pdf[i].get_pixmap(dpi=150).tobytes("png"))
-                for i in range(min(len(pdf), MAX_PAGES))
+                PageImage(number=i + 1, png=pdf.render_png(i, dpi=150))
+                for i in range(min(pdf.page_count, MAX_PAGES))
             ]
-    picture = pymupdf.Pixmap(data)  # JPEG or PNG
-    return [PageImage(number=1, png=picture.tobytes("png"))]
+    with Image.open(io.BytesIO(data)) as picture:  # JPEG or PNG
+        if picture.mode not in ("RGB", "RGBA", "L"):
+            picture = picture.convert("RGB")  # CMYK, palette, 16-bit: PNG output must be plain RGB
+        out = io.BytesIO()
+        picture.save(out, format="PNG")
+    return [PageImage(number=1, png=out.getvalue())]
 
 
 async def read_answer_key_document(

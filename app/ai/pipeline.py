@@ -146,10 +146,10 @@ def _text_contexts(source: Path, page_count: int) -> list[str]:
             text = docx_to_markdown_latex(source)
             return [text] + [""] * max(0, page_count - 1)
         if source.suffix.lower() == ".pdf":
-            import pymupdf
+            from app.infrastructure.pdf_engine import PDFEngineAdapter
 
-            with pymupdf.open(source) as document:
-                return [page.get_text("text")[:24000] for page in document]
+            with PDFEngineAdapter.open(source) as document:
+                return [document.text_stream(i, newline_terminated=True)[:24000] for i in range(document.page_count)]
     except Exception as exc:
         log.info("Could not read optional text context from %s: %s", source.name, exc)
     return [""] * page_count

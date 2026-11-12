@@ -1,6 +1,6 @@
 # PDF engine migration: PyMuPDF (AGPLv3) to pypdfium2 + pdfplumber (ADR-010, task T0.7)
 
-Status: inventory and adapter only. No caller has been migrated and `pymupdf` is still a dependency.
+Status: adapter done; PR A (read-only callers) migrated, see "Migration status" below. `pymupdf` is still a dependency.
 The adapter is `app/infrastructure/pdf_engine.py` (`PDFEngineAdapter`), tests in `tests/test_pdf_engine.py`.
 
 Licences: pypdfium2 Apache-2.0 / BSD-3 (bundles PDFium, BSD-3); pdfplumber MIT (pdfminer.six MIT);
@@ -113,6 +113,30 @@ Line numbers are from branch `feat/w0-pdf-engine-adapter` (base `main` at fc39ae
 | G8 | **Fixture writer with real fonts**: tests use `insert_htmlbox` (HTML with embedded Noto) to get Vietnamese text. | 9 test files | Chromium `page.pdf()` for text/table fixtures (Playwright is a runtime dependency, but tests must `importorskip`/skip when browsers are absent), `reportlab` for deterministic fixtures, Pillow for scanned (image-only) pages. | Apache-2.0 / BSD-3 / HPND |
 | G9 | **Password-protected files**: fitz exposes `needs_pass`. The adapter raises `PDFEngineError` when pdfium refuses to open; callers cannot yet tell "password" from "corrupt". | `essay_exam` | Add a `PDFPasswordRequired(PDFEngineError)` subclass (pdfium error code `FPDF_ERR_PASSWORD`) in the migration PR. | n/a |
 | G10 | **Rendering fidelity and speed**: pixel output differs from MuPDF (anti-aliasing, hairlines); pdfplumber text/table extraction is slower and uses more memory per page than MuPDF. | all rendering callers; bulk ingestion | Compare renders with a tolerance in golden tests, never byte-equality; keep page-by-page processing (the adapter does); use `text_stream()` (pdfium) instead of pdfplumber when only plain text is needed. | n/a |
+
+## Migration status
+
+### PR A (read-only callers), done
+
+| File | Moved to the adapter | Still on PyMuPDF, and why |
+| --- | --- | --- |
+| `app/application/answer_keys.py` | PDF page render (`render_png(dpi=150)`); the JPEG/PNG upload is converted with Pillow | nothing (the module no longer imports pymupdf) |
+| `app/application/matrix_import.py` | text layer (`text_stream(newline_terminated=True)`), page count, page render | nothing |
+| `app/ai/pipeline.py` | per-page text context (`text_stream`) | nothing |
+| `app/ai/local_text.py` | plain per-page text in `read_pdf_text` | `read_essay_pdf` (in `essay_exam.py`, PR B) is called first and still uses fitz |
+| `app/ai/normalize.py` | open, password detection (`PDFPasswordRequired`, G9), page-count limit, render of the original page PNG | `page_geometry(page)` and `remove_light_text(page)` + the "clean" render (redaction, G3; geometry is PR B) |
+| `app/pipeline/use_cases/library_split.py` | page text, page size, rendering of the header/footer bands | OCR (`pdfocr_tobytes`, G7, needs `pytesseract`, not added yet): the pdfium render is wrapped in a `pymupdf.Pixmap` for it; `cut()` (G1, `insert_pdf`) |
+| `app/cli.py` | nothing | both call sites open fitz pages only to feed `page_geometry` and `remove_light_text` + clean render; moves with PR B/C |
+
+Adapter additions: `PDFPasswordRequired(PDFEngineError)` (G9) and `text_stream(i, newline_terminated=True)`.
+
+Known differences handled at the call sites: PyMuPDF text ends every line (and page) with a newline, pdfium does
+not, hence `newline_terminated`; clip renders can differ by one pixel in size (pdfium rounds, MuPDF rounds up);
+invalid PDFs raise `PDFEngineError` instead of `RuntimeError` (`library_split.split_document` catches both).
+
+### Still to do
+
+PR B and PR C as listed in "Proposed migration order". Remaining fitz inventory rows are unchanged except the files above.
 
 ## Proposed migration order (3 PRs, lowest risk first)
 
