@@ -44,7 +44,7 @@ def test_seven_roles_exist_and_none_can_bypass_rls():
     rows = run(
         _rows(
             "SELECT rolname, rolsuper, rolbypassrls, rolcreaterole, rolcreatedb "
-            "FROM pg_roles WHERE starts_with(rolname, 'ulp_')"
+            "FROM pg_roles WHERE starts_with(rolname, 'ulp_') AND NOT rolcanlogin"  # logins: test_runtime_role
         )
     )
     by_name = {r.rolname: r for r in rows}

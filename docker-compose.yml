@@ -28,6 +28,59 @@ services:
     volumes:
       - s3data:/data
 
+  # Connection pooler in transaction mode. The application reaches PostgreSQL only through it, as the
+  # least-privilege login ulp_api; tenant context is set per transaction (SET LOCAL), which pooling keeps safe.
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.24.1-p1
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: exam
+      DB_USER: ulp_api
+      DB_PASSWORD: ${RUNTIME_DB_PASSWORD:-ulp_api_dev}
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      # Belt and braces: session state a client leaves behind (SET ROLE, SET app.*) never reaches the next one.
+      SERVER_RESET_QUERY: DISCARD ALL
+      SERVER_RESET_QUERY_ALWAYS: "1"
+      MAX_CLIENT_CONN: "500"
+      DEFAULT_POOL_SIZE: "20"
+    ports:
+      - "6432:5432"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Cache of public exam papers (answers stripped) and worker broker. Never a source of truth.
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  # Vault in dev mode (in memory, unsealed): Transit keys per user for crypto-shredding. Not for production.
+  vault:
+    image: hashicorp/vault:1.17
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_TOKEN:-dev-root-token}
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    ports:
+      - "8200:8200"
+
+  # Virus scanning of uploads (clamd on 3310). The first start downloads signatures and takes a few minutes.
+  clamav:
+    image: clamav/clamav:stable
+    ports:
+      - "3310:3310"
+    volumes:
+      - clamavdata:/var/lib/clamav
+
   # Question crawler (app/pipeline): Kafka (KRaft, single node) carries raw pages and dead letters.
   kafka:
     image: apache/kafka:3.9.1
@@ -59,16 +112,14 @@ services:
       - mongodata:/data/db
 
   # One-shot migration runner: applies Alembic migrations safely before app/worker replicas start.
+  # Runs as the schema owner, straight to PostgreSQL; then creates the runtime login the services use.
   migration:
     build: .
-    command: alembic upgrade head
+    command: sh -c "alembic upgrade head && python -m app.platform.runtime_login"
     env_file: .env
-    environment: &app-env
+    environment:
       DATABASE_URL: postgresql+asyncpg://exam:exam@db:5432/exam
-      DATA_DIR: /app/data
-      STORAGE_BACKEND: s3
-      S3_ENDPOINT: s3:9000
-      S3_PUBLIC_URL: http://localhost:9000
+      RUNTIME_DB_PASSWORD: ${RUNTIME_DB_PASSWORD:-ulp_api_dev}
     depends_on:
       db:
         condition: service_healthy
@@ -77,7 +128,17 @@ services:
   app:
     build: .
     env_file: .env  # SECRET_KEY, GEMINI_API_KEY...
-    environment: *app-env
+    environment: &app-env
+      DATABASE_URL: postgresql+asyncpg://ulp_api:${RUNTIME_DB_PASSWORD:-ulp_api_dev}@pgbouncer:5432/exam
+      DB_PGBOUNCER: "true"
+      DATA_DIR: /app/data
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT: s3:9000
+      S3_PUBLIC_URL: http://localhost:9000
+      REDIS_URL: redis://redis:6379/0
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_TOKEN:-dev-root-token}
+      CLAMAV_HOST: clamav
     ports:
       - "8000:8000"
     depends_on:
@@ -87,6 +148,8 @@ services:
         condition: service_started
       migration:
         condition: service_completed_successfully
+      pgbouncer:
+        condition: service_started
 
   # Processes AI import jobs (PDF / Word / photos). Includes LibreOffice for .docx files.
   worker:
@@ -102,6 +165,8 @@ services:
         condition: service_started
       migration:
         condition: service_completed_successfully
+      pgbouncer:
+        condition: service_started
 
   # Crawler processes: scheduler (runs spiders), bronze (raw pages -> MongoDB),
   # silver (parse -> crawled_questions in PostgreSQL) and dlq (dead letters -> MongoDB).
@@ -113,7 +178,7 @@ services:
       <<: *app-env
       KAFKA_BOOTSTRAP: kafka:29092
       MONGO_URL: mongodb://mongo:27017
-    depends_on: [db, kafka, mongo, s3]
+    depends_on: [db, pgbouncer, kafka, mongo, s3]
   crawler-bronze:
     <<: *pipeline
     command: python -m app.pipeline bronze
@@ -137,3 +202,4 @@ volumes:
   s3data:
   kafkadata:
   mongodata:
+  clamavdata:

@@ -50,6 +50,19 @@ class Settings(BaseSettings):
 
     app_env: str = "dev"
     database_url: str = "postgresql+asyncpg://exam:exam@localhost:5432/exam"
+    # True when DATABASE_URL points at PgBouncer in transaction mode: no client-side pool, no cached
+    # prepared statements (a statement prepared on one server connection is unknown on the next).
+    db_pgbouncer: bool = False
+    # Password of the runtime login `ulp_api` (member of the least-privilege roles), created next to the
+    # migrations by `python -m app.platform.runtime_login`. Empty: the login is not managed.
+    runtime_db_password: str = ""
+
+    # V11.3 infrastructure (docker-compose services of the same names).
+    redis_url: str = "redis://localhost:6379/0"  # public-paper cache and broker only, never a source of truth
+    vault_addr: str = "http://localhost:8200"  # Vault Transit: per-user keys for crypto-shredding
+    vault_token: str = ""
+    clamav_host: str = "localhost"  # clamd: uploads are scanned before they are accepted
+    clamav_port: int = 3310
     secret_key: str = "change-me"
     # Set to true in production (HTTPS) so the session cookie is never sent over plain HTTP.
     session_https_only: bool = False
