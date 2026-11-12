@@ -29,6 +29,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY alembic.ini .
 COPY alembic ./alembic
 COPY app ./app
+COPY universal_ingestor.py .
 # Drive sources (configs/drive), read by the library consumer that runs on this image
 COPY configs ./configs
 
