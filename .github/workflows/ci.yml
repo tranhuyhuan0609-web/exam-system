@@ -29,6 +29,12 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -r requirements-dev.txt
+      # Tests that convert Word files (LibreOffice) and typeset exam PDFs (headless Chromium).
+      - name: Install LibreOffice and Chromium
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice-writer
+          playwright install --with-deps chromium
       # Gate 1: static checks and architecture boundaries.
       - run: ruff check .
       - name: Module boundaries (.importlinter)

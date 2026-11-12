@@ -81,7 +81,7 @@ def test_a_work_found_by_two_sources_is_kept_once_and_listed_with_its_link(db, m
     make_user("hs@example.com")
     student = TestClient(app)
     student.post("/login", data={"email": "hs@example.com", "password": "password123"})
-    assert "bai-bao" not in student.get("/library").text  # no file held yet: not shown, no link out
+    assert "Giáo dục học" not in student.get("/library").text  # no file held yet: not shown, no link out
     db(
         lambda s: s.execute(
             update(LibraryDocument)
@@ -89,15 +89,12 @@ def test_a_work_found_by_two_sources_is_kept_once_and_listed_with_its_link(db, m
             .values(storage_key="open/x.pdf", mime="application/pdf")
         )
     )
-    front = student.get("/library").text
-    assert "Bài báo &amp; nghiên cứu" in front and "section=bai-bao" in front
-    section = student.get("/library", params={"section": "bai-bao"}).text
-    assert "Giáo dục học" in section
-    folder = student.get("/library", params={"section": "bai-bao", "folder": "Giáo dục học"}).text
+    # The front page lists top-level folders (the by-kind sections were replaced by exam-category sections).
+    assert "Giáo dục học" in student.get("/library").text
+    folder = student.get("/library", params={"folder": "Giáo dục học"}).text
     assert "Giáo dục STEM" in folder and "2024" in folder and "/view" in folder and "journal.example" not in folder
     assert "Giáo dục STEM" in student.get("/library", params={"q": "stem"}).text
     assert "Giáo dục STEM" not in student.get("/library", params={"q": "100%"}).text  # % is not a wildcard
-    assert "Giáo dục STEM" not in student.get("/library", params={"section": "sach", "q": "stem"}).text
 
 
 def test_open_pdfs_are_stored_and_links_without_a_pdf_are_dropped(db, monkeypatch):
