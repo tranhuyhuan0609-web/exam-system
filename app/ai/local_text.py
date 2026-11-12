@@ -312,9 +312,8 @@ def _broken(text: str) -> bool:
 
 
 def read_pdf_text(path: Path) -> LocalExam | None:
-    import pymupdf
-
     from app.ai.essay_exam import read_essay_pdf
+    from app.infrastructure.pdf_engine import PDFEngineAdapter
 
     # Step 1-5: Try structured essay PDF extraction with PyMuPDF get_text("dict") + geometry first
     try:
@@ -325,8 +324,8 @@ def read_pdf_text(path: Path) -> LocalExam | None:
     if essay is not None:
         return _from_essay(essay, "pdf-text")
 
-    with pymupdf.open(path) as pdf:
-        pages = [page.get_text("text") for page in pdf]
+    with PDFEngineAdapter.open(path) as pdf:
+        pages = [pdf.text_stream(i, newline_terminated=True) for i in range(pdf.page_count)]
     if not pages or any(len(p.strip()) < 30 for p in pages) or any(_broken(p) for p in pages):
         return None  # a scan, or formulas that did not survive: the page images are read instead
     exam = parse_text_exam("\n".join(pages))

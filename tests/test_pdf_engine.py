@@ -12,6 +12,7 @@ from PIL import Image
 from app.infrastructure.pdf_engine import (
     PDFEngineAdapter,
     PDFEngineError,
+    PDFPasswordRequired,
     Rect,
     merge_intersecting_rects_union_find,
 )
@@ -110,6 +111,27 @@ def test_invalid_input_raises_adapter_error(tmp_path):
         PDFEngineAdapter.open(b"")
     with pytest.raises(PDFEngineError):
         PDFEngineAdapter.open(tmp_path / "missing.pdf")
+
+
+def _encrypted_pdf(sample_pdf: bytes) -> bytes:
+    # pdfium cannot write encrypted files; PyMuPDF is used here only as a fixture writer.
+    pymupdf = pytest.importorskip("pymupdf")
+    with pymupdf.open(stream=sample_pdf, filetype="pdf") as src:
+        return src.tobytes(encryption=pymupdf.PDF_ENCRYPT_AES_256, user_pw="secret", owner_pw="owner")
+
+
+def test_password_protected_pdf_is_told_apart_from_a_corrupt_one(sample_pdf):
+    locked = _encrypted_pdf(sample_pdf)
+    with pytest.raises(PDFPasswordRequired):
+        PDFEngineAdapter.open(locked)
+    with pytest.raises(PDFPasswordRequired):
+        PDFEngineAdapter.open(locked, password="wrong")
+    with PDFEngineAdapter.open(locked, password="secret") as unlocked:
+        assert unlocked.page_count == 1
+    with pytest.raises(PDFEngineError) as corrupt:
+        PDFEngineAdapter.open(b"this is not a pdf")
+    assert not isinstance(corrupt.value, PDFPasswordRequired)
+    assert issubclass(PDFPasswordRequired, PDFEngineError)
 
 
 def test_close_is_deterministic_and_idempotent(sample_pdf):
@@ -244,6 +266,14 @@ def test_text_stream_in_content_order(pdf):
     stream = pdf.text_stream(0)
     assert stream.index("Alpha heading") < stream.index("Omega footer")
     assert "\r" not in stream
+
+
+def test_text_stream_newline_terminated_matches_pymupdf_style(pdf):
+    plain = pdf.text_stream(0)
+    terminated = pdf.text_stream(0, newline_terminated=True)
+    assert not plain.endswith("\n")
+    assert terminated == plain + "\n"
+    assert pdf.text_stream(0, newline_terminated=True).endswith("\n")
 
 
 def test_find_text_returns_top_left_rects(pdf):

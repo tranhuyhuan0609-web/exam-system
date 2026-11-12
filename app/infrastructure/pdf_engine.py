@@ -38,6 +38,13 @@ class PDFEngineError(Exception):
     """Raised for any failure to open or read a PDF (corrupt, encrypted, closed, bad page index)."""
 
 
+class PDFPasswordRequired(PDFEngineError):
+    """The PDF is encrypted and needs a (different) password to open (pdfium ``FPDF_ERR_PASSWORD``)."""
+
+
+_FPDF_ERR_PASSWORD = 4
+
+
 @dataclass(frozen=True, slots=True)
 class Rect:
     """Axis-aligned rectangle, top-left origin, points. ``x0 <= x1`` and ``y0 <= y1``."""
@@ -216,6 +223,8 @@ class PDFEngineAdapter:
         try:
             self._pdfium = pdfium.PdfDocument(data, password=password)
         except Exception as exc:  # PdfiumError, ValueError, ...
+            if getattr(exc, "err_code", None) == _FPDF_ERR_PASSWORD:
+                raise PDFPasswordRequired(f"PDF is password protected: {exc}") from exc
             raise PDFEngineError(f"Cannot open PDF: {exc}") from exc
         self._page_count = len(self._pdfium)
 
@@ -356,18 +365,24 @@ class PDFEngineAdapter:
 
     # -- text --------------------------------------------------------------------------------
 
-    def text_stream(self, index: int) -> str:
+    def text_stream(self, index: int, *, newline_terminated: bool = False) -> str:
         """Plain text in content-stream order (pdfium text page), without layout reconstruction.
 
         Fast and low-memory; matches PyMuPDF's ``get_text("text")`` ordering more closely than
         ``text()``, which sorts by position. Lines are separated by ``\n``.
+
+        ``newline_terminated=True`` ends a non-empty result with ``\n``, exactly like PyMuPDF's
+        ``get_text("text")`` (so joining pages keeps a line break between them).
         """
         self._check(index)
         page = self._pdfium[index]
         try:
             textpage = page.get_textpage()
             try:
-                return textpage.get_text_range().replace("\r\n", "\n")
+                text = textpage.get_text_range().replace("\r\n", "\n")
+                if newline_terminated and text and not text.endswith("\n"):
+                    text += "\n"
+                return text
             finally:
                 textpage.close()
         except Exception as exc:
