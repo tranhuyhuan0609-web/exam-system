@@ -363,7 +363,7 @@ async def create_exam_from_document_route(
     now = await db_now(session)
     is_pro_doc = doc.access_tier == AccessTier.PRO or doc.kind == LibraryKind.HSG
     if is_pro_doc and not user.has_pro(now):
-        flash(request, "Tài liệu chuyên sâu này thuộc gói PRO. Hãy nâng cấp tài khoản PRO để tạo đề luyện tập.", "error")
+        flash(request, "Tài liệu chuyên sâu này thuộc gói PRO. Hãy nâng cấp tài khoản PRO để tạo đề luyện tập.", "error")  # noqa: E501
         return RedirectResponse(f"/library/{doc.id}/preview", status_code=status.HTTP_303_SEE_OTHER)
 
     exam = await create_exam_from_library_doc(session, doc, user_id=user.id)
@@ -436,7 +436,7 @@ async def view_study_article(
         toc_tree.append({
             "chapter": ch,
             "lessons": lessons_tree,
-            "is_active": ch.id == ku.id or any(l["is_active"] for l in lessons_tree),
+            "is_active": ch.id == ku.id or any(l["is_active"] for l in lessons_tree),  # noqa: E741
         })
 
     return templates.TemplateResponse(

@@ -40,10 +40,8 @@ from app.models import (
     Exam,
     ExamAttempt,
     ExamMode,
-    ExamTarget,
     ExamVisibility,
     GradingStatus,
-    KnowledgeUnit,
     Question,
     QuestionCategory,
     User,
@@ -677,7 +675,7 @@ async def materials_level_curriculum(
     if not tl_section:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Không tìm thấy chuyên mục Tài liệu.")
 
-    level = next((l for l in tl_section.get("levels", []) if l["id"] == level_id), None)
+    level = next((l for l in tl_section.get("levels", []) if l["id"] == level_id), None)  # noqa: E741
     if not level:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Không tìm thấy cấp học: {level_id}")
 

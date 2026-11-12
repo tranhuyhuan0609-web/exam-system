@@ -106,7 +106,7 @@ async def api_create_exam_from_trivia(
 
     exam = Exam(
         title=title,
-        description=f"Bộ đề trắc nghiệm tri thức đa lĩnh vực được tích hợp từ Open Trivia Database với {len(questions_data)} câu hỏi.",
+        description=f"Bộ đề trắc nghiệm tri thức đa lĩnh vực được tích hợp từ Open Trivia Database với {len(questions_data)} câu hỏi.",  # noqa: E501
         exam_mode=ExamMode.PRACTICE,
         visibility=ExamVisibility.PUBLIC,
         is_published=True,

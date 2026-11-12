@@ -10,16 +10,13 @@ from starlette.datastructures import FormData
 from app import question_rules as rules
 from app.deps import AdminUser, SessionDep
 from app.domain.question_hash import hash_of_choices
-from app.models import Category, QUESTION_MAX_CHOICES, Difficulty, Exam, ExamQuestion, Question, QuestionType
+from app.models import QUESTION_MAX_CHOICES, Category, Difficulty, Exam, ExamQuestion, Question, QuestionType
 from app.routers.admin.common import get_or_404, redirect
 from app.scope import (
     Scope,
-    SectionScope,
-    TargetScope,
     build_drilldown_conditions,
     get_all_scope_paths,
     get_drilldown_catalog,
-    get_section_scope_data,
     load_categories,
     resolve_scope,
     scope_of,

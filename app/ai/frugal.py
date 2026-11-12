@@ -66,7 +66,7 @@ def _from_bank(q: ExtractedQuestion, bank: Question) -> Solution | None:
 async def bank_lookup(session: AsyncSession, root_id: int) -> Lookup:
     """Answers from the bank of this subject, matched on the question text and its set of options.
     Only draws from high-reliability questions (verified, human-written explanation, not unverified single-source crawler).
-    """
+    """  # noqa: E501
     stmt = select(Question).where(
         Question.root_id == root_id,
         Question.is_verified.is_(True),
@@ -303,11 +303,11 @@ class FrugalProvider:
             dead_solvers: set[int] = set()
 
             async def _solve_group(g_idx: int, group: list[int]) -> None:
-                for attempt in range(len(active)):
-                    s_pos = (g_idx + attempt) % len(active)
-                    if s_pos in dead_solvers:
+                for attempt in range(len(active)):  # noqa: B023
+                    s_pos = (g_idx + attempt) % len(active)  # noqa: B023
+                    if s_pos in dead_solvers:  # noqa: B023
                         continue
-                    solver = active[s_pos]
+                    solver = active[s_pos]  # noqa: B023
                     numbers = {questions[i].number for i in group}
                     try:
                         answers = await solver.solve(
@@ -315,9 +315,9 @@ class FrugalProvider:
                         )
                     except httpx.HTTPError as exc:  # rate limit / quota / HTTP error on this key: try next key in pool
                         log.warning("%s:%s HTTP error: %s", solver.name, solver.model, exc)
-                        dead_solvers.add(s_pos)
+                        dead_solvers.add(s_pos)  # noqa: B023
                         continue
-                    except (ValueError, KeyError, IndexError) as exc:  # model output format issue: don't retry same model
+                    except (ValueError, KeyError, IndexError) as exc:  # model output format issue: don't retry same model  # noqa: E501
                         log.warning("%s:%s could not solve: %s", solver.name, solver.model, exc)
                         return
                     by_number = {a.number: a for a in answers}
@@ -331,7 +331,7 @@ class FrugalProvider:
             sem = asyncio.Semaphore(len(active))
 
             async def _bounded(g_idx: int, group: list[int]) -> None:
-                async with sem:
+                async with sem:  # noqa: B023
                     await _solve_group(g_idx, group)
 
             await asyncio.gather(*(_bounded(g_idx, g) for g_idx, g in enumerate(groups)))

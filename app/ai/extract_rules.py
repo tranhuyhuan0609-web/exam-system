@@ -16,4 +16,4 @@ QUY TẮC CHỌN LỌC NỘI DUNG (ưu tiên hơn mọi hướng dẫn phía tr�
 - Bài N là một đơn vị, các ý 1, 2, a), b) nằm trong nội dung của nó, không tách riêng: Với đề tự luận (có dạng "Bài 1 (5,0 điểm)", "Câu 1 (4,0 điểm)"...), mỗi Bài N / Câu N là MỘT câu hỏi duy nhất (type = ESSAY); mọi ý nhỏ bên trong như "1.", "2.", "a)", "b)", "2a)", "3b)" phải giữ nguyên trong trường content của bài đó, tuyệt đối không tách thành các câu hỏi riêng.
 - Bảng (bảng số liệu, bảng biến thiên) KHÔNG viết bằng \\begin{tabular}: mỗi hàng một dòng, các ô ngăn bởi " | "
   (VD: "$x$ | $-\\infty$ | $1$ | $+\\infty$"). Nếu bảng nằm trong hình đã khoanh bằng figure_bbox thì không chép lại.
-"""
+"""  # noqa: E501

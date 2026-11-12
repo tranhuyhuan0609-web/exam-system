@@ -1,10 +1,10 @@
 """Module bóc tách Chuyên đề Lý thuyết (VietJack style) + 4 Phần Bài tập + Đáp án nội tuyến."""
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
-def split_study_guide_and_questions(full_text: str) -> Dict[str, Any]:
+def split_study_guide_and_questions(full_text: str) -> dict[str, Any]:
     """
     Tách tự động:
     1. Khối Lý thuyết / Phương pháp giải (nếu đầu file có 'Phương pháp:', 'Các công thức cần nhớ:') -> knowledge_article
@@ -17,7 +17,7 @@ def split_study_guide_and_questions(full_text: str) -> Dict[str, Any]:
         full_text,
         maxsplit=1,
     )
-    knowledge_article: Optional[Dict[str, str]] = None
+    knowledge_article: dict[str, str] | None = None
     if len(theory_split) > 1 and any(k in theory_split[0] for k in ("Phương pháp", "Công thức", "Dạng ", "Lý thuyết")):
         t_raw = theory_split[0].strip()
         q_raw = theory_split[1].strip()
@@ -53,13 +53,13 @@ def split_study_guide_and_questions(full_text: str) -> Dict[str, Any]:
     }
 
 
-def _map_solutions_by_number(sol_text: str) -> Dict[str, str]:
+def _map_solutions_by_number(sol_text: str) -> dict[str, str]:
     pattern = re.compile(r"(?:^|\n)\s*(?:Câu|Bài)\s+([IVX]+|\d+)[\.\:]", re.I)
     parts = pattern.split(sol_text)
     return {parts[i].strip(): parts[i + 1].strip() for i in range(1, len(parts), 2)}
 
 
-def _parse_general_questions(text: str, solutions_map: Dict[str, str]) -> List[Dict[str, Any]]:
+def _parse_general_questions(text: str, solutions_map: dict[str, str]) -> list[dict[str, Any]]:
     pattern = re.compile(
         r"(?:^|\n)\s*((?:Câu|Bài)\s+([IVX]+|\d+)[\.\:]?\s*(?:\(\d+(?:[,\.]\d+)?\s*điểm\))?\s*[\–\-\:]?\s*[^\n]*)",
         re.IGNORECASE,
@@ -79,8 +79,8 @@ def _parse_general_questions(text: str, solutions_map: Dict[str, str]) -> List[D
     return items
 
 
-def _parse_gdpt2018_sections(text: str) -> List[Dict[str, Any]]:
-    items: List[Dict[str, Any]] = []
+def _parse_gdpt2018_sections(text: str) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
     p1 = re.split(r"\n\s*(?:BÀI TẬP TRẮC NGHIỆM\s*\n\s*)?PHẦN I\.", text, maxsplit=1)
     essay_raw, rest1 = p1[0], (p1[1] if len(p1) > 1 else "")
     p2 = re.split(r"\n\s*PHẦN II\.", rest1, maxsplit=1)

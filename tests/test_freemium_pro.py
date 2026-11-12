@@ -5,14 +5,14 @@
 4. Funnel C: PRO / HSG PDFs in the library auto-slice a 2-page watermarked preview via PyMuPDF for Free users,
    while Pro users get full access and 60s presigned URLs.
 5. Admin upload toggle (`is_pro=on`) stores raw files in the private vault and tags jobs/questions/exams as PRO/ORIGINAL.
-"""
+"""  # noqa: E501
 
 import asyncio
 from datetime import timedelta
 
 import pymupdf
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select, update
+from sqlalchemy import func, update
 
 from app.application.ai_publish import create_exam, publish_drafts
 from app.application.categories import create_category

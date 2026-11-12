@@ -14,7 +14,6 @@ Bước 6: Băm SHA-256 chống trùng & Upsert vào PostgreSQL + MinIO
 from __future__ import annotations
 
 import hashlib
-import io
 import logging
 import os
 import re
@@ -26,8 +25,6 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-
-from PIL import Image
 
 from app.domain.question_hash import normalize_text
 
@@ -235,7 +232,7 @@ def pdf_to_continuous_text(pdf_path: Path | str) -> str:
             for b in blocks:
                 text = b[4].strip()
                 # Bỏ qua khối tiêu đề trường/kỳ thi ở đầu trang 1
-                if page_idx == 0 and any(k in text.upper() for k in ["KỲ THI CHỌN", "ĐỀ CHÍNH THỨC", "THỜI GIAN LÀM BÀI", "HƯỚNG DẪN CHẤM ĐỀ"]):
+                if page_idx == 0 and any(k in text.upper() for k in ["KỲ THI CHỌN", "ĐỀ CHÍNH THỨC", "THỜI GIAN LÀM BÀI", "HƯỚNG DẪN CHẤM ĐỀ"]):  # noqa: E501
                     continue
                 page_lines.append(text)
 
@@ -476,8 +473,8 @@ def split_into_structured_questions(
 # ==============================================================================
 
 SHORT_ANSWER_VALUE_PATTERNS = [
-    re.compile(r"(?:đáp\s*số|kết\s*quả|đáp\s*án|vậy[^:=,\n]{0,30})\s*[:=]\s*(?:[a-zA-Z_]+\s*=\s*)?(-?\d+(?:[.,]\d+)?)\s*(?:%|[a-zA-Z/°^]+)?", re.I),
-    re.compile(r"(?:=|\b)\s*(-?\d+(?:[.,]\d+)?)\s*(?:m/s|kg|g|m|cm|mm|s|N|J|kJ|W|kW|V|A|mA|mol|L|lít|%|K|atm|Pa)\b", re.I),
+    re.compile(r"(?:đáp\s*số|kết\s*quả|đáp\s*án|vậy[^:=,\n]{0,30})\s*[:=]\s*(?:[a-zA-Z_]+\s*=\s*)?(-?\d+(?:[.,]\d+)?)\s*(?:%|[a-zA-Z/°^]+)?", re.I),  # noqa: E501
+    re.compile(r"(?:=|\b)\s*(-?\d+(?:[.,]\d+)?)\s*(?:m/s|kg|g|m|cm|mm|s|N|J|kJ|W|kW|V|A|mA|mol|L|lít|%|K|atm|Pa)\b", re.I),  # noqa: E501
     re.compile(r"(-?\d+(?:[.,]\d+)?)\s*$", re.I),
 ]
 

@@ -18,7 +18,7 @@ import re
 import unicodedata
 from typing import Any
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.curriculum_data import CURRICULUM_DATA
@@ -188,7 +188,7 @@ def normalize_difficulty_list(values: list[str] | None) -> list[Difficulty]:
     return result or [Difficulty(d) for d in STANDARD_CURRICULUM_DIFFICULTIES]
 
 
-def normalize_difficulty_value(value: str | Difficulty | None, default: Difficulty = Difficulty.UNDERSTANDING) -> Difficulty:
+def normalize_difficulty_value(value: str | Difficulty | None, default: Difficulty = Difficulty.UNDERSTANDING) -> Difficulty:  # noqa: E501
     if isinstance(value, Difficulty):
         return value
     if not value:
@@ -219,7 +219,7 @@ def infer_knowledge_metadata(
     subject: str | None = None,
 ) -> dict[str, Any]:
     """Infer multi-dimensional classification (`difficulty`, `is_thinking_skill`, `suitable_targets`, `kntt_unit_code`, `topic_name`)
-    from question text and difficulty."""
+    from question text and difficulty."""  # noqa: E501
     text = unicodedata.normalize("NFC", content or "").strip()
     norm = text.lower()
 
@@ -269,19 +269,19 @@ def infer_knowledge_metadata(
     unit_code: str | None = None
     topic_name: str | None = None
 
-    if any(w in norm for w in ("dao động điều hòa", "con lắc lò xo", "con lắc đơn", "chu kì dao động", "biên độ", "độ cứng k", "pha dao động")):
+    if any(w in norm for w in ("dao động điều hòa", "con lắc lò xo", "con lắc đơn", "chu kì dao động", "biên độ", "độ cứng k", "pha dao động")):  # noqa: E501
         unit_code = "PHY11-KNTT-C1-B1"
         topic_name = "Dao động điều hòa"
     elif any(w in norm for w in ("sóng cơ", "giao thoa sóng", "sóng dừng", "bước sóng", "sóng âm", "mức cường độ âm")):
         unit_code = "PHY11-KNTT-C2-B1"
         topic_name = "Sóng cơ & Sóng âm"
-    elif any(w in norm for w in ("nhiệt độ", "nội năng", "nhiệt lượng", "nhiệt dung riêng", "chuyển thể", "khí lí tưởng", "đẳng nhiệt", "đẳng áp", "đẳng tích", "áp suất khí", "piston")):
+    elif any(w in norm for w in ("nhiệt độ", "nội năng", "nhiệt lượng", "nhiệt dung riêng", "chuyển thể", "khí lí tưởng", "đẳng nhiệt", "đẳng áp", "đẳng tích", "áp suất khí", "piston")):  # noqa: E501
         unit_code = "PHY12-KNTT-C2-B1"
         topic_name = "Nhiệt học & Khí lí tưởng"
-    elif any(w in norm for w in ("vật rắn", "khớp nối", "thanh mảnh", "mô men", "mômen", "trục quay", "giàn thanh", "hệ cơ")):
+    elif any(w in norm for w in ("vật rắn", "khớp nối", "thanh mảnh", "mô men", "mômen", "trục quay", "giàn thanh", "hệ cơ")):  # noqa: E501
         unit_code = f"PHY{eff_grade}-KNTT-C1-B3" if eff_grade in (10, 11) else "PHY10-KNTT-C4-B1"
         topic_name = "Cơ học vật rắn"
-    elif any(w in norm for w in ("cơ học chất điểm", "ném xiên", "ném ngang", "lực cản", "độ cao h", "vận tốc ban đầu", "stokes")):
+    elif any(w in norm for w in ("cơ học chất điểm", "ném xiên", "ném ngang", "lực cản", "độ cao h", "vận tốc ban đầu", "stokes")):  # noqa: E501
         unit_code = "PHY10-KNTT-C3-B1"
         topic_name = "Cơ học chất điểm"
     elif any(w in norm for w in ("sao chổi", "thiên thể", "hấp dẫn", "mặt trời", "parabol", "quỹ đạo", "cận nhật")):
@@ -302,7 +302,7 @@ def infer_knowledge_metadata(
     elif any(w in norm for w in ("hệ sinh thái", "quần xã", "quần thể", "chuỗi thức ăn", "lưới thức ăn", "sinh quyển")):
         unit_code = "BIO12-KNTT-C3-B1"
         topic_name = "Sinh thái học"
-    elif any(w in norm for w in ("đồng biến", "nghịch biến", "cực trị của hàm số", "tiệm cận", "đạo hàm", "bảng biến thiên")):
+    elif any(w in norm for w in ("đồng biến", "nghịch biến", "cực trị của hàm số", "tiệm cận", "đạo hàm", "bảng biến thiên")):  # noqa: E501
         unit_code = "MATH12-KNTT-C1-B1"
         topic_name = "Ứng dụng đạo hàm & Khảo sát hàm số"
     elif any(w in norm for w in ("nguyên hàm", "tích phân", "diện tích hình phẳng")):
@@ -406,8 +406,8 @@ async def seed_knowledge_architecture(session: AsyncSession) -> dict[str, int]:
     canonical_extras = [
         ("PHYSICS", 12, "CHAPTER", "PHY12-KNTT-C1", None, "Chương 1: Dao động & Vật lí nhiệt", 1),
         ("PHYSICS", 12, "LESSON", "PHY12-KNTT-C1-B1", "PHY12-KNTT-C1", "Bài 1: Dao động điều hòa & Sự chuyển thể", 1),
-        ("PHYSICS", 12, "LESSON", "PHY12-KNTT-C1-B2", "PHY12-KNTT-C1", "Bài 2: Phương trình dao động điều hòa & Con lắc lò xo", 2),
-        ("MATH", 12, "CHAPTER", "MATH12-KNTT-C1", None, "Chương 1: Ứng dụng đạo hàm để khảo sát và vẽ đồ thị hàm số", 1),
+        ("PHYSICS", 12, "LESSON", "PHY12-KNTT-C1-B2", "PHY12-KNTT-C1", "Bài 2: Phương trình dao động điều hòa & Con lắc lò xo", 2),  # noqa: E501
+        ("MATH", 12, "CHAPTER", "MATH12-KNTT-C1", None, "Chương 1: Ứng dụng đạo hàm để khảo sát và vẽ đồ thị hàm số", 1),  # noqa: E501
         ("MATH", 12, "LESSON", "MATH12-KNTT-C1-B1", "MATH12-KNTT-C1", "Bài 1: Tính đơn điệu và cực trị của hàm số", 1),
     ]
     await session.flush()
@@ -654,13 +654,13 @@ async def questions_for_target(
         )
 
     # 4. Mechanism 2c: Automatic intersection for Olympiad & HSG (HSG gồm câu VD, VDC và HSG)
-    is_olympiad = target.group_category == TargetGroupCategory.OLYMPIAD or code in ("HSG_TINH", "HSG_QG", "OLYMPIAD_CHUYEN")
+    is_olympiad = target.group_category == TargetGroupCategory.OLYMPIAD or code in ("HSG_TINH", "HSG_QG", "OLYMPIAD_CHUYEN")  # noqa: E501
     if is_olympiad:
         clauses.append(
             Question.difficulty.in_([Difficulty.HSG, Difficulty.ADVANCED_APPLICATION])
             | (
                 (Question.difficulty == Difficulty.APPLICATION)
-                & (Question.is_thinking_skill.is_(True) | (Question.access_tier == AccessTier.PRO) | Question.id.in_(tagged_q_ids_subq))
+                & (Question.is_thinking_skill.is_(True) | (Question.access_tier == AccessTier.PRO) | Question.id.in_(tagged_q_ids_subq))  # noqa: E501
             )
         )
 

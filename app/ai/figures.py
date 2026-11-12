@@ -122,7 +122,6 @@ def remove_light_text(page) -> int:
 def extract_unlabeled_diagrams(page, min_paths: int = 4) -> list[BoundingBox]:
     """Cluster vector drawings (organic chemistry reactions, physics circuits) without 'Hình X' captions.
     Uses page.cluster_drawings() in PyMuPDF to detect graphic clusters and returns BoundingBoxes."""
-    import fitz
 
     width, height = page.rect.width, page.rect.height
     diagram_boxes = []

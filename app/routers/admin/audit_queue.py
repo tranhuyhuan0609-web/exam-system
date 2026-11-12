@@ -1,15 +1,13 @@
 """Admin router for Data Self-Healing & Verification Audit Queue (/admin/audit-queue)."""
 
-import json
-from typing import Annotated, Any
 
 from fastapi import APIRouter, Form, HTTPException, Request, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from starlette.responses import RedirectResponse
 
 from app.ai.background_audit_jobs import QuestionBankAuditWorker
 from app.deps import AdminUser, SessionDep
-from app.models import Category, KnowledgeUnit, Question
+from app.models import KnowledgeUnit, Question
 from app.templating import flash, templates
 
 router = APIRouter()
@@ -177,5 +175,5 @@ async def resolve_question(
         await session.commit()
         flash(request, f"Đã xác nhận câu hỏi #{q.id}.", kind="success")
 
-    return RedirectResponse(url=request.headers.get("referer", "/admin/audit-queue"), status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=request.headers.get("referer", "/admin/audit-queue"), status_code=status.HTTP_303_SEE_OTHER)  # noqa: E501
 

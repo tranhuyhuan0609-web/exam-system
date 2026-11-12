@@ -119,7 +119,7 @@ def test_all_four_sections_have_separated_individual_grades(client):
     assert "VSTEP" in res_nn.text
     assert "HSK" in res_nn.text
     assert "JLPT" in res_nn.text
-    assert "Vào học ngay Luyện thi TOEIC" in res_nn.text or "Vào luyện đề & học bài →" in res_nn.text or "Vào mục Tiếng Anh" in res_nn.text
+    assert "Vào học ngay Luyện thi TOEIC" in res_nn.text or "Vào luyện đề & học bài →" in res_nn.text or "Vào mục Tiếng Anh" in res_nn.text  # noqa: E501
 
 
 def test_sections_have_dedicated_hot_blocks(client):

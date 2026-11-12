@@ -126,9 +126,3 @@ def _regular_grid(read: list[_Page], total: int) -> list[dict] | None:
     ]
 
 
-from app.pipeline.domain.study_guide_parser import (
-    split_study_guide_and_questions,
-    _map_solutions_by_number,
-    _parse_general_questions,
-    _parse_gdpt2018_sections,
-)

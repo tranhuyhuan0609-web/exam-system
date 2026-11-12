@@ -62,7 +62,7 @@ class GeminiKeyPool:
         return len(self._keys) == 0
 
     def get_client(self, api_key: str):
-        """Get or initialize a cached genai.Client for a specific API key (with 1 attempt so key rotation is instant)."""
+        """Get or initialize a cached genai.Client for a specific API key (with 1 attempt so key rotation is instant)."""  # noqa: E501
         from google import genai
         from google.genai import types
 
@@ -97,7 +97,7 @@ class GeminiKeyPool:
                 soonest_key = min(self._exhausted_until, key=lambda k: self._exhausted_until[k])
                 soonest_time = self._exhausted_until[soonest_key]
                 log.warning(
-                    "Tất cả %d Gemini API keys đều đang trong thời gian chờ (hết quota). Key sớm nhất (%s) sẽ phục hồi lúc %s",
+                    "Tất cả %d Gemini API keys đều đang trong thời gian chờ (hết quota). Key sớm nhất (%s) sẽ phục hồi lúc %s",  # noqa: E501
                     len(self._keys),
                     mask_key(soonest_key),
                     soonest_time.strftime("%H:%M:%S UTC"),
@@ -130,7 +130,7 @@ class GeminiKeyPool:
             until = datetime.now(UTC) + timedelta(minutes=cooldown_minutes)
             self._exhausted_until[api_key] = until
             log.warning(
-                "Gemini key [%s] chạm giới hạn (%s) -> Tạm dừng key này %d phút (đến %s). Tự động chuyển key tiếp theo!",
+                "Gemini key [%s] chạm giới hạn (%s) -> Tạm dừng key này %d phút (đến %s). Tự động chuyển key tiếp theo!",  # noqa: E501
                 mask_key(api_key),
                 reason,
                 cooldown_minutes,
@@ -147,7 +147,7 @@ class GeminiKeyPool:
     def status_summary(self) -> dict[str, Any]:
         """Summary of active vs cooling-down keys."""
         now = datetime.now(UTC)
-        available = [mask_key(k) for k in self._keys if k not in self._exhausted_until or self._exhausted_until[k] <= now]
+        available = [mask_key(k) for k in self._keys if k not in self._exhausted_until or self._exhausted_until[k] <= now]  # noqa: E501
         cooldown = {
             mask_key(k): self._exhausted_until[k].strftime("%H:%M:%S UTC")
             for k in self._keys

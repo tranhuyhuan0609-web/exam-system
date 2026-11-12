@@ -14,7 +14,7 @@ Handles 11+ diverse document types across Vietnamese exams & study materials:
    - Removes old teacher/phone footers at page bottoms.
    - Splits theory into 3 VietJack cards (Phương pháp giải, Công thức, Chú ý) -> knowledge_articles.
    - Splits 4 question parts (Tự luận, Trắc nghiệm ABCD, Đúng/Sai 4 ý, Trả lời ngắn) -> questions.
-"""
+"""  # noqa: E501
 
 from __future__ import annotations
 
@@ -26,9 +26,8 @@ import shutil
 import subprocess
 import uuid
 import zipfile
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import fitz  # PyMuPDF
 from docx import Document
@@ -57,13 +56,13 @@ def find_soffice_executable(configured: str | None = None) -> str:
     return "soffice"
 
 
-def extract_short_answer_value(text: str) -> Optional[str]:
+def extract_short_answer_value(text: str) -> str | None:
     """Extract numeric value or clean result from solution text for short answer questions."""
     if not text:
         return None
     patterns = [
-        re.compile(r"(?:đáp\s*số|kết\s*quả|đáp\s*án|vậy[^:=,\n]{0,30})\s*[:=]\s*(?:[a-zA-Z_]+\s*=\s*)?(-?\d+(?:[.,]\d+)?)\s*(?:%|[a-zA-Z/°^]+)?", re.I),
-        re.compile(r"(?:=|\b)\s*(-?\d+(?:[.,]\d+)?)\s*(?:m/s|mm/s|km/h|kg|g|m|cm|mm|s|giây|giờ|N|J|kJ|W|kW|V|A|mA|mol|L|lít|%|K|atm|Pa|oC|°C)\b", re.I),
+        re.compile(r"(?:đáp\s*số|kết\s*quả|đáp\s*án|vậy[^:=,\n]{0,30})\s*[:=]\s*(?:[a-zA-Z_]+\s*=\s*)?(-?\d+(?:[.,]\d+)?)\s*(?:%|[a-zA-Z/°^]+)?", re.I),  # noqa: E501
+        re.compile(r"(?:=|\b)\s*(-?\d+(?:[.,]\d+)?)\s*(?:m/s|mm/s|km/h|kg|g|m|cm|mm|s|giây|giờ|N|J|kJ|W|kW|V|A|mA|mol|L|lít|%|K|atm|Pa|oC|°C)\b", re.I),  # noqa: E501
         re.compile(r"(-?\d+(?:[.,]\d+)?)\s*$", re.I),
     ]
     for pat in patterns:
@@ -110,8 +109,8 @@ class UniversalExamAndMaterialIngestor:
 
     def convert_to_pdf(self, input_path: str) -> str:
         """Chuyển đổi các định dạng .doc, .docx sang .pdf chuẩn thông qua LibreOffice headless."""
-        import tempfile
         import shutil
+        import tempfile
 
         path = Path(input_path)
         if path.suffix.lower() == ".pdf":
@@ -158,8 +157,8 @@ class UniversalExamAndMaterialIngestor:
         pdf_path: str,
         doc_id: str,
         is_pro: bool = True,
-        system_footer: Optional[str] = None,
-    ) -> Dict[str, Optional[str]]:
+        system_footer: str | None = None,
+    ) -> dict[str, str | None]:
         """
         Thay thế logo và xóa dấu vết cũ thông minh theo 3 kiểu bố cục:
         1. Đề thi chính thức: Xóa góc trái (Logo + đơn vị cũ), giữ nguyên tên kỳ thi bên phải.
@@ -283,7 +282,7 @@ class UniversalExamAndMaterialIngestor:
     # =========================================================================
     # 3. CẮT HÌNH VẼ & SƠ ĐỒ HÓA HỌC (GẮN THẺ [[FIG_...]] VÀO ĐÚNG TỌA ĐỘ Y)
     # =========================================================================
-    def extract_text_with_embedded_figure_tags(self, pdf_path: str, doc_id: str) -> Tuple[str, Dict[str, str]]:
+    def extract_text_with_embedded_figure_tags(self, pdf_path: str, doc_id: str) -> tuple[str, dict[str, str]]:
         """
         Quét từng trang PDF:
         - Tự động cắt cả ảnh Raster lẫn cụm nét vẽ Vector (Hình 5 Lý 11, Sơ đồ phản ứng Hóa 11, v.v.).
@@ -291,15 +290,15 @@ class UniversalExamAndMaterialIngestor:
         - Chèn thẻ [[FIG_P1_0]] vào đúng tọa độ Y để hình nằm đúng ở câu hỏi chứa nó.
         """
         doc = fitz.open(pdf_path)
-        figure_map: Dict[str, str] = {}
-        all_pages_lines: List[str] = []
+        figure_map: dict[str, str] = {}
+        all_pages_lines: list[str] = []
 
         for page_idx, page in enumerate(doc):
             w, h = page.rect.width, page.rect.height
-            page_items: List[Tuple[float, str]] = []
+            page_items: list[tuple[float, str]] = []
 
             # 3.1. Gom khung ảnh Raster (bỏ qua ký hiệu công thức nhỏ và logo)
-            raster_boxes: List[fitz.Rect] = []
+            raster_boxes: list[fitz.Rect] = []
             for img in page.get_images(full=True):
                 rects = page.get_image_rects(img[0])
                 for r in rects:
@@ -354,10 +353,10 @@ class UniversalExamAndMaterialIngestor:
         doc.close()
         return "\n".join(all_pages_lines), figure_map
 
-    def _merge_overlapping_rects(self, rects: List[fitz.Rect], pad: float = 12.0) -> List[fitz.Rect]:
+    def _merge_overlapping_rects(self, rects: list[fitz.Rect], pad: float = 12.0) -> list[fitz.Rect]:
         if not rects:
             return []
-        merged: List[fitz.Rect] = []
+        merged: list[fitz.Rect] = []
         for r in sorted(rects, key=lambda x: (x.y0, x.x0)):
             expanded = fitz.Rect(r.x0 - pad, r.y0 - pad, r.x1 + pad, r.y1 + pad)
             if not merged:
@@ -373,8 +372,8 @@ class UniversalExamAndMaterialIngestor:
     # =========================================================================
     # 4. BỘ TÁCH ĐA NĂNG: LÝ THUYẾT (VIETJACK) + CÂU HỎI + ĐÁP ÁN ĐI KÈM
     # =========================================================================
-    def parse_all_content(self, full_text: str, figure_map: Dict[str, str]) -> Dict[str, Any]:
-        result: Dict[str, Any] = {
+    def parse_all_content(self, full_text: str, figure_map: dict[str, str]) -> dict[str, Any]:
+        result: dict[str, Any] = {
             "knowledge_article": None,
             "questions": [],
         }
@@ -385,7 +384,7 @@ class UniversalExamAndMaterialIngestor:
             full_text,
             maxsplit=1,
         )
-        if len(theory_split) > 1 and any(k in theory_split[0] for k in ["Phương pháp", "Dạng ", "Lý thuyết", "Công thức"]):
+        if len(theory_split) > 1 and any(k in theory_split[0] for k in ["Phương pháp", "Dạng ", "Lý thuyết", "Công thức"]):  # noqa: E501
             theory_block = theory_split[0].strip()
             questions_block = theory_split[1].strip()
             result["knowledge_article"] = self._parse_theory_block(theory_block)
@@ -393,7 +392,7 @@ class UniversalExamAndMaterialIngestor:
             questions_block = full_text
 
         # 4.2. KIỂM TRA XEM TRONG FILE CÓ PHẦN "ĐÁP ÁN / HƯỚNG DẪN CHẤM" Ở CUỐI KHÔNG (như HSG-29-2.pdf)
-        ans_split = re.split(r"\n\s*(?:ĐÁP ÁN|HƯỚNG DẪN CHẤM|BÀI GIẢI|Đáp án)\s*\n", questions_block, maxsplit=1, flags=re.IGNORECASE)
+        ans_split = re.split(r"\n\s*(?:ĐÁP ÁN|HƯỚNG DẪN CHẤM|BÀI GIẢI|Đáp án)\s*\n", questions_block, maxsplit=1, flags=re.IGNORECASE)  # noqa: E501
         exam_body = ans_split[0].strip()
         inline_solution_body = ans_split[1].strip() if len(ans_split) > 1 else ""
 
@@ -407,7 +406,7 @@ class UniversalExamAndMaterialIngestor:
 
         return result
 
-    def _parse_theory_block(self, theory_text: str) -> Dict[str, str]:
+    def _parse_theory_block(self, theory_text: str) -> dict[str, str]:
         """Tách Lý thuyết thành 3 hộp chuẩn giao diện VietJack."""
         clean_theory = re.sub(r"GV\.\s*Phan Nhật Linh[^\n]*\n?", "", theory_text, flags=re.I)
         clean_theory = re.sub(r"SĐT:[^\n]*\n?", "", clean_theory, flags=re.I).strip()
@@ -424,8 +423,8 @@ class UniversalExamAndMaterialIngestor:
         }
 
     def _parse_olympiad_or_worksheet(
-        self, text: str, solutions_map: Dict[str, str], figure_map: Dict[str, str]
-    ) -> List[Dict[str, Any]]:
+        self, text: str, solutions_map: dict[str, str], figure_map: dict[str, str]
+    ) -> list[dict[str, Any]]:
         """Bắt mọi kiểu câu HSG: 'Câu I. (4,0 điểm)', 'Câu 1:', 'Bài 3:', 'Câu 4 (4 điểm):'"""
         pattern = re.compile(
             r"(?:^|\n)\s*((?:Câu|Bài)\s+([IVX]+|\d+)[\.\:]?\s*(?:\(\d+(?:[,\.]\d+)?\s*điểm\))?\s*[\–\-\:]?)[ \t]*",
@@ -512,7 +511,7 @@ class UniversalExamAndMaterialIngestor:
         full_text = "\n".join(clean_lines)
 
         split_theory = re.split(r"\n\s*(?:BÀI TẬP TỰ LUẬN\s*\n|(?=Bài tập 1:))", full_text, maxsplit=1)
-        theory_raw = split_theory[0].strip()
+        theory_raw = split_theory[0].strip()  # noqa: F841
         exercises_raw = split_theory[1] if len(split_theory) > 1 else ""
 
         sec_p1 = re.split(r"\n\s*BÀI TẬP TRẮC NGHIỆM\s*\n|\n\s*PHẦN I\.", exercises_raw, maxsplit=1)
@@ -537,7 +536,7 @@ gọi là **công thức Bayes**.
 Công thức Bayes còn được viết dưới dạng tương đương:
 $$P(B \\mid A) = \\frac{P(A \\cap B)}{P(A)} = \\frac{P(B) \\cdot P(A \\mid B)}{P(A)}$$
 với mẫu số $P(A)$ được tính thông qua **công thức xác suất toàn phần**:
-$$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline{B})$$""",
+$$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline{B})$$""",  # noqa: E501
             "summary_formulas_md": """- **Xác suất biến cố đối:** $P(\\overline{A}) = 1 - P(A)$
 - **Quy tắc nhân xác suất:** $P(A \\cap B) = P(B) \\cdot P(A \\mid B) = P(A) \\cdot P(B \\mid A)$
 - **Công thức xác suất toàn phần:** $P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline{B})$
@@ -546,17 +545,17 @@ $$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline
 > Công thức Bayes thường được áp dụng cho bài toán **nhiều giai đoạn có quan hệ nhân quả / liên đới**:
 > 1. **Giai đoạn 1 (Nguyên nhân):** Biến cố $B$ hoặc $\\overline{B}$ xảy ra với xác suất ban đầu $P(B)$.
 > 2. **Giai đoạn 2 (Kết quả):** Biến cố $A$ xảy ra phụ thuộc vào việc $B$ đã xảy ra hay chưa.
-> 3. **Câu hỏi đặt ra:** Đã biết biến cố kết quả $A$ xảy ra, tính xác suất để nguyên nhân $B$ đã xảy ra: **$P(B \\mid A)$**.""",
+> 3. **Câu hỏi đặt ra:** Đã biết biến cố kết quả $A$ xảy ra, tính xác suất để nguyên nhân $B$ đã xảy ra: **$P(B \\mid A)$**.""",  # noqa: E501
             "worked_examples_json": [
                 {
                     "title": "Ví dụ minh họa 1 (Bài toán hai hộp bi chuyển tiếp)",
-                    "problem": "Hộp thứ nhất có 3 viên bi xanh và 6 viên bi đỏ. Hộp thứ hai có 3 viên bi xanh và 7 viên bi đỏ. Lấy ngẫu nhiên 1 viên bi từ hộp thứ nhất chuyển sang hộp thứ hai, sau đó lấy ngẫu nhiên 2 viên bi từ hộp thứ hai. Biết rằng 2 viên bi lấy ra từ hộp thứ hai đều màu đỏ, tính xác suất viên bi chuyển từ hộp 1 sang cũng màu đỏ.",
-                    "solution": "• Gọi $B$ là biến cố: 'Viên bi chuyển từ hộp 1 sang hộp 2 có màu đỏ'. Khi đó $\\overline{B}$ là biến cố 'Viên bi chuyển sang có màu xanh'.\\n  Ta có: $P(B) = \\frac{6}{9} = \\frac{2}{3}$, $P(\\overline{B}) = \\frac{3}{9} = \\frac{1}{3}$.\\n\\n• Gọi $A$ là biến cố: 'Lấy được 2 viên bi đỏ từ hộp thứ hai'.\\n  - Nếu $B$ xảy ra: Hộp 2 lúc này có 3 xanh, 8 đỏ (tổng 11 viên). $P(A \\mid B) = \\frac{C_8^2}{C_{11}^2} = \\frac{28}{55}$.\\n  - Nếu $\\overline{B}$ xảy ra: Hộp 2 có 4 xanh, 7 đỏ (tổng 11 viên). $P(A \\mid \\overline{B}) = \\frac{C_7^2}{C_{11}^2} = \\frac{21}{55}$.\\n\\n• Áp dụng công thức Bayes, xác suất viên bi chuyển sang là màu đỏ khi biết 2 bi lấy sau màu đỏ là:\\n$$P(B \\mid A) = \\frac{P(B) P(A \\mid B)}{P(B) P(A \\mid B) + P(\\overline{B}) P(A \\mid \\overline{B})} = \\frac{\\frac{2}{3} \\cdot \\frac{28}{55}}{\\frac{2}{3} \\cdot \\frac{28}{55} + \\frac{1}{3} \\cdot \\frac{21}{55}} = \\frac{56}{56 + 21} = \\frac{8}{11} \\approx 0.727$$"
+                    "problem": "Hộp thứ nhất có 3 viên bi xanh và 6 viên bi đỏ. Hộp thứ hai có 3 viên bi xanh và 7 viên bi đỏ. Lấy ngẫu nhiên 1 viên bi từ hộp thứ nhất chuyển sang hộp thứ hai, sau đó lấy ngẫu nhiên 2 viên bi từ hộp thứ hai. Biết rằng 2 viên bi lấy ra từ hộp thứ hai đều màu đỏ, tính xác suất viên bi chuyển từ hộp 1 sang cũng màu đỏ.",  # noqa: E501
+                    "solution": "• Gọi $B$ là biến cố: 'Viên bi chuyển từ hộp 1 sang hộp 2 có màu đỏ'. Khi đó $\\overline{B}$ là biến cố 'Viên bi chuyển sang có màu xanh'.\\n  Ta có: $P(B) = \\frac{6}{9} = \\frac{2}{3}$, $P(\\overline{B}) = \\frac{3}{9} = \\frac{1}{3}$.\\n\\n• Gọi $A$ là biến cố: 'Lấy được 2 viên bi đỏ từ hộp thứ hai'.\\n  - Nếu $B$ xảy ra: Hộp 2 lúc này có 3 xanh, 8 đỏ (tổng 11 viên). $P(A \\mid B) = \\frac{C_8^2}{C_{11}^2} = \\frac{28}{55}$.\\n  - Nếu $\\overline{B}$ xảy ra: Hộp 2 có 4 xanh, 7 đỏ (tổng 11 viên). $P(A \\mid \\overline{B}) = \\frac{C_7^2}{C_{11}^2} = \\frac{21}{55}$.\\n\\n• Áp dụng công thức Bayes, xác suất viên bi chuyển sang là màu đỏ khi biết 2 bi lấy sau màu đỏ là:\\n$$P(B \\mid A) = \\frac{P(B) P(A \\mid B)}{P(B) P(A \\mid B) + P(\\overline{B}) P(A \\mid \\overline{B})} = \\frac{\\frac{2}{3} \\cdot \\frac{28}{55}}{\\frac{2}{3} \\cdot \\frac{28}{55} + \\frac{1}{3} \\cdot \\frac{21}{55}} = \\frac{56}{56 + 21} = \\frac{8}{11} \\approx 0.727$$"  # noqa: E501
                 },
                 {
                     "title": "Ví dụ minh họa 2 (Khảo sát tỉ lệ học sinh tham gia câu lạc bộ)",
-                    "problem": "Trong một trường học, tỉ lệ học sinh nữ là 52%. Tỉ lệ học sinh nữ và nam tham gia câu lạc bộ nghệ thuật lần lượt là 18% và 15%. Chọn ngẫu nhiên một học sinh. Biết rằng học sinh này có tham gia CLB nghệ thuật, tính xác suất học sinh đó là nam.",
-                    "solution": "• Gọi $B$ là biến cố 'Học sinh được chọn là nam', suy ra $\\overline{B}$ là 'Học sinh được chọn là nữ'.\\n  $P(\\overline{B}) = 0.52 \\implies P(B) = 1 - 0.52 = 0.48$.\\n\\n• Gọi $A$ là biến cố 'Học sinh tham gia CLB nghệ thuật'.\\n  Theo đề bài: $P(A \\mid \\overline{B}) = 0.18$, $P(A \\mid B) = 0.15$.\\n\\n• Áp dụng công thức Bayes:\\n$$P(B \\mid A) = \\frac{P(B) P(A \\mid B)}{P(B) P(A \\mid B) + P(\\overline{B}) P(A \\mid \\overline{B})} = \\frac{0.48 \\times 0.15}{0.48 \\times 0.15 + 0.52 \\times 0.18} = \\frac{0.072}{0.072 + 0.0936} = \\frac{10}{23} \\approx 0.435$$"
+                    "problem": "Trong một trường học, tỉ lệ học sinh nữ là 52%. Tỉ lệ học sinh nữ và nam tham gia câu lạc bộ nghệ thuật lần lượt là 18% và 15%. Chọn ngẫu nhiên một học sinh. Biết rằng học sinh này có tham gia CLB nghệ thuật, tính xác suất học sinh đó là nam.",  # noqa: E501
+                    "solution": "• Gọi $B$ là biến cố 'Học sinh được chọn là nam', suy ra $\\overline{B}$ là 'Học sinh được chọn là nữ'.\\n  $P(\\overline{B}) = 0.52 \\implies P(B) = 1 - 0.52 = 0.48$.\\n\\n• Gọi $A$ là biến cố 'Học sinh tham gia CLB nghệ thuật'.\\n  Theo đề bài: $P(A \\mid \\overline{B}) = 0.18$, $P(A \\mid B) = 0.15$.\\n\\n• Áp dụng công thức Bayes:\\n$$P(B \\mid A) = \\frac{P(B) P(A \\mid B)}{P(B) P(A \\mid B) + P(\\overline{B}) P(A \\mid \\overline{B})} = \\frac{0.48 \\times 0.15}{0.48 \\times 0.15 + 0.52 \\times 0.18} = \\frac{0.072}{0.072 + 0.0936} = \\frac{10}{23} \\approx 0.435$$"  # noqa: E501
                 }
             ],
             "branded_pdf_url": f"/static/docs/{safe_name}_branded.pdf",
@@ -672,7 +671,7 @@ $$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline
         parts = pattern.split(text)
         return {parts[i].strip(): parts[i + 1].strip() for i in range(1, len(parts), 2)}
 
-    def _parse_multi_section_exam(self, text: str, figure_map: Dict[str, str]) -> List[Dict[str, Any]]:
+    def _parse_multi_section_exam(self, text: str, figure_map: dict[str, str]) -> list[dict[str, Any]]:
         """Tách đề cấu trúc mới gồm 4 phần: Tự luận + Trắc nghiệm ABCD + Đúng/Sai + Trả lời ngắn."""
         questions = []
 
@@ -738,16 +737,16 @@ $$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline
     # =========================================================================
     # 5. BỘ ĐỌC RIÊNG CHO FILE HƯỚNG DẪN CHẤM DẠNG BẢNG (.docx)
     # =========================================================================
-    def parse_hdc_table_docx(self, docx_path: str) -> List[Dict[str, Any]]:
+    def parse_hdc_table_docx(self, docx_path: str) -> list[dict[str, Any]]:
         """Hút toàn bộ đáp số và lời giải chi tiết từ file DOCX có bảng điểm 3 cột."""
         doc = Document(docx_path)
-        solutions: List[Dict[str, Any]] = []
+        solutions: list[dict[str, Any]] = []
         current_main_q = ""
 
         for table in doc.tables:
             for row in table.rows:
                 # Deduplicate merged cells in row
-                cells: List[str] = []
+                cells: list[str] = []
                 for c in row.cells:
                     txt = c.text.strip()
                     if not cells or txt != cells[-1]:
@@ -780,7 +779,7 @@ $$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline
     # =========================================================================
     # 6. BỘ XỬ LÝ ẢNH CHỤP ĐỀ THI (.jpg, .png - hhuan.jpg)
     # =========================================================================
-    def preprocess_photo_exam(self, image_path: str, doc_id: Optional[str] = None) -> Dict[str, Any]:
+    def preprocess_photo_exam(self, image_path: str, doc_id: str | None = None) -> dict[str, Any]:
         """
         Làm trắng nền ảnh chụp đề thi bằng OpenCV (Illumination division + AdaptiveThreshold)
         và cắt các vùng hình vẽ tiềm năng trong trang giấy.
@@ -805,7 +804,7 @@ $$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline
 
         # Phát hiện khung hình vẽ trong ảnh chụp
         contours, _ = cv2.findContours(cv2.bitwise_not(whitened), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        extracted_figures: List[str] = []
+        extracted_figures: list[str] = []
         fig_idx = 1
         for cnt in contours:
             x, y, cw, ch = cv2.boundingRect(cnt)
@@ -869,14 +868,14 @@ $$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline
     def route_and_process(
         self,
         input_path: str,
-        doc_id: Optional[str] = None,
+        doc_id: str | None = None,
         is_pro: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Entrypoint hợp nhất: Tự động phân luồng, bóc tách và xuất dữ liệu cho mọi loại file."""
         doc_id = doc_id or uuid.uuid4().hex[:12]
         doc_type = self.detect_document_type(input_path)
 
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "doc_id": doc_id,
             "doc_type": doc_type,
             "source_path": input_path,

@@ -181,7 +181,7 @@ def test_a_gemini_timeout_moves_to_the_next_model_instead_of_failing_the_file():
 
 
 def test_essay_pdf_code_first_7_steps_and_flags(tmp_path):
-    """Steps 1–5 & 7: PyMuPDF dict extraction, sub-parts intact, figure captions, self-verification, flags, matrix diff."""
+    """Steps 1–5 & 7: PyMuPDF dict extraction, sub-parts intact, figure captions, self-verification, flags, matrix diff."""  # noqa: E501
     import pymupdf
 
     from app.ai.essay_exam import (
@@ -279,7 +279,7 @@ def test_essay_pdf_code_first_7_steps_and_flags(tmp_path):
 
 
 def test_library_first_publish_and_student_create_exam(admin_client, make_user, db):
-    """Publishing an AI import saves the document to the Library (/library); students go to /library to create an exam."""
+    """Publishing an AI import saves the document to the Library (/library); students go to /library to create an exam."""  # noqa: E501
     from fastapi.testclient import TestClient
     from sqlalchemy import select
 

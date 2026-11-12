@@ -76,7 +76,7 @@ class BronzePipeline:
                 if hasattr(self.store, "mark_published"):
                     await self.store.mark_published(doc.id, True)
                 stats.inc_value("bronze/published")
-            except Exception as exc:
+            except Exception:
                 stats.inc_value("bronze/publish_failed")
                 stats.inc_value("log_count/ERROR")
         return {"url": item["url"], "doc_id": doc.id, "new": is_new}  # keep the HTML out of Scrapy's logs

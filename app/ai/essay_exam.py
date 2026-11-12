@@ -34,7 +34,14 @@ from typing import Any
 from lxml import html as lxml_html
 from PIL import Image, ImageDraw
 
-from app.ai.figures import BoundingBox, PageGeometry, cut, is_light_text, page_geometry, remove_light_text, snap_to_graphics
+from app.ai.figures import (
+    BoundingBox,
+    PageGeometry,
+    cut,
+    is_light_text,
+    page_geometry,
+    remove_light_text,
+)
 from app.ai.schemas import ExtractedQuestion
 from app.pipeline.domain.html_content import to_content
 
@@ -68,12 +75,12 @@ HEADER_PLAIN = re.compile(
 _QUESTION = re.compile(r"^\s*(?:câu|bài)\s*(\d{1,2}|I{1,3}|IV|VI{0,3}|IX|X)\b\s*[.:)]?", re.I)
 _POINTS = re.compile(r"^\s*[(\[]?\s*(\d+(?:[.,]\d+)?)\s*(?:điểm|đ)\s*[)\]]?\s*(?:[-–—.:]\s*)?", re.I)
 _KEY_HEADING = re.compile(
-    r"^\s*(?:[IVX\d]+[.\-–—)\s]+|\(\s*)?(hướng dẫn chấm|hướng dẫn giải|đáp án(?: và| -| –|,)? (?:hướng dẫn|thang điểm|biểu điểm)|"
+    r"^\s*(?:[IVX\d]+[.\-–—)\s]+|\(\s*)?(hướng dẫn chấm|hướng dẫn giải|đáp án(?: và| -| –|,)? (?:hướng dẫn|thang điểm|biểu điểm)|"  # noqa: E501
     r"đáp án\s*$|đáp án đề|đáp án chi tiết|lời giải chi tiết|biểu điểm|thang điểm)",
     re.I,
 )
 # "(NB 0,5 – VDC 1,5)", "(TH 1,0 -- VD 1,0)": matrix tags printed in the exam
-_MATRIX_TAG = re.compile(r"\(\s*(?:(?:NB|TH|VDC|VD|HSG)\s*[:=]?\s*\d*(?:[.,]\d+)?\s*(?:điểm|đ)?\s*(?:[-–—]+|;|,)?\s*)+\)", re.I)
+_MATRIX_TAG = re.compile(r"\(\s*(?:(?:NB|TH|VDC|VD|HSG)\s*[:=]?\s*\d*(?:[.,]\d+)?\s*(?:điểm|đ)?\s*(?:[-–—]+|;|,)?\s*)+\)", re.I)  # noqa: E501
 _MATRIX_TOKEN = re.compile(r"\b(NB|TH|VDC|VD|HSG)\b(?:\s*[:=]?\s*(\d+(?:[.,]\d+)?))?", re.I)
 
 _LEVEL_MAP = {
@@ -195,10 +202,10 @@ class EssayPaper:
     explanations: dict[int, str] = field(default_factory=dict)  # question index -> marking scheme
     points: dict[int, float] = field(default_factory=dict)  # question index -> points printed in the paper
     figures: dict[int, bytes] = field(default_factory=dict)  # question index -> cropped figure PNG bytes
-    figure_captions: dict[int, dict[str, str]] = field(default_factory=dict)  # question index -> {"Hình 1.1": "stem", "Hình 1.2": "3"}
-    broken_crops: dict[int, bytes] = field(default_factory=dict)  # question index -> >=2000px PNG for formula transcription
+    figure_captions: dict[int, dict[str, str]] = field(default_factory=dict)  # question index -> {"Hình 1.1": "stem", "Hình 1.2": "3"}  # noqa: E501
+    broken_crops: dict[int, bytes] = field(default_factory=dict)  # question index -> >=2000px PNG for formula transcription  # noqa: E501
     matrix_difficulties: dict[int, str] = field(default_factory=dict)  # question index -> difficulty from matrix tag
-    question_flags: dict[int, list[str]] = field(default_factory=dict)  # question index -> ["missing_stem", "figure_failed"]
+    question_flags: dict[int, list[str]] = field(default_factory=dict)  # question index -> ["missing_stem", "figure_failed"]  # noqa: E501
     # question index -> section title printed in the heading ("Câu I. (4,0 điểm) CƠ HỌC CHẤT ĐIỂM"): used to
     # classify the question, never part of its text
     topics: dict[int, str] = field(default_factory=dict)
@@ -332,7 +339,7 @@ def strip_topic(content: str, topic: str | None) -> str:
 def has_missing_stem(content: str, topic_title: str = "") -> bool:
     """Step 4: Return True when a problem's body starts immediately with a subpart ('1.', 'a)')
     that lacks an introductory stem/scenario (e.g. cut off from previous page).
-    Does NOT flag complete multi-part problems (having parts '1.' and '2.', or where '1.' has its own detailed context)."""
+    Does NOT flag complete multi-part problems (having parts '1.' and '2.', or where '1.' has its own detailed context)."""  # noqa: E501
     body = content.strip()
     if topic_title and body.startswith(topic_title):
         body = body[len(topic_title) :].lstrip(" -–—.:\n")
@@ -462,7 +469,7 @@ def _key_from_tables(blocks: list) -> dict[int, list[str]]:
             if found:
                 current = _number(found.group(1))
                 cells = cells[1:]
-            elif re.fullmatch(r"(?:câu|bài|ý|đáp án|điểm|nội dung|thang điểm|biểu điểm)?", first, re.I) and tr.xpath("./th"):
+            elif re.fullmatch(r"(?:câu|bài|ý|đáp án|điểm|nội dung|thang điểm|biểu điểm)?", first, re.I) and tr.xpath("./th"):  # noqa: E501
                 continue  # the header row
             if not current:
                 continue
@@ -740,7 +747,7 @@ def _extract_declared_points(text: str) -> float | None:
 
 
 def _is_broken_text(text: str, has_pua: bool = False) -> bool:
-    """Step 5: Detect if a problem block's text has broken formulas (one symbol per line, PUA chars, or formula fragments)."""
+    """Step 5: Detect if a problem block's text has broken formulas (one symbol per line, PUA chars, or formula fragments)."""  # noqa: E501
     if has_pua or sum(0xE000 <= ord(c) <= 0xF8FF for c in text) > 2:
         return True
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
@@ -808,7 +815,7 @@ def _extract_pdf_lines(doc) -> tuple[list[PdfLine], list[PageGeometry]]:
                 )
 
         # Sort by vertical position (bucketed by 6 units ~ 0.6% page height) then horizontal position
-        page_lines.sort(key=lambda l: (l.ymin // 6, l.xmin))
+        page_lines.sort(key=lambda l: (l.ymin // 6, l.xmin))  # noqa: E741
 
         # Merge horizontally adjacent fragments on the same visual line
         merged: list[PdfLine] = []
@@ -1015,7 +1022,7 @@ def figure_band_crops(geom: PageGeometry, slice_ymin: int, slice_ymax: int) -> l
             if max(0, max(g.ymin, c["ymin"]) - min(g.ymax, c["ymax"])) <= 30
             and max(0, max(g.xmin, c["xmin"]) - min(g.xmax, c["xmax"])) <= 35
         ]
-        item = {"ymin": g.ymin, "xmin": g.xmin, "ymax": g.ymax, "xmax": g.xmax, "items": [g], "solid": id(g) not in small}
+        item = {"ymin": g.ymin, "xmin": g.xmin, "ymax": g.ymax, "xmax": g.xmax, "items": [g], "solid": id(g) not in small}  # noqa: E501
         if not near:
             clusters.append(item)
             continue
@@ -1499,7 +1506,7 @@ def read_essay_pdf(path: Path, dpi: int = 300) -> EssayPaper | None:
                 body_parts.append(ln.text)
 
         raw_block_text = "\n".join(body_parts)
-        has_pua = any(ln.has_pua for ln in block_lines)
+        has_pua = any(ln.has_pua for ln in block_lines)  # noqa: F841
         if inline_sol_parts:
             inline_sol_clean = _clean_lines("\n".join(inline_sol_parts))
             if len(inline_sol_clean) >= 10:
@@ -1520,16 +1527,16 @@ def read_essay_pdf(path: Path, dpi: int = 300) -> EssayPaper | None:
 
         slices: list[tuple[int, int, int]] = []
         for p_num in range(start_page, end_page + 1):
-            p_lines = [l for l in block_lines if l.page == p_num]
+            p_lines = [l for l in block_lines if l.page == p_num]  # noqa: E741
             if not p_lines:
                 continue
-            s_ymin = block_lines[0].ymin if p_num == start_page else max(50, min(l.ymin for l in p_lines) - 10)
+            s_ymin = block_lines[0].ymin if p_num == start_page else max(50, min(l.ymin for l in p_lines) - 10)  # noqa: E741
             if next_header_line and next_header_line.page == p_num:
                 s_ymax = max(s_ymin + 20, next_header_line.ymin - 6)
             elif p_num < end_page:
                 s_ymax = 935
             else:
-                s_ymax = min(940, max(l.ymax for l in p_lines) + 180)
+                s_ymax = min(940, max(l.ymax for l in p_lines) + 180)  # noqa: E741
             slices.append((p_num, s_ymin, s_ymax))
 
         # Step 3: Crop figures belonging to this problem and map captions ('Hình 1.1' -> stem, 'Hình 1.2' -> part 3)
@@ -1549,7 +1556,7 @@ def read_essay_pdf(path: Path, dpi: int = 300) -> EssayPaper | None:
             figures[idx] = fig_bytes
 
         # Step 5: Check if math formulas in this block are broken -> crop >=2000px image of just this problem
-        has_embedded_math = _has_image_block_in_slices(page_blocks, slices, page_rects)
+        has_embedded_math = _has_image_block_in_slices(page_blocks, slices, page_rects)  # noqa: F841
         # Word/MathType formulas converted by LibreOffice may become empty
         # text lines rather than image blocks.  Every essay problem therefore
         # gets a high-resolution crop; the transcription model is the authority

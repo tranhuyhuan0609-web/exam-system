@@ -6,16 +6,15 @@ Implements:
 3. JOB 1: Taxonomy & Font Healer Job (Restores clean UTF-8 Vietnamese, repairs LaTeX, aligns with SGK KNTT or suggests new dynamic topics with Anti-Explosion guardrails, accumulates target tags).
 4. JOB 2: Double-Blind Consensus Verification Job (Solves questions independently twice; auto-approves and attaches to pending exams on consensus, routes disagreements to Admin Review).
 5. Concurrency & Anti-Collision: Uses SELECT ... FOR UPDATE SKIP LOCKED and dead-letter protection.
-"""
+"""  # noqa: E501
 
-import asyncio
 import json
 import logging
 import re
 from typing import Any
 
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -93,7 +92,7 @@ def detect_quality_flags(
     flags: list[str] = []
     if TCVN3_MOJIBAKE_REGEX.search(content):
         flags.append("BROKEN_FONT")
-    if BROKEN_OMEGA_REGEX.search(content) or BROKEN_UNIT_REGEX.search(content) or DROPPED_FORMULA_GAP_REGEX.search(content):
+    if BROKEN_OMEGA_REGEX.search(content) or BROKEN_UNIT_REGEX.search(content) or DROPPED_FORMULA_GAP_REGEX.search(content):  # noqa: E501
         flags.append("MISSING_MATH")
     if (
         MISSING_TABLE_CUE_REGEX.search(content)
@@ -118,13 +117,13 @@ class CleanChoice(BaseModel):
 
 class Job1HealedItem(BaseModel):
     question_id: int
-    cleaned_content: str = Field(description="Cleaned Vietnamese UTF-8 content with standard LaTeX ($...$). Retain table pipes (|) accurately.")
-    cleaned_choices: list[CleanChoice] = Field(default_factory=list, description="Cleaned choices with standardized LaTeX and UTF-8")
-    matched_kntt_unit_code: str | None = Field(default=None, description="Exact SGK Kết nối tri thức code, e.g. MATH11-KNTT-C3-B8")
-    suggested_new_topic_name: str | None = Field(default=None, description="If this is an advanced Olympiad / HSG topic not in SGK, suggest the topic name")
-    is_thinking_skill: bool = Field(default=False, description="True if question tests practical thinking, graph reading, or experimental data")
-    append_target_tags: list[str] = Field(default_factory=list, description="Target exam tags: THPTQG, DGTD_TSA, HSG, etc.")
-    repaired_flags: list[str] = Field(default_factory=list, description="Flags repaired: BROKEN_FONT, MISSING_MATH, WRONG_CATEGORY")
+    cleaned_content: str = Field(description="Cleaned Vietnamese UTF-8 content with standard LaTeX ($...$). Retain table pipes (|) accurately.")  # noqa: E501
+    cleaned_choices: list[CleanChoice] = Field(default_factory=list, description="Cleaned choices with standardized LaTeX and UTF-8")  # noqa: E501
+    matched_kntt_unit_code: str | None = Field(default=None, description="Exact SGK Kết nối tri thức code, e.g. MATH11-KNTT-C3-B8")  # noqa: E501
+    suggested_new_topic_name: str | None = Field(default=None, description="If this is an advanced Olympiad / HSG topic not in SGK, suggest the topic name")  # noqa: E501
+    is_thinking_skill: bool = Field(default=False, description="True if question tests practical thinking, graph reading, or experimental data")  # noqa: E501
+    append_target_tags: list[str] = Field(default_factory=list, description="Target exam tags: THPTQG, DGTD_TSA, HSG, etc.")  # noqa: E501
+    repaired_flags: list[str] = Field(default_factory=list, description="Flags repaired: BROKEN_FONT, MISSING_MATH, WRONG_CATEGORY")  # noqa: E501
 
 
 class Job1BatchResponse(BaseModel):
@@ -133,9 +132,9 @@ class Job1BatchResponse(BaseModel):
 
 class Job2SolveItem(BaseModel):
     question_id: int
-    solved_answer: str = Field(description="Selected choice label (e.g. 'A', 'B', 'C', 'D'), or 'TTFF'/'ĐSĐS' for True/False, or exact value for short answer")
-    step_by_step_explanation: str = Field(description="Step-by-step Vietnamese pedagogical explanation with LaTeX formulas")
-    is_source_error_suspected: bool = Field(default=False, description="Set True if question contains an inherent scientific flaw or none of the choices match")
+    solved_answer: str = Field(description="Selected choice label (e.g. 'A', 'B', 'C', 'D'), or 'TTFF'/'ĐSĐS' for True/False, or exact value for short answer")  # noqa: E501
+    step_by_step_explanation: str = Field(description="Step-by-step Vietnamese pedagogical explanation with LaTeX formulas")  # noqa: E501
+    is_source_error_suspected: bool = Field(default=False, description="Set True if question contains an inherent scientific flaw or none of the choices match")  # noqa: E501
     confidence: float = Field(default=1.0, description="Confidence score between 0.0 and 1.0")
 
 
@@ -204,7 +203,7 @@ class QuestionBankAuditWorker:
             has_math_cues = any(kw in content_lower for kw in MATH_CORE_KEYWORDS)
             if has_math_cues and q.root_id:
                 root_cat = await self.session.get(Category, q.root_id)
-                if root_cat and any(subj in root_cat.name.lower() for subj in ["sinh học", "hóa học", "hoá học", "ngữ văn", "tiếng anh"]):
+                if root_cat and any(subj in root_cat.name.lower() for subj in ["sinh học", "hóa học", "hoá học", "ngữ văn", "tiếng anh"]):  # noqa: E501
                     flags.append("WRONG_CATEGORY")
 
             q.quality_flags = list(set((q.quality_flags or []) + flags))
@@ -282,7 +281,7 @@ Danh sách một số mã bài học SGK Kết nối tri thức tham chiếu:
 
 Dữ liệu câu hỏi:
 {json.dumps(items_payload, ensure_ascii=False, indent=2)}
-"""
+"""  # noqa: E501
             try:
                 result: Job1BatchResponse = await provider._generate(
                     contents=[prompt],
@@ -308,7 +307,7 @@ Dữ liệu câu hỏi:
 
                     if item.matched_kntt_unit_code and item.matched_kntt_unit_code in ku_code_map:
                         target_q.knowledge_unit_id = ku_code_map[item.matched_kntt_unit_code]
-                        target_q.quality_flags = [f for f in (target_q.quality_flags or []) if f != "UNCLASSIFIED_TAXONOMY"]
+                        target_q.quality_flags = [f for f in (target_q.quality_flags or []) if f != "UNCLASSIFIED_TAXONOMY"]  # noqa: E501
 
                     # Anti-Explosion Topic Guardrail for new dynamic subcategories
                     if item.suggested_new_topic_name and target_q.category_id:
@@ -320,7 +319,7 @@ Dữ liệu câu hỏi:
                                 target_q.category_id = subcat.id
                         except Exception as e:
                             log.warning("Failed to map dynamic subcategory: %s", e)
-                        target_q.quality_flags = list(set((target_q.quality_flags or []) + [f"SUGGESTED_TOPIC:{item.suggested_new_topic_name}"]))
+                        target_q.quality_flags = list(set((target_q.quality_flags or []) + [f"SUGGESTED_TOPIC:{item.suggested_new_topic_name}"]))  # noqa: E501
 
                     # Tag accumulation: Union with existing tags, never overwrite SGK_KNTT
                     existing_tags = set(target_q.target_tags or [])
@@ -329,7 +328,7 @@ Dữ liệu câu hỏi:
 
                     # Clean repaired flags
                     if item.repaired_flags:
-                        target_q.quality_flags = [f for f in (target_q.quality_flags or []) if f not in item.repaired_flags]
+                        target_q.quality_flags = [f for f in (target_q.quality_flags or []) if f not in item.repaired_flags]  # noqa: E501
 
                     target_q.audit_status = "TAXONOMY_CLEAN"
                     ai_fixed_count += 1
@@ -342,7 +341,7 @@ Dữ liệu câu hỏi:
         await self.session.commit()
         return {
             "status": "ok",
-            "message": f"Job 1 hoàn thành: Sàng lọc cục bộ {locally_clean_count} câu sạch (0 token), sửa cục bộ {local_fixed_count} câu, AI chuẩn hoá {ai_fixed_count} câu.",
+            "message": f"Job 1 hoàn thành: Sàng lọc cục bộ {locally_clean_count} câu sạch (0 token), sửa cục bộ {local_fixed_count} câu, AI chuẩn hoá {ai_fixed_count} câu.",  # noqa: E501
             "processed_count": len(candidates),
             "locally_clean": locally_clean_count,
             "local_fixed": local_fixed_count,
@@ -353,6 +352,7 @@ Dữ liệu câu hỏi:
         """Attempts to recover missing table from VietJack URL."""
         try:
             import urllib.request
+
             from app.pipeline.parsers.vietjack import parse
 
             req = urllib.request.Request(q.source_url, headers={"User-Agent": "Mozilla/5.0"})
@@ -409,15 +409,15 @@ Dữ liệu câu hỏi:
 
         if not solve_candidates:
             await self.session.commit()
-            return {"status": "ok", "message": "Tất cả câu hỏi trong lô đều vượt quá số lần thử và đã chuyển Admin.", "processed_count": len(candidates)}
+            return {"status": "ok", "message": "Tất cả câu hỏi trong lô đều vượt quá số lần thử và đã chuyển Admin.", "processed_count": len(candidates)}  # noqa: E501
 
         log.info("Job 2: Blind-solving %d candidate questions...", len(solve_candidates))
         provider = self._get_provider()
         is_mock = getattr(provider, "is_mock", False) or (hasattr(provider, "_pool") and provider._pool.is_empty())
         if is_mock:
-            return {"status": "mock", "message": "Mock provider active, skipping LLM execution.", "processed_count": len(solve_candidates)}
+            return {"status": "mock", "message": "Mock provider active, skipping LLM execution.", "processed_count": len(solve_candidates)}  # noqa: E501
 
-        # True Double-Blind Isolation: Send ONLY content & choices (NO web answers, NO previous AI answers, NO solutions)
+        # True Double-Blind Isolation: Send ONLY content & choices (NO web answers, NO previous AI answers, NO solutions)  # noqa: E501
         items_payload = []
         for q in solve_candidates:
             blind_choices = []
@@ -445,7 +445,7 @@ Nhiệm vụ:
 
 Danh sách câu hỏi:
 {json.dumps(items_payload, ensure_ascii=False, indent=2)}
-"""
+"""  # noqa: E501
 
         try:
             result: Job2BatchResponse = await provider._generate(
@@ -464,7 +464,7 @@ Danh sách câu hỏi:
                 if not target_q:
                     continue
 
-                canonical_sol = canonicalize_answer(sol.solved_answer, target_q.question_type) or sol.solved_answer.strip().upper()
+                canonical_sol = canonicalize_answer(sol.solved_answer, target_q.question_type) or sol.solved_answer.strip().upper()  # noqa: E501
 
                 # Get existing web source answer for comparison
                 web_answer = ""
@@ -509,10 +509,10 @@ Danh sách câu hỏi:
                             new_choices = []
                             for c in target_q.choices:
                                 cc = dict(c)
-                                cc["is_correct"] = (canonicalize_answer(cc.get("id", ""), target_q.question_type) == canonical_sol)
+                                cc["is_correct"] = (canonicalize_answer(cc.get("id", ""), target_q.question_type) == canonical_sol)  # noqa: E501
                                 new_choices.append(cc)
                             target_q.choices = new_choices
-                        elif target_q.question_type == QuestionType.TRUE_FALSE and len(canonical_sol) == 4 and target_q.choices:
+                        elif target_q.question_type == QuestionType.TRUE_FALSE and len(canonical_sol) == 4 and target_q.choices:  # noqa: E501
                             new_choices = []
                             for idx, c in enumerate(target_q.choices):
                                 cc = dict(c)
@@ -527,9 +527,9 @@ Danh sách câu hỏi:
                                 await attach_question_to_exam_if_missing(
                                     self.session, target_q.pending_exam_id, target_q.id
                                 )
-                                log.info("Auto-attached Question #%d to Exam #%d", target_q.id, target_q.pending_exam_id)
+                                log.info("Auto-attached Question #%d to Exam #%d", target_q.id, target_q.pending_exam_id)  # noqa: E501
                             except Exception as ex:
-                                log.error("Failed to auto-attach Question #%d to Exam #%d: %s", target_q.id, target_q.pending_exam_id, ex)
+                                log.error("Failed to auto-attach Question #%d to Exam #%d: %s", target_q.id, target_q.pending_exam_id, ex)  # noqa: E501
 
                     else:
                         # DISAGREEMENT DETECTED! Route to Admin Review
@@ -540,7 +540,7 @@ Danh sách câu hỏi:
             await self.session.commit()
             return {
                 "status": "ok",
-                "message": f"Job 2 hoàn thành: {consensus_count} câu đạt đồng thuận (tự duyệt & nạp đề), {disagreement_count} câu lệch kết quả (chuyển Admin), {first_pass_count} câu hoàn tất lần 1.",
+                "message": f"Job 2 hoàn thành: {consensus_count} câu đạt đồng thuận (tự duyệt & nạp đề), {disagreement_count} câu lệch kết quả (chuyển Admin), {first_pass_count} câu hoàn tất lần 1.",  # noqa: E501
                 "consensus_count": consensus_count,
                 "disagreement_count": disagreement_count,
                 "first_pass_count": first_pass_count,

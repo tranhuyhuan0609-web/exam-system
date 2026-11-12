@@ -1,13 +1,15 @@
 import asyncio
 import os
-import sys
 import re
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import select
+
 from app.db import SessionLocal
 from app.models import Question
+
 
 def should_wrap(txt: str) -> bool:
     if not txt or not isinstance(txt, str):

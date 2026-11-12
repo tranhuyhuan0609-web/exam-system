@@ -8,14 +8,11 @@ import asyncio
 import base64
 import logging
 import os
-import re
-import subprocess
 import sys
 import zipfile
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
 
 import fitz  # PyMuPDF
 
@@ -40,7 +37,7 @@ def docx_has_mathtype_or_shapes(docx_path: str | Path) -> bool:
 def rebrand_pdf_preserve_exam_title(
     input_pdf: str | Path,
     output_pdf: str | Path,
-    logo_path: Optional[str | Path] = None,
+    logo_path: str | Path | None = None,
     brand_footer: str = "Hệ thống Luyện thi & Ngân hàng Đề PRO",
 ) -> str:
     """
@@ -84,7 +81,7 @@ def rebrand_pdf_preserve_exam_title(
                 right_limit = ky_thi_rects[0].x0 - 8 if ky_thi_rects else 220
                 cx = (30 + right_limit) / 2
                 if logo_path and os.path.exists(str(logo_path)):
-                    page.insert_image(fitz.Rect(cx - 30, 35, cx + 30, 95), filename=str(logo_path), keep_proportion=True)
+                    page.insert_image(fitz.Rect(cx - 30, 35, cx + 30, 95), filename=str(logo_path), keep_proportion=True)  # noqa: E501
                 dst.insert_pdf(src, from_page=0, to_page=0)
             else:
                 # Phiếu bài tập không có Header -> Tạo trang cao hơn 70pt và dịch nội dung xuống

@@ -366,7 +366,7 @@ DANH MỤC CHỦ ĐỀ HIỆN CÓ:
 
 DANH SÁCH CÂU HỎI CẦN QUÉT:
 {json.dumps(questions_batch, ensure_ascii=False)}
-""".strip()
+""".strip()  # noqa: E501
 
 
 # =====================================================================
@@ -437,7 +437,7 @@ def evaluate_double_blind_consensus(
     - Nếu Lần giải 2 độc lập ra kết quả ĐỒNG THUẬN Lần giải 1 -> Tự động duyệt (is_verified = True) và cho phép gắn vào Đề.
     - Nếu chưa có Lần giải 1 -> Lưu kết quả làm mốc Lần 1.
     - Nếu 2 lần giải mâu thuẫn nhau -> Đẩy sang trạng thái HUMAN_REVIEW.
-    """
+    """  # noqa: E501
     if not first_ai_answer or not first_ai_answer.strip():
         return {
             "is_verified": False,
@@ -471,8 +471,8 @@ async def get_or_create_subcategory(session: AsyncSession, parent_id: int, name:
     Khi AI đề xuất tên chủ đề mới, so khớp mờ (similarity >= 0.85) với các chủ đề hiện có
     dưới cùng Chương cha để tránh đẻ ra hàng loạt nhánh tương tự nhau."""
     import difflib
+
     from app.models import Category
-    from sqlalchemy import func
 
     name_clean = name.strip()
     name_lower = name_clean.lower()
@@ -491,7 +491,7 @@ async def get_or_create_subcategory(session: AsyncSession, parent_id: int, name:
     for cat in existing_all:
         ratio = difflib.SequenceMatcher(None, cat.name.strip().lower(), name_lower).ratio()
         if ratio >= 0.85:
-            log.info("Anti-explosion: Gộp chủ đề mới '%s' vào nhánh có sẵn '%s' (độ khớp: %.2f)", name_clean, cat.name, ratio)
+            log.info("Anti-explosion: Gộp chủ đề mới '%s' vào nhánh có sẵn '%s' (độ khớp: %.2f)", name_clean, cat.name, ratio)  # noqa: E501
             return cat
 
     # 4. Tạo chủ đề con mới an toàn
@@ -513,8 +513,9 @@ async def get_or_create_subcategory(session: AsyncSession, parent_id: int, name:
 
 async def attach_question_to_exam_if_missing(session: AsyncSession, exam_id: int, question_id: int) -> None:
     """Gắn câu hỏi đã được đồng thuận vào đề thi nếu chưa có trong exam_questions."""
-    from app.models import ExamQuestion
     from sqlalchemy import func
+
+    from app.models import ExamQuestion
 
     exists = await session.scalar(
         select(ExamQuestion).where(

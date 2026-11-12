@@ -4,10 +4,12 @@ with dedicated Midterm & Final Exam sections for every subject.
 
 import unicodedata
 from typing import Any
-from sqlalchemy import select, update
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import Category, KnowledgeUnit
+
 from app.domain.k12_curriculum_data import get_master_k12_catalog
+from app.models import Category
 
 # Standard Periodic Exam Chapter appended to every subject
 PERIODIC_EXAM_CHAPTER = {
@@ -70,7 +72,7 @@ async def seed_full_k12_curriculum(session: AsyncSession) -> dict[str, int]:
 
     existing_slugs = {c.slug for c in all_categories if c.slug}
     for g_entry in K12_CATALOG:
-        grade = g_entry["grade"]
+        grade = g_entry["grade"]  # noqa: F841
         for subj in g_entry["subjects"]:
             s_name = subj["name"]
             s_slug = subj["slug"]
@@ -96,7 +98,7 @@ async def seed_full_k12_curriculum(session: AsyncSession) -> dict[str, int]:
                 created_subjects += 1
 
             chapters = [*subj.get("chapters", []), PERIODIC_EXAM_CHAPTER]
-            for c_pos, ch in enumerate(chapters, start=1):
+            for c_pos, ch in enumerate(chapters, start=1):  # noqa: B007
                 ch_title = ch["title"]
                 ch_norm = _norm(ch_title)
                 ch_cat = cats_by_parent_name.get((root.id, ch_norm))
@@ -127,7 +129,7 @@ async def seed_full_k12_curriculum(session: AsyncSession) -> dict[str, int]:
                         ) and legacy_cat.id != ch_cat.id:
                             legacy_cat.parent_id = ch_cat.id
 
-                for l_pos, les in enumerate(ch.get("lessons", []), start=1):
+                for l_pos, les in enumerate(ch.get("lessons", []), start=1):  # noqa: B007
                     l_title = les["title"]
                     l_norm = _norm(l_title)
                     l_cat = cats_by_parent_name.get((ch_cat.id, l_norm))
@@ -177,7 +179,7 @@ async def seed_full_k12_curriculum(session: AsyncSession) -> dict[str, int]:
                 cats_by_parent_name[(p_ch.id, c_name)] = legacy_cat
 
         # Ensure all 4 standard periodic exams exist under this chapter
-        for l_pos, les in enumerate(PERIODIC_EXAM_CHAPTER["lessons"], start=1):
+        for l_pos, les in enumerate(PERIODIC_EXAM_CHAPTER["lessons"], start=1):  # noqa: B007
             l_title = les["title"]
             l_norm = _norm(l_title)
             l_cat = cats_by_parent_name.get((p_ch.id, l_norm))
