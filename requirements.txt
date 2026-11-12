@@ -26,3 +26,4 @@ aiokafka>=0.11
 pymongo>=4.13
 scrapy>=2.13
 pgvector>=0.3
+sympy>=1.13  # C02/E04: evaluated only inside the isolated sandbox worker (python -I), never in-process
