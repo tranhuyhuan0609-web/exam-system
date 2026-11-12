@@ -82,7 +82,7 @@
         <ol class="paper-preview">
           {% for q in paper %}
             <li><span class="badge">{{ TYPE_LABELS[q.question_type] }}</span> <span class="badge">{{ DIFFICULTY_LABELS[q.difficulty] }}</span>
-              <div class="q-content math clamp">{{ q.content }}</div></li>
+              <div class="q-content math clamp">{{ q.content | format_q_content | safe }}</div></li>
           {% endfor %}
         </ol>
       </section>

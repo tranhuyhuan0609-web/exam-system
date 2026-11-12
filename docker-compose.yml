@@ -16,9 +16,9 @@ services:
       retries: 10
 
   # S3-compatible object storage for uploads, rendered pages and question figures.
-  # RustFS is used because MinIO no longer publishes server images; any S3 store works (see .env.example).
+  # Pinned version avoids unexpected breaking changes in production.
   s3:
-    image: rustfs/rustfs:latest
+    image: rustfs/rustfs:1.0.0
     environment:
       RUSTFS_ACCESS_KEY: rustfsadmin
       RUSTFS_SECRET_KEY: rustfsadmin
@@ -58,15 +58,26 @@ services:
     volumes:
       - mongodata:/data/db
 
-  app:
+  # One-shot migration runner: applies Alembic migrations safely before app/worker replicas start.
+  migration:
     build: .
-    env_file: .env  # SECRET_KEY, GEMINI_API_KEY...
+    command: alembic upgrade head
+    env_file: .env
     environment: &app-env
       DATABASE_URL: postgresql+asyncpg://exam:exam@db:5432/exam
       DATA_DIR: /app/data
       STORAGE_BACKEND: s3
       S3_ENDPOINT: s3:9000
       S3_PUBLIC_URL: http://localhost:9000
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build: .
+    env_file: .env  # SECRET_KEY, GEMINI_API_KEY...
+    environment: *app-env
     ports:
       - "8000:8000"
     depends_on:
@@ -74,6 +85,8 @@ services:
         condition: service_healthy
       s3:
         condition: service_started
+      migration:
+        condition: service_completed_successfully
 
   # Processes AI import jobs (PDF / Word / photos). Includes LibreOffice for .docx files.
   worker:
@@ -87,6 +100,8 @@ services:
         condition: service_healthy
       s3:
         condition: service_started
+      migration:
+        condition: service_completed_successfully
 
   # Crawler processes: scheduler (runs spiders), bronze (raw pages -> MongoDB),
   # silver (parse -> crawled_questions in PostgreSQL) and dlq (dead letters -> MongoDB).

@@ -15,7 +15,7 @@
 import json
 import logging
 import re
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
@@ -321,3 +321,210 @@ async def place_uncategorised(session: AsyncSession, models) -> dict[str, int]:
         await session.flush()
     await session.commit()
     return stats
+
+
+# ==============================================================================
+# Self-Healing & Double-Blind Consensus Verification Routines
+# ==============================================================================
+BROKEN_MATH_OR_FONT_RE = re.compile(
+    r"([\ufffd]|\$[0O]_{(?:max|min)}\$|\$Im\^\{?2\}?\$|\s{3,}[,\.]|¸p suÊt|chuyÓn ®éng)"
+)
+
+
+def detect_needs_healing(question_text: str, category_id: int | None) -> list[str]:
+    flags = []
+    if category_id is None:
+        flags.append("UNCLASSIFIED")
+    if BROKEN_MATH_OR_FONT_RE.search(question_text or ""):
+        flags.append("BROKEN_FONT_OR_MATH")
+    return flags
+
+
+def build_taxonomy_and_healing_prompt(
+    questions_batch: list[dict[str, Any]], available_categories: list[dict[str, Any]]
+) -> str:
+    """
+    Prompt cho Job 1:
+    - Chữa lỗi bài Toán xác suất (bối cảnh xét nghiệm bệnh/virus) bị phân nhầm sang Sinh học.
+    - Cộng dồn thêm nhãn kỳ thi ('THPTQG', 'DGTD_TSA', 'HSG') cho các bài Lớp 11, 12.
+    - Đề xuất tên Dạng bài mới nếu chưa có trong cây mục lục.
+    """
+    return f"""
+Bạn là bộ máy kiểm định Ngân hàng câu hỏi chuẩn SGK Kết nối tri thức.
+
+QUY TẮC BẮT BUỘC:
+1. CHỐNG NHẦM MÔN (TOÁN vs SINH/HÓA):
+   - Xét CÔNG CỤ TOÁN/KHOA HỌC dùng để giải bài, KHÔNG xét bối cảnh câu chuyện.
+   - Nếu đề bài nói về "xét nghiệm virus SARS-CoV-2, bệnh hiểm nghèo, vi khuẩn, đàn bò" nhưng yêu cầu "Tính xác suất..." bằng xác suất có điều kiện / công thức Bayes -> BẮT BUỘC gán `subject = "MATH"`, TUYỆT ĐỐI KHÔNG gán vào `"BIOLOGY"`.
+2. SỬA LỖI FONT & OCR CÔNG THỨC:
+   - Sửa `$0_{{max}}$` / `$O_{{max}}$` trong bài dao động/điện từ thành `$\\omega_{{\\max}}$`, `$Im^2$` thành `$1\\text{{ m}}^2$`.
+3. CỘNG DỒN NHÃN KỲ THI (`append_target_tags`):
+   - Giữ nguyên bài học gốc (VD: Vật lí 11 - Chương Dao động), đồng thời trả về mảng `append_target_tags` chứa `"THPTQG"` nếu kiến thức nằm trong phạm vi thi tốt nghiệp THPT, `"DGTD_TSA"` nếu là câu hỏi tư duy thực tế/đọc đồ thị, hoặc `"HSG"` nếu là câu tự luận nâng cao.
+
+DANH MỤC CHỦ ĐỀ HIỆN CÓ:
+{json.dumps(available_categories, ensure_ascii=False)}
+
+DANH SÁCH CÂU HỎI CẦN QUÉT:
+{json.dumps(questions_batch, ensure_ascii=False)}
+""".strip()
+
+
+# =====================================================================
+# 1. BỘ CHUẨN HÓA ĐÁP ÁN ĐỂ SO SÁNH ĐỒNG THUẬN 2 LẦN AI GIẢI (DOUBLE-BLIND)
+# =====================================================================
+
+def canonicalize_answer(raw_ans: str | None, q_type: str | Any) -> str:
+    """Chuẩn hóa đáp án từ các định dạng văn bản tự do về định dạng so sánh chuẩn."""
+    if not raw_ans:
+        return ""
+    s = str(raw_ans).strip().upper()
+    q_type_str = q_type.value if hasattr(q_type, "value") else str(q_type).upper()
+
+    if q_type_str in ("SINGLE_CHOICE", "MULTIPLE_CHOICE"):
+        m = re.search(r"\b([A-D])\b", s)
+        return m.group(1) if m else s[:1]
+
+    if q_type_str in ("TRUE_FALSE_4", "TRUE_FALSE"):
+        # Chuyển mọi kiểu "a) Đúng, b) Sai..." hoặc "Đ-Đ-S-S", "True/False" về dạng chuẩn "TTFF"
+        s_norm = s.replace("ĐÚNG", "T").replace("SAI", "F").replace("TRUE", "T").replace("FALSE", "F")
+        tokens = re.findall(r"[TFĐS]", s_norm)
+        mapped = ["T" if c in ("T", "Đ") else "F" for c in tokens[:4]]
+        return "".join(mapped) if len(mapped) == 4 else s
+
+    if q_type_str == "SHORT_ANSWER":
+        # Đổi dấu phẩy thập phân tiếng Việt sang dấu chấm và rút số/phân số
+        s_clean = s.replace(",", ".")
+        # Trường hợp phân số a/b
+        frac_m = re.search(r"(-?\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)", s_clean)
+        if frac_m:
+            try:
+                val = float(frac_m.group(1)) / float(frac_m.group(2))
+                return f"{val:.2f}"
+            except ZeroDivisionError:
+                pass
+        # Trường hợp số thực / số nguyên
+        num_m = re.search(r"-?\d+(?:\.\d+)?", s_clean)
+        if num_m:
+            return f"{float(num_m.group(0)):.2f}"
+
+    return re.sub(r"\s+", " ", s)
+
+
+def is_consensus_reached(ans_1: str | None, ans_2: str | None, q_type: str | Any) -> bool:
+    """So khớp đồng thuận giữa 2 lần giải độc lập của AI, hỗ trợ dung sai làm tròn số."""
+    c1 = canonicalize_answer(ans_1, q_type)
+    c2 = canonicalize_answer(ans_2, q_type)
+    if not c1 or not c2:
+        return False
+    q_type_str = q_type.value if hasattr(q_type, "value") else str(q_type).upper()
+    if q_type_str == "SHORT_ANSWER":
+        try:
+            # Cho phép sai số làm tròn <= 0.02 giữa 2 lần giải
+            return abs(float(c1) - float(c2)) <= 0.02
+        except ValueError:
+            return c1 == c2
+    return c1 == c2
+
+
+def evaluate_double_blind_consensus(
+    first_ai_answer: str | None,
+    second_ai_answer: str,
+    q_type: str | Any = "SINGLE_CHOICE",
+) -> dict[str, Any]:
+    """
+    Logic cho Job 2 (Giải lại các câu chưa duyệt / nghi đề gốc sai):
+    - Sử dụng `canonicalize_answer` và `is_consensus_reached`.
+    - Nếu Lần giải 2 độc lập ra kết quả ĐỒNG THUẬN Lần giải 1 -> Tự động duyệt (is_verified = True) và cho phép gắn vào Đề.
+    - Nếu chưa có Lần giải 1 -> Lưu kết quả làm mốc Lần 1.
+    - Nếu 2 lần giải mâu thuẫn nhau -> Đẩy sang trạng thái HUMAN_REVIEW.
+    """
+    if not first_ai_answer or not first_ai_answer.strip():
+        return {
+            "is_verified": False,
+            "audit_status": "FIRST_PASS_RECORDED",
+            "first_ai_answer": canonicalize_answer(second_ai_answer, q_type) or second_ai_answer.strip(),
+            "attach_to_exam": False,
+        }
+
+    if is_consensus_reached(first_ai_answer, second_ai_answer, q_type):
+        return {
+            "is_verified": True,
+            "audit_status": "VERIFIED_CONSENSUS",
+            "second_ai_answer": canonicalize_answer(second_ai_answer, q_type) or second_ai_answer.strip(),
+            "attach_to_exam": True,  # Tự động kích hoạt/lưu vào đề thi
+        }
+
+    return {
+        "is_verified": False,
+        "audit_status": "HUMAN_REVIEW",
+        "second_ai_answer": canonicalize_answer(second_ai_answer, q_type) or second_ai_answer.strip(),
+        "attach_to_exam": False,
+    }
+
+
+# =====================================================================
+# 2. ANTI-EXPLOSION TOPIC GUARDRAIL & AUTO-ATTACH HELPER
+# =====================================================================
+
+async def get_or_create_subcategory(session: AsyncSession, parent_id: int, name: str) -> Any:
+    """Anti-Explosion Guardrail:
+    Khi AI đề xuất tên chủ đề mới, so khớp mờ (similarity >= 0.85) với các chủ đề hiện có
+    dưới cùng Chương cha để tránh đẻ ra hàng loạt nhánh tương tự nhau."""
+    import difflib
+    from app.models import Category
+    from sqlalchemy import func
+
+    name_clean = name.strip()
+    name_lower = name_clean.lower()
+
+    # 1. Lấy tất cả chủ đề con hiện tại dưới parent_id
+    existing_all = list((await session.scalars(
+        select(Category).where(Category.parent_id == parent_id)
+    )).all())
+
+    # 2. So khớp chính xác
+    for cat in existing_all:
+        if cat.name.strip().lower() == name_lower:
+            return cat
+
+    # 3. So khớp mờ (Fuzzy Similarity >= 0.85)
+    for cat in existing_all:
+        ratio = difflib.SequenceMatcher(None, cat.name.strip().lower(), name_lower).ratio()
+        if ratio >= 0.85:
+            log.info("Anti-explosion: Gộp chủ đề mới '%s' vào nhánh có sẵn '%s' (độ khớp: %.2f)", name_clean, cat.name, ratio)
+            return cat
+
+    # 4. Tạo chủ đề con mới an toàn
+    parent = await session.get(Category, parent_id)
+    root_id = parent.root_id if parent else parent_id
+    depth = (parent.depth + 1) if parent else 2
+    path = f"{parent.path}{parent_id}/" if parent and parent.path else f"/{root_id}/{parent_id}/"
+
+    new_cat = Category(
+        parent_id=parent_id,
+        name=name_clean,
+        depth=depth,
+        path=path,
+    )
+    session.add(new_cat)
+    await session.flush()
+    return new_cat
+
+
+async def attach_question_to_exam_if_missing(session: AsyncSession, exam_id: int, question_id: int) -> None:
+    """Gắn câu hỏi đã được đồng thuận vào đề thi nếu chưa có trong exam_questions."""
+    from app.models import ExamQuestion
+    from sqlalchemy import func
+
+    exists = await session.scalar(
+        select(ExamQuestion).where(
+            ExamQuestion.exam_id == exam_id,
+            ExamQuestion.question_id == question_id,
+        )
+    )
+    if not exists:
+        max_pos = await session.scalar(
+            select(func.coalesce(func.max(ExamQuestion.position), 0)).where(ExamQuestion.exam_id == exam_id)
+        )
+        session.add(ExamQuestion(exam_id=exam_id, question_id=question_id, position=(max_pos or 0) + 1))
+        await session.flush()

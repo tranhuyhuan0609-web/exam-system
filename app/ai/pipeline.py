@@ -409,6 +409,74 @@ async def run_pipeline(
 
         # Word files and PDFs with a text layer are read on this machine when that works: no AI call to read them.
         from app.ai.extract_engine import has_mathtype_ole
+        from universal_ingestor import UniversalExamAndMaterialIngestor
+
+        universal = UniversalExamAndMaterialIngestor()
+        doc_type = universal.detect_document_type(str(source))
+
+        # Nhánh 1: Hướng dẫn chấm dạng Bảng 3 cột (.docx)
+        if doc_type == "HDC_TABLE_DOCX":
+            await progress("Đang bóc tách bảng hướng dẫn chấm 3 cột…", 0, 1)
+            hdc_rows = universal.parse_hdc_table_docx(str(source))
+            drafts = []
+            for idx, r in enumerate(hdc_rows):
+                ans = r.get("short_answer_value")
+                sub = r.get("sub_index", "")
+                main_q = r.get("main_question", "")
+                label = f"Câu {main_q}" if main_q else ""
+                if sub and sub != main_q:
+                    label = f"{label} ({sub})" if label else f"Ý {sub}"
+                pts = r.get("points", "")
+                content = f"{label}\nThang điểm: {pts}" if pts else label
+                drafts.append({
+                    "number": idx + 1,
+                    "page": 1,
+                    "type": "SHORT_ANSWER" if ans else "ESSAY",
+                    "content": content or f"Câu {idx + 1}",
+                    "choices": [],
+                    "correct": None,
+                    "truths": [],
+                    "answers": [ans] if ans else [],
+                    "short_answer": ans,
+                    "final_value": ans,
+                    "explanation": r.get("solution_content", ""),
+                    "difficulty": default_difficulty,
+                    "figure": None,
+                    "flags": [],
+                    "question_id": None,
+                })
+            pages, _ = await to_page_images(source, work / "pages", soffice)
+            for number, page in enumerate(pages, start=1):
+                await storage.put(page_key(job_id, number), page.read_bytes(), "image/png")
+            return len(pages), drafts
+
+        # Nhánh 2: Ảnh chụp đề thi (.jpg, .png) -> Làm trắng nền
+        if doc_type == "PHOTO_EXAM":
+            await progress("Đang làm trắng nền ảnh chụp và lọc nhiễu…", 0, 1)
+            photo_info = universal.preprocess_photo_exam(str(source), doc_id=f"job_{job_id}")
+            if photo_info.get("whitened_image") and Path(photo_info["whitened_image"]).exists():
+                source = Path(photo_info["whitened_image"])
+
+        # Nhánh 3: Chuyên đề Lý thuyết & Luyện dạng bài kiểu VietJack
+        if doc_type == "VIETJACK_THEORY_WORKSHEET":
+            await progress("Đang bóc tách Chuyên đề Lý thuyết & Ngân hàng câu hỏi…", 0, 1)
+            pdf_path = universal.convert_to_pdf(str(source))
+            pages_cnt, drafts, article_data = universal.parse_vietjack_study_guide(pdf_path)
+
+            pages, _ = await to_page_images(Path(pdf_path), work / "pages", soffice)
+            for number, page in enumerate(pages, start=1):
+                await storage.put(page_key(job_id, number), page.read_bytes(), "image/png")
+
+            from app.db import SessionLocal
+            from app.models import ImportJob
+            async with SessionLocal() as db_session:
+                db_job = await db_session.get(ImportJob, job_id)
+                if db_job:
+                    db_job.doc_type = "STUDY_GUIDE"
+                    db_job.knowledge_article_data = article_data
+                    await db_session.commit()
+
+            return len(pages), drafts
 
         local = None if source.suffix.lower() == ".docx" and has_mathtype_ole(source) else await asyncio.to_thread(
             read_locally, source

@@ -16,7 +16,8 @@ a:hover { text-decoration: underline; }
 code { background: #eef2ff; padding: 1px 6px; border-radius: 4px; }
 
 .topbar { display: flex; justify-content: space-between; align-items: center; padding: 12px 24px; background: var(--card); border-bottom: 1px solid var(--border); }
-.brand { font-weight: 700; font-size: 1.1rem; color: var(--text); }
+.brand { font-weight: 700; font-size: 1.15rem; color: var(--text); display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.brand-logo { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
 .topbar nav { display: flex; align-items: center; gap: 16px; }
 .who { display: flex; align-items: center; gap: 6px; }
 
@@ -268,6 +269,35 @@ pre.sample { background: #f8fafc; border: 1px solid var(--border); border-radius
 .save-status[data-state="saving"] { color: var(--primary); }
 .save-status[data-state="offline"] { color: #c2410c; font-weight: 600; }
 .matrix-table select, .matrix-table input { margin: 0; width: 100%; } .matrix-table .count-input { width: 80px; } .matrix-table td { vertical-align: middle; }
+
+/* Question Data Table (Thống kê, Bảng số liệu, Thực hành) */
+.q-data-table {
+  width: auto;
+  min-width: 60%;
+  max-width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.q-data-table th, .q-data-table td {
+  border: 1px solid #cbd5e1;
+  padding: 8px 14px;
+  text-align: center;
+  font-size: 0.95rem;
+  vertical-align: middle;
+}
+.q-data-table tr:first-child td, .q-data-table th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #1e293b;
+}
+.q-data-table tr:hover td {
+  background: #f1f5f9;
+}
 
 /* ---------- Part 10: compact palettes, fixed side panel ---------- */
 .palette { display: flex; flex-wrap: wrap; gap: 6px; }

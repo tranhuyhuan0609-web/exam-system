@@ -242,8 +242,8 @@ async def list_questions(
     ).all()
 
     # Pre-fetch KnowledgeUnit names and Target Tags for fast multi-dimensional badge rendering
-    q_ids = [q.id for q in questions]
-    ku_ids = [q.knowledge_unit_id for q in questions if q.knowledge_unit_id]
+    q_ids = [item.id for item in questions]
+    ku_ids = [item.knowledge_unit_id for item in questions if item.knowledge_unit_id]
     ku_map: dict[int, str] = {}
     if ku_ids:
         from app.models import KnowledgeUnit
@@ -265,12 +265,12 @@ async def list_questions(
 
     # Heuristic fallback for existing un-tagged questions based on knowledge linking
     from app.application.knowledge_linker import infer_knowledge_metadata
-    for q in questions:
-        inferred = infer_knowledge_metadata(q.content, q.difficulty)
-        if q.id not in q_targets_map or not q_targets_map[q.id]:
-            q_targets_map[q.id] = [t for t in inferred.get("suitable_targets", []) if t != "SGK_KNTT"]
-        if q.id not in ku_map and inferred.get("topic_name"):
-            ku_map[q.id] = inferred["topic_name"]
+    for item_q in questions:
+        inferred = infer_knowledge_metadata(item_q.content, item_q.difficulty)
+        if item_q.id not in q_targets_map or not q_targets_map[item_q.id]:
+            q_targets_map[item_q.id] = [t for t in inferred.get("suitable_targets", []) if t != "SGK_KNTT"]
+        if item_q.id not in ku_map and inferred.get("topic_name"):
+            ku_map[item_q.id] = inferred["topic_name"]
 
     # Determine effective scope key for action buttons (+ Thêm câu hỏi, 🤖 AI nhập đề)
     if lesson_id:
@@ -299,7 +299,7 @@ async def list_questions(
         "difficulty": difficulty,
         "qtype": qtype,
         "verified": verified,
-        "q": q,
+        "q": q if isinstance(q, str) else "",
     }
 
     # Query string generator for pagination

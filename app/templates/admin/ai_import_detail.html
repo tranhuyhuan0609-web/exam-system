@@ -38,6 +38,38 @@
 {% endif %}
 
 {% if job.status == "DONE" %}
+  {% if job.knowledge_article_data %}
+    <div class="card" style="border-left: 5px solid #0284c7; background: #f0f9ff; margin-bottom: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+        <h3 style="margin: 0; color: #0369a1; display: flex; align-items: center; gap: 8px; font-size: 1.1rem;">
+          📚 Tài liệu Chuyên đề (Lý thuyết &amp; Luyện dạng bài kiểu VietJack)
+        </h3>
+        {% if job.knowledge_article_data.get('branded_pdf_url') %}
+          <a href="{{ job.knowledge_article_data.get('branded_pdf_url') }}" target="_blank" class="btn btn-small btn-outline" style="background: white;">
+            📥 Xem PDF đã đóng dấu Logo hệ thống
+          </a>
+        {% endif %}
+      </div>
+      <div style="font-size: 0.92rem; color: #334155; line-height: 1.6;">
+        <p style="margin: 0 0 10px 0;"><strong>Chuyên đề:</strong> {{ job.knowledge_article_data.get('title') }}</p>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px;">
+          <div style="background: white; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px;">
+            <strong style="color: #0369a1;">📘 Phương pháp &amp; Định nghĩa:</strong>
+            <div class="math small mt" style="max-height: 120px; overflow-y: auto;">
+              {{ job.knowledge_article_data.get('method_guide_md') }}
+            </div>
+          </div>
+          <div style="background: white; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px;">
+            <strong style="color: #0369a1;">📐 Các công thức cần nhớ:</strong>
+            <div class="math small mt" style="max-height: 120px; overflow-y: auto;">
+              {{ job.knowledge_article_data.get('summary_formulas_md') }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
   {% if not drafts %}
     <div class="card muted">AI không tìm thấy câu hỏi nào trong file này.</div>
   {% else %}
@@ -47,7 +79,13 @@
         <strong>{{ drafts | length }}</strong> câu AI đọc được ·
         <strong class="ok-text">{{ ready_count }}</strong> câu sẵn sàng ·
         {{ published_count }} câu đã đưa vào ngân hàng
-        <div class="muted small">Đề sau khi duyệt sẽ lưu vào <strong>Thư viện tài liệu</strong> &amp; <strong>Ngân hàng câu hỏi</strong>. Học sinh muốn luyện sẽ tự vào mục <strong>Tài liệu</strong> để tạo đề.</div>
+        <div class="muted small">
+          {% if job.knowledge_article_data %}
+            Tài liệu này sẽ lưu đồng thời vào <strong>Ngân hàng Tài liệu (Lý thuyết)</strong> &amp; <strong>Ngân hàng Câu hỏi</strong>.
+          {% else %}
+            Đề sau khi duyệt sẽ lưu vào <strong>Thư viện tài liệu</strong> &amp; <strong>Ngân hàng câu hỏi</strong>.
+          {% endif %}
+        </div>
       </div>
       <div class="row" style="flex-wrap: wrap; gap: 10px; align-items: center;">
         <label class="check"><input type="checkbox" name="is_pro" {% if job.access_tier == "PRO" %}checked{% endif %}> 🔒 Đề độc quyền / PRO</label>
@@ -57,7 +95,13 @@
           <input type="number" name="duration_minutes" value="45" min="1" max="600" style="width: 75px;" title="Phút" placeholder="Phút">
           <label class="check"><input type="checkbox" name="publish_exam" checked> Công khai</label>
         </span>
-        <button class="btn">Lưu vào Thư viện &amp; Ngân hàng (<span id="selected-count">0</span> câu)</button>
+        <button class="btn">
+          {% if job.knowledge_article_data %}
+            🚀 Lưu vào 2 kho (Tài liệu &amp; Ngân hàng) (<span id="selected-count">0</span> câu)
+          {% else %}
+            Lưu vào Thư viện &amp; Ngân hàng (<span id="selected-count">0</span> câu)
+          {% endif %}
+        </button>
       </div>
     </div>
   </form>

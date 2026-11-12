@@ -167,11 +167,12 @@ async def home(
     ).all():
         if category := nodes.get(category_id):
             for cid in category.path.strip("/").split("/"):
-                question_totals[int(cid)] += n
+                if cid:
+                    question_totals[int(cid)] += n
     branch_of: dict[int, set[int]] = {}
     for exam in exams:
         category = nodes.get(exam.category_id)
-        ancestors = {int(i) for i in category.path.strip("/").split("/")} if category else set()
+        ancestors = {int(i) for i in category.path.strip("/").split("/") if i} if category else set()
         branch_of[exam.id] = ancestors
         for cid in ancestors:
             exam_counts[cid] += 1

@@ -13,3 +13,6 @@ htmlcov/
 
 # Uploaded files, rendered pages, figures
 /data/
+
+# Scratch output of the exam import engine (figures, previews, temp PDFs)
+/storage/

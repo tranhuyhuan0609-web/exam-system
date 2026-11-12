@@ -103,6 +103,10 @@ async def rule_candidates(
 ) -> list[int]:
     scope = await _rule_scope(session, exam, rule)
     conditions = [Question.is_verified, Question.root_id == exam.root_id, *scope.conditions(Question)]
+    # Support GIN index on target_tags if scope is a major exam target (e.g. target:THPTQG)
+    if rule.scope_key.startswith("target:"):
+        target_code = rule.scope_key.split(":", 1)[1]
+        conditions.append(Question.target_tags.contains([target_code]))
     # When building a FREE exam, only draw FREE questions so authored/HSG PRO questions never leak into free papers.
     if getattr(exam, "access_tier", AccessTier.FREE) == AccessTier.FREE:
         conditions.append(Question.access_tier == AccessTier.FREE)

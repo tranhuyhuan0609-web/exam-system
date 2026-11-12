@@ -202,7 +202,7 @@
       {% endif %}
       <a href="/admin/questions/{{ q.id }}/edit">Sửa</a>
     </div>
-    <div class="q-content math">{{ q.content }}</div>
+    <div class="q-content math">{{ q.content | format_q_content | safe }}</div>
     {% if q.image_path %}<img class="q-figure small-figure" src="{{ media_url(q.image_path) }}" alt="Hình vẽ">{% endif %}
     {% if q.question_type == "TRUE_FALSE" %}
       <ol class="q-choices" type="a">

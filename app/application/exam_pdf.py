@@ -7,9 +7,17 @@ HTML from templates/pdf/exam.html, formulas by KaTeX (as on the site), printed t
 import asyncio
 import base64
 import logging
+import os
+import re
+import subprocess
 import sys
+import zipfile
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import fitz  # PyMuPDF
 
 from app.application.paper import SECTION_ORDER
 from app.infrastructure.storage import Storage, StorageError
@@ -17,6 +25,90 @@ from app.models import Question, QuestionType
 from app.templating import templates
 
 log = logging.getLogger(__name__)
+
+
+def docx_has_mathtype_or_shapes(docx_path: str | Path) -> bool:
+    """Phát hiện file .docx có công thức MathType OLE (như toan11_de_goc.docx) hoặc hình vẽ Word Shapes."""
+    try:
+        with zipfile.ZipFile(str(docx_path), "r") as zf:
+            xml = zf.read("word/document.xml").decode("utf-8", errors="ignore")
+            return any(t in xml for t in ("<w:object", "oleObject", "<v:shape", "<wps:wsp"))
+    except Exception:
+        return False
+
+
+def rebrand_pdf_preserve_exam_title(
+    input_pdf: str | Path,
+    output_pdf: str | Path,
+    logo_path: Optional[str | Path] = None,
+    brand_footer: str = "Hệ thống Luyện thi & Ngân hàng Đề PRO",
+) -> str:
+    """
+    - Xóa watermark 'PRO: admin@...' ở đỉnh trang và Footer tên GV/SĐT cũ ở đáy trang.
+    - Nếu Trang 1 có Header kỳ thi ('KỲ THI...'): chỉ xóa góc trái (Logo + Đơn vị cũ), giữ nguyên tên kỳ thi bên phải.
+    - Nếu Trang 1 vào thẳng 'Câu 1' ở sát mép trên (như HSG 1.1.pdf): dịch trang xuống 70pt để gắn Banner + Logo mới.
+    """
+    src = fitz.open(str(input_pdf))
+    dst = fitz.open()
+
+    p0 = src[0]
+    ky_thi_rects = p0.search_for("KỲ THI")
+    cau1_rects = p0.search_for("Câu 1") + p0.search_for("Câu I") + p0.search_for("Chương ")
+    has_header = bool(ky_thi_rects) or (cau1_rects and cau1_rects[0].y0 > 110)
+
+    for idx, page in enumerate(src):
+        w, h = page.rect.width, page.rect.height
+
+        # 1. Xóa dòng "PRO: admin@..." ở mép trên
+        for r in page.search_for("PRO:"):
+            page.add_redact_annot(fitz.Rect(0, 0, w, r.y1 + 3), fill=(1, 1, 1))
+
+        # 2. Xóa Footer tên GV / SĐT cũ ở đáy trang (VD: "GV. Phan Nhật Linh - SĐT...")
+        for kw in ("GV.", "SĐT:", "0817"):
+            for r in page.search_for(kw):
+                if r.y0 > h - 65:
+                    page.add_redact_annot(fitz.Rect(0, r.y0 - 4, w, h), fill=(1, 1, 1))
+
+        # 3. Ở Trang 1 có Header kỳ thi: Xóa góc trái, giữ nguyên khối "KỲ THI..." bên phải
+        if idx == 0 and has_header and ky_thi_rects:
+            right_limit = ky_thi_rects[0].x0 - 8
+            chinh_thuc = page.search_for("CHÍNH THỨC")
+            bottom_limit = chinh_thuc[0].y0 - 4 if chinh_thuc else 130
+            page.add_redact_annot(fitz.Rect(0, 0, right_limit, bottom_limit), fill=(1, 1, 1))
+
+        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE)
+
+        # 4. Đưa trang vào file đích và gắn Logo mới
+        if idx == 0:
+            if has_header:
+                right_limit = ky_thi_rects[0].x0 - 8 if ky_thi_rects else 220
+                cx = (30 + right_limit) / 2
+                if logo_path and os.path.exists(str(logo_path)):
+                    page.insert_image(fitz.Rect(cx - 30, 35, cx + 30, 95), filename=str(logo_path), keep_proportion=True)
+                dst.insert_pdf(src, from_page=0, to_page=0)
+            else:
+                # Phiếu bài tập không có Header -> Tạo trang cao hơn 70pt và dịch nội dung xuống
+                new_p = dst.new_page(width=w, height=h + 70)
+                if logo_path and os.path.exists(str(logo_path)):
+                    new_p.insert_image(fitz.Rect(40, 12, 90, 62), filename=str(logo_path), keep_proportion=True)
+                new_p.insert_text((105, 42), brand_footer.upper(), fontsize=10, fontname="helv")
+                new_p.draw_line((40, 68), (w - 40, 68), color=(0.2, 0.3, 0.6), width=1.0)
+                new_p.show_pdf_page(fitz.Rect(0, 72, w, h + 70), src, 0)
+        else:
+            dst.insert_pdf(src, from_page=idx, to_page=idx)
+
+        cur_page = dst[-1]
+        cur_page.insert_text(
+            (40, cur_page.rect.height - 14),
+            f"{brand_footer} • Trang {idx + 1}/{len(src)}",
+            fontsize=8,
+            color=(0.45, 0.45, 0.45),
+        )
+
+    dst.save(str(output_pdf))
+    dst.close()
+    src.close()
+    return str(output_pdf)
 
 PART_TITLES = {
     QuestionType.MULTIPLE_CHOICE: "Câu trắc nghiệm nhiều phương án lựa chọn",

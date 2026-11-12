@@ -2,6 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
+import uuid
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -19,7 +20,8 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -246,16 +248,27 @@ class Question(TimestampMixin, UpdatedAtMixin, Base):
     explanation_by_ai: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Crawled questions: the page they came from (attribution).
     source_url: Mapped[str | None] = mapped_column(String(500))
-    # Gemini embedding of the normalised text, for semantic duplicate detection (pgvector, cosine).
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), deferred=True)
+    # Gemini embedding of the normalised text, for semantic duplicate detection (JSONB or pgvector).
+    embedding: Mapped[list[float] | None] = mapped_column(JSONB, deferred=True)
+
+    # Self-Healing & Quality Audit State Machine
+    # Statuses: 'PENDING', 'FONT_OR_TAXONOMY_FIXED', 'SUSPECT_SOURCE_ERROR', 'VERIFIED_BY_CONSENSUS', 'NEEDS_HUMAN_REVIEW'
+    audit_status: Mapped[str] = mapped_column(String(30), default="PENDING", server_default="PENDING", index=True)
+    ai_attempt_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    first_ai_answer: Mapped[str | None] = mapped_column(String(255), default=None, server_default=None)
+    second_ai_answer: Mapped[str | None] = mapped_column(String(255), default=None, server_default=None)
+    pending_exam_id: Mapped[int | None] = mapped_column(Integer, default=None, server_default=None, nullable=True)
+    quality_flags: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
+
+    # Target Exam Tags (e.g. ['SGK_KNTT', 'THPTQG', 'DGTD_TSA', 'HSG'])
+    target_tags: Mapped[list[str]] = mapped_column(
+        postgresql.ARRAY(String(30)),
+        default=lambda: ["SGK_KNTT"],
+        server_default="{SGK_KNTT}",
+    )
 
     __table_args__ = (
-        Index(
-            "ix_questions_embedding_hnsw",
-            "embedding",
-            postgresql_using="hnsw",
-            postgresql_ops={"embedding": "vector_cosine_ops"},
-        ),
+        Index("ix_questions_target_tags_gin", "target_tags", postgresql_using="gin"),
     )
 
 
@@ -419,6 +432,8 @@ class ImportJob(Base):
     )
     # Draft questions produced by the pipeline and edited during review (see app/ai/pipeline.py).
     drafts: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, server_default="[]")
+    doc_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    knowledge_article_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     # "BANK": questions for the bank (admin, library). "SIMILAR": a teacher's paper, read only to write `versions`
     # similar papers (`variants`: drafts with "version" and "of"), reviewed by that teacher, never in the bank.
     purpose: Mapped[str] = mapped_column(String(20), default="BANK", server_default="BANK")
@@ -653,7 +668,7 @@ class TargetGroupCategory(StrEnum):
 
 
 class KnowledgeUnit(Base):
-    """1. Bảng Cây Kiến Thức Chuẩn SGK Kết Nối Tri Thức (Tọa độ kiến thức gốc: Môn -> Lớp -> Chương -> Bài)."""
+    """1. Bảng Cây Kiến Thức Chuẩn SGK Kết Nối Tri Thức (Tọa độ kiến thức gốc: Môn -> Lớp -> Chương -> Bài -> Dạng bài)."""
 
     __tablename__ = "knowledge_units"
 
@@ -662,10 +677,30 @@ class KnowledgeUnit(Base):
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"), index=True)
     subject: Mapped[str] = mapped_column(String(50), index=True)  # 'PHYSICS', 'MATH', 'CHEMISTRY', 'ENGLISH'...
     grade: Mapped[int] = mapped_column(Integer, index=True)  # 9, 10, 11, 12
-    unit_type: Mapped[str] = mapped_column(String(20))  # 'CHAPTER', 'LESSON', 'TOPIC'
-    code: Mapped[str | None] = mapped_column(String(50), unique=True, index=True)  # e.g. 'PHY12-KNTT-C1-B2'
+    unit_type: Mapped[str] = mapped_column(String(30))  # 'CHAPTER', 'LESSON', 'TOPIC', 'PROBLEM_TYPE'
+    code: Mapped[str | None] = mapped_column(String(60), unique=True, index=True)  # e.g. 'MATH12-KNTT-C6-B2-D2'
     name: Mapped[str] = mapped_column(String(255))
+    slug: Mapped[str | None] = mapped_column(String(255), index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class KnowledgeArticle(Base):
+    """Ngân hàng Tài liệu & Phương pháp giải (VietJack-style Study Guide gắn với từng Bài/Dạng bài)."""
+
+    __tablename__ = "knowledge_articles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    knowledge_unit_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_units.id", ondelete="CASCADE"), index=True, default=None)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"), index=True, default=None)
+    title: Mapped[str] = mapped_column(String(255))
+    summary_formulas_md: Mapped[str | None] = mapped_column(Text)
+    method_guide_md: Mapped[str | None] = mapped_column(Text)
+    notes_and_tips_md: Mapped[str | None] = mapped_column(Text)
+    worked_examples_json: Mapped[list | None] = mapped_column(JSONB, default=list)
+    branded_pdf_url: Mapped[str | None] = mapped_column(Text)
+    branded_pdf_path: Mapped[str | None] = mapped_column(String(512), default=None)
+    access_tier: Mapped[str] = mapped_column(String(10), default="FREE", server_default="FREE")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class ExamTarget(Base):

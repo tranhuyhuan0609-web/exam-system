@@ -27,6 +27,8 @@ class Storage(Protocol):
 
     async def get(self, key: str) -> bytes: ...
 
+    async def iter_stream(self, key: str, chunk_size: int = 64 * 1024): ...
+
     async def exists(self, key: str) -> bool: ...
 
     async def delete(self, key: str) -> None: ...
@@ -70,6 +72,17 @@ class LocalStorage:
             return await asyncio.to_thread(self.path(key).read_bytes)
         except FileNotFoundError as exc:
             raise StorageError(f"Not found: {key}") from exc
+
+    async def iter_stream(self, key: str, chunk_size: int = 64 * 1024):
+        path = self.path(key)
+        if not path.is_file():
+            raise StorageError(f"Not found: {key}")
+        with open(path, "rb") as f:
+            while True:
+                chunk = await asyncio.to_thread(f.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
 
     async def exists(self, key: str) -> bool:
         return self.path(key).is_file()
@@ -155,6 +168,24 @@ class S3Storage:
             return await asyncio.to_thread(_get)
         except S3Error as exc:
             raise StorageError(f"Not found: {key}") from exc
+
+    async def iter_stream(self, key: str, chunk_size: int = 64 * 1024):
+        from minio.error import S3Error
+        self._ensure_bucket()
+        try:
+            response = self.client.get_object(self.bucket, _check_key(key))
+        except S3Error as exc:
+            raise StorageError(f"Not found: {key}") from exc
+
+        try:
+            while True:
+                chunk = await asyncio.to_thread(response.read, chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            response.close()
+            response.release_conn()
 
     async def exists(self, key: str) -> bool:
         from minio.error import S3Error

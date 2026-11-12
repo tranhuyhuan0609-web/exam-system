@@ -4,16 +4,27 @@ from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 from sqlalchemy import func, select
 
 from app.application.library_publish import create_exam_from_library_doc
 from app.application.pdf_preview import PREVIEW_MAX_PAGES, ensure_document_preview, stamp_user_watermark
 from app.attempts import db_now
 from app.config import get_settings
-from app.deps import SessionDep, require_user
+from app.deps import CurrentUser, SessionDep, require_user
 from app.infrastructure.storage import get_bronze_storage, get_storage
-from app.models import AccessTier, LibraryDocument, LibraryKind, LibraryStatus, User, UserRole
+from app.models import (
+    AccessTier,
+    KnowledgeArticle,
+    KnowledgeUnit,
+    LibraryDocument,
+    LibraryKind,
+    LibraryStatus,
+    Question,
+    QuestionType,
+    User,
+    UserRole,
+)
 from app.plans import can_download, docs_read_today, open_document
 from app.templating import flash, templates
 
@@ -298,14 +309,28 @@ async def view_document(user: LibraryUser, session: SessionDep, document_id: int
         )
     if reason := await open_document(session, user, doc, now):
         raise HTTPException(status.HTTP_403_FORBIDDEN, reason)
-    data = await get_bronze_storage().get(doc.storage_key)
+    storage = get_bronze_storage()
+    filename_encoded = quote(_filename(doc))
+
+    # Watermarked PRO PDFs need processing; all other documents stream directly to conserve RAM
     if is_pro_doc and doc.mime == "application/pdf":
+        data = await storage.get(doc.storage_key)
         data = stamp_user_watermark(data, f"PRO: {user.email}")
-    return Response(
-        data,
+        return Response(
+            data,
+            media_type=doc.mime,
+            headers={
+                "Content-Disposition": f"inline; filename*=UTF-8''{filename_encoded}",
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+    return StreamingResponse(
+        storage.iter_stream(doc.storage_key),
         media_type=doc.mime,
         headers={
-            "Content-Disposition": f"inline; filename*=UTF-8''{quote(_filename(doc))}",
+            "Content-Disposition": f"inline; filename*=UTF-8''{filename_encoded}",
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",
         },
@@ -319,11 +344,12 @@ async def download_document(user: LibraryUser, session: SessionDep, document_id:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Chỉ giáo viên gói Pro được tải đề thi; sách và tài liệu chỉ xem trực tuyến."
         )
-    data = await get_bronze_storage().get(doc.storage_key)
-    return Response(
-        data,
+    storage = get_bronze_storage()
+    filename_encoded = quote(_filename(doc))
+    return StreamingResponse(
+        storage.iter_stream(doc.storage_key),
         media_type=doc.mime,
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(_filename(doc))}"},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename_encoded}"},
     )
 
 
@@ -348,3 +374,84 @@ async def create_exam_from_document_route(
     await session.commit()
     flash(request, f"Đã mở đề luyện tập “{exam.title}”.")
     return RedirectResponse(f"/exams/{exam.id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/tai-lieu/{subject_slug}/{chapter_slug}/{lesson_slug}")
+async def view_study_article(
+    request: Request,
+    session: SessionDep,
+    subject_slug: str,
+    chapter_slug: str,
+    lesson_slug: str,
+    user: CurrentUser = None,
+):
+    """VietJack-style Study Guide & Interactive Practice page for Problem Types / Lessons."""
+    ku = await session.scalar(
+        select(KnowledgeUnit).where(
+            (KnowledgeUnit.slug == lesson_slug) | (KnowledgeUnit.code.ilike(f"%{lesson_slug}%"))
+        )
+    )
+    if not ku and lesson_slug == "dang-2-cong-thuc-bayes":
+        ku = await session.scalar(select(KnowledgeUnit).where(KnowledgeUnit.code == "MATH12-KNTT-C6-B2-D2"))
+
+    if not ku:
+        raise HTTPException(status_code=404, detail="Bài học hoặc dạng tài liệu không tồn tại.")
+
+    article = await session.scalar(
+        select(KnowledgeArticle).where(KnowledgeArticle.knowledge_unit_id == ku.id)
+    )
+
+    questions = list((await session.scalars(
+        select(Question).where(Question.knowledge_unit_id == ku.id).order_by(Question.id)
+    )).all())
+
+    essay_questions = [q for q in questions if q.question_type == QuestionType.ESSAY]
+    mcq_questions = [q for q in questions if q.question_type == QuestionType.MULTIPLE_CHOICE]
+    tf_questions = [q for q in questions if q.question_type == QuestionType.TRUE_FALSE]
+    sa_questions = [q for q in questions if q.question_type == QuestionType.SHORT_ANSWER]
+
+    all_units = list((await session.scalars(
+        select(KnowledgeUnit)
+        .where(KnowledgeUnit.grade == ku.grade, KnowledgeUnit.subject == ku.subject)
+        .order_by(KnowledgeUnit.sort_order, KnowledgeUnit.id)
+    )).all())
+
+    chapters = [u for u in all_units if u.unit_type == "CHAPTER"]
+    by_parent: dict[int, list[KnowledgeUnit]] = {}
+    for u in all_units:
+        if u.parent_id:
+            by_parent.setdefault(u.parent_id, []).append(u)
+
+    toc_tree = []
+    for ch in chapters:
+        ch_lessons = by_parent.get(ch.id, [])
+        lessons_tree = []
+        for les in ch_lessons:
+            les_pts = by_parent.get(les.id, [])
+            lessons_tree.append({
+                "unit": les,
+                "problem_types": les_pts,
+                "is_active": les.id == ku.id or any(pt.id == ku.id for pt in les_pts),
+            })
+        toc_tree.append({
+            "chapter": ch,
+            "lessons": lessons_tree,
+            "is_active": ch.id == ku.id or any(l["is_active"] for l in lessons_tree),
+        })
+
+    return templates.TemplateResponse(
+        request,
+        "study_article.html",
+        {
+            "user": user,
+            "unit": ku,
+            "article": article,
+            "toc_tree": toc_tree,
+            "essay_questions": essay_questions,
+            "mcq_questions": mcq_questions,
+            "tf_questions": tf_questions,
+            "sa_questions": sa_questions,
+            "total_questions": len(questions),
+            "subject_name": f"{'Toán' if ku.subject == 'MATH' else ku.subject} {ku.grade}",
+        },
+    )

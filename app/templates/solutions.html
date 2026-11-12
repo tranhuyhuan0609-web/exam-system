@@ -40,13 +40,13 @@
       {% if r.seconds %}<span class="muted small">⏱ {{ r.seconds | duration }}</span>{% endif %}
       {% if r.number in slowest %}<span class="badge slow-badge">🐢 Chậm</span>{% endif %}
     </div>
-    <div class="q-content">{{ r.content }}</div>
+    <div class="q-content">{{ r.content | format_q_content | safe }}</div>
     {% if r.image_url %}<img class="q-figure" src="{{ r.image_url }}" alt="Hình vẽ câu {{ r.number }}">{% endif %}
 
     {% if r.type == "ESSAY" %}
       <div class="essay-review">
         <div class="essay-answer"><div class="muted small">Bài làm của em</div>
-          <div class="q-content">{{ r.answer or "— (bỏ trống)" }}</div></div>
+          <div class="q-content">{{ (r.answer | format_q_content | safe) if r.answer else "— (bỏ trống)" }}</div></div>
         {% if r.essay %}
           <div class="essay-feedback"><div class="muted small">🤖 Nhận xét của AI · {{ "%g" % r.points }}/{{ "%g" % r.max_points }} điểm</div>
             <div class="q-content">{{ r.essay.feedback }}</div></div>

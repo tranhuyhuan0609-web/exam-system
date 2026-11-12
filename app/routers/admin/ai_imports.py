@@ -25,6 +25,8 @@ from app.models import (
     ExamOriginType,
     ImportJob,
     JobStatus,
+    KnowledgeArticle,
+    KnowledgeUnit,
     Question,
     QuestionType,
 )
@@ -297,7 +299,28 @@ async def publish(request: Request, user: AdminUser, session: SessionDep, job_id
     if exam:
         await publish_to_library(session, job, exam)  # typeset clean PDFs without headers/logos
 
+    # If this import job contains structured VietJack-style Study Guide / Theory data:
+    if job.knowledge_article_data:
+        ku = await session.scalar(select(KnowledgeUnit).where(KnowledgeUnit.code == "MATH12-KNTT-C6-B2-D2"))
+        if ku:
+            for q in created:
+                q.knowledge_unit_id = ku.id
+
+            article = await session.scalar(select(KnowledgeArticle).where(KnowledgeArticle.knowledge_unit_id == ku.id))
+            if not article:
+                article = KnowledgeArticle(knowledge_unit_id=ku.id, title=job.knowledge_article_data.get("title", title))
+                session.add(article)
+            article.title = job.knowledge_article_data.get("title", title)
+            article.method_guide_md = job.knowledge_article_data.get("method_guide_md")
+            article.summary_formulas_md = job.knowledge_article_data.get("summary_formulas_md")
+            article.notes_and_tips_md = job.knowledge_article_data.get("notes_and_tips_md")
+            article.worked_examples_json = job.knowledge_article_data.get("worked_examples_json", [])
+            article.branded_pdf_url = job.knowledge_article_data.get("branded_pdf_url")
+
     await session.commit()
+    if job.knowledge_article_data:
+        flash(request, f"🚀 Đã xuất bản thành công vào Ngân hàng Tài liệu & Ngân hàng Câu hỏi ({len(created)} câu)! Học sinh có thể làm bài tương tác trực tiếp tại: /tai-lieu/toan-12/xac-suat-co-dieu-kien/dang-2-cong-thuc-bayes")
+        return redirect(f"/admin/ai-imports/{job_id}")
     if exam:
         folder_display = " › ".join(doc.folder_path) if doc and doc.folder_path else "Thư viện"
         flash(request, f"Đã đưa {len(created)} câu vào ngân hàng, xuất đề “{exam.title}” và lưu vào mục: {folder_display}.")

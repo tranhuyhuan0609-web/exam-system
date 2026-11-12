@@ -1,13 +1,14 @@
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import get_settings
@@ -17,8 +18,58 @@ from app.routers import admin, auth, library, maker, plans, student, teacher
 from app.templating import templates
 
 settings = get_settings()
+is_dev = settings.app_env.lower() in ("dev", "development", "test", "testing")
 
-app = FastAPI(title="Exam System", version="0.1.0")
+
+class CSRFProtectMiddleware(BaseHTTPMiddleware):
+    """Enforces Origin / Referer validation on all state-modifying requests (POST, PUT, DELETE, PATCH).
+
+    Protects all HTML form posts and AJAX endpoints against Cross-Site Request Forgery (CSRF).
+    """
+
+    SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
+
+    async def dispatch(self, request: Request, call_next):
+        if request.method not in self.SAFE_METHODS:
+            origin = request.headers.get("origin")
+            referer = request.headers.get("referer")
+            host = request.headers.get("host") or request.url.netloc
+
+            if origin:
+                origin_netloc = urlparse(origin).netloc
+                if origin_netloc != host:
+                    return Response(
+                        "403 Forbidden: CSRF Origin verification failed.",
+                        status_code=403,
+                        media_type="text/plain",
+                    )
+            elif referer:
+                referer_netloc = urlparse(referer).netloc
+                if referer_netloc != host:
+                    return Response(
+                        "403 Forbidden: CSRF Referer verification failed.",
+                        status_code=403,
+                        media_type="text/plain",
+                    )
+            else:
+                # Neither Origin nor Referer provided
+                if not is_dev and not request.headers.get("authorization"):
+                    return Response(
+                        "403 Forbidden: Missing CSRF Origin or Referer header.",
+                        status_code=403,
+                        media_type="text/plain",
+                    )
+        return await call_next(request)
+
+
+app = FastAPI(
+    title="Exam System",
+    version="0.1.0",
+    docs_url="/docs" if is_dev else None,
+    redoc_url="/redoc" if is_dev else None,
+    openapi_url="/openapi.json" if is_dev else None,
+)
+app.add_middleware(CSRFProtectMiddleware)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,

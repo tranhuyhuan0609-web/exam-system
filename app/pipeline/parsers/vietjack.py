@@ -144,13 +144,16 @@ def _drafts(root) -> list[_Draft]:
                     current.answer_end = starts[0]
                     between = inside[starts[0] :]
             current = None  # the answer closes the question
-        elif tag == "table" and current.part == "TRUE_FALSE" and current.table is None:
-            current.table = el
+        elif tag == "table":
+            if current.part == "TRUE_FALSE" and current.table is None and _table_rows(el):
+                current.table = el
+            elif not current.options:
+                current.stem.append(el)
         elif tag == "p" and current.part == "TRUE_FALSE" and (_STATEMENT.match(text) or current.options):
             current.options.append(el)  # statements written as "a) …" paragraphs instead of a table
         elif tag == "p" and current.part == "MULTIPLE_CHOICE" and (_OPTION.match(text) or current.options):
             current.options.append(el)
-        elif tag in ("p", "div", "figure", "center") and not current.options:
+        elif tag in ("p", "div", "figure", "center", "table") and not current.options:
             current.stem.append(el)
     return drafts
 

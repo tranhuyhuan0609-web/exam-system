@@ -2,20 +2,39 @@
 # Vietnamese Tesseract data, used to find exam codes on scanned library PDFs, and Chromium for clean PDFs.
 FROM python:3.13-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         libreoffice-writer-nogui \
+        pandoc \
+        poppler-utils \
         # Metric-compatible replacements for Times New Roman / Arial / Calibri / Cambria used in Vietnamese exams
         fonts-liberation fonts-crosextra-carlito fonts-crosextra-caladea fonts-dejavu \
         tesseract-ocr-vie \
     && rm -rf /var/lib/apt/lists/*
+
+# Create non-root system user for security
+RUN groupadd -g 1000 appgroup && \
+    useradd -u 1000 -g appgroup -m -s /bin/bash appuser && \
+    mkdir -p /app/data && \
+    chown -R appuser:appgroup /app
+
 WORKDIR /app
 COPY requirements.txt .
+
 # Headless Chromium (and the system libraries it needs) prints the clean exam PDFs of the library.
 RUN pip install --no-cache-dir -r requirements.txt \
     && python -m playwright install --with-deps chromium-headless-shell
+
+COPY alembic.ini .
+COPY alembic ./alembic
 COPY app ./app
 # Drive sources (configs/drive), read by the library consumer that runs on this image
 COPY configs ./configs
+
+RUN chown -R appuser:appgroup /app
+
+USER appuser
+
 ENV SOFFICE_PATH=soffice DATA_DIR=/app/data TESSDATA_DIR=/usr/share/tesseract-ocr/5/tessdata
 CMD ["python", "-m", "app.worker"]

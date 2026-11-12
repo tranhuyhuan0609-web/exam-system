@@ -454,6 +454,40 @@ async def scope_by_id(session: AsyncSession, category_id: int) -> Scope | None:
     return scope_for(category) if category else None
 
 
+def normalize_chapter_key(name: str) -> str:
+    s = name.lower().strip().replace("hòa", "hoà")
+    if "đề kiểm tra" in s or "định kì" in s:
+        return "de_kiem_tra"
+    m = re.match(r"^(chương\s*(\d+|[ivxldcm]+)|chủ\s*đề\s*(\d+))\b", s)
+    if m:
+        num_str = m.group(2) or m.group(3)
+        roman_map = {"i": 1, "ii": 2, "iii": 3, "iv": 4, "v": 5, "vi": 6, "vii": 7, "viii": 8, "ix": 9, "x": 10, "xi": 11, "xii": 12}
+        num = roman_map.get(num_str.lower(), int(num_str) if num_str.isdigit() else num_str)
+        return f"ch_{num}"
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", "", s))
+
+
+def normalize_lesson_name(name: str) -> str:
+    s = name.lower().strip().replace("hòa", "hoà")
+    m = re.match(r"^(bài\s*(\d+))\b", s)
+    if m:
+        return f"bai_{m.group(2)}"
+    m_unit = re.match(r"^(unit\s*(\d+))\b", s)
+    if m_unit:
+        rest = s[m_unit.end():].strip()
+        for part in ["reading", "writing", "listening", "speaking", "vocabulary", "grammar", "phonetics"]:
+            if part in rest:
+                return f"unit_{m_unit.group(2)}_{part}"
+        return f"unit_{m_unit.group(2)}"
+    m_cd = re.match(r"^(chủ\s*đề\s*(\d+))\b", s)
+    if m_cd:
+        return f"chu_de_{m_cd.group(2)}"
+    m_exam = re.search(r"(giữa\s*học\s*kì\s*[12]|học\s*kì\s*[12])", s)
+    if m_exam:
+        return f"exam_{re.sub(r'\s+', '', m_exam.group(1))}"
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", "", s))
+
+
 async def get_drilldown_catalog(session: AsyncSession) -> dict[str, Any]:
     """Hierarchical master catalog for sequential 5-step admin question filtering:
     - Section (Phần 1, Phần 2, Phần 3)
@@ -461,8 +495,19 @@ async def get_drilldown_catalog(session: AsyncSession) -> dict[str, Any]:
     - If Phần 2: Exam (Kỳ thi) -> Subject (Môn)
     - If Phần 3: Tier (Cấp độ HSG) -> Subject (Môn) -> Difficulty (Mức độ)
     """
+    from app.models import Question
+    from sqlalchemy import func
+
     all_categories = list(
         (await session.scalars(select(Category).order_by(Category.position, Category.id))).all()
+    )
+
+    q_counts: dict[int, int] = dict(
+        (await session.execute(
+            select(Question.category_id, func.count(Question.id))
+            .where(Question.category_id.is_not(None))
+            .group_by(Question.category_id)
+        )).all()
     )
 
     by_parent: dict[int | None, list[Category]] = {}
@@ -485,19 +530,62 @@ async def get_drilldown_catalog(session: AsyncSession) -> dict[str, Any]:
         if not g or g not in grades_dict:
             continue
 
+        raw_chapters = by_parent.get(root.id, [])
+        ch_grouped: dict[str, list[tuple[Category, list[Category], int]]] = {}
+        for ch in raw_chapters:
+            ckey = normalize_chapter_key(ch.name)
+            ch_lessons = by_parent.get(ch.id, [])
+            tot_q = q_counts.get(ch.id, 0) + sum(q_counts.get(l.id, 0) for l in ch_lessons)
+            ch_grouped.setdefault(ckey, []).append((ch, ch_lessons, tot_q))
+
         chapters_data = []
-        for ch in by_parent.get(root.id, []):
-            is_exam = "đề kiểm tra" in ch.name.lower() or "định kì" in ch.name.lower()
-            lessons_data = [
-                {"id": les.id, "name": les.name}
-                for les in by_parent.get(ch.id, [])
-            ]
+        for ckey, entries in ch_grouped.items():
+            # Pick representative chapter (highest total questions, most lessons, lowest id)
+            entries.sort(key=lambda e: (-e[2], -len(e[1]), e[0].id))
+            best_ch, best_lessons, best_q = entries[0]
+
+            is_exam = "đề kiểm tra" in best_ch.name.lower() or "định kì" in best_ch.name.lower()
+
+            all_raw_lessons = list(best_lessons)
+            for other_ch, other_lessons, other_q in entries[1:]:
+                for l in other_lessons:
+                    if q_counts.get(l.id, 0) > 0 and l not in all_raw_lessons:
+                        all_raw_lessons.append(l)
+
+            les_grouped: dict[str, list[Category]] = {}
+            for l in all_raw_lessons:
+                lkey = normalize_lesson_name(l.name)
+                les_grouped.setdefault(lkey, []).append(l)
+
+            lessons_data = []
+            seen_clean_names = set()
+            for lkey, l_entries in les_grouped.items():
+                l_entries.sort(key=lambda l: (-q_counts.get(l.id, 0), l.position or 999, l.id))
+                chosen = l_entries[0]
+                clean_n = re.sub(r"\s+", " ", chosen.name.lower().replace("hòa", "hoà").strip())
+                if clean_n in seen_clean_names:
+                    continue
+                seen_clean_names.add(clean_n)
+                lessons_data.append({"id": chosen.id, "name": chosen.name})
+
+            def _les_order_key(item):
+                m_num = re.search(r"(\d+)", item["name"])
+                return int(m_num.group(1)) if m_num else 9999
+            lessons_data.sort(key=_les_order_key)
+
             chapters_data.append({
-                "id": ch.id,
-                "name": ch.name,
+                "id": best_ch.id,
+                "name": best_ch.name,
                 "is_exam": is_exam,
                 "lessons": lessons_data,
             })
+
+        def _ch_order_key(item):
+            if item.get("is_exam"):
+                return 9999
+            m_num = re.search(r"(\d+)", item["name"])
+            return int(m_num.group(1)) if m_num else 999
+        chapters_data.sort(key=_ch_order_key)
 
         grades_dict[g]["subjects"].append({
             "id": root.id,

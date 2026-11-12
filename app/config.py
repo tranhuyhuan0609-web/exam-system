@@ -3,6 +3,7 @@ import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # OpenAI-compatible providers with a free tier (or free credits): AI_PROVIDERS=<name> and <NAME>_API_KEY are enough.
@@ -83,6 +84,28 @@ class Settings(BaseSettings):
     def effective_soffice_path(self) -> str:
         from app.ai.extract_engine import find_soffice
         return find_soffice(self.soffice_path)
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        """Safety gate: Aborts startup in production if default/insecure keys are used."""
+        is_dev = self.app_env.lower() in ("dev", "development", "test", "testing")
+        if not is_dev:
+            # 1. Enforce secure secret_key
+            if not self.secret_key or self.secret_key in ("change-me", "secret", "default", "changeme"):
+                raise ValueError(
+                    f"CRITICAL SECURITY CONFIGURATION: 'secret_key' cannot use default '{self.secret_key}' "
+                    f"in environment '{self.app_env}'. Set a strong random SECRET_KEY in .env or environment."
+                )
+            # 2. Enforce secure S3 credentials if using S3
+            if self.storage_backend == "s3" and self.s3_secret_key in ("rustfsadmin", "minioadmin", ""):
+                raise ValueError(
+                    f"CRITICAL SECURITY CONFIGURATION: 's3_secret_key' cannot use default '{self.s3_secret_key}' "
+                    f"in environment '{self.app_env}'. Set a secure S3_SECRET_KEY in production."
+                )
+            # 3. Default session_https_only to True outside dev
+            if not self.session_https_only:
+                self.session_https_only = True
+        return self
     tessdata_dir: str = ""  # Tesseract language data (vie): enables OCR of scanned library PDFs
 
     # Question crawler (app/pipeline): Kafka carries raw pages, MongoDB keeps them (Bronze).

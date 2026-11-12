@@ -57,7 +57,7 @@
             {% if item.explanation_by_ai %}<span class="badge">🤖 lời giải AI</span>{% endif %}
             {% if item.category_id %}<span class="muted">→ {{ scope_paths.get("c:" ~ item.category_id, "") }}</span>{% endif %}
           </div>
-          <div class="q-content math">{{ item.content }}</div>
+          <div class="q-content math">{{ item.content | format_q_content | safe }}</div>
           {% if item.image_path %}<img src="{{ media_url(item.image_path) }}" alt="" class="crawl-figure">{% endif %}
           {% if item.choices %}
             <ol class="crawl-choices" type="{{ 'a' if item.question_type == 'TRUE_FALSE' else 'A' }}">
@@ -67,7 +67,7 @@
             </ol>
           {% endif %}
           {% if item.accepted_answers %}<p class="small">Đáp số: <strong>{{ item.accepted_answers | join(" ; ") }}</strong></p>{% endif %}
-          {% if item.explanation %}<details><summary class="small">Lời giải</summary><div class="q-content math small">{{ item.explanation }}</div></details>{% endif %}
+          {% if item.explanation %}<details><summary class="small">Lời giải</summary><div class="q-content math small">{{ item.explanation | format_q_content | safe }}</div></details>{% endif %}
           {% for issue in item.issues %}<div class="small issue">⚠ {{ issue }}</div>{% endfor %}
         </div>
       </article>

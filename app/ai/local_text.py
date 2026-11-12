@@ -258,6 +258,12 @@ def _to_png(data: bytes) -> bytes | None:
 
 
 def read_docx(path: Path) -> LocalExam | None:
+    from app.application.exam_pdf import docx_has_mathtype_or_shapes
+
+    if docx_has_mathtype_or_shapes(path):
+        log.info("%s contains MathType OLE / Word Shapes; delegating to LibreOffice -> PDF conversion", path.name)
+        return None
+
     import pypandoc
 
     with tempfile.TemporaryDirectory(prefix="docx-text-") as media:

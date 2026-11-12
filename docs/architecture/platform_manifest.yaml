@@ -1,0 +1,290 @@
+manifest_version: 11.3.0
+release_date: '2026-11-12'
+document_title: TL_Handover_V11_3_Engineering_Hardening_Unified
+document_status_policy:
+allowed_statuses:
+- SPECIFIED
+- IMPLEMENTED
+- TESTED
+- VERIFIED
+- OPERATED
+current_handover_maturity: ENGINEERING_REVIEWED_SPECIFICATION
+counts:
+total_modules: 47
+release_tracks: 3
+track_1_modules: 26
+track_2_modules: 12
+track_3_modules: 9
+total_adrs: 17
+total_algorithms_in_registry: 9
+total_milestones: 7
+option_a_full_scope_sprints: 14
+option_a_total_weeks_with_m0: 30
+option_b_fast_track_sprints: 12
+option_b_total_weeks_with_m0: 26
+max_modules_per_sprint: 6
+max_high_risk_modules_per_sprint: 2
+total_release_gates: 11
+total_operational_runbooks: 14
+golden_corpus_files: 11
+held_out_corpus_files: 30
+total_db_roles: 7
+release_gates:
+- id: GATE-01
+name: Multi-Tenant RLS, InitPlan & Zero-IDOR Gate
+target_sprint: Sprint 6
+- id: GATE-02
+name: Data Immutability & 5-Axis State Gate
+target_sprint: Sprint 6
+- id: GATE-03
+name: Exam Security & Zero-Answer-Leak Gate
+target_sprint: Sprint 6
+- id: GATE-04
+name: Autosave Durability, Dexie Offline & Chaos Gate
+target_sprint: Sprint 6
+- id: GATE-05
+name: High-Concurrency 5.000 CCU Per-VU Load Gate
+target_sprint: Sprint 6
+- id: GATE-06a
+name: Golden & Held-out Extraction Gate (Toán & Vật lí)
+target_sprint: Sprint 6
+- id: GATE-06b
+name: Golden & Held-out Extraction Gate (Hóa học & Sinh học — Đủ 41 đề)
+target_sprint: Sprint 8
+- id: GATE-07
+name: Deterministic Grading & Option Permutation Gate
+target_sprint: Sprint 6
+- id: GATE-08
+name: AI Safety, Exam Lock, Subprocess SymPy >= 95% & FSRS-5 Reference Vectors Gate
+target_sprint: Sprint 9
+- id: GATE-09
+name: Legal DPIA/DPA, Vault Transit Erasure, OSS SBOM & External Pentest Gate
+target_sprint: Sprint 14
+- id: GATE-10
+name: Disaster Recovery, Patroni Strict Quorum & Post-PITR Tombstone Drill Gate
+target_sprint: Sprint 14
+irt_tier_registry:
+- code: RULE_WEIGHTED_L1
+min_item_responses: 1
+min_learners: 1
+valid_at_go_live: true
+- code: RASCH_1PL_L2
+min_item_responses: 150
+min_learners: 100
+min_ability_sd: 0.6
+max_se_b: 0.3
+infit_msq_range:
+- 0.7
+- 1.3
+max_abs_dif: 0.5
+fallback_to: RULE_WEIGHTED_L1
+- code: IRT_2PL_GPCM_L3
+min_item_responses: 300
+min_learners: 250
+min_ability_sd: 0.65
+max_se_b: 0.25
+infit_msq_range:
+- 0.75
+- 1.25
+max_abs_dif: 0.45
+fallback_to: RASCH_1PL_L2
+- code: IRT_3PL_GPCM_L4
+min_item_responses: 1000
+min_learners: 800
+min_ability_sd: 0.7
+max_se_b: 0.2
+infit_msq_range:
+- 0.8
+- 1.2
+max_abs_dif: 0.4
+prior_guessing_c: Beta(5, 17)
+fallback_to: IRT_2PL_GPCM_L3
+canonical_module_schedule:
+A01:
+track: Track 1 (Core MVP)
+milestone: M1
+sprint: Sprint 1
+A02:
+track: Track 3 (Expansion)
+milestone: M5
+sprint: Sprint 10
+A03:
+track: Track 3 (Expansion)
+milestone: M5
+sprint: Sprint 10
+A04:
+track: Track 1 (Core MVP)
+milestone: M2
+sprint: Sprint 4
+A05:
+track: Track 1 (Core MVP)
+milestone: M1
+sprint: Sprint 3
+A06:
+track: Track 1 (Core MVP)
+milestone: M1
+sprint: Sprint 3
+A07:
+track: Track 1 (Core MVP)
+milestone: M1
+sprint: Sprint 3
+A08:
+track: Track 1 (Core MVP)
+milestone: M2
+sprint: Sprint 4
+A09:
+track: Track 1 (Core MVP)
+milestone: M1
+sprint: Sprint 3
+B01:
+track: Track 1 (Core MVP)
+milestone: M1
+sprint: Sprint 2
+B02:
+track: Track 1 (Core MVP)
+milestone: M1
+sprint: Sprint 2
+B03:
+track: Track 1 (Core MVP)
+milestone: M1
+sprint: Sprint 1
+B04:
+track: Track 1 (Core MVP)
+milestone: M1
+sprint: Sprint 2
+B05:
+track: Track 2 (Intelligent & LMS)
+milestone: M3
+sprint: Sprint 7
+B06:
+track: Track 1 (Core MVP)
+milestone: M1
+sprint: Sprint 2
+B07:
+track: Track 1 (Core MVP)
+milestone: M2
+sprint: Sprint 4
+C01:
+track: Track 1 (Core MVP)
+milestone: M2
+sprint: Sprint 4
+C02:
+track: Track 1 (Core MVP)
+milestone: M1
+sprint: Sprint 3
+C03:
+track: Track 1 (Core MVP)
+milestone: M2
+sprint: Sprint 4
+C04:
+track: Track 1 (Core MVP)
+milestone: M2
+sprint: Sprint 5
+C05:
+track: Track 1 (Core MVP)
+milestone: M2
+sprint: Sprint 5
+C06:
+track: Track 1 (Core MVP)
+milestone: M2
+sprint: Sprint 5
+C07:
+track: Track 1 (Core MVP)
+milestone: M2
+sprint: Sprint 6
+D01:
+track: Track 2 (Intelligent & LMS)
+milestone: M3
+sprint: Sprint 7
+D02:
+track: Track 2 (Intelligent & LMS)
+milestone: M3
+sprint: Sprint 7
+D03:
+track: Track 2 (Intelligent & LMS)
+milestone: M3
+sprint: Sprint 7
+D04:
+track: Track 2 (Intelligent & LMS)
+milestone: M4
+sprint: Sprint 9
+D05:
+track: Track 2 (Intelligent & LMS)
+milestone: M3
+sprint: Sprint 7
+D06:
+track: Track 3 (Expansion)
+milestone: M5
+sprint: Sprint 11
+E01:
+track: Track 1 (Core MVP)
+milestone: M1
+sprint: Sprint 2
+E02:
+track: Track 2 (Intelligent & LMS)
+milestone: M4
+sprint: Sprint 9
+E03:
+track: Track 3 (Expansion)
+milestone: M5
+sprint: Sprint 10
+E04:
+track: Track 2 (Intelligent & LMS)
+milestone: M4
+sprint: Sprint 9
+E05:
+track: Track 3 (Expansion)
+milestone: M5
+sprint: Sprint 11
+E06:
+track: Track 3 (Expansion)
+milestone: M5
+sprint: Sprint 11
+F01:
+track: Track 2 (Intelligent & LMS)
+milestone: M3
+sprint: Sprint 8
+F02:
+track: Track 2 (Intelligent & LMS)
+milestone: M3
+sprint: Sprint 8
+F03:
+track: Track 2 (Intelligent & LMS)
+milestone: M3
+sprint: Sprint 8
+F04:
+track: Track 1 (Core MVP)
+milestone: M1
+sprint: Sprint 1
+F05:
+track: Track 1 (Core MVP)
+milestone: M1
+sprint: Sprint 1
+F06:
+track: Track 2 (Intelligent & LMS)
+milestone: M3
+sprint: Sprint 8
+G01:
+track: Track 1 (Core MVP)
+milestone: M1
+sprint: Sprint 1
+G02:
+track: Track 1 (Core MVP)
+milestone: M1
+sprint: Sprint 2
+G03:
+track: Track 1 (Core MVP)
+milestone: M1
+sprint: Sprint 1
+G04:
+track: Track 3 (Expansion)
+milestone: M5
+sprint: Sprint 12
+G05:
+track: Track 3 (Expansion)
+milestone: M5
+sprint: Sprint 12
+G06:
+track: Track 3 (Expansion)
+milestone: M5
+sprint: Sprint 12

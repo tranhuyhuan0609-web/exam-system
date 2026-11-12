@@ -108,7 +108,7 @@
   {% for q in preview_items %}
     <section class="card question-card" style="margin-bottom: 12px;">
       <div class="q-number">Câu {{ q.number }} <span class="badge type-badge">{{ TYPE_LABELS[q.type] }}</span></div>
-      <div class="q-content">{{ q.content }}</div>
+      <div class="q-content">{{ q.content | format_q_content | safe }}</div>
       {% if q.image_url %}<img class="q-figure" src="{{ q.image_url }}" alt="Hình vẽ câu {{ q.number }}">{% endif %}
       {% if q.type == "MULTIPLE_CHOICE" and q.choices %}
         <div class="choice-list">

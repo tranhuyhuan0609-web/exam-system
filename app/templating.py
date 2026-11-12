@@ -3,10 +3,12 @@ from pathlib import Path
 
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup
 
 from app.infrastructure.storage import media_url
 from app.models import Difficulty, SourceType
 from app.question_rules import TYPE_LABELS as _TYPE_LABELS
+from app.security import get_or_create_csrf_token
 
 _FLASH_KEY = "_flash"
 
@@ -23,7 +25,14 @@ def _flash_context(request: Request) -> dict:
     return {"flashes": flashes}
 
 
+def _csrf_input(request: Request) -> Markup:
+    token = get_or_create_csrf_token(request)
+    return Markup(f'<input type="hidden" name="csrf_token" value="{token}">')
+
+
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates", context_processors=[_flash_context])
+templates.env.globals["csrf_token"] = get_or_create_csrf_token
+templates.env.globals["csrf_input"] = _csrf_input
 templates.env.globals["TYPE_LABELS"] = {t.value: label for t, label in _TYPE_LABELS.items()}
 templates.env.globals["SOURCE_LABELS"] = {
     SourceType.MANUAL: "Soạn tay",
@@ -54,8 +63,41 @@ def _duration(seconds: int) -> str:
     return f"{minutes} phút" + (f" {secs} giây" if secs else "")
 
 
+def _format_q_content(content: str) -> str:
+    """Renders plain text and converts markdown pipe tables (| col1 | col2 |) into styled HTML tables."""
+    if not content:
+        return ""
+    import html
+    lines = content.splitlines()
+    out = []
+    table_lines = []
+
+    def flush_table():
+        nonlocal table_lines
+        if not table_lines:
+            return
+        html_tbl = ['<div class="table-responsive" style="overflow-x:auto;"><table class="q-data-table"><tbody>']
+        for tl in table_lines:
+            cells = [c.strip() for c in tl.strip().strip("|").split("|")]
+            html_tbl.append("<tr>" + "".join(f"<td>{html.escape(c)}</td>" for c in cells) + "</tr>")
+        html_tbl.append("</tbody></table></div>")
+        out.append("".join(html_tbl))
+        table_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+        if "|" in stripped and stripped.count("|") >= 2:
+            table_lines.append(stripped)
+        else:
+            flush_table()
+            out.append(html.escape(line))
+    flush_table()
+    return "<br>".join(out)
+
+
 templates.env.filters["local_dt"] = _local_dt
 templates.env.filters["local_input"] = lambda v: _local_dt(v, "%Y-%m-%dT%H:%M")  # <input type=datetime-local>
+templates.env.filters["format_q_content"] = _format_q_content
 templates.env.globals["ROLE_LABELS"] = {"ADMIN": "Admin", "TEACHER": "Giáo viên", "STUDENT": "Học sinh"}
 templates.env.globals["media_url"] = media_url
 templates.env.filters["duration"] = _duration
