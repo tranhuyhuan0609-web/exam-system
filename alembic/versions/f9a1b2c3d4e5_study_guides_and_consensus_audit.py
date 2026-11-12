@@ -20,7 +20,9 @@ def upgrade() -> None:
     existing_tables = inspector.get_table_names()
 
     # 1. Bảng lưu Lý thuyết & Phương pháp giải theo từng Dạng bài (Kiểu VietJack)
-    if "knowledge_articles" not in existing_tables:
+    if "knowledge_units" not in existing_tables:
+        pass  # fresh database: created by the catch-up revision (b0c1d2e3f4a5), in the shape the models declare
+    elif "knowledge_articles" not in existing_tables:
         op.create_table(
             "knowledge_articles",
             sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
@@ -84,5 +86,5 @@ def downgrade() -> None:
         batch_op.drop_column("first_ai_answer")
         batch_op.drop_column("audit_status")
         batch_op.drop_column("target_tags")
-    op.drop_table("knowledge_articles")
+    op.execute("DROP TABLE IF EXISTS knowledge_articles")
 
