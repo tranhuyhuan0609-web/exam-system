@@ -49,7 +49,7 @@ opentrivia 750, vietjack 543 — tính trên `crawled_questions`), 345 từ nh�
 
 **Loại câu hỏi:** `MULTIPLE_CHOICE` → `SINGLE_CHOICE` · `TRUE_FALSE` → `CLUSTER_TRUE_FALSE` · `SHORT_ANSWER` → `SHORT_NUMERIC` · `ESSAY` → `ESSAY`.
 
-**Độ khó:** `RECOGNITION` → `NB` · `UNDERSTANDING` → `TH` · `APPLICATION` → `VD` · `ADVANCED_APPLICATION` → `VDC` · `HSG` → **không có giá trị tương ứng** (câu hỏi 1 bên dưới).
+**Độ khó:** `RECOGNITION` → `NB` · `UNDERSTANDING` → `TH` · `APPLICATION` → `VD` · `ADVANCED_APPLICATION` → `VDC` · `HSG` → `VDC` kèm thẻ `HSG` trong `exam_framework_tags`.
 
 **Năm trục trạng thái cho câu hỏi cũ:**
 
@@ -61,24 +61,26 @@ opentrivia 750, vietjack 543 — tính trên `crawled_questions`), 345 từ nh�
 | `publication_status` | `DRAFT` cho mọi câu chưa đủ điều kiện; `PUBLISHED` chỉ khi `VERIFIED` và quyền hợp lệ | Cổng xuất bản của DB sẽ từ chối các trường hợp khác |
 | `visibility_scope` | `SYSTEM_PUBLIC` (tenant hệ thống) | Kho chung |
 
-## 4. Hệ quả cần bạn quyết trước khi backfill
+## 4. Quyết định đã chốt (13/11/2026)
+
+- **Phạm vi Sprint 4:** chỉ backfill Toán và Vật lí lớp 10–12 trước; các môn và khối khác chuyển theo từng đợt mở rộng.
+- **Độ khó `HSG`:** gán `VDC` và thêm thẻ `HSG` vào `exam_framework_tags`.
+
+## 5. Hệ quả còn chờ quyết trước khi backfill
 
 1. **98% kho câu hỏi sẽ không xuất bản được ngay.** 16.851 câu đến từ crawler nên vào `rights_status = PENDING_REVIEW`; cộng với
    việc chỉ 9 câu ở mức `VERIFIED`, sau backfill số câu `PUBLISHED` gần như bằng 0 cho tới khi A09 (duyệt quyền) và C02
    (kiểm chứng) xử lý xong. Bạn muốn: (a) chấp nhận, duyệt quyền theo từng nguồn rồi mở dần; (b) bạn xác nhận quyền theo
    từng site ngay bây giờ (ví dụ site nào được phép dùng phái sinh) để backfill gán luôn; hay (c) giữ kho cũ phục vụ qua
    giao diện Jinja song song cho tới khi kho mới đủ lớn?
-2. **Độ khó `HSG`** không có trong `NB/TH/VD/VDC`. Đề xuất: gán `VDC` và thêm thẻ `HSG` vào `exam_framework_tags`.
-3. **MVP là Toán & Vật lí THPT**, nhưng kho hiện có nhiều nhất ở Hóa 12, Toán 6, Công nghệ 6, KHTN 6. Backfill toàn bộ
-   17.217 câu ngay ở Sprint 4, hay chỉ Toán/Lý lớp 10–12 trước và phần còn lại theo từng môn khi mở rộng?
-4. **`verification_status` cho câu chỉ có `is_verified = true`**: cờ này mặc định là `true` ở schema cũ nên không phải bằng
+2. **`verification_status` cho câu chỉ có `is_verified = true`**: cờ này mặc định là `true` ở schema cũ nên không phải bằng
    chứng. Theo quy tắc ở mục 3, 17.027 câu có `answer_source` sẽ thành `AUTO_VERIFIED` và phần còn lại `UNCHECKED`. Cả hai
    mức đều chưa qua được cổng xuất bản (cần `VERIFIED`), nên C02 phải kiểm chứng lại hoặc người duyệt xác nhận theo lô.
-5. **Thư viện 440 tài liệu đã xuất bản** phần lớn là đề HSG/đề thi lấy từ Drive và nguồn mở: cùng câu hỏi về quyền như mục 1.
-6. **Hash cũ không dùng lại được** vì thuật toán V11.3 chuẩn hóa NFC và đổi cách băm; việc khử trùng phải chạy lại trên toàn
+3. **Thư viện 440 tài liệu đã xuất bản** phần lớn là đề HSG/đề thi lấy từ Drive và nguồn mở: cùng câu hỏi về quyền như mục 1.
+4. **Hash cũ không dùng lại được** vì thuật toán V11.3 chuẩn hóa NFC và đổi cách băm; việc khử trùng phải chạy lại trên toàn
    kho (A08), có thể gộp thêm câu trùng mà hệ thống cũ bỏ sót.
 
-## 5. Thứ tự và kiểm tra
+## 6. Thứ tự và kiểm tra
 
 1. Mỗi module tự mang script backfill của nó (`app/modules/<tên>/internal/backfill.py`), chạy bằng lệnh CLI, không chạy
    trong migration.
