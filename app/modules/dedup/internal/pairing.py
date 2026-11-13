@@ -14,6 +14,7 @@ import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
+from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
@@ -27,12 +28,21 @@ DEFAULT_AUTO_CONFIRM_THRESHOLD = Decimal("0.85")
 DEFAULT_PROPOSE_THRESHOLD = Decimal("0.60")
 
 _SEPARATORS_RE = re.compile(r"[^0-9a-z]+")
+_UNICODE_TOKEN_RE = re.compile(r"[^\W_]+")
 _SOLUTION_MARKER_RE = re.compile(
     r"\b(?:hdc|huong dan cham|dap an|loi giai)\b"
 )
 _NOISE_PHRASE_RE = re.compile(
     r"\b(?:huong dan cham|giai chi tiet|dap an|loi giai|chi tiet|chinh thuc|hdc|de)\b"
 )
+
+
+class DocumentKind(StrEnum):
+    """Classification of a pairing candidate document by filename."""
+
+    EXAM = "EXAM"
+    SOLUTION = "SOLUTION"
+    EXAM_WITH_SOLUTION = "EXAM_WITH_SOLUTION"
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,10 +99,27 @@ def fold_vietnamese_ascii(raw: str) -> str:
     return _SEPARATORS_RE.sub(" ", lowered).strip()
 
 
+def classify_pairing_document(filename: str) -> DocumentKind:
+    """Classify a document as EXAM, pure SOLUTION, or combined EXAM_WITH_SOLUTION."""
+    stem = Path(filename).stem
+    folded = fold_vietnamese_ascii(stem)
+    has_solution = bool(_SOLUTION_MARKER_RE.search(folded))
+    if not has_solution:
+        return DocumentKind.EXAM
+
+    nfc_tokens = {
+        tok
+        for tok in _UNICODE_TOKEN_RE.findall(unicodedata.normalize("NFC", stem).casefold())
+    }
+    has_exam = "đề" in nfc_tokens or "de" in nfc_tokens
+    if has_exam:
+        return DocumentKind.EXAM_WITH_SOLUTION
+    return DocumentKind.SOLUTION
+
+
 def is_solution_filename(filename: str) -> bool:
-    """Return True when a filename contains solution/rubric indicators (NFC/NFD/unaccented)."""
-    folded = fold_vietnamese_ascii(Path(filename).stem)
-    return bool(_SOLUTION_MARKER_RE.search(folded))
+    """Return True only when a filename represents a pure solution/rubric document."""
+    return classify_pairing_document(filename) == DocumentKind.SOLUTION
 
 
 def clean_pairing_stem(filename: str) -> str:
@@ -171,7 +198,10 @@ def auto_pair_exam_and_hdc_documents(
     solutions: list[PairingDocumentInput] = []
 
     for doc in sorted(candidate_docs, key=lambda d: d.doc_id):
-        if is_solution_filename(doc.filename):
+        kind = classify_pairing_document(doc.filename)
+        if kind == DocumentKind.EXAM_WITH_SOLUTION:
+            continue
+        if kind == DocumentKind.SOLUTION:
             solutions.append(doc)
         else:
             exams.append(doc)

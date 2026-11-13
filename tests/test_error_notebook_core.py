@@ -75,3 +75,21 @@ def test_wrong_attempt_resets_streak_and_reopens_resolved_note():
 def test_rejects_negative_counts():
     with pytest.raises(ValueError):
         apply_attempt(ErrorNoteState(last_wrong_at=_ts(0), wrong_count=-1), is_correct=True, at=_ts(1))
+
+
+def test_rejects_naive_timestamp_and_out_of_order_attempt():
+    state = ErrorNoteState(last_wrong_at=_ts(2), status="OPEN", wrong_count=1, consecutive_correct_count=0)
+
+    naive_at = datetime(2026, 11, 13, 12, 0)
+    with pytest.raises(ValueError, match="timezone-aware"):
+        apply_attempt(state, is_correct=True, at=naive_at)
+
+    earlier_at = _ts(1)
+    with pytest.raises(ValueError, match="earlier"):
+        apply_attempt(state, is_correct=True, at=earlier_at)
+    with pytest.raises(ValueError, match="earlier"):
+        apply_attempt(state, is_correct=False, at=earlier_at)
+
+    # Exact timestamp equal to last_wrong_at is accepted.
+    same_ts = apply_attempt(state, is_correct=True, at=_ts(2))
+    assert same_ts.status == "IN_REMEDIATION"
