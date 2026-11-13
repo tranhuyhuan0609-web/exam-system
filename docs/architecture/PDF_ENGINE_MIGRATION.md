@@ -1,6 +1,7 @@
 # PDF engine migration: PyMuPDF (AGPLv3) to pypdfium2 + pdfplumber (ADR-010, task T0.7)
 
-Status: adapter done; PR A (read-only callers) migrated, see "Migration status" below. `pymupdf` is still a dependency.
+Status: adapter done; PR A (read-only callers) and PR B (structure and geometry readers) migrated, see "Migration status" below.
+`pymupdf` is still a dependency (redaction, PDF writing, OCR: PR C). Before/after numbers on the golden exams: `PDF_GOLDEN_REPORT.md`.
 The adapter is `app/infrastructure/pdf_engine.py` (`PDFEngineAdapter`), tests in `tests/test_pdf_engine.py`.
 
 Licences: pypdfium2 Apache-2.0 / BSD-3 (bundles PDFium, BSD-3); pdfplumber MIT (pdfminer.six MIT);
@@ -134,9 +135,33 @@ Known differences handled at the call sites: PyMuPDF text ends every line (and p
 not, hence `newline_terminated`; clip renders can differ by one pixel in size (pdfium rounds, MuPDF rounds up);
 invalid PDFs raise `PDFEngineError` instead of `RuntimeError` (`library_split.split_document` catches both).
 
+### PR B (structure and geometry readers), done
+
+| File | Moved to the adapter | Still on PyMuPDF, and why |
+| --- | --- | --- |
+| `app/ai/extract_engine.py` | `pdf_to_continuous_text` (`blocks(clip=)`), `extract_figures_by_caption` (`blocks`, `images`, `render_png`), `extract_chemistry_schemes` (`cluster_drawings`, `images`, `render_png`) | nothing (no pymupdf import left) |
+| `app/ai/figures.py` | `page_geometry(reader, index)` (drawings with opacity, images, span lines), `extract_unlabeled_diagrams(reader, index)` | `remove_light_text(page)` and `redact_diagram_interior_text(page)`: redaction (G3, PR C). The module imports pymupdf only inside those |
+| `app/ai/essay_exam.py` | `_extract_pdf_lines` (`rich_lines`), page blocks, page sizes, raw page render | the "clean" render of a page that has watermark text (`_WatermarkRedactor`: PyMuPDF `remove_light_text` + render, opened lazily, only for pages the adapter flags with `PageGeometry.has_light_text`). A file therefore uses both engines, in `read_essay_pdf` only |
+| `app/ai/normalize.py` | `page_geometry`, original page render, page count/password (PR A) | the same lazily opened redaction for pages with watermark text (`_open_pymupdf`) |
+| `app/cli.py` | the geometry of every page of a stored PDF | `clean_render`: redaction + render at the stored image resolution |
+
+Adapter additions in PR B (all unit-tested in `tests/test_pdf_engine.py` with synthetic PDFs):
+
+* G5 `rich_lines(i, clip=)` (lines of spans with font, colour and alpha, from the pdfium text page: loose character boxes, PyMuPDF-like
+  line breaks and word gaps) and `blocks(i, clip=)` (paragraph-like text blocks in stream order, no image blocks, as PyMuPDF's defaults).
+* G4 `Drawing.opacity` and the whole `drawings()` / `images()` reading now come from pdfium page objects (one object = one painted path,
+  form XObject matrices composed), not pdfplumber: the same count as PyMuPDF for fill-plus-stroke paths, exact opacity and RGB colours
+  (also for gray/CMYK), and about 1 s per page faster. pdfplumber stays for `tables()` and `words()`/`chars()`/`lines()`.
+* `cluster_drawings(i, x_tolerance, y_tolerance)` and `cluster_rects`: the PyMuPDF clustering rules.
+* G6 `find_text` second pass: NFD comparison with collapsed whitespace when pdfium finds nothing.
+* One-page cache for images and drawings (a pdfplumber page parse is no longer repeated per call).
+
+Not equivalent to PyMuPDF (details and numbers in `PDF_GOLDEN_REPORT.md`): line fragments of formulas (sub/superscripts) are split and
+ordered differently, so some math question texts differ, and PyMuPDF lists a few images that pdfium does not expose.
+
 ### Still to do
 
-PR B and PR C as listed in "Proposed migration order". Remaining fitz inventory rows are unchanged except the files above.
+PR C as listed in "Proposed migration order". Remaining fitz inventory rows are unchanged except the files above.
 
 ## Proposed migration order (3 PRs, lowest risk first)
 

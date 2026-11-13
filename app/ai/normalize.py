@@ -74,8 +74,6 @@ async def docx_to_pdf(source: Path, soffice: str) -> Path:
 
 def pdf_to_pages(pdf: Path, out_dir: Path, dpi: int = RENDER_DPI) -> tuple[list[Path], list[PageGeometry]]:
     """Render every page; also return each page's vector graphics/words for exact figure cropping."""
-    import pymupdf
-
     try:
         reader = PDFEngineAdapter.open(pdf)
     except PDFPasswordRequired as exc:
@@ -85,23 +83,36 @@ def pdf_to_pages(pdf: Path, out_dir: Path, dpi: int = RENDER_DPI) -> tuple[list[
     with reader:
         if reader.page_count > MAX_PAGES:
             raise NormalizeError(f"File có {reader.page_count} trang, vượt giới hạn {MAX_PAGES} trang mỗi lần.")
-        try:
-            doc = pymupdf.open(pdf)  # geometry and the light-text-free render still need PyMuPDF (redaction)
-        except Exception as exc:
-            raise NormalizeError("Không mở được file PDF (file hỏng hoặc có mật khẩu).") from exc
         paths, geometries = [], []
-        with doc:
-            for index, page in enumerate(doc, start=1):
+        redactor = None  # PyMuPDF, opened only for a page that has watermark text (redaction is PR C)
+        try:
+            for index in range(1, reader.page_count + 1):
                 path = out_dir / f"page-{index:03d}.png"
                 reader.render(index - 1, dpi=dpi).save(path)  # original, for the AI and the review screen
                 paths.append(path)
-                geometry = page_geometry(page)
-                if remove_light_text(page):  # figures are cut from a render without watermark text
-                    clean = out_dir / f"page-{index:03d}-clean.png"
-                    page.get_pixmap(dpi=dpi).save(clean)
-                    geometry.figure_png = clean
+                geometry = page_geometry(reader, index - 1)
+                if geometry.has_light_text:  # figures are cut from a render without watermark text
+                    if redactor is None:
+                        redactor = _open_pymupdf(pdf)
+                    page = redactor[index - 1]
+                    if remove_light_text(page):
+                        clean = out_dir / f"page-{index:03d}-clean.png"
+                        page.get_pixmap(dpi=dpi).save(clean)
+                        geometry.figure_png = clean
                 geometries.append(geometry)
+        finally:
+            if redactor is not None:
+                redactor.close()
     return paths, geometries
+
+
+def _open_pymupdf(pdf: Path):
+    import pymupdf
+
+    try:
+        return pymupdf.open(pdf)
+    except Exception as exc:
+        raise NormalizeError("Không mở được file PDF (file hỏng hoặc có mật khẩu).") from exc
 
 
 def image_to_page(source: Path, out_dir: Path) -> list[Path]:

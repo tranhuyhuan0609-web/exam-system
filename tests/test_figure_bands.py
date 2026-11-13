@@ -7,6 +7,13 @@ from PIL import Image
 
 from app.ai.essay_exam import figure_bands
 from app.ai.figures import page_geometry
+from app.infrastructure.pdf_engine import PDFEngineAdapter
+
+
+def geometry_of(page):
+    """The geometry the readers see: the page is saved and read back through the PDF engine adapter."""
+    with PDFEngineAdapter.open(page.parent.tobytes()) as reader:
+        return page_geometry(reader, page.number)
 
 PROSE = "Xác định cấu tạo của các chất từ A đến M trong sơ đồ sau và viết phương trình phản ứng xảy ra"
 
@@ -54,7 +61,7 @@ def _inline_formula_page() -> pymupdf.Page:
 
 
 def test_scheme_rows_join_into_one_band_with_labels_and_prose_splits_bands():
-    bands = figure_bands(page_geometry(_scheme_page()), 0, 1000)
+    bands = figure_bands(geometry_of(_scheme_page()), 0, 1000)
     assert len(bands) == 2
     first, second = bands
     # Row 1 and row 2 form one figure; reagents and the label "A" are inside it.
@@ -67,4 +74,4 @@ def test_scheme_rows_join_into_one_band_with_labels_and_prose_splits_bands():
 
 
 def test_small_formula_images_are_not_figures():
-    assert figure_bands(page_geometry(_inline_formula_page()), 0, 1000) == []
+    assert figure_bands(geometry_of(_inline_formula_page()), 0, 1000) == []

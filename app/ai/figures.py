@@ -14,6 +14,7 @@ from pathlib import Path
 from PIL import Image
 
 from app.ai.schemas import BoundingBox
+from app.infrastructure.pdf_engine import Drawing, PDFEngineAdapter, RichLine
 
 SNAP_SLACK = 0.12  # how far outside the model's box a graphic or label may reach (fraction of the box size)
 SNAP_MIN_COVER = 0.15  # snapped area must cover at least this share of the model's box
@@ -36,11 +37,29 @@ class PageGeometry:
     lines: list[list[BoundingBox]] = field(default_factory=list)
     # Embedded raster images (also listed in `graphics`): small ones sitting on a text line are inline formulas.
     images: list[BoundingBox] = field(default_factory=list)
+    # True when the page has watermark-style (light or transparent) text: its clean render needs redaction.
+    has_light_text: bool = False
 
 
-def page_geometry(page) -> PageGeometry:
-    """Collect vector drawings, images and words of a PyMuPDF page."""
-    width, height = page.rect.width, page.rect.height
+def _rgb(colour: tuple[float, ...] | None) -> tuple[float, float, float] | None:
+    """A PDF colour (gray, RGB or CMYK components in 0..1) as RGB; None when there is none."""
+    if not colour:
+        return None
+    if len(colour) == 1:
+        return (colour[0], colour[0], colour[0])
+    if len(colour) == 3:
+        return (colour[0], colour[1], colour[2])
+    if len(colour) == 4:
+        c, m, y, k = colour
+        return (1 - min(1.0, c + k), 1 - min(1.0, m + k), 1 - min(1.0, y + k))
+    return None
+
+
+def page_geometry(reader: PDFEngineAdapter, index: int, lines: list[RichLine] | None = None) -> PageGeometry:
+    """Collect vector drawings, images and words of page ``index`` (0-based) of an open PDF.
+
+    ``lines`` are the page's ``reader.rich_lines(index)`` when the caller already has them."""
+    width, height = reader.page_size(index)
 
     def norm(x0, y0, x1, y1) -> BoundingBox | None:
         if x1 < 0 or y1 < 0 or x0 > width or y0 > height:
@@ -54,49 +73,55 @@ def page_geometry(page) -> PageGeometry:
             xmax=round(min(width, x1) / width * 1000),
         )
 
-    def visible_and_dark(drawing) -> bool:
-        colours = [c for c in (drawing.get("color"), drawing.get("fill")) if c]
-        opacity = min(
-            drawing.get("stroke_opacity") if drawing.get("stroke_opacity") is not None else 1,
-            drawing.get("fill_opacity") if drawing.get("fill_opacity") is not None else 1,
-        )
-        if not colours or opacity < 0.5:
+    def visible_and_dark(drawing: Drawing) -> bool:
+        # Only the colours that are really painted count (the colour state of an unpainted part is a default).
+        painted = (drawing.stroke_color if drawing.stroke else None, drawing.fill_color if drawing.fill else None)
+        colours = [rgb for c in painted if (rgb := _rgb(c))]
+        if not colours or drawing.opacity < 0.5:
             return False
-        luminance = min(0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] for c in colours if len(c) >= 3)
+        luminance = min(0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] for c in colours)
         return luminance <= LIGHT_LUMINANCE
 
     geometry = PageGeometry()
-    for drawing in page.get_drawings():
+    for drawing in reader.drawings(index):
         if not visible_and_dark(drawing):
             continue
-        r = drawing["rect"]
+        r = drawing.rect
         if box := norm(r.x0, r.y0, r.x1, r.y1):
             geometry.graphics.append(box)
-    for info in page.get_image_info():
+    for image in reader.images(index):
         # Ignore 1x1, 2x2 or tiny placeholder dummy images (<= 8px) inserted for inline equations
-        if info.get("width", 0) <= 8 or info.get("height", 0) <= 8:
+        if 0 < image.src_width <= 8 or 0 < image.src_height <= 8:
             continue
-        if box := norm(*info["bbox"]):
+        r = image.rect
+        if box := norm(r.x0, r.y0, r.x1, r.y1):
             geometry.graphics.append(box)
             geometry.images.append(box)
-    for block in page.get_text("dict")["blocks"]:
-        for line in block.get("lines", []):
-            boxes = [
-                box
-                for span in line["spans"]
-                if span["text"].strip() and not is_light_text(span) and (box := norm(*span["bbox"]))
-            ]
-            if boxes:
-                geometry.lines.append(boxes)
+    for line in reader.rich_lines(index) if lines is None else lines:
+        boxes = []
+        for span in line.spans:
+            if not span.text.strip():
+                continue
+            if is_light_colour(span.color, span.alpha):
+                geometry.has_light_text = True
+                continue
+            if box := norm(span.rect.x0, span.rect.y0, span.rect.x1, span.rect.y1):
+                boxes.append(box)
+        if boxes:
+            geometry.lines.append(boxes)
     return geometry
+
+
+def is_light_colour(color: int, alpha: int = 255) -> bool:
+    """Watermark-style text colour: light grey/colour (0xRRGGBB) or mostly transparent."""
+    r, g, b = (color >> 16) & 255, (color >> 8) & 255, color & 255
+    luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+    return luminance > LIGHT_LUMINANCE - 0.1 or alpha < 128
 
 
 def is_light_text(span: dict) -> bool:
     """Watermark-style text: light grey/colour or mostly transparent (e.g. a teacher's logo inside figures)."""
-    colour = span.get("color", 0)
-    r, g, b = (colour >> 16) & 255, (colour >> 8) & 255, colour & 255
-    luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
-    return luminance > LIGHT_LUMINANCE - 0.1 or span.get("alpha", 255) < 128
+    return is_light_colour(span.get("color", 0), span.get("alpha", 255))
 
 
 def remove_light_text(page) -> int:
@@ -119,15 +144,15 @@ def remove_light_text(page) -> int:
     return count
 
 
-def extract_unlabeled_diagrams(page, min_paths: int = 4) -> list[BoundingBox]:
+def extract_unlabeled_diagrams(reader: PDFEngineAdapter, index: int, min_paths: int = 4) -> list[BoundingBox]:
     """Cluster vector drawings (organic chemistry reactions, physics circuits) without 'Hình X' captions.
-    Uses page.cluster_drawings() in PyMuPDF to detect graphic clusters and returns BoundingBoxes."""
+    Uses the adapter's cluster_drawings() (PyMuPDF's clustering rules) and returns BoundingBoxes."""
 
-    width, height = page.rect.width, page.rect.height
+    width, height = reader.page_size(index)
     diagram_boxes = []
 
     try:
-        clusters = page.cluster_drawings()
+        clusters = reader.cluster_drawings(index)
     except Exception:
         clusters = []
 

@@ -152,6 +152,7 @@ async def recrop_figures() -> int:
     )
     from app.ai.pipeline import page_key
     from app.ai.schemas import BoundingBox
+    from app.infrastructure.pdf_engine import PDFEngineAdapter, PDFEngineError
     from app.infrastructure.storage import StorageError, get_storage
     from app.models import ImportJob, Question
 
@@ -169,9 +170,9 @@ async def recrop_figures() -> int:
             if job.stored_path.lower().endswith(".pdf"):
                 try:
                     pdf_bytes = await storage.get(job.stored_path)
-                    with pymupdf.open(stream=pdf_bytes, filetype="pdf") as doc:
-                        geometries = [page_geometry(page) for page in doc]
-                except (StorageError, RuntimeError):
+                    with PDFEngineAdapter.open(pdf_bytes) as reader:
+                        geometries = [page_geometry(reader, i) for i in range(reader.page_count)]
+                except (StorageError, PDFEngineError):
                     geometries = None
 
             def clean_render(number: int, width: int, clean_pages=clean_pages, pdf_bytes=pdf_bytes) -> Image.Image:
