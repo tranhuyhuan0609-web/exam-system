@@ -104,3 +104,12 @@ protected_modules =
 allowed_importers =
     app.modules.grading
     app.model_registry
+
+[importlinter:contract:internal-dedup]
+name = dedup internals are private to the module
+type = protected
+protected_modules =
+    app.modules.dedup.internal
+allowed_importers =
+    app.modules.dedup
+    app.model_registry
