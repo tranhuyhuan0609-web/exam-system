@@ -221,3 +221,12 @@ protected_modules =
 allowed_importers =
     app.modules.delivery
     app.model_registry
+
+[importlinter:contract:internal-privacy]
+name = privacy internals are private to the module
+type = protected
+protected_modules =
+    app.modules.privacy.internal
+allowed_importers =
+    app.modules.privacy
+    app.model_registry
