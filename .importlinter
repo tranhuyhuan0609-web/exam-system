@@ -257,3 +257,12 @@ protected_modules =
 allowed_importers =
     app.modules.ingestion
     app.model_registry
+
+[importlinter:contract:internal-ai_gateway]
+name = ai_gateway internals are private to the module
+type = protected
+protected_modules =
+    app.modules.ai_gateway.internal
+allowed_importers =
+    app.modules.ai_gateway
+    app.model_registry
