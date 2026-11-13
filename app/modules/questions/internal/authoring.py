@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from decimal import Decimal
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any
 
 
@@ -77,16 +81,37 @@ class QuestionVersionState:
     approved_by: str | None = None
 
 
+def _plain(value: Any) -> Any:
+    """Convert nested mappings/sequences into plain JSON-able dict/list values (a detached copy)."""
+    if isinstance(value, Mapping):
+        return {str(k): _plain(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        items = [_plain(v) for v in value]
+        return sorted(items, key=repr) if isinstance(value, (set, frozenset)) else items
+    return value
+
+
+def _freeze(value: Any) -> Any:
+    """Deep-freeze nested mappings/sequences: mappings become read-only proxies, sequences tuples."""
+    if isinstance(value, Mapping):
+        return MappingProxyType({str(k): _freeze(v) for k, v in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze(v) for v in value)
+    return value
+
+
 def _compute_draft_hash(draft: QuestionDraft) -> str:
     canonical = {
-        "item_type": draft.item_type.value,
-        "difficulty_level": draft.difficulty_level.value,
+        "item_type": str(draft.item_type),
+        "difficulty_level": str(draft.difficulty_level),
         "stem_text": draft.stem_text.strip(),
         "options": [{"label": o.label.strip(), "content_text": o.content_text.strip()} for o in draft.options],
-        "answer_schema": dict(draft.answer_schema),
+        "answer_schema": _plain(draft.answer_schema),
         "stimulus_id": draft.stimulus_id,
     }
-    encoded = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    encoded = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode(
+        "utf-8"
+    )
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -106,21 +131,32 @@ def _option_labels(options: Sequence[QuestionOptionDraft]) -> list[str]:
     return labels
 
 
+_NUMERIC_RE = re.compile(r"-?[0-9]+(?:[.,][0-9]+)?")
+# "1.000" / "12,345": one to three leading digits then exactly three decimals can be read as a thousands group.
+_AMBIGUOUS_GROUPING_RE = re.compile(r"-?[1-9][0-9]{0,2}[.,][0-9]{3}")
+
+
 def _validate_short_numeric(answer_schema: Mapping[str, Any], *, max_chars: int) -> None:
     raw_val = answer_schema.get("value")
-    if raw_val is None or not str(raw_val).strip():
+    if raw_val is None or isinstance(raw_val, bool) or not str(raw_val).strip():
         raise QuestionAuthoringError("MISSING_NUMERIC_ANSWER", "SHORT_NUMERIC requires answer_schema['value']")
     val_str = str(raw_val).strip()
+    if isinstance(max_chars, bool) or not isinstance(max_chars, int) or max_chars < 1:
+        raise QuestionAuthoringError("INVALID_NUMERIC_LIMIT", "max_short_numeric_chars must be a positive integer")
     if len(val_str) > max_chars:
         raise QuestionAuthoringError(
             "NUMERIC_ANSWER_TOO_LONG",
             f"SHORT_NUMERIC answer {val_str!r} exceeds THPTQG limit ({max_chars} chars)",
         )
-    # Reject thousand-separator formatting (e.g. '1.000' when integer intended or ambiguous multi-dot)
-    if val_str.count(".") + val_str.count(",") > 1:
+    if not _NUMERIC_RE.fullmatch(val_str):
+        raise QuestionAuthoringError(
+            "INVALID_NUMERIC_ANSWER",
+            f"SHORT_NUMERIC answer {val_str!r} is not a plain decimal number",
+        )
+    if _AMBIGUOUS_GROUPING_RE.fullmatch(val_str):
         raise QuestionAuthoringError(
             "AMBIGUOUS_DECIMAL_SEPARATOR",
-            f"Multiple decimal/thousand separators in {val_str!r}",
+            f"{val_str!r} can be read as a thousands group or as a decimal; write it unambiguously",
         )
 
 
@@ -128,6 +164,9 @@ def validate_question_draft(draft: QuestionDraft) -> None:
     """Validate structure and answer schema completeness for all 6 V11.3 item types."""
     if not draft.stem_text or not draft.stem_text.strip():
         raise QuestionAuthoringError("MISSING_STEM", "Question stem_text must be non-empty")
+
+    if draft.difficulty_level not in set(DifficultyLevel) or not isinstance(draft.difficulty_level, DifficultyLevel):
+        raise QuestionAuthoringError("INVALID_DIFFICULTY", "difficulty_level must be NB, TH, VD or VDC")
 
     item_type = draft.item_type
 
@@ -155,11 +194,16 @@ def validate_question_draft(draft: QuestionDraft) -> None:
                 "INVALID_ANSWER_KEY",
                 f"Every correct_options entry must match {labels}",
             )
+        if len(set(correct_list)) != len(correct_list):
+            raise QuestionAuthoringError(
+                "DUPLICATE_CORRECT_OPTION",
+                "MULTIPLE_SELECT correct_options must not repeat an option",
+            )
         return
 
     if item_type == QuestionItemType.CLUSTER_TRUE_FALSE:
         labels = _option_labels(draft.options)
-        if len(labels) != 4:
+        if len(labels) != 4 or set(labels) != {"a", "b", "c", "d"}:
             raise QuestionAuthoringError(
                 "INVALID_CLUSTER_TF_OPTIONS",
                 "CLUSTER_TRUE_FALSE requires exactly 4 sub-statements (a, b, c, d)",
@@ -186,8 +230,9 @@ def validate_question_draft(draft: QuestionDraft) -> None:
         max_points = draft.answer_schema.get("max_points")
         if not rubric or not str(rubric).strip():
             raise QuestionAuthoringError("MISSING_ESSAY_RUBRIC", "ESSAY requires answer_schema['rubric']")
-        if not isinstance(max_points, (int, float)) or isinstance(max_points, bool) or max_points <= 0:
-            raise QuestionAuthoringError("INVALID_ESSAY_POINTS", "ESSAY requires positive max_points")
+        valid_type = isinstance(max_points, (int, float, Decimal)) and not isinstance(max_points, bool)
+        if not valid_type or not math.isfinite(max_points) or max_points <= 0:
+            raise QuestionAuthoringError("INVALID_ESSAY_POINTS", "ESSAY requires finite positive max_points")
         return
 
     if item_type == QuestionItemType.GROUP_STEM:
@@ -198,6 +243,11 @@ def validate_question_draft(draft: QuestionDraft) -> None:
             raise QuestionAuthoringError(
                 "INSUFFICIENT_GROUP_CHILDREN",
                 "GROUP_STEM requires at least 2 child_question_ids",
+            )
+        if not all(isinstance(c, str) and c.strip() for c in child_ids) or len(set(child_ids)) != len(child_ids):
+            raise QuestionAuthoringError(
+                "INVALID_GROUP_CHILDREN",
+                "child_question_ids must be unique non-empty strings",
             )
         return
 
@@ -217,15 +267,24 @@ def edit_draft_version(version: QuestionVersionState, *, new_draft: QuestionDraf
     """Edit an unpublished draft version in place after validating the updated draft."""
     assert_version_mutable(version)
     validate_question_draft(new_draft)
-    return replace(version, draft=new_draft, content_hash=_compute_draft_hash(new_draft))
+    detached = replace(new_draft, answer_schema=_plain(new_draft.answer_schema))
+    return replace(version, draft=detached, content_hash=_compute_draft_hash(detached))
 
 
 def publish_version(version: QuestionVersionState, *, approved_by: str) -> QuestionVersionState:
-    """Freeze a validated version as immutable upon publication."""
-    if not approved_by:
+    """Freeze a validated version: recompute the content hash and make `answer_schema` read-only."""
+    if not isinstance(approved_by, str) or not approved_by.strip():
         raise QuestionAuthoringError("MISSING_APPROVER", "approved_by is required to freeze version")
+    assert_version_mutable(version)
     validate_question_draft(version.draft)
-    return replace(version, is_immutable=True, approved_by=approved_by)
+    frozen_draft = replace(version.draft, answer_schema=_freeze(version.draft.answer_schema))
+    return replace(
+        version,
+        draft=frozen_draft,
+        content_hash=_compute_draft_hash(frozen_draft),
+        is_immutable=True,
+        approved_by=approved_by,
+    )
 
 
 def fork_next_version(
@@ -235,18 +294,24 @@ def fork_next_version(
     change_reason: str,
     created_by: str,
 ) -> QuestionVersionState:
-    """Create `version_no + 1` as a new mutable draft without altering the historical published version."""
-    if not change_reason or not change_reason.strip():
+    """Create `version_no + 1` as a new mutable draft; only an immutable (published) version may be forked."""
+    if not current.is_immutable:
+        raise QuestionAuthoringError(
+            "VERSION_NOT_PUBLISHED",
+            f"Question version v{current.version_no} is still a draft; edit it instead of forking",
+        )
+    if not isinstance(change_reason, str) or not change_reason.strip():
         raise QuestionAuthoringError("MISSING_CHANGE_REASON", "Creating next version requires change_reason")
-    if not created_by:
+    if not isinstance(created_by, str) or not created_by.strip():
         raise QuestionAuthoringError("MISSING_AUTHOR", "created_by is required")
     validate_question_draft(new_draft)
+    detached = replace(new_draft, answer_schema=_plain(new_draft.answer_schema))
     return QuestionVersionState(
         question_id=current.question_id,
         tenant_id=current.tenant_id,
         version_no=current.version_no + 1,
-        draft=new_draft,
-        content_hash=_compute_draft_hash(new_draft),
+        draft=detached,
+        content_hash=_compute_draft_hash(detached),
         is_immutable=False,
         change_reason=change_reason.strip(),
         created_by=created_by,
