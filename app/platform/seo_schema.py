@@ -2,26 +2,43 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import unicodedata
 from typing import Any
 
+
+class SeoSchemaError(ValueError):
+    """Raised when SEO inputs (slug, base URL, route prefix) are unsafe."""
+
+
 _ALLOWED_INDEX_RIGHTS: frozenset[str] = frozenset(
     {"OWNED", "LICENSED", "ALLOWED_DERIVATIVE"}
 )
 _NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
+_BASE_URL_RE = re.compile(r"https?://[A-Za-z0-9.-]+(?::\d{1,5})?", re.ASCII)
+_PATH_SEGMENT_RE = re.compile(r"[A-Za-z0-9._~-]+", re.ASCII)
 
 
 def to_vietnamese_slug(text: str, *, max_length: int = 96) -> str:
     """Convert Unicode Vietnamese titles into URL-safe lowercase ASCII slugs."""
+    if not isinstance(text, str):
+        raise SeoSchemaError("title must be a string")
+    if isinstance(max_length, bool) or not isinstance(max_length, int) or max_length < 8:
+        raise SeoSchemaError("max_length must be an integer >= 8")
     normalized = unicodedata.normalize("NFC", text).replace("đ", "d").replace("Đ", "D")
     decomposed = unicodedata.normalize("NFD", normalized)
     stripped = "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
     slug = _NON_ALNUM_RE.sub("-", stripped.lower()).strip("-")
+    if not slug:
+        # Titles without any Latin letter or digit (CJK, Cyrillic, emoji, blank) must still get
+        # distinct, stable slugs instead of colliding on a single fallback.
+        digest = hashlib.sha256(normalized.strip().encode("utf-8")).hexdigest()[:12]
+        return f"hoc-lieu-{digest}"
     if len(slug) > max_length:
         slug = slug[:max_length].rstrip("-")
-    return slug or "hoc-lieu-h2edu"
+    return slug
 
 
 def is_indexable_in_sitemap(
@@ -45,16 +62,36 @@ def build_robots_meta(*, indexable: bool, is_exam_room: bool = False) -> str:
 
 
 def build_canonical_url(*, base_url: str, route_prefix: str, slug: str) -> str:
+    if not all(isinstance(v, str) for v in (base_url, route_prefix, slug)):
+        raise SeoSchemaError("base_url, route_prefix and slug must be strings")
     clean_base = base_url.strip().rstrip("/")
     clean_prefix = route_prefix.strip().strip("/")
     clean_slug = slug.strip().strip("/")
-    return f"{clean_base}/{clean_prefix}/{clean_slug}"
+    if _BASE_URL_RE.fullmatch(clean_base) is None:
+        raise SeoSchemaError("base_url must be an http(s) origin")
+    if not clean_slug or _PATH_SEGMENT_RE.fullmatch(clean_slug) is None or ".." in clean_slug:
+        raise SeoSchemaError("slug must be a single safe path segment")
+    if clean_prefix and not all(
+        _PATH_SEGMENT_RE.fullmatch(p) and p not in {".", ".."} for p in clean_prefix.split("/")
+    ):
+        raise SeoSchemaError("route_prefix contains unsafe path segments")
+    path = f"{clean_prefix}/{clean_slug}" if clean_prefix else clean_slug
+    return f"{clean_base}/{path}"
 
 
 def serialize_jsonld_safe(payload: dict[str, Any]) -> str:
     """Serialize JSON-LD while escaping ``<`` to block ``</script>`` HTML breakout XSS."""
-    raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    return raw.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    try:
+        raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise SeoSchemaError("JSON-LD payload is not serialisable") from exc
+    return (
+        raw.replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+        .replace(" ", "\\u2028")
+        .replace(" ", "\\u2029")
+    )
 
 
 def build_learning_resource_jsonld(
