@@ -329,3 +329,12 @@ protected_modules =
 allowed_importers =
     app.modules.practice
     app.model_registry
+
+[importlinter:contract:internal-classroom]
+name = classroom internals are private to the module
+type = protected
+protected_modules =
+    app.modules.classroom.internal
+allowed_importers =
+    app.modules.classroom
+    app.model_registry
