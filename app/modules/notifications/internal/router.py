@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
-from datetime import date
+from datetime import date, datetime
 from enum import StrEnum
 
 
@@ -71,7 +71,8 @@ class NotificationInboxState:
     """In-memory inbox state modeling UNIQUE `dedup_key` idempotency."""
 
     records: tuple[NotificationRecord, ...] = ()
-    seen_dedup_keys: frozenset[str] = field(default_factory=frozenset)
+    # (tenant_id, membership_id, dedup_key): idempotency is scoped to the recipient
+    seen_dedup_keys: frozenset[tuple[str, str, str]] = field(default_factory=frozenset)
 
     def unread_count(self) -> int:
         return sum(1 for r in self.records if not r.is_read)
@@ -84,14 +85,14 @@ def resolve_target_channels(
     category: NotificationCategory,
     is_critical: bool = False,
 ) -> tuple[NotificationChannel, ...]:
-    """Filter requested delivery channels against user preferences."""
+    """Filter requested delivery channels against user preferences; unknown channels are never delivered."""
     if not is_critical and category in prefs.muted_categories:
         return ()
 
     seen: set[NotificationChannel] = set()
     active: list[NotificationChannel] = []
     for ch in requested:
-        if ch in seen:
+        if ch in seen or ch not in set(NotificationChannel):
             continue
         if is_critical or ch in prefs.enabled_channels:
             seen.add(ch)
@@ -109,13 +110,21 @@ def dispatch_notification_idempotent(
 
     Replaying the same event N times guarantees 0 duplicate notifications and 0 duplicate deliveries.
     """
+    for name, value in (("tenant_id", cmd.tenant_id), ("membership_id", cmd.membership_id)):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{name} must be non-empty")
+    if not isinstance(cmd.title, str) or not cmd.title.strip():
+        raise ValueError("title must be non-empty")
+    if not isinstance(cmd.dedup_key, str):
+        raise ValueError("dedup_key must be a string")
     key = cmd.dedup_key.strip()
     if not key:
         raise ValueError("dedup_key must be non-empty")
     if len(key) > 160:
         raise ValueError(f"dedup_key exceeds DDL VARCHAR(160) limit: len={len(key)}")
 
-    if key in inbox.seen_dedup_keys:
+    scoped_key = (cmd.tenant_id, cmd.membership_id, key)
+    if scoped_key in inbox.seen_dedup_keys:
         return inbox, None
 
     channels = resolve_target_channels(
@@ -140,17 +149,28 @@ def dispatch_notification_idempotent(
     )
     next_inbox = NotificationInboxState(
         records=inbox.records + (rec,),
-        seen_dedup_keys=inbox.seen_dedup_keys | {key},
+        seen_dedup_keys=inbox.seen_dedup_keys | {scoped_key},
     )
     return next_inbox, rec
 
 
-def mark_notification_read(inbox: NotificationInboxState, *, dedup_key: str) -> NotificationInboxState:
-    """Idempotently mark an inbox notification read."""
+def mark_notification_read(
+    inbox: NotificationInboxState,
+    *,
+    tenant_id: str,
+    membership_id: str,
+    dedup_key: str,
+) -> NotificationInboxState:
+    """Idempotently mark one recipient's inbox notification read (other recipients' rows are never touched)."""
     updated: list[NotificationRecord] = []
     changed = False
     for rec in inbox.records:
-        if rec.dedup_key == dedup_key and not rec.is_read:
+        if (
+            rec.tenant_id == tenant_id
+            and rec.membership_id == membership_id
+            and rec.dedup_key == dedup_key.strip()
+            and not rec.is_read
+        ):
             updated.append(replace(rec, is_read=True))
             changed = True
         else:
@@ -166,6 +186,10 @@ def build_fsrs_daily_reminder_command(
     due_card_count: int,
 ) -> NotificationCommand | None:
     """Create a deterministic per-day FSRS reminder command (`None` when 0 cards due)."""
+    if isinstance(due_card_count, bool) or not isinstance(due_card_count, int):
+        raise ValueError("due_card_count must be an integer")
+    if not isinstance(vn_day, date) or isinstance(vn_day, datetime):
+        raise ValueError("vn_day must be a calendar date, not a datetime")
     if due_card_count <= 0:
         return None
     return NotificationCommand(

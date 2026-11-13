@@ -354,3 +354,13 @@ def test_unknown_resource_has_zero_quota_and_unknown_default_plan_fails_closed()
     with pytest.raises(BillingError) as err3:
         consume_quota_idempotent(QuotaLedgerState(), entry, plans=_PLANS, now=datetime(2026, 11, 13))
     assert err3.value.code == "CLOCK_NOT_AWARE"
+
+
+def test_sign_webhook_payload_is_deterministic_and_binds_every_input() -> None:
+    base = {"webhook_id": "w", "timestamp_unix": 100, "raw_payload": b"{}", "secret": "s"}
+    sig = sign_webhook_payload(**base)
+    assert sig == sign_webhook_payload(**base) and len(sig) == 64
+    for change in ({"webhook_id": "w2"}, {"timestamp_unix": 101}, {"raw_payload": b"{ }"}, {"secret": "s2"}):
+        assert sign_webhook_payload(**{**base, **change}) != sig
+    with pytest.raises(ValueError):
+        sign_webhook_payload(**{**base, "secret": ""})
