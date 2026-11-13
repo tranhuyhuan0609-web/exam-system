@@ -340,3 +340,40 @@ quyền chỉ cấp cho `ulp_app_rw` là đúng đặc tả mục 5. Migration m
 - Không tạo `defaultExamAutosaveStore` ngay khi import; tạo lười qua hàm.
 - Bản ghi bị giữ lại không được chặn các câu khác: hàng đợi bỏ qua bản ghi `conflict` và gửi tiếp các bản ghi sau.
 - Thêm `getQueueState()` trả số bản ghi đang chờ / đang xung đột / cần đăng nhập lại để giao diện hiển thị.
+
+---
+
+## 5. Việc sửa sau rà soát đợt 2 (giao ngày 13/11/2026)
+
+Đợt 2 (P8–P13) đã được rà soát và gộp vào `main`. Các điểm dưới đây là thiếu sót tìm thấy khi rà soát; mỗi gói một nhánh
+từ `origin/main` mới nhất, một PR, kèm test cho từng điểm.
+
+### P14 — C06: phần còn thiếu của P13 (ưu tiên cao)
+
+- Nhánh `feat/c06-autosave-queue-state`. Chỉ sửa `frontend/src/lib/exam-autosave-store.ts` và test của nó.
+- `getQueueState()` chưa có (P13 đã yêu cầu): trả `{ pending, conflict, rejected, authRequired }` để giao diện hiển thị.
+- Bản ghi `conflict` hiện không có cách xử lý nên nằm lại mãi. Thêm `resolveConflict(id, "keep_mine" | "take_server")`:
+  `keep_mine` đưa bản ghi về `pending` với `expected_response_version` mới nhất; `take_server` xoá bản ghi.
+- Các lỗi `4xx` còn lại (ví dụ `422 PAYLOAD_HASH_MISMATCH`, `400`, `404`) hiện vẫn xoá câu trả lời. Đổi thành trạng thái
+  `rejected` kèm `error_code`, không gửi lại tự động, không chặn các bản ghi sau; chỉ xoá khi giao diện gọi `discard(id)`.
+- Sau khi gặp `401`/`403` xác thực, không gọi lại `onAuthRequired` cho mỗi lần `enqueue`: ghi nhớ trạng thái và chỉ gửi lại
+  khi giao diện gọi `resume()` (hoặc token thay đổi).
+
+### P15 — A02: chuẩn hoá đường dẫn trước khi so danh sách cho phép
+
+- Nhánh `feat/a02-path-normalization`. Chỉ sửa `app/modules/crawler/internal/redirects.py` và test.
+- `allowed_path_prefixes` đang so trên đường dẫn thô: `/allowed/../admin` và `/allowed/%2e%2e/admin` lọt qua tiền tố
+  `/allowed/`. Giải mã phần trăm một lần, từ chối đường dẫn còn chứa `%` sau giải mã, `\`, ký tự điều khiển hoặc đoạn `..`,
+  rồi mới so tiền tố; tiền tố `/a` không được khớp `/ab` (so theo ranh giới đoạn).
+- `robots_txt_content=None` hiện được hiểu là "cho phép". Thêm tham số bắt buộc nêu rõ ý định (`robots: RobotsPolicy`
+  với ba trạng thái: nội dung, `NOT_FOUND`, `UNAVAILABLE`); `UNAVAILABLE` thì từ chối.
+
+### P16 — sửa nhỏ ở các lõi thuần
+
+- Nhánh `fix/core-review-followups`.
+- D02 `resolve_prerequisite_remediation_order`: giữ thứ tự ưu tiên của `weak_node_ids` do nơi gọi truyền vào (hiện bị sắp
+  lại theo UUID); nút vừa là mục tiêu yếu vừa là tiên quyết phải mang `WEAK_TARGET`.
+- C04 `generate_attempt_permutation`: `section_code` lạ phải báo lỗi rõ ràng, không âm thầm xếp cuối.
+- A08 ghép cặp: file gộp cả đề và đáp án (ví dụ "Đề + đáp án Toán 11") không được coi là file đáp án thuần; trả loại
+  `EXAM_WITH_SOLUTION` và không đưa vào ghép cặp.
+- D05 `apply_attempt`: từ chối `at` không có múi giờ và `at` sớm hơn `last_wrong_at`.
