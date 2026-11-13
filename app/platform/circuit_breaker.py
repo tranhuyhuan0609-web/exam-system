@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from dataclasses import dataclass
 from typing import Literal
 
@@ -11,12 +12,23 @@ CircuitState = Literal["CLOSED", "OPEN", "HALF_OPEN"]
 DEFAULT_LLM_TIMEOUT_SECONDS = 15.0  # V11.3 Chapter 3 E01 / RB-08 threshold
 
 
+class CircuitBreakerError(ValueError):
+    """Raised on invalid circuit-breaker or backoff parameters."""
+
+
 @dataclass(frozen=True)
 class CircuitBreakerPolicy:
     failure_threshold: int = 5
     cooldown_seconds: float = 30.0
     half_open_max_probes: int = 2
     timeout_threshold_seconds: float = DEFAULT_LLM_TIMEOUT_SECONDS
+
+    def __post_init__(self) -> None:
+        if self.failure_threshold < 1 or self.half_open_max_probes < 1:
+            raise CircuitBreakerError("failure_threshold and half_open_max_probes must be >= 1")
+        for value in (self.cooldown_seconds, self.timeout_threshold_seconds):
+            if not math.isfinite(value) or value <= 0:
+                raise CircuitBreakerError("cooldown and timeout thresholds must be finite and positive")
 
 
 @dataclass(frozen=True)
@@ -64,7 +76,10 @@ def evaluate_circuit_entry(
         )
 
     if snapshot.state == "OPEN":
-        opened_at = snapshot.opened_at_monotonic or now_monotonic
+        if snapshot.opened_at_monotonic is None:
+            # Malformed OPEN snapshot: fail closed and start a fresh cooldown from now.
+            snapshot = CircuitSnapshot("OPEN", snapshot.consecutive_failures, now_monotonic, 0, 0)
+        opened_at = snapshot.opened_at_monotonic
         elapsed = max(0.0, now_monotonic - opened_at)
         if elapsed < cfg.cooldown_seconds:
             return AllowDecision(
@@ -122,8 +137,14 @@ def record_circuit_outcome(
 ) -> CircuitSnapshot:
     """Record call result; treats >15s timeout or 429/5xx HTTP statuses as trip failures."""
     cfg = policy or CircuitBreakerPolicy()
+    if snapshot.state == "OPEN":
+        # Straggler outcome of a call admitted before the breaker opened: it must neither close
+        # the breaker nor extend the cooldown. Only HALF_OPEN probes can change an OPEN breaker.
+        return snapshot
     is_failure = (
-        not succeeded
+        succeeded is not True
+        or not math.isfinite(latency_seconds)
+        or latency_seconds < 0
         or latency_seconds > cfg.timeout_threshold_seconds
         or (status_code is not None and (status_code == 429 or status_code >= 500))
     )
@@ -179,8 +200,10 @@ def compute_exponential_backoff_seconds(
     jitter_seed: str = "",
 ) -> float:
     """Compute bounded deterministic full-jitter backoff for G03 Outbox / E01 retries."""
-    if attempt < 0:
-        raise ValueError("attempt must be non-negative")
+    if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 0:
+        raise CircuitBreakerError("attempt must be a non-negative integer")
+    if not (math.isfinite(base_seconds) and math.isfinite(max_seconds)) or base_seconds <= 0 or max_seconds <= 0:
+        raise CircuitBreakerError("base_seconds and max_seconds must be finite and positive")
     cap = min(max_seconds, base_seconds * (2**min(attempt, 10)))
     if not jitter_seed:
         return round(cap, 3)
