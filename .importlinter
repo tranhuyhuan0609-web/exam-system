@@ -311,3 +311,12 @@ protected_modules =
 allowed_importers =
     app.modules.solution_explainer
     app.model_registry
+
+[importlinter:contract:internal-copilot]
+name = copilot internals are private to the module
+type = protected
+protected_modules =
+    app.modules.copilot.internal
+allowed_importers =
+    app.modules.copilot
+    app.model_registry
