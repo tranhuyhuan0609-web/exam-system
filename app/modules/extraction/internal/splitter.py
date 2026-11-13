@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -61,10 +62,14 @@ class StudyGuideSplitResult:
     title: str
     content_blocks: tuple[ContentCandidateBlock, ...]
     question_candidates: tuple[QuestionCandidateItem, ...]
+    # Exercise-zone text seen before the first `Câu N`; kept (not dropped) so a reviewer can look at it.
+    unassigned_exercise_text: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
 
 
+# Only a heading that mentions "bài tập" opens the exercise zone; "Phần I. Lý thuyết" does not.
 _EXERCISE_SECTION_RE = re.compile(
-    r"^\s*(?:#+\s*)?(?:BÀI\s+TẬP(?:\s+TỰ\s+LUYỆN|\s+VẬN\s+DỤNG)?|PHẦN\s+(?:I|II|III|BÀI\s+TẬP))\b",
+    r"^\s*(?:#+\s*)?(?:PHẦN\s+(?:[IVX]+|\d+)\s*[.:\-–]?\s*)?BÀI\s+TẬP\b(?!\s*\d)",
     re.IGNORECASE,
 )
 
@@ -136,6 +141,7 @@ def split_study_guide_mixed(
     current_content_lines: list[str] = []
     current_content_anchors: list[ProvenanceAnchor] = []
 
+    orphan_lines: list[str] = []
     current_q_label: str | None = None
     current_q_lines: list[str] = []
     current_q_anchors: list[ProvenanceAnchor] = []
@@ -177,11 +183,17 @@ def split_study_guide_mixed(
     for seg in segments:
         anchor = ProvenanceAnchor(seg.page_no, *seg.bbox)
         for raw_line in seg.text.splitlines():
-            line = raw_line.strip()
+            line = unicodedata.normalize("NFC", raw_line).strip()
             if not line:
                 continue
 
-            if line.startswith("# ") and doc_title == default_title and not content_blocks and not in_exercise_zone:
+            title_still_open = (
+                doc_title == default_title
+                and not content_blocks
+                and current_content_kind is None
+                and not in_exercise_zone
+            )
+            if line.startswith("# ") and title_still_open:
                 doc_title = line[2:].strip()
                 continue
 
@@ -222,6 +234,8 @@ def split_study_guide_mixed(
                 elif current_q_label is not None:
                     current_q_lines.append(line)
                     current_q_anchors.append(anchor)
+                else:
+                    orphan_lines.append(line)
 
     _flush_content()
     _flush_question()
@@ -230,4 +244,10 @@ def split_study_guide_mixed(
         title=doc_title,
         content_blocks=tuple(content_blocks),
         question_candidates=tuple(questions),
+        unassigned_exercise_text=tuple(orphan_lines),
+        warnings=(
+            (f"{len(orphan_lines)} exercise line(s) appear before the first question label",)
+            if orphan_lines
+            else ()
+        ),
     )

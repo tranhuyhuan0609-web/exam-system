@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -29,10 +30,22 @@ class RubricParseReport:
     warnings: tuple[str, ...]
 
 
+MAX_SPAN = 50
+MAX_GRID_ROWS = 500
+MAX_GRID_COLS = 50
+MAX_GRID_CELLS = 10_000
+
+
+class TableGridLimitError(ValueError):
+    """Raised when a table (or one of its spans) exceeds the safe expansion limits."""
+
+
 def expand_table_grid(raw_rows: Sequence[Sequence[TableCellSpan]]) -> list[list[str]]:
     """Expand complex tables containing `colspan` and `rowspan` into a rectangular 2D text matrix."""
     grid: list[list[str | None]] = []
 
+    if len(raw_rows) > MAX_GRID_ROWS:
+        raise TableGridLimitError(f"Table has more than {MAX_GRID_ROWS} rows")
     for r_idx, row in enumerate(raw_rows):
         while len(grid) <= r_idx:
             grid.append([])
@@ -43,6 +56,10 @@ def expand_table_grid(raw_rows: Sequence[Sequence[TableCellSpan]]) -> list[list[
 
             if cell.rowspan < 1 or cell.colspan < 1:
                 raise ValueError("Cell rowspan and colspan must be >= 1")
+            if cell.rowspan > MAX_SPAN or cell.colspan > MAX_SPAN:
+                raise TableGridLimitError(f"Cell rowspan/colspan must be <= {MAX_SPAN}")
+            if r_idx + cell.rowspan > MAX_GRID_ROWS or c_idx + cell.colspan > MAX_GRID_COLS:
+                raise TableGridLimitError(f"Table grid exceeds {MAX_GRID_ROWS} rows x {MAX_GRID_COLS} columns")
 
             clean_txt = cell.text.strip()
             for dr in range(cell.rowspan):
@@ -62,16 +79,28 @@ def expand_table_grid(raw_rows: Sequence[Sequence[TableCellSpan]]) -> list[list[
     return [[cell or "" for cell in (row + [None] * (max_cols - len(row)))] for row in grid]
 
 
-_POINTS_RE = re.compile(r"([0-9]+(?:[.,][0-9]+)?)")
+_NUMBER = r"[+-]?[0-9]+(?:[.,][0-9]+)?"
+_POINTS_RE = re.compile(
+    rf"^\s*(?P<sum>{_NUMBER}(?:\s*\+\s*{_NUMBER})*)\s*(?:điểm|diem|đ|d)?\s*$",
+    re.IGNORECASE,
+)
 _HEADER_WORDS = {"cau", "câu", "noi dung", "nội dung", "diem", "điểm"}
 
 
+def _norm(text: str) -> str:
+    return unicodedata.normalize("NFC", text).strip()
+
+
 def _parse_decimal_points(raw: str) -> Decimal | None:
-    match = _POINTS_RE.search(raw.replace(",", "."))
+    """Parse `0,5`, `0,5 điểm`, `0,25 + 0,25`; anything else (including mixed text) is `None`."""
+    match = _POINTS_RE.match(_norm(raw))
     if not match:
         return None
     try:
-        return Decimal(match.group(1))
+        return sum(
+            (Decimal(part.strip().replace(",", ".")) for part in match.group("sum").split("+") if part.strip()),
+            Decimal("0"),
+        )
     except InvalidOperation:
         return None
 
@@ -93,9 +122,12 @@ def parse_three_column_rubric(
         if len(row) < 3:
             warnings.append(f"Row {idx} has fewer than 3 columns")
             continue
-        col_q, col_body, col_pts = row[0].strip(), row[1].strip(), row[2].strip()
-        if idx == 0 and any(w in col_q.lower() for w in _HEADER_WORDS) and any(
-            w in col_pts.lower() for w in _HEADER_WORDS
+        col_q, col_body, col_pts = _norm(row[0]), _norm(row[1]), _norm(row[2])
+        if (
+            idx == 0
+            and _parse_decimal_points(col_pts) is None
+            and col_q.casefold() in _HEADER_WORDS
+            and col_pts.casefold() in _HEADER_WORDS
         ):
             continue
         if not col_q and not col_body and not col_pts:
@@ -104,6 +136,9 @@ def parse_three_column_rubric(
         pts = _parse_decimal_points(col_pts)
         if pts is None:
             warnings.append(f"Row {idx} ({col_q or '?'}): unparseable points {col_pts!r}")
+            continue
+        if pts < 0:
+            warnings.append(f"Row {idx} ({col_q or '?'}): negative points {col_pts!r} ignored")
             continue
         items.append(RubricRowItem(question_label=col_q, criterion_text=col_body, points=pts))
 
