@@ -31,17 +31,20 @@ class VerticalPackRegistry:
             self.register(pack)
 
     def register(self, pack: VerticalPackConfig) -> VerticalPackConfig:
+        if not isinstance(pack.code, str) or not isinstance(pack.taxonomy_root_prefix, str):
+            raise VerticalPackError("pack code and taxonomy_root_prefix must be strings")
         code = pack.code.strip().upper()
         prefix = pack.taxonomy_root_prefix.strip().upper()
         if not code or not prefix:
             raise VerticalPackError("pack code and taxonomy_root_prefix are required")
         if code in self._packs:
             raise VerticalPackError(f"duplicate vertical pack code: {code}")
-        owner = self._prefixes.get(prefix)
-        if owner is not None and owner != code:
-            raise VerticalPackError(
-                f"taxonomy_root_prefix {prefix!r} already reserved by pack {owner!r}"
-            )
+        # Prefixes may not be equal NOR nested (MATH vs MATH_ADV): a node code would match both packs.
+        for existing_prefix, owner in self._prefixes.items():
+            if existing_prefix.startswith(prefix) or prefix.startswith(existing_prefix):
+                raise VerticalPackError(
+                    f"taxonomy_root_prefix {prefix!r} overlaps prefix {existing_prefix!r} of pack {owner!r}"
+                )
         normalized = replace(pack, code=code, taxonomy_root_prefix=prefix)
         self._packs[code] = normalized
         self._prefixes[prefix] = code

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 
 _LEARNING_ACTIVE_EVENT_KINDS: frozenset[str] = frozenset(
@@ -48,6 +49,21 @@ class DailyMetricRollup:
     avg_mastery_gain: float
 
 
+def _as_date(value: object, name: str) -> date:
+    """Accept ``date`` and ``datetime`` (reduced to its date); anything else fails closed."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    raise ValueError(f"{name} must be a date or datetime, got {type(value).__name__}")
+
+
+def _safe_count(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"event count must be an integer, got {value!r}")
+    return max(0, value)
+
+
 def compute_daily_metric_rollup(
     *,
     tenant_id: str,
@@ -55,8 +71,9 @@ def compute_daily_metric_rollup(
     events: tuple[AnalyticsEvent, ...],
 ) -> DailyMetricRollup:
     """Aggregate normalized events into read-only DailyMetricRollup KPIs without OLTP hits."""
-    if not tenant_id.strip():
+    if not isinstance(tenant_id, str) or not tenant_id.strip():
         raise ValueError("tenant_id is required")
+    metric_date = _as_date(metric_date, "metric_date")
 
     wlau_start = metric_date - timedelta(days=6)
     dau_learners: set[str] = set()
@@ -67,30 +84,41 @@ def compute_daily_metric_rollup(
     manual_edited_total = 0
     mastery_deltas: list[float] = []
 
+    seen_event_ids: set[str] = set()
+
     for ev in events:
         if ev.tenant_id != tenant_id:
             continue
+        # At-least-once delivery: a replayed event_id is counted once (first occurrence wins).
+        if not isinstance(ev.event_id, str) or not ev.event_id.strip():
+            raise ValueError("event_id is required for every event")
+        if ev.event_id in seen_event_ids:
+            continue
+        seen_event_ids.add(ev.event_id)
+        event_date = _as_date(ev.event_date, "event_date")
 
         if ev.event_type.value in _LEARNING_ACTIVE_EVENT_KINDS and ev.learner_id:
-            if wlau_start <= ev.event_date <= metric_date:
+            if wlau_start <= event_date <= metric_date:
                 wlau_learners.add(ev.learner_id)
-            if ev.event_date == metric_date:
+            if event_date == metric_date:
                 dau_learners.add(ev.learner_id)
 
-        if ev.event_date != metric_date:
+        if event_date != metric_date:
             continue
 
         if ev.event_type == AnalyticsEventType.PIPELINE_EXTRACTED:
-            extracted_total += max(0, ev.count)
+            extracted_total += _safe_count(ev.count)
         elif ev.event_type == AnalyticsEventType.PIPELINE_AUTO_VERIFIED:
-            auto_verified_total += max(0, ev.count)
+            auto_verified_total += _safe_count(ev.count)
         elif ev.event_type == AnalyticsEventType.PIPELINE_MANUAL_EDITED:
-            manual_edited_total += max(0, ev.count)
+            manual_edited_total += _safe_count(ev.count)
         elif (
             ev.event_type == AnalyticsEventType.MASTERY_DELTA
             and ev.pre_mastery is not None
             and ev.post_mastery is not None
         ):
+            if not (math.isfinite(ev.pre_mastery) and math.isfinite(ev.post_mastery)):
+                raise ValueError(f"event {ev.event_id!r} has non-finite mastery values")
             mastery_deltas.append(ev.post_mastery - ev.pre_mastery)
 
     yield_rate = round(auto_verified_total / extracted_total, 4) if extracted_total > 0 else 0.0
