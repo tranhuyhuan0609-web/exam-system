@@ -1,4 +1,7 @@
-"""E03 AI Question Generation (Matrix Gap Filler) core rules: grounded source anchors, mandatory AI_GENERATED provenance, and zero direct-to-PUBLISHED bypass."""
+"""E03 AI Question Generation (Matrix Gap Filler) core rules.
+
+Grounded source anchors, mandatory AI_GENERATED provenance, and zero direct-to-PUBLISHED bypass.
+"""
 
 from __future__ import annotations
 
@@ -46,6 +49,8 @@ class SourceAnchor:
     excerpt: str
     publication_status: PublicationStatus
     rights_status: RightsStatus
+    # Owning tenant of the anchor; None means a SYSTEM_PUBLIC anchor. Required: no silent default.
+    owner_tenant_id: str | None
 
 
 @dataclass(frozen=True)
@@ -87,16 +92,25 @@ def create_gap_fill_request(
     max_per_request: int = 20,
 ) -> GenerationRequest:
     """Create a grounded E03 generation request backed only by PUBLISHED & rights-cleared anchors."""
+    if not isinstance(request_id, str) or not isinstance(tenant_id, str):
+        raise GenerationPolicyError("request_id and tenant_id must be strings")
     if not request_id.strip() or not tenant_id.strip():
         raise GenerationPolicyError("request_id and tenant_id are required")
-    if cell.missing_count <= 0:
-        raise GenerationPolicyError("missing_count must be positive")
+    if isinstance(max_per_request, bool) or not isinstance(max_per_request, int) or max_per_request <= 0:
+        raise GenerationPolicyError("max_per_request must be a positive integer")
+    if isinstance(cell.missing_count, bool) or not isinstance(cell.missing_count, int) or cell.missing_count <= 0:
+        raise GenerationPolicyError("missing_count must be a positive integer")
     if not anchors:
         raise GenerationPolicyError("at least one source_anchor is required for grounded generation")
     if not prompt_version.strip():
         raise GenerationPolicyError("prompt_version is required")
 
     for anchor in anchors:
+        if anchor.owner_tenant_id is not None and anchor.owner_tenant_id != tenant_id.strip():
+            # Never reveal whether a foreign anchor exists: same error as an unusable anchor.
+            raise GenerationPolicyError(
+                f"anchor {anchor.anchor_id!r} does not belong to tenant {tenant_id.strip()!r}"
+            )
         if anchor.publication_status != PublicationStatus.PUBLISHED:
             raise GenerationPolicyError(
                 f"anchor {anchor.anchor_id!r} must be PUBLISHED (got {anchor.publication_status})"
@@ -105,7 +119,7 @@ def create_gap_fill_request(
             raise GenerationPolicyError(
                 f"anchor {anchor.anchor_id!r} has non-permissive rights {anchor.rights_status}"
             )
-        if not anchor.excerpt.strip():
+        if not isinstance(anchor.excerpt, str) or not anchor.excerpt.strip():
             raise GenerationPolicyError(f"anchor {anchor.anchor_id!r} has empty excerpt")
 
     capped_count = min(cell.missing_count, max_per_request)
@@ -155,7 +169,11 @@ def record_sympy_verification_and_queue_review(
     verification_status: VerificationStatus,
 ) -> GeneratedCandidate:
     """Attach C02 SymPy+LLM verification result and place AI candidate into A09 review queue."""
-    if verification_status not in (VerificationStatus.VERIFIED, VerificationStatus.AUTO_VERIFIED, VerificationStatus.DISPUTED):
+    if verification_status not in (
+        VerificationStatus.VERIFIED,
+        VerificationStatus.AUTO_VERIFIED,
+        VerificationStatus.DISPUTED,
+    ):
         raise GenerationPolicyError(
             f"cannot advance AI candidate to A09 queue with verification_status {verification_status}"
         )

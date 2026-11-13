@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, replace
 from enum import StrEnum
+
+_SAFE_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 class DraftAssignmentStatus(StrEnum):
@@ -62,12 +65,22 @@ def generate_class_copilot_summary(
     *,
     tenant_id: str,
     class_id: str,
+    run_id: str,
     observations: tuple[StudentMistakeObservation, ...],
     max_question_target: int = 10,
 ) -> TeacherCopilotSummary:
-    """Cluster class errors strictly inside (tenant_id, class_id) and propose unconfirmed drafts."""
-    if not tenant_id.strip() or not class_id.strip():
+    """Cluster class errors strictly inside (tenant_id, class_id) and propose unconfirmed drafts.
+
+    ``run_id`` (for example a run timestamp or UUID) is part of every draft_id so drafts of two runs for
+    the same class never collide."""
+    if not isinstance(tenant_id, str) or not tenant_id.strip() or not isinstance(class_id, str) or not class_id.strip():
         raise ValueError("tenant_id and class_id are required")
+    if not isinstance(run_id, str) or not _SAFE_ID_RE.fullmatch(run_id):
+        raise ValueError("run_id must match [A-Za-z0-9_-]{1,64}")
+    if not isinstance(class_id, str) or not _SAFE_ID_RE.fullmatch(class_id):
+        raise ValueError("class_id must match [A-Za-z0-9_-]{1,64}")
+    if isinstance(max_question_target, bool) or not isinstance(max_question_target, int) or max_question_target <= 0:
+        raise ValueError("max_question_target must be a positive integer")
 
     for obs in observations:
         if obs.tenant_id != tenant_id or obs.class_id != class_id:
@@ -117,7 +130,7 @@ def generate_class_copilot_summary(
     for idx, cluster in enumerate(clusters, start=1):
         drafts.append(
             DraftRemedialAssignment(
-                draft_id=f"remedial-{class_id}-{idx}",
+                draft_id=f"remedial-{class_id}-{run_id}-{idx}",
                 tenant_id=tenant_id,
                 class_id=class_id,
                 taxonomy_node_id=cluster.taxonomy_node_id,
@@ -143,9 +156,9 @@ def confirm_remedial_draft(
     actor_tenant_id: str,
 ) -> DraftRemedialAssignment:
     """Require explicit teacher confirmation within the same tenant before assigning to students."""
-    if draft.tenant_id != actor_tenant_id:
+    if not isinstance(actor_tenant_id, str) or not actor_tenant_id.strip() or draft.tenant_id != actor_tenant_id:
         raise CrossClassScopeError("cannot confirm remedial draft across tenant boundaries")
-    if not teacher_id.strip():
+    if not isinstance(teacher_id, str) or not teacher_id.strip():
         raise ValueError("teacher_id is required to confirm draft assignment")
     if draft.status != DraftAssignmentStatus.AWAITING_TEACHER_CONFIRMATION:
         raise ValueError(f"draft cannot be confirmed from status {draft.status}")
