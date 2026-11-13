@@ -134,11 +134,11 @@ def test_unlabeled_diagrams_are_clustered_drawings_of_a_sensible_size():
 
     doc = pymupdf.open()
     page = doc.new_page(width=600, height=800)
-    for x in (100, 160, 220):  # a circuit-like row of boxes 5 pt apart
+    for x in (100, 157, 214):  # a circuit-like row of boxes 2 pt apart
         page.draw_rect(pymupdf.Rect(x, 300, x + 55, 400), color=(0, 0, 0), width=1)
     page.draw_line((50, 700), (60, 700), width=1)  # a short dash: smaller than the cluster tolerance
     with PDFEngineAdapter.open(page.parent.tobytes()) as reader:
         boxes = extract_unlabeled_diagrams(reader, 0)
     assert len(boxes) == 1
-    assert (boxes[0].xmin, boxes[0].xmax) == (167, 458)  # x 100..275 of 600
+    assert (boxes[0].xmin, boxes[0].xmax) == (167, 448)  # x 100..269 of 600
     assert (boxes[0].ymin, boxes[0].ymax) == (375, 500)  # y 300..400 of 800
