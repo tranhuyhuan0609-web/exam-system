@@ -1,5 +1,11 @@
 """Public entry point of the quality module."""
 
+from app.modules.quality.internal.answers import (
+    DEFAULT_MATH_PROBABILITY_KEYWORDS,
+    SubjectLockResult,
+    canonicalize_numeric_answer,
+    enforce_subject_lock,
+)
 from app.modules.quality.internal.sympy_runner import (
     DISALLOWED_CHARACTER,
     DISALLOWED_IDENTIFIER,
@@ -17,12 +23,12 @@ from app.modules.quality.internal.sympy_runner import (
     UNPARSEABLE_SOURCE_ANSWER,
     AnswerCheck,
     SandboxResult,
-    canonicalize_numeric_answer,
     evaluate_expression,
     verify_numeric_answer,
 )
 
 __all__ = [
+    "DEFAULT_MATH_PROBABILITY_KEYWORDS",
     "DISALLOWED_CHARACTER",
     "DISALLOWED_IDENTIFIER",
     "EXPRESSION_NOT_NUMERIC",
@@ -39,7 +45,9 @@ __all__ = [
     "UNPARSEABLE_SOURCE_ANSWER",
     "AnswerCheck",
     "SandboxResult",
+    "SubjectLockResult",
     "canonicalize_numeric_answer",
+    "enforce_subject_lock",
     "evaluate_expression",
     "verify_numeric_answer",
 ]
