@@ -105,6 +105,8 @@ class ProviderKeyRing:
         self._lock = threading.Lock()
         self._slots: dict[str, _KeySlot] = {}
         self._ready: deque[str] = deque()
+        # Key ids currently in `_ready`: a key leaves the deque lazily, so it must not be queued twice.
+        self._queued: set[str] = set()
         self._cooldown_heap: list[tuple[float, str]] = []
 
         for item in keys:
@@ -115,6 +117,7 @@ class ProviderKeyRing:
             slot = _KeySlot(key_id=item.key_id, _secret=item.secret)
             self._slots[item.key_id] = slot
             self._ready.append(item.key_id)
+            self._queued.add(item.key_id)
 
     def __repr__(self) -> str:
         with self._lock:
@@ -135,7 +138,9 @@ class ProviderKeyRing:
                 continue
             slot.status = KeyStatus.HEALTHY
             slot.cooldown_until = 0.0
-            self._ready.append(key_id)
+            if key_id not in self._queued:
+                self._ready.append(key_id)
+                self._queued.add(key_id)
 
     def acquire(self) -> KeyAcquisitionResult:
         """
@@ -160,6 +165,7 @@ class ProviderKeyRing:
                         key_id=key_id,
                         secret_getter=lambda s=secret_value: s,
                     )
+                self._queued.discard(key_id)
 
             # No healthy keys available right now; inspect active cooldown heap.
             while self._cooldown_heap:

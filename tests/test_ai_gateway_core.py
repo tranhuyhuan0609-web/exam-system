@@ -217,3 +217,18 @@ def test_key_secrets_never_leak_into_repr_str_exceptions_or_logs(caplog: pytest.
     for secret in (secret_a, secret_b):
         for artifact in artifacts:
             assert secret not in artifact
+
+
+def test_key_woken_from_cooldown_is_not_queued_twice() -> None:
+    from app.modules.ai_gateway.internal.key_ring import ApiKeyInput, ProviderKeyRing
+
+    now = [0.0]
+    ring = ProviderKeyRing([ApiKeyInput("k1", "s1"), ApiKeyInput("k2", "s2")], clock=lambda: now[0])
+    for _ in range(5):
+        # k1 is rate limited while still sitting in the ready queue, then wakes up again.
+        ring.mark_rate_limited("k1", cooldown_seconds=1.0)
+        now[0] += 2.0
+        assert ring.healthy_count() == 2
+    served = [ring.acquire().key_id for _ in range(8)]
+    assert served.count("k1") == 4
+    assert served.count("k2") == 4
