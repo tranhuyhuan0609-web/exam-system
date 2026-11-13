@@ -25,7 +25,7 @@ File `chapters/04_postgresql_ddl_rls_grants.sql` được áp nguyên văn lên 
 
 ## Lỗi của đặc tả — đã sửa trong DDL ngày 13/11/2026
 
-Ba lỗi dưới đây đã được vá trong `chapters/04_postgresql_ddl_rls_grants.sql` và trong file tổng; các test tương ứng
+Bốn lỗi F-01..F-04 dưới đây đã được vá trong `chapters/04_postgresql_ddl_rls_grants.sql` và trong file tổng; các test tương ứng
 giờ là test hồi quy (57 test qua, không còn xfail). Builder dùng lại cho migration của từng module:
 `partition_lockdown()`, `invoker_view()` trong `app/platform/rls.py`.
 
@@ -38,6 +38,7 @@ học liệu hệ thống đã xuất bản (trước đây thấy mọi tenant)
 | F-01 | Cao | `ulp_app_rw` của tenant B đọc được dòng `audit_events` của tenant A bằng `SELECT ... FROM audit_events_2026_11` | Partition không bật RLS riêng (RLS của bảng cha chỉ áp khi truy vấn qua bảng cha), trong khi `GRANT ... ON ALL TABLES` cấp quyền cho `ulp_app_rw` trên cả 14 partition của `audit_events` và `response_revisions` | `REVOKE ALL` trên mọi partition khỏi các role runtime (kể cả trong `ensure_monthly_partitions`), và bật `ENABLE`/`FORCE RLS` + policy trên từng partition |
 | F-02 | Cao | Qua view `v_public_question_versions`, tenant B và role phòng thi thấy cả bản `draft`, `taken down` và câu hỏi riêng của tenant A | View không đặt `security_invoker`, nên đọc bảng bằng quyền của chủ view; khi chủ là superuser (như role `exam` đang chạy migration của repo này) thì RLS bị bỏ qua | `CREATE VIEW ... WITH (security_invoker = true)` cho cả hai view; chạy migration bằng role không phải superuser |
 | F-03 | Thấp | `UPDATE`/`DELETE` trên `question_versions`, `question_version_answers`, `assessment_versions` đã khóa bị từ chối bằng lỗi `record "new" has no field "status"` thay vì `IMMUTABLE_VIOLATION` | `prevent_version_immutability_mutation()` đọc `NEW.status` trong cùng biểu thức `IF`, cột này chỉ có ở `content_versions` | Tách nhánh `content_versions` thành `IF` lồng riêng. Thao tác vẫn bị chặn, chỉ sai thông báo lỗi |
+| F-04 | Trung bình | Relay không có chỗ lưu số lần thử và thời điểm thử lại, nên chỉ có thể `asyncio.sleep` khi đang giữ khóa dòng `FOR UPDATE`; `EventEnvelopeContract.causation_id` (ADR-012) không có cột để lưu | Bảng `outbox_events` trong đặc tả thiếu `attempt_count`, `next_attempt_at` và `causation_id` | Đã thêm ba cột (migration `b8c9d0e1f2a3`), đổi index `ix_outbox_events_pending` sang `(created_at, event_id)`, mở rộng quyền cột của `ulp_system_scheduler` thành `UPDATE (status, published_at, attempt_count, next_attempt_at)`; sửa trong DDL, file tổng và `grants_manifest.csv` ngày 13/11/2026 |
 
 ## Điểm thiết kế cần bạn xác nhận (không phải lỗi chạy)
 

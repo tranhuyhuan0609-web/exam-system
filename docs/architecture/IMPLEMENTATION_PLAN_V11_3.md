@@ -35,6 +35,22 @@ Chốt hôm nay:
 3. **SymPy fail-closed ngoài Linux**: Windows trả `SANDBOX_WORKER_UNAVAILABLE`; chạy thật trong container/CI.
 4. **`check_gate_ids.sh` dùng bản M0.1.**
 
+Chốt ngày 13/11/2026:
+5. **Phân công theo mô hình:** Haiku cho việc chép/sinh danh sách, Sonnet cho module có đặc tả rõ, Opus cho việc nhạy cảm về bảo mật hoặc độ chính xác, Fable cho quyết định kiến trúc, tích hợp và rà soát. Nhiệm vụ độc lập chạy song song trong worktree riêng; mỗi đợt song song là một lần dừng review.
+6. **Ba lỗi DDL F-01..F-03** (partition đọc vòng qua RLS, view đọc bằng quyền chủ, trigger bất biến sai lỗi) sửa ngay trong đặc tả và trong migration của từng module, qua `partition_lockdown()` và `invoker_view()`. Chi tiết: `DDL_DRY_RUN_FINDINGS.md`.
+7. **RLS cho bảng không có `tenant_id`:**
+   - `users` (F04): bật RLS; một tenant chỉ thấy người dùng có `memberships` trong tenant đó và chính người đang đăng nhập; tra cứu lúc đăng nhập/đăng ký đi qua hàm `SECURITY DEFINER` hẹp.
+   - `user_pii_encryption_keys` (F04): thu toàn bộ quyền của `ulp_app_rw`; đọc ghi chỉ qua hàm của F04.
+   - `notification_deliveries` (F06): thêm `tenant_id` và policy chuẩn.
+   - `payment_webhooks` (G05): giữ toàn cục; `ulp_app_rw` chỉ `INSERT`.
+   - `question_irt_parameters`: giữ nguyên.
+8. **`ulp_analytics_ro`** giữ quyền đọc view câu hỏi công khai (đã cấp cột tương ứng), chỉ thấy học liệu hệ thống đã xuất bản.
+9. **Sandbox SymPy** giữ mức chặt hiện tại (whitelist ký tự, namespace tối thiểu); ký pháp `1e5` bị từ chối.
+10. **Backfill** (chi tiết: `BACKFILL_MAP.md`): Toán và Vật lí lớp 10–12 trước; độ khó `HSG` → `VDC` kèm thẻ `HSG`.
+11. **Nội dung từ crawler:** vào kho mới với `rights_status = PENDING_REVIEW`; kho cũ tiếp tục phục vụ qua giao diện Jinja, kho mới mở dần theo từng nguồn khi A09 duyệt quyền. *(Điểm này do người thực hiện tạm chọn, chờ chủ dự án xác nhận.)*
+12. **Màn hình xuất bản đề AI:** hai ô "Xuất đề mới" và "Công khai" quyết định việc tạo đề và công khai; bỏ tick là không tạo / không công khai.
+13. **Bộ đề mẫu (golden corpus):** 12 file thật nằm ở `tests/golden/files/` (không vào Git vì có tên và số điện thoại giáo viên); test golden tự bỏ qua khi thiếu thư mục.
+
 ## 3. Quy trình mỗi chặng (Review Gate)
 
 Đề xuất (bảng, API, DoD, câu hỏi) → code trên nhánh riêng → `ruff check .` · `lint-imports` · `bash ci/check_gate_ids.sh` · `alembic upgrade head && alembic check` · `pytest` → tóm tắt file tạo/sửa + kết quả test → **dừng chờ duyệt**. Gặp điểm chưa rõ hoặc xung đột code ↔ đặc tả: dừng hỏi kèm phương án. Mỗi báo cáo có mục "💡 Đề xuất cải thiện".
@@ -107,8 +123,8 @@ Phần Dexie của H-04 (`exam-autosave-store.ts`) làm cùng C06 ở Sprint 5 v
 
 ## 5. Câu hỏi còn mở (hỏi lại đúng chặng, không chặn Bước 0 và W0.1)
 
-1. **Git (Bước 0):** M0.1–M0.3 đã có PR chưa? Tôi mở PR hay bạn tự merge; tài liệu mới commit vào nhánh nào?
-2. **Golden Corpus (trước Sprint 3):** bạn có 11 đề Golden + 30 đề Held-out đã ẩn danh chưa, lưu ở đâu? `toan11_de_goc.docx` ở gốc repo có phải một đề trong số đó (không được vào Git)?
+1. ~~**Git (Bước 0)**~~ — đã xong: mọi PR tới #40 đã vào `main`, CI xanh.
+2. **Golden Corpus:** đã có 12 file (Lý 10–12, Hóa 11, Toán 11–12). Còn thiếu so với đặc tả: đề Sinh học, file `.doc` cũ, ảnh chụp điện thoại, và 30 đề held-out. Câu hỏi gốc: bạn có 11 đề Golden + 30 đề Held-out đã ẩn danh chưa, lưu ở đâu? `toan11_de_goc.docx` ở gốc repo có phải một đề trong số đó (không được vào Git)?
 3. **Xác thực (F05, Sprint 1):** `/api/v1` dùng JWT mới (cookie phiên vẫn phục vụ Jinja) hay tiếp tục cookie phiên cho cả hai?
 4. **F04:** ngưỡng tuổi và hình thức xác nhận phụ huynh (OTP email / hợp đồng trường); Vault dev-mode đủ cho giai đoạn này?
 5. **E01:** nhà cung cấp LLM chính/dự phòng và trần `daily_ai_budget_usd` mặc định.
