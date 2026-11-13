@@ -252,11 +252,10 @@ def test_correlation_id_boundaries_and_injection_attempts() -> None:
     assert resolve_correlation_id(ok8) == ok8
     assert resolve_correlation_id(ok100) == ok100
     assert resolve_correlation_id(" " + ok8 + " ") == ok8
-    for bad in ("a" * 7, "a" * 101, "id with spaces", "valid-id-1234\n", "abc\r\nSet-Cookie: x=y", "éééééééé", "", None, 12345678):
+    for bad in ("a" * 7, "a" * 101, "id with spaces","abc\r\nSet-Cookie: x=y", "éééééééé", "", None, 12345678):
         out = resolve_correlation_id(bad)  # type: ignore[arg-type]
         assert out.startswith("corr-") and "\n" not in out
-    assert resolve_correlation_id("valid-id-1234
-") == "valid-id-1234"  # surrounding whitespace is stripped
+    assert resolve_correlation_id("valid-id-1234\n") =="valid-id-1234"  # surrounding whitespace is stripped
     assert resolve_correlation_id(None) != resolve_correlation_id(None)
 
 
