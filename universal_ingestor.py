@@ -487,7 +487,7 @@ class UniversalExamAndMaterialIngestor:
             # Text footer
             page.insert_text(
                 (36, h - 18),
-                f"Exam System • Ngân hàng Tài liệu & Luyện thi THPTQG — Trang {page_idx + 1}/{len(doc)}",
+                f"H2Edu • Ngân hàng Tài liệu & Luyện thi THPTQG — Trang {page_idx + 1}/{len(doc)}",
                 fontsize=8.5,
                 color=(0.35, 0.4, 0.45),
             )

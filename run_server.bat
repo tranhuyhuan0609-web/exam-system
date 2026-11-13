@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-title Exam System Server (Port 8000 - Ho tro xem tren Dien thoai)
+title H2Edu Server (Port 8000 - Ho tro xem tren Dien thoai)
 echo ========================================================
 echo   DANG KHOI DONG SERVER HE THONG THI (EXAM SYSTEM)
 echo   May tinh xem tai: http://localhost:8000
