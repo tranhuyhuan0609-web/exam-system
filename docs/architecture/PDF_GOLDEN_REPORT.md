@@ -214,3 +214,26 @@ Verified causes of the remaining differences (looked at on the files, not guesse
 * Mixed engines for the clean render: for pages with watermark text, the raw image comes from pdfium and the clean image from PyMuPDF;
   they differ by anti-aliasing (and possibly one pixel in size). Crops use relative 0-1000 boxes, so nothing depends on equal sizes, but a
   figure cut from the clean image is rendered by a different engine than the page image shown next to it.
+
+## 9. Follow-up: reading order of fragments on one visual row
+
+The readers sorted positioned line fragments by `(ymin // 6, xmin)`. Two fragments of the same visual row whose tops
+fall on either side of a multiple of 6 were then emitted right-to-left (answer D before answer C). The PyMuPDF baseline
+has the same defect on other questions, because it comes from the sort and not from the engine.
+`_in_reading_order` in `app/ai/essay_exam.py` now groups fragments into rows anchored on the topmost fragment
+(tolerance 5 thousandths of the page height) and orders each row left to right.
+
+Questions whose answer markers A, B, C, D appear out of order in the extracted text (multiple-choice files only; markers
+counted by hand-checked regex, with the `°C.` false positives removed):
+
+| File | PyMuPDF baseline | Adapter before this fix | Adapter after this fix |
+| --- | --- | --- | --- |
+| g04 | 0 | 2 | 1 |
+| g10 | 2 | 1 | 0 |
+| g11 | 2 | 1 | 0 |
+| all | 4 | 4 | 1 |
+
+The remaining one (g04) has four fraction formulas as answers; their numerators, bars and denominators are separate
+fragments and are not reassembled. Question counts, labels, pages and figures are unchanged on all 12 files. Six
+tolerances moved slightly because the new order differs from the baseline's bucket order (`essay_line_count` on g02,
+g04, g05, g07; `question_text` on g10; `essay_line_text` on g11).
