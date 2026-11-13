@@ -1,0 +1,219 @@
+[
+  {
+    "name": "empty_object",
+    "payload": {},
+    "expected_canonical_json": "{}",
+    "expected_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "name": "empty_array",
+    "payload": [],
+    "expected_canonical_json": "[]",
+    "expected_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  {
+    "name": "empty_string",
+    "payload": "",
+    "expected_canonical_json": "\"\"",
+    "expected_sha256": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126"
+  },
+  {
+    "name": "null_value",
+    "payload": null,
+    "expected_canonical_json": "null",
+    "expected_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+  },
+  {
+    "name": "boolean_true",
+    "payload": true,
+    "expected_canonical_json": "true",
+    "expected_sha256": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b"
+  },
+  {
+    "name": "boolean_false",
+    "payload": false,
+    "expected_canonical_json": "false",
+    "expected_sha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa"
+  },
+  {
+    "name": "zero_int",
+    "payload": 0,
+    "expected_canonical_json": "0",
+    "expected_sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
+  },
+  {
+    "name": "negative_int",
+    "payload": -42,
+    "expected_canonical_json": "-42",
+    "expected_sha256": "fec80006df0542549b4cbaafb8987eee00bb49bca396eefe9ac8be5b5928e8f6"
+  },
+  {
+    "name": "positive_int",
+    "payload": 2025,
+    "expected_canonical_json": "2025",
+    "expected_sha256": "b2b2f104d32c638903e151a9b20d6e27b41d8c0c84cf8458738f83ca2f1dd744"
+  },
+  {
+    "name": "unsorted_keys",
+    "payload": {
+      "z": 1,
+      "a": 2,
+      "m": 3
+    },
+    "expected_canonical_json": "{\"a\":2,\"m\":3,\"z\":1}",
+    "expected_sha256": "ebba85cfdc0a724b6cc327ecc545faeb38b9fe02eca603b430eb872f5cf75370"
+  },
+  {
+    "name": "single_choice_answer",
+    "payload": {
+      "selected_key": "B",
+      "flagged": false,
+      "time_spent_ms": 1230
+    },
+    "expected_canonical_json": "{\"flagged\":false,\"selected_key\":\"B\",\"time_spent_ms\":1230}",
+    "expected_sha256": "9936229dbcc94b92f70cfc122795e879653477c953bc7b1ddf875fc50472f49a"
+  },
+  {
+    "name": "cluster_true_false",
+    "payload": {
+      "sub_answers": {
+        "d": false,
+        "b": true,
+        "a": true,
+        "c": false
+      }
+    },
+    "expected_canonical_json": "{\"sub_answers\":{\"a\":true,\"b\":true,\"c\":false,\"d\":false}}",
+    "expected_sha256": "5f1805a131b91854808fbeb1388c1905a679d39ad43799ef2a18f49806542c8c"
+  },
+  {
+    "name": "short_numeric_string",
+    "payload": {
+      "text_value": "-0,5",
+      "raw_chars": 4
+    },
+    "expected_canonical_json": "{\"raw_chars\":4,\"text_value\":\"-0,5\"}",
+    "expected_sha256": "3997c12287ef631c25f7adccf0367d6b44a5ca3411ef645a6b800f290e2440ef"
+  },
+  {
+    "name": "vietnamese_diacritics_values",
+    "payload": {
+      "note": "Đáp án đúng là phương trình bậc hai có nghiệm kép",
+      "subject": "Toán học"
+    },
+    "expected_canonical_json": "{\"note\":\"Đáp án đúng là phương trình bậc hai có nghiệm kép\",\"subject\":\"Toán học\"}",
+    "expected_sha256": "96f1d8e399f4db4e2aa712ae84c865a656c5e17f9c2c8b4fd9163033c4821642"
+  },
+  {
+    "name": "vietnamese_diacritics_keys",
+    "payload": {
+      "câu_hỏi": 1,
+      "áp_án": "A",
+      "bài_làm": "Hoàn thành"
+    },
+    "expected_canonical_json": "{\"bài_làm\":\"Hoàn thành\",\"câu_hỏi\":1,\"áp_án\":\"A\"}",
+    "expected_sha256": "93b744bc1e870e515c365c6c2c871fe3335d6c7abc61d91c311fb25ccef3d1ca"
+  },
+  {
+    "name": "unicode_symbols_chemistry",
+    "payload": {
+      "formula": "H₂SO₄ + Ca(OH)₂ → CaSO₄ + 2H₂O",
+      "ion": "Fe³⁺"
+    },
+    "expected_canonical_json": "{\"formula\":\"H₂SO₄ + Ca(OH)₂ → CaSO₄ + 2H₂O\",\"ion\":\"Fe³⁺\"}",
+    "expected_sha256": "1fa1228853187e66544fcffe384105138ef7717d83c83f7021543f3038f475ac"
+  },
+  {
+    "name": "nested_objects_deep",
+    "payload": {
+      "outer": {
+        "z": {
+          "y": 1,
+          "x": 2
+        },
+        "a": {
+          "d": null,
+          "b": true
+        }
+      }
+    },
+    "expected_canonical_json": "{\"outer\":{\"a\":{\"b\":true,\"d\":null},\"z\":{\"x\":2,\"y\":1}}}",
+    "expected_sha256": "50d6607652a122a1c6aff7696d9aea649d021d0277172a8ee739aac3c6ea84dd"
+  },
+  {
+    "name": "array_of_mixed_primitives",
+    "payload": [
+      "A",
+      null,
+      1,
+      true,
+      false,
+      "",
+      0,
+      -5
+    ],
+    "expected_canonical_json": "[\"A\",null,1,true,false,\"\",0,-5]",
+    "expected_sha256": "d181f56414887d6ec44c49ee72968afc533475faffa9893829b29cc728d89772"
+  },
+  {
+    "name": "array_of_unsorted_objects",
+    "payload": [
+      {
+        "b": 2,
+        "a": 1
+      },
+      {
+        "z": "last",
+        "a": "first"
+      }
+    ],
+    "expected_canonical_json": "[{\"a\":1,\"b\":2},{\"a\":\"first\",\"z\":\"last\"}]",
+    "expected_sha256": "23634284299600f82d9aa2cbb90e6f313c81829b7a62cc8d675614e748375bd8"
+  },
+  {
+    "name": "escaped_quotes_and_slashes",
+    "payload": {
+      "tex": "\\frac{1}{2} + \"alpha\"",
+      "path": "a/b/c"
+    },
+    "expected_canonical_json": "{\"path\":\"a/b/c\",\"tex\":\"\\\\frac{1}{2} + \\\"alpha\\\"\"}",
+    "expected_sha256": "b21ac821c25962e3e63d976a1e04ac00f8968e293b59c6933e5e0ed01fd90e40"
+  },
+  {
+    "name": "newlines_and_tabs",
+    "payload": {
+      "essay": "Bước 1:\tTính đạo hàm\nBước 2:\tGiải phương trình y' = 0"
+    },
+    "expected_canonical_json": "{\"essay\":\"Bước 1:\\tTính đạo hàm\\nBước 2:\\tGiải phương trình y' = 0\"}",
+    "expected_sha256": "5ef69184fecf6a8b42c25bdb73001d41945c0218b9b99ee0a4147a308d5740af"
+  },
+  {
+    "name": "nested_empty_structures",
+    "payload": {
+      "empty_obj": {},
+      "empty_arr": [],
+      "empty_str": "",
+      "nil": null
+    },
+    "expected_canonical_json": "{\"empty_arr\":[],\"empty_obj\":{},\"empty_str\":\"\",\"nil\":null}",
+    "expected_sha256": "2f9f5571b7c3721ae48a077465ca221f54848ef80dc285fe62168386869f2b9e"
+  },
+  {
+    "name": "large_integer_timestamp",
+    "payload": {
+      "client_ts": 1794567890123,
+      "seq": 999
+    },
+    "expected_canonical_json": "{\"client_ts\":1794567890123,\"seq\":999}",
+    "expected_sha256": "d38498332c28ff2a6a522dc83e19f9b56be76a53ed92a975d7935a96392b7e83"
+  },
+  {
+    "name": "unicode_emoji_and_math",
+    "payload": {
+      "symbol": "∀x ∈ ℝ: x² ≥ 0",
+      "tag": "✓"
+    },
+    "expected_canonical_json": "{\"symbol\":\"∀x ∈ ℝ: x² ≥ 0\",\"tag\":\"✓\"}",
+    "expected_sha256": "f858e0083d1018aa4fc47cb78ebb02cab2f2897d6a8db707d8cbadb4f049fba7"
+  }
+]
