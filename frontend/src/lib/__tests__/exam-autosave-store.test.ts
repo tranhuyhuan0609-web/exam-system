@@ -3,7 +3,8 @@ import "fake-indexeddb/auto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { computePayloadHash } from "../canonical-json.js";
-import { ExamAutosaveStore } from "../exam-autosave-store.js";
+import * as autosaveModule from "../exam-autosave-store.js";
+import { ExamAutosaveStore, getDefaultExamAutosaveStore } from "../exam-autosave-store.js";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -312,6 +313,146 @@ describe("ExamAutosaveStore (Dexie + fake-indexeddb)", () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(calls).toBe(1);
     expect(await store.getPendingRows("att-ev")).toHaveLength(0);
+  });
+
+  it("keeps queue and invokes onAuthRequired on 401 and non-deadline 403 without losing answers", async () => {
+    const dbName = uniqueDbName();
+    const authEvents: Array<{ status: 401 | 403; errorCode?: string }> = [];
+    let mode: "401" | "403_rbac" | "200" = "401";
+    let fetchCalls = 0;
+
+    const store = new ExamAutosaveStore({
+      dbName,
+      onAuthRequired: (status, errorCode) => authEvents.push({ status, errorCode }),
+      fetchFn: async () => {
+        fetchCalls += 1;
+        if (mode === "401") {
+          return jsonResponse(401, { error_code: "TOKEN_EXPIRED" });
+        }
+        if (mode === "403_rbac") {
+          return jsonResponse(403, { error_code: "FORBIDDEN" });
+        }
+        return jsonResponse(200, { status: "COMMITTED", saved_response_version: fetchCalls });
+      },
+    });
+    storesToClose.push(store);
+
+    await store.enqueue("att-auth", "q-1", { selected_key: "A" }, { autoFlush: false });
+    await store.enqueue("att-auth", "q-2", { selected_key: "B" }, { autoFlush: false });
+
+    // 401 stops flush immediately and keeps both rows.
+    await store.flush();
+    expect(fetchCalls).toBe(1);
+    expect(await store.getPendingRows("att-auth")).toHaveLength(2);
+    expect(authEvents).toEqual([{ status: 401, errorCode: "TOKEN_EXPIRED" }]);
+
+    // Non-deadline 403 also stops flush and keeps both rows.
+    mode = "403_rbac";
+    await store.flush();
+    expect(fetchCalls).toBe(2);
+    expect(await store.getPendingRows("att-auth")).toHaveLength(2);
+    expect(authEvents).toEqual([
+      { status: 401, errorCode: "TOKEN_EXPIRED" },
+      { status: 403, errorCode: "FORBIDDEN" },
+    ]);
+
+    // After re-login, both kept rows flush cleanly.
+    mode = "200";
+    await store.flush();
+    expect(await store.getPendingRows("att-auth")).toHaveLength(0);
+  });
+
+  it("deletes only matching attemptId on deadline-expired 403 and closed 409 without clearing other attempts", async () => {
+    const dbName = uniqueDbName();
+    const committed: string[] = [];
+
+    const store = new ExamAutosaveStore({
+      dbName,
+      fetchFn: async (input) => {
+        const url = String(input);
+        if (url.includes("/attempts/att-expired/")) {
+          return jsonResponse(403, { error_code: "ATTEMPT_DEADLINE_EXPIRED" });
+        }
+        if (url.includes("/attempts/att-closed/")) {
+          return jsonResponse(409, { error_code: "ATTEMPT_ALREADY_SUBMITTED_OR_CLOSED" });
+        }
+        committed.push(url);
+        return jsonResponse(200, { status: "COMMITTED", saved_response_version: 1 });
+      },
+    });
+    storesToClose.push(store);
+
+    await store.enqueue("att-expired", "q-1", { selected_key: "A" }, { autoFlush: false });
+    await store.enqueue("att-expired", "q-2", { selected_key: "B" }, { autoFlush: false });
+    await store.enqueue("att-closed", "q-1", { selected_key: "C" }, { autoFlush: false });
+    await store.enqueue("att-active", "q-9", { selected_key: "D" }, { autoFlush: false });
+
+    await store.flush();
+
+    expect(await store.getPendingRows("att-expired")).toHaveLength(0);
+    expect(await store.getPendingRows("att-closed")).toHaveLength(0);
+    expect(await store.getPendingRows("att-active")).toHaveLength(0);
+    expect(committed).toEqual(["/api/v1/attempts/att-active/responses/q-9"]);
+  });
+
+  it("marks row as conflict and calls onConflictModal on second 409 instead of deleting it", async () => {
+    const dbName = uniqueDbName();
+    const conflictCalls: Array<{ qId: string; serverPayload: unknown }> = [];
+    const committed: string[] = [];
+
+    const store = new ExamAutosaveStore({
+      dbName,
+      onConflictModal: (qId, serverPayload) => conflictCalls.push({ qId, serverPayload }),
+      fetchFn: async (input) => {
+        const url = String(input);
+        if (url.endsWith("/sync")) {
+          return jsonResponse(200, {
+            responses: {
+              "q-conflict": {
+                revision_no: 4,
+                current_sequence: 4,
+                last_idempotency_key: "other-device",
+                response_payload: { selected_key: "B" },
+              },
+            },
+          });
+        }
+        if (url.endsWith("/q-conflict")) {
+          return jsonResponse(409, { error_code: "OPTIMISTIC_VERSION_CONFLICT" });
+        }
+        committed.push(url);
+        return jsonResponse(200, { status: "COMMITTED", saved_response_version: 1 });
+      },
+    });
+    storesToClose.push(store);
+
+    await store.enqueue("att-c2", "q-conflict", { selected_key: "A" }, { autoFlush: false });
+    await store.enqueue("att-c2", "q-ok", { selected_key: "C" }, { autoFlush: false });
+
+    await store.flush();
+
+    const remaining = await store.getPendingRows("att-c2");
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]?.questionVersionId).toBe("q-conflict");
+    expect(remaining[0]?.status).toBe("conflict");
+    expect(remaining[0]?.responsePayload).toEqual({ selected_key: "A" });
+    expect(conflictCalls).toEqual([
+      { qId: "q-conflict", serverPayload: { selected_key: "B" } },
+      { qId: "q-conflict", serverPayload: { selected_key: "B" } },
+    ]);
+    expect(committed).toEqual(["/api/v1/attempts/att-c2/responses/q-ok"]);
+
+    // Subsequent flush skips rows already in conflict state cleanly.
+    await store.flush();
+    expect(await store.getPendingRows("att-c2")).toHaveLength(1);
+  });
+
+  it("exposes getDefaultExamAutosaveStore lazily instead of constructing at import time", async () => {
+    expect("defaultExamAutosaveStore" in autosaveModule).toBe(false);
+    const s1 = getDefaultExamAutosaveStore();
+    const s2 = getDefaultExamAutosaveStore();
+    expect(s1).toBe(s2);
+    storesToClose.push(s1);
   });
 });
 

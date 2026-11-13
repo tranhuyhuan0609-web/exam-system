@@ -21,6 +21,8 @@ export type ExamPayloadValue =
   | { [key: string]: ExamPayloadValue };
 export type ExamPayload = Record<string, ExamPayloadValue>;
 
+export type PendingAutosaveStatus = "pending" | "conflict";
+
 export interface PendingAutosave {
   id?: number;
   attemptId: string;
@@ -32,6 +34,7 @@ export interface PendingAutosave {
   isFlagged: boolean;
   createdAtMs: number;
   tries: number;
+  status?: PendingAutosaveStatus;
 }
 
 export interface MetaRow {
@@ -70,6 +73,7 @@ export interface ExamAutosaveStoreOptions {
   uuidFn?: () => string;
   scheduleTimerFn?: (cb: () => void, delayMs: number) => unknown;
   onConflictModal?: (questionVersionId: string, serverPayload: unknown) => void;
+  onAuthRequired?: (status: 401 | 403, errorCode?: string) => void;
   autoAttachWindowListeners?: boolean;
 }
 
@@ -105,6 +109,7 @@ export class ExamAutosaveStore {
   private readonly uuidFn: () => string;
   private readonly scheduleTimerFn: (cb: () => void, delayMs: number) => unknown;
   private readonly onConflictModal?: (questionVersionId: string, serverPayload: unknown) => void;
+  private readonly onAuthRequired?: (status: 401 | 403, errorCode?: string) => void;
 
   private flushing = false;
   private activeFlushPromise: Promise<void> | null = null;
@@ -124,6 +129,7 @@ export class ExamAutosaveStore {
     this.scheduleTimerFn =
       options.scheduleTimerFn ?? ((cb, delayMs) => globalThis.setTimeout(cb, delayMs));
     this.onConflictModal = options.onConflictModal;
+    this.onAuthRequired = options.onAuthRequired;
 
     if (options.autoAttachWindowListeners) {
       this.attachWindowListeners();
@@ -217,7 +223,7 @@ export class ExamAutosaveStore {
         .equals([attemptId, questionVersionId])
         .toArray();
       const unsentIds = existing
-        .filter((row) => row.tries === 0 && row.id !== undefined)
+        .filter((row) => row.tries === 0 && (row.status ?? "pending") === "pending" && row.id !== undefined)
         .map((row) => row.id as number);
       if (unsentIds.length > 0) {
         await this.db.pending.bulkDelete(unsentIds);
@@ -235,6 +241,7 @@ export class ExamAutosaveStore {
         isFlagged: flagged,
         createdAtMs: this.nowMsFn(),
         tries: 0,
+        status: "pending",
       };
       const id = await this.db.pending.add(record);
       return { ...record, id };
@@ -258,11 +265,31 @@ export class ExamAutosaveStore {
     return this.activeFlushPromise;
   }
 
+  private async _readErrorBody(
+    res: Response,
+  ): Promise<{ error_code?: string; server_payload?: unknown; response_payload?: unknown }> {
+    try {
+      return (await res.clone().json()) as {
+        error_code?: string;
+        server_payload?: unknown;
+        response_payload?: unknown;
+      };
+    } catch {
+      return {};
+    }
+  }
+
+  private async _deleteAttemptRows(attemptId: string): Promise<void> {
+    await this.db.pending.where("attemptId").equals(attemptId).delete();
+  }
+
   private async _runFlushLoop(): Promise<void> {
     const resyncedIds = new Set<number>();
+    const syncedPayloads = new Map<number, unknown>();
 
     while (true) {
-      const rows = await this.db.pending.orderBy("id").toArray();
+      const allRows = await this.db.pending.orderBy("id").toArray();
+      const rows = allRows.filter((row) => (row.status ?? "pending") === "pending");
       if (rows.length === 0) {
         return;
       }
@@ -320,33 +347,39 @@ export class ExamAutosaveStore {
         return;
       }
 
+      if (res.status === 401) {
+        const errBody = await this._readErrorBody(res);
+        this.onAuthRequired?.(401, errBody.error_code);
+        return;
+      }
+
       if (res.status === 403) {
-        // Attempt deadline expired on server: discard remaining unsent drafts.
-        await this.db.pending.clear();
+        const errBody = await this._readErrorBody(res);
+        if (errBody.error_code === "ATTEMPT_DEADLINE_EXPIRED") {
+          await this._deleteAttemptRows(r.attemptId);
+          continue;
+        }
+        this.onAuthRequired?.(403, errBody.error_code);
         return;
       }
 
       if (res.status === 409) {
-        let errorCode: string | undefined;
-        try {
-          const errBody = (await res.clone().json()) as { error_code?: string };
-          errorCode = errBody.error_code;
-        } catch {
-          errorCode = undefined;
-        }
-
-        if (errorCode === "ATTEMPT_ALREADY_SUBMITTED_OR_CLOSED") {
-          await this.db.pending.clear();
-          return;
+        const errBody = await this._readErrorBody(res);
+        if (errBody.error_code === "ATTEMPT_ALREADY_SUBMITTED_OR_CLOSED") {
+          await this._deleteAttemptRows(r.attemptId);
+          continue;
         }
 
         if (resyncedIds.has(r.id)) {
-          await this.db.pending.delete(r.id);
+          await this.db.pending.update(r.id, { status: "conflict" });
+          const serverPayload =
+            errBody.server_payload ?? errBody.response_payload ?? syncedPayloads.get(r.id) ?? null;
+          this.onConflictModal?.(r.questionVersionId, serverPayload);
           continue;
         }
         resyncedIds.add(r.id);
 
-        const action = await this._resync(r);
+        const action = await this._resync(r, syncedPayloads);
         if (action === "retry_row") {
           continue;
         }
@@ -374,6 +407,7 @@ export class ExamAutosaveStore {
 
   private async _resync(
     r: PendingAutosave,
+    syncedPayloads?: Map<number, unknown>,
   ): Promise<"resolved_deleted" | "retry_row" | "stop"> {
     if (r.id === undefined) return "stop";
     const token = this.getToken();
@@ -392,6 +426,22 @@ export class ExamAutosaveStore {
       return "stop";
     }
 
+    if (syncRes.status === 401) {
+      const errBody = await this._readErrorBody(syncRes);
+      this.onAuthRequired?.(401, errBody.error_code);
+      return "stop";
+    }
+
+    if (syncRes.status === 403) {
+      const errBody = await this._readErrorBody(syncRes);
+      if (errBody.error_code === "ATTEMPT_DEADLINE_EXPIRED") {
+        await this._deleteAttemptRows(r.attemptId);
+        return "resolved_deleted";
+      }
+      this.onAuthRequired?.(403, errBody.error_code);
+      return "stop";
+    }
+
     if (!syncRes.ok) {
       return "stop";
     }
@@ -401,6 +451,8 @@ export class ExamAutosaveStore {
     if (!srv) {
       return "retry_row";
     }
+
+    syncedPayloads?.set(r.id, srv.response_payload);
 
     await this.db.meta.put({
       key: verKey(r.attemptId, r.questionVersionId),
@@ -444,7 +496,14 @@ export function createExamAutosaveStore(options?: ExamAutosaveStoreOptions): Exa
   return new ExamAutosaveStore(options);
 }
 
-export const defaultExamAutosaveStore = new ExamAutosaveStore({
-  autoAttachWindowListeners: true,
-});
+let defaultStoreInstance: ExamAutosaveStore | null = null;
+
+export function getDefaultExamAutosaveStore(): ExamAutosaveStore {
+  if (defaultStoreInstance === null) {
+    defaultStoreInstance = new ExamAutosaveStore({
+      autoAttachWindowListeners: true,
+    });
+  }
+  return defaultStoreInstance;
+}
 
