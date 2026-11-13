@@ -14,7 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.config import get_settings
 from app.db import SessionLocal
 from app.deps import LoginRequired, SessionDep, get_current_user
-from app.platform.branding import BRAND_NAME, BRAND_SLOGAN
+from app.platform.branding import BRAND_NAME, BRAND_SEO_DESCRIPTION
 from app.routers import admin, auth, library, maker, plans, student, teacher
 from app.templating import templates
 
@@ -65,7 +65,7 @@ class CSRFProtectMiddleware(BaseHTTPMiddleware):
 
 app = FastAPI(
     title=BRAND_NAME,
-    description=BRAND_SLOGAN,
+    description=BRAND_SEO_DESCRIPTION,
     version="0.1.0",
     docs_url="/docs" if is_dev else None,
     redoc_url="/redoc" if is_dev else None,

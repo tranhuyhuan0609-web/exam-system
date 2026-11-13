@@ -3,7 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}{{ BRAND_NAME }} · {{ BRAND_SLOGAN }}{% endblock %}</title>
+  <title>{% block title %}{{ BRAND_TAB_TITLE }}{% endblock %}</title>
+  <meta name="description" content="{% block meta_description %}{{ BRAND_SEO_DESCRIPTION }}{% endblock %}">
+  <meta property="og:title" content="{{ BRAND_TAB_TITLE }}">
+  <meta property="og:description" content="{{ BRAND_SEO_DESCRIPTION }}">
   <link rel="icon" type="image/png" href="{{ url_for('static', path='img/favicon.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}?v=20261113_h2edu">
   {% block head %}{% endblock %}

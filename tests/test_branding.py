@@ -8,13 +8,17 @@ from PIL import Image
 
 from app.platform.branding import (
     BRAND_FAVICON_PATH,
+    BRAND_HERO_SUBTITLE,
+    BRAND_HERO_TITLE,
     BRAND_LOGO_128_PATH,
     BRAND_LOGO_256_PATH,
     BRAND_LOGO_MASTER_PATH,
     BRAND_LOGO_TRANSPARENT_128_PATH,
     BRAND_LOGO_TRANSPARENT_PATH,
     BRAND_NAME,
+    BRAND_SEO_DESCRIPTION,
     BRAND_SLOGAN,
+    BRAND_TAB_TITLE,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -25,6 +29,10 @@ TEMPLATES_DIR = ROOT / "app" / "templates"
 def test_brand_constants_match_h2edu_spec() -> None:
     assert BRAND_NAME == "H2Edu"
     assert BRAND_SLOGAN == "Học thông minh - Thi bứt phá"
+    assert BRAND_TAB_TITLE == "H2Edu | Hệ sinh thái Học tập & Luyện thi thông minh"
+    assert BRAND_SEO_DESCRIPTION == "H2Edu - Hệ sinh thái Học tập, Tài liệu & Luyện thi toàn diện"
+    assert BRAND_HERO_TITLE == "Học thông minh - Thi bứt phá cùng H2Edu"
+    assert BRAND_HERO_SUBTITLE == "Hệ sinh thái tích hợp kho tài liệu, học ngoại ngữ và phòng luyện đề trực tuyến"
 
 
 def test_logo_and_favicon_assets_exist_with_expected_dimensions_and_transparency() -> None:
@@ -52,7 +60,10 @@ def test_templates_use_h2edu_and_no_legacy_exam_system_brand() -> None:
     index_html = (TEMPLATES_DIR / "index.html").read_text(encoding="utf-8")
     assert "BRAND_NAME" in base_html
     assert "BRAND_SLOGAN" in base_html
-    assert "Học thông minh - Thi bứt phá" in index_html
+    assert "BRAND_TAB_TITLE" in base_html
+    assert "BRAND_SEO_DESCRIPTION" in base_html
+    assert "BRAND_HERO_TITLE" in index_html
+    assert "BRAND_HERO_SUBTITLE" in index_html
 
     for tpl in TEMPLATES_DIR.rglob("*.html"):
         text = tpl.read_text(encoding="utf-8")
