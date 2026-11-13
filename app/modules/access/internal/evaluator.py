@@ -59,7 +59,7 @@ class AccessPrincipal:
     permissions: frozenset[str] = field(default_factory=frozenset)
     entitlement_tier: EntitlementTier = EntitlementTier.FREE
     is_under_16: bool = False
-    has_parental_consent: bool = True
+    has_parental_consent: bool = False  # fail closed: consent must be asserted explicitly
     is_super_admin: bool = False
 
 
@@ -84,7 +84,28 @@ class AssetAccessDecision:
 
 def entitlement_satisfies(current_tier: EntitlementTier, required_tier: EntitlementTier) -> bool:
     """Check monotonic plan hierarchy (`FREE < STUDENT_PRO < TEACHER_PRO < SCHOOL_ENTERPRISE`)."""
-    return _TIER_RANK[current_tier] >= _TIER_RANK[required_tier]
+    current_rank = _TIER_RANK.get(current_tier)
+    required_rank = _TIER_RANK.get(required_tier)
+    if current_rank is None or required_rank is None:
+        return False  # unknown tier names never satisfy anything
+    return current_rank >= required_rank
+
+
+def _higher_tier(first: EntitlementTier, second: EntitlementTier | None) -> EntitlementTier:
+    """Return the stricter of two required tiers; an unknown tier is treated as the strictest."""
+    if second is None:
+        return first
+    first_rank = _TIER_RANK.get(first)
+    second_rank = _TIER_RANK.get(second)
+    if first_rank is None:
+        return first
+    if second_rank is None or second_rank > first_rank:
+        return second
+    return first
+
+
+def _has_tenant(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
 
 
 def assert_active_membership(principal: AccessPrincipal) -> None:
@@ -92,7 +113,7 @@ def assert_active_membership(principal: AccessPrincipal) -> None:
     if principal.membership_status != MembershipStatus.ACTIVE:
         raise AccessControlError(
             "MEMBERSHIP_NOT_ACTIVE",
-            f"Membership status {principal.membership_status.value} cannot perform active operations",
+            f"Membership status {str(principal.membership_status)[:32]!r} cannot perform active operations",
         )
 
 
@@ -103,6 +124,8 @@ def assert_tenant_scope(
     is_write: bool,
 ) -> None:
     """Enforce strict multi-tenant isolation against Cross-Tenant IDOR."""
+    if not _has_tenant(principal.tenant_id) or not _has_tenant(resource.tenant_id):
+        raise AccessControlError("TENANT_ID_REQUIRED", "Principal and resource must both carry a tenant id")
     if principal.tenant_id == resource.tenant_id:
         return
 
@@ -125,6 +148,16 @@ def assert_tenant_scope(
         "CROSS_TENANT_FORBIDDEN",
         "Cross-tenant resource access denied",
     )
+
+
+def _assert_permission(principal: AccessPrincipal, permission_code: str) -> None:
+    if not isinstance(permission_code, str) or not permission_code.strip():
+        raise AccessControlError("PERMISSION_DENIED", "A non-empty permission code is required")
+    if not principal.is_super_admin and permission_code not in principal.permissions:
+        raise AccessControlError(
+            "PERMISSION_DENIED",
+            f"Missing RBAC permission {permission_code!r}",
+        )
 
 
 def authorize_action(
@@ -151,17 +184,13 @@ def authorize_action(
             "Learners under 16 require verified parental or school consent before profile processing",
         )
 
-    if not principal.is_super_admin and permission_code not in principal.permissions:
-        raise AccessControlError(
-            "PERMISSION_DENIED",
-            f"Missing RBAC permission {permission_code!r}",
-        )
+    _assert_permission(principal, permission_code)
 
-    effective_tier = required_entitlement or resource.required_tier
+    effective_tier = _higher_tier(resource.required_tier, required_entitlement)
     if not entitlement_satisfies(principal.entitlement_tier, effective_tier):
         raise AccessControlError(
             "ENTITLEMENT_UPGRADE_REQUIRED",
-            f"Requires tier >= {effective_tier.value}, current tier is {principal.entitlement_tier.value}",
+            f"Requires tier >= {effective_tier!s}, current tier is {principal.entitlement_tier!s}",
         )
 
 
@@ -169,6 +198,7 @@ def evaluate_asset_access(
     principal: AccessPrincipal,
     resource: ResourceContext,
     *,
+    permission_code: str,
     has_preview_pdf: bool,
 ) -> AssetAccessDecision:
     """
@@ -176,6 +206,7 @@ def evaluate_asset_access(
 
     - Cross-tenant private access -> DENIED (`CROSS_TENANT_FORBIDDEN`)
     - Inactive membership -> DENIED (`MEMBERSHIP_NOT_ACTIVE`)
+    - Missing RBAC permission (`permission_code`) -> DENIED (`PERMISSION_DENIED`)
     - Authorized tenant but insufficient `entitlement_tier`:
       - If `has_preview_pdf`: returns `PREVIEW_PDF` (e.g. 2-page sample for FREE users)
       - Else: `DENIED` (`ENTITLEMENT_UPGRADE_REQUIRED`)
@@ -183,6 +214,7 @@ def evaluate_asset_access(
     try:
         assert_active_membership(principal)
         assert_tenant_scope(principal, resource, is_write=False)
+        _assert_permission(principal, permission_code)
     except AccessControlError as exc:
         return AssetAccessDecision(allowed=False, access_mode="DENIED", reason_code=exc.code)
 
