@@ -472,7 +472,7 @@ CREATE OR REPLACE FUNCTION is_user_minor(p_birth_year INT, p_ref_date DATE DEFAU
 $$ LANGUAGE sql STABLE PARALLEL SAFE;
 
 -- View v_users_status cung cấp trạng thái is_minor tính động tại thời điểm truy vấn
-CREATE OR REPLACE VIEW v_users_status AS
+CREATE OR REPLACE VIEW v_users_status WITH (security_invoker = true) AS
 SELECT
     id,
     email_blind_index,
@@ -1321,7 +1321,8 @@ CREATE TABLE question_version_answers (
 );
 
 -- View công khai an toàn tuyệt đối cho API Phát đề (C05)
-CREATE OR REPLACE VIEW v_public_question_versions AS
+-- F-02 (dry-run): security_invoker bắt buộc để view áp RLS của người gọi, không phải của chủ view
+CREATE OR REPLACE VIEW v_public_question_versions WITH (security_invoker = true) AS
 SELECT id, tenant_id, visibility_scope, question_id, version_no, stimulus_id, stem_json, options_json, numeric_parse_policy_json
 FROM question_versions;
 CREATE INDEX ix_question_versions_hashes ON question_versions (tenant_id, content_hash, structural_hash);
@@ -2169,6 +2170,24 @@ CREATE TABLE locale_bundles (
 -- KỊCH BẢN ROW-LEVEL SECURITY (RLS 100% BẢNG), AUTO-PARTITION, TRIGGERS & GRANT/REVOKE CHUẨN V11.3
 -- ============================================================================
 
+-- 0. F-01 (dry-run): RLS của bảng cha KHÔNG áp khi truy vấn thẳng vào partition. Mỗi partition phải tự bật
+--    ENABLE + FORCE RLS, có policy tenant riêng và không cấp quyền trực tiếp cho bất kỳ runtime role nào
+--    (mọi truy cập đi qua bảng cha; định tuyến dòng vào partition không cần quyền trên partition).
+CREATE OR REPLACE FUNCTION secure_partition(p_partition TEXT) RETURNS void AS $$
+BEGIN
+    EXECUTE format(
+        'REVOKE ALL ON %I FROM PUBLIC, ulp_app_rw, ulp_exam_session_rw, ulp_worker_ingestion, '
+        'ulp_worker_grading, ulp_system_scheduler, ulp_analytics_ro;', p_partition);
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY;', p_partition);
+    EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY;', p_partition);
+    EXECUTE format('DROP POLICY IF EXISTS tenant_isolation_policy ON %I;', p_partition);
+    EXECUTE format(
+        'CREATE POLICY tenant_isolation_policy ON %I
+         USING (tenant_id = (SELECT current_app_tenant_id()))
+         WITH CHECK (tenant_id = (SELECT current_app_tenant_id()));', p_partition);
+END;
+$$ LANGUAGE plpgsql;
+
 -- 1. Hàm tự động tạo Partition hàng tháng & Dọn dẹp khóa Idempotency quá hạn (Chạy định kỳ hàng ngày)
 CREATE OR REPLACE FUNCTION ensure_monthly_partitions(p_table_name TEXT, p_start_date DATE, p_months INT) RETURNS void AS $$
 DECLARE
@@ -2186,6 +2205,7 @@ BEGIN
                 'CREATE TABLE %I PARTITION OF %I FOR VALUES FROM (%L) TO (%L);',
                 v_part_name, p_table_name, v_start, v_end
             );
+            PERFORM secure_partition(v_part_name);
         END IF;
     END LOOP;
 END;
@@ -2555,8 +2575,11 @@ CREATE TRIGGER trg_lock_question_version_on_publish
 CREATE OR REPLACE FUNCTION prevent_version_immutability_mutation() RETURNS trigger AS $$
 BEGIN
     IF OLD.is_immutable IS TRUE THEN
-        IF TG_OP = 'UPDATE' AND TG_TABLE_NAME = 'content_versions' AND NEW.status = 'TAKEN_DOWN' THEN
-            RETURN NEW;
+        -- F-03 (dry-run): NEW.status chỉ tồn tại trên content_versions nên phải nằm trong IF lồng riêng
+        IF TG_OP = 'UPDATE' AND TG_TABLE_NAME = 'content_versions' THEN
+            IF NEW.status = 'TAKEN_DOWN' THEN
+                RETURN NEW;
+            END IF;
         END IF;
         RAISE EXCEPTION 'IMMUTABLE_VIOLATION: Bản ghi phiên bản trong bảng % đã đóng băng (is_immutable=TRUE), phải tạo version_no + 1.', TG_TABLE_NAME;
     END IF;
@@ -2636,6 +2659,23 @@ GRANT SELECT ON v_public_question_versions, search_documents, daily_metric_rollu
 -- 5g. Khóa cứng quyền UPDATE/DELETE trên các bảng Append-Only và khóa bảng đáp án khỏi các role không có thẩm quyền
 REVOKE UPDATE, DELETE, TRUNCATE ON audit_events, response_revisions FROM PUBLIC, ulp_app_rw, ulp_exam_session_rw, ulp_worker_ingestion, ulp_worker_grading, ulp_system_scheduler, ulp_analytics_ro;
 REVOKE ALL ON question_version_answers, assessment_answer_keys FROM PUBLIC, ulp_exam_session_rw, ulp_worker_ingestion, ulp_system_scheduler, ulp_analytics_ro;
+
+-- 5h. F-01 (dry-run): khóa lại mọi partition sau lệnh GRANT ... ON ALL TABLES ở mục 5a
+DO $$
+DECLARE p regclass;
+BEGIN
+    FOR p IN SELECT inhrelid::regclass FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+             WHERE c.relkind = 'r' AND c.relnamespace = 'public'::regnamespace LOOP
+        PERFORM secure_partition(p::text);
+    END LOOP;
+END $$;
+
+-- 5i. F-02 (dry-run): view security_invoker đọc bằng quyền người gọi, nên ulp_analytics_ro cần quyền đọc
+--     đúng các cột mà v_public_question_versions công bố (RLS của question_versions vẫn áp dụng)
+GRANT SELECT (id, tenant_id, visibility_scope, question_id, version_no, stimulus_id, stem_json, options_json, numeric_parse_policy_json)
+    ON question_versions TO ulp_analytics_ro;
+-- hybrid_read_policy của question_versions kiểm tra bảng cha qua EXISTS, nên cần đọc được hai cột khóa của questions
+GRANT SELECT (id, tenant_id) ON questions TO ulp_analytics_ro;
 ```
 
 ---

@@ -14,6 +14,7 @@ from pathlib import Path
 from PIL import Image, ImageOps
 
 from app.ai.figures import PageGeometry, page_geometry, remove_light_text
+from app.infrastructure.pdf_engine import PDFEngineAdapter, PDFEngineError, PDFPasswordRequired
 
 PDF_EXTENSIONS = (".pdf",)
 WORD_EXTENSIONS = (".docx", ".doc")
@@ -76,25 +77,30 @@ def pdf_to_pages(pdf: Path, out_dir: Path, dpi: int = RENDER_DPI) -> tuple[list[
     import pymupdf
 
     try:
-        doc = pymupdf.open(pdf)
-    except Exception as exc:
+        reader = PDFEngineAdapter.open(pdf)
+    except PDFPasswordRequired as exc:
+        raise NormalizeError("File PDF có mật khẩu.") from exc
+    except PDFEngineError as exc:
         raise NormalizeError("Không mở được file PDF (file hỏng hoặc có mật khẩu).") from exc
-    with doc:
-        if doc.needs_pass:
-            raise NormalizeError("File PDF có mật khẩu.")
-        if doc.page_count > MAX_PAGES:
-            raise NormalizeError(f"File có {doc.page_count} trang, vượt giới hạn {MAX_PAGES} trang mỗi lần.")
+    with reader:
+        if reader.page_count > MAX_PAGES:
+            raise NormalizeError(f"File có {reader.page_count} trang, vượt giới hạn {MAX_PAGES} trang mỗi lần.")
+        try:
+            doc = pymupdf.open(pdf)  # geometry and the light-text-free render still need PyMuPDF (redaction)
+        except Exception as exc:
+            raise NormalizeError("Không mở được file PDF (file hỏng hoặc có mật khẩu).") from exc
         paths, geometries = [], []
-        for index, page in enumerate(doc, start=1):
-            path = out_dir / f"page-{index:03d}.png"
-            page.get_pixmap(dpi=dpi).save(path)  # original, for the AI and the review screen
-            paths.append(path)
-            geometry = page_geometry(page)
-            if remove_light_text(page):  # figures are cut from a render without watermark text
-                clean = out_dir / f"page-{index:03d}-clean.png"
-                page.get_pixmap(dpi=dpi).save(clean)
-                geometry.figure_png = clean
-            geometries.append(geometry)
+        with doc:
+            for index, page in enumerate(doc, start=1):
+                path = out_dir / f"page-{index:03d}.png"
+                reader.render(index - 1, dpi=dpi).save(path)  # original, for the AI and the review screen
+                paths.append(path)
+                geometry = page_geometry(page)
+                if remove_light_text(page):  # figures are cut from a render without watermark text
+                    clean = out_dir / f"page-{index:03d}-clean.png"
+                    page.get_pixmap(dpi=dpi).save(clean)
+                    geometry.figure_png = clean
+                geometries.append(geometry)
     return paths, geometries
 
 

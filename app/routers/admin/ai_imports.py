@@ -277,8 +277,8 @@ async def publish(request: Request, user: AdminUser, session: SessionDep, job_id
 
     title = clean_text(str(form.get("exam_title", "")), 300) or PurePath(job.original_filename).stem[:300]
 
-    # Every AI import publish automatically creates an Exam and saves to the appropriate Library folder
-    create_exam_flag = form.get("create_exam") != "off"  # default to creating exam
+    # The two checkboxes of the publish form decide: create an exam from the questions, and make it public
+    create_exam_flag = form.get("create_exam") == "on"  # an unticked checkbox is simply absent from the form
     exam = None
     if create_exam_flag:
         minutes = str(form.get("duration_minutes", "")).strip()
@@ -289,7 +289,7 @@ async def publish(request: Request, user: AdminUser, session: SessionDep, job_id
             created,
             title=title,
             minutes=exam_minutes,
-            published=form.get("publish_exam") != "off",
+            published=form.get("publish_exam") == "on",
             user_id=user.id,
             access_tier=job.access_tier,
             origin_type=job.origin_type,

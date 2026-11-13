@@ -846,7 +846,11 @@ $$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline
                     pass
 
         # Với PDF (hoặc nếu là doc/docx thông thường), mở PDF hoặc kiểm tra nội dung
-        pdf_file = self.convert_to_pdf(input_path)
+        try:
+            pdf_file = self.convert_to_pdf(input_path)
+        except (FileNotFoundError, subprocess.SubprocessError):
+            # No LibreOffice here, or it could not convert the file: the caller reads the file itself or reports it.
+            return "WORKSHEET_NO_HEADER"
         try:
             with fitz.open(pdf_file) as fdoc:
                 first_text = fdoc[0].get_text()

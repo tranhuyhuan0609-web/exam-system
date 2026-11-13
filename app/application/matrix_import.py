@@ -116,13 +116,13 @@ def _docx_text(data: bytes) -> str:
 
 def _pdf_text_or_pages(data: bytes) -> tuple[str, list[bytes]]:
     """The text layer when there is one; otherwise the first pages as PNG for a model that reads pictures."""
-    import fitz
+    from app.infrastructure.pdf_engine import PDFEngineAdapter
 
-    with fitz.open(stream=data, filetype="pdf") as pdf:
-        text = "\n".join(page.get_text() for page in pdf)
+    with PDFEngineAdapter.open(data) as pdf:
+        text = "\n".join(pdf.text_stream(i, newline_terminated=True) for i in range(pdf.page_count))
         if len(text.split()) >= 30:
             return text, []
-        return "", [pdf[i].get_pixmap(dpi=150).tobytes("png") for i in range(min(MAX_PAGES, pdf.page_count))]
+        return "", [pdf.render_png(i, dpi=150) for i in range(min(MAX_PAGES, pdf.page_count))]
 
 
 def _image_png(data: bytes) -> bytes:

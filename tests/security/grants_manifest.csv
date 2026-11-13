@@ -1,6 +1,17 @@
 role,object,privilege,column
 ulp_analytics_ro,analytics_events,SELECT,
 ulp_analytics_ro,daily_metric_rollups,SELECT,
+ulp_analytics_ro,question_versions,SELECT,id
+ulp_analytics_ro,question_versions,SELECT,numeric_parse_policy_json
+ulp_analytics_ro,question_versions,SELECT,options_json
+ulp_analytics_ro,question_versions,SELECT,question_id
+ulp_analytics_ro,question_versions,SELECT,stem_json
+ulp_analytics_ro,question_versions,SELECT,stimulus_id
+ulp_analytics_ro,question_versions,SELECT,tenant_id
+ulp_analytics_ro,question_versions,SELECT,version_no
+ulp_analytics_ro,question_versions,SELECT,visibility_scope
+ulp_analytics_ro,questions,SELECT,id
+ulp_analytics_ro,questions,SELECT,tenant_id
 ulp_analytics_ro,search_documents,SELECT,
 ulp_analytics_ro,v_public_question_versions,SELECT,
 ulp_exam_session_rw,activity_events,INSERT,

@@ -194,7 +194,7 @@ def test_ai_publish_drafts_populates_2d_coordinates_and_target_tags(db):
         assert q1.access_tier == AccessTier.FREE
 
         assert q2.knowledge_unit_id == unit.id
-        assert q2.difficulty == Difficulty.HSG
+        assert q2.difficulty == Difficulty.ADVANCED_APPLICATION  # HSG drafts are stored as ADVANCED_APPLICATION
         assert q2.access_tier == AccessTier.PRO
 
         # Verify q1 is retrievable via DGTD_TSA and THPTQG, and q2 via HSG_QG

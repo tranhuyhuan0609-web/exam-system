@@ -4,8 +4,8 @@ The application database receives its tables module by module. This suite proves
 last module lands, that the specified DDL runs on a real PostgreSQL and that its row-level
 security, grants and immutability triggers behave as the handover says.
 
-Defects of the specification itself are recorded as strict xfails: the suite stays green, and the
-day the DDL is corrected the xfail flips and has to be removed.
+Three defects this suite found in the first run (F-01..F-03, see DDL_DRY_RUN_FINDINGS.md) are fixed
+in the DDL; their tests stay here as regressions.
 """
 
 import asyncio
@@ -237,7 +237,7 @@ def test_append_only_tables_grant_no_update_or_delete(table):
 def test_every_table_with_a_tenant_column_forces_rls():
     rows = owner(
         "SELECT c.relname FROM ("
-        + TENANT_TABLES_SQL.format(partition="NOT c.relispartition", negate="")
+        + TENANT_TABLES_SQL.format(partition="TRUE", negate="")  # partitions included (F-01)
         + ") t JOIN pg_class c ON c.relname = t.relname AND c.relnamespace = 'public'::regnamespace"
         " WHERE NOT (c.relrowsecurity AND c.relforcerowsecurity)"
     )
@@ -396,28 +396,88 @@ def test_publishing_an_unverified_question_is_refused_by_the_database():
         )
 
 
-# --- defects of the specified DDL (see docs/architecture/DDL_DRY_RUN_FINDINGS.md) --------------
+# --- regressions for the defects found by the first dry-run (DDL_DRY_RUN_FINDINGS.md) -----------
+
+PARTITIONS_SQL = """
+    SELECT c.relname FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+     WHERE c.relkind = 'r' AND c.relnamespace = 'public'::regnamespace
+"""
 
 
-@pytest.mark.xfail(strict=True, reason="F-01: partitions carry no RLS of their own and ulp_app_rw is granted on them")
-def test_a_partition_cannot_be_read_around_the_parent_tables_rls():
-    leaked = as_role("ulp_app_rw", "SELECT count(*) FROM audit_events_2026_11", tenant=TENANT_B)[0][0]
-    assert leaked == 0  # tenant A's audit row
+def test_no_runtime_role_holds_a_privilege_on_a_partition():
+    """F-01: RLS of the parent does not apply to a query that names the partition itself."""
+    partitions = sorted(column(owner(PARTITIONS_SQL)))
+    assert partitions, "the DDL creates partitions for audit_events and response_revisions"
+    rows = owner(
+        "SELECT grantee || ' ' || privilege_type || ' ' || table_name FROM information_schema.role_table_grants"
+        " WHERE table_schema = 'public' AND table_name = ANY($1::text[]) AND grantee = ANY($2::text[])",
+        partitions,
+        [*RUNTIME_ROLES, "PUBLIC"],
+    )
+    assert column(rows) == set()
 
 
-@pytest.mark.xfail(
-    strict=True, reason="F-02: v_public_question_versions is not security_invoker, so it reads as its owner"
-)
-@pytest.mark.parametrize("role", ["ulp_app_rw", "ulp_exam_session_rw"])
+@pytest.mark.parametrize("role", RUNTIME_ROLES)
+def test_a_partition_cannot_be_read_around_the_parent_tables_rls(role):
+    with pytest.raises(asyncpg.InsufficientPrivilegeError):
+        as_role(role, "SELECT count(*) FROM audit_events_2026_11", tenant=TENANT_B)
+
+
+def test_partitions_created_later_are_locked_down_too():
+    async def _later_partition():
+        conn = await _connect(DRY_RUN_DB)
+        try:
+            transaction = conn.transaction()
+            await transaction.start()
+            try:
+                await conn.execute("SELECT ensure_monthly_partitions('audit_events', DATE '2031-05-01', 1)")
+                secured = await conn.fetchval(
+                    "SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE relname = 'audit_events_2031_05'"
+                )
+                granted = await conn.fetchval(
+                    "SELECT has_table_privilege('ulp_app_rw', 'audit_events_2031_05', 'SELECT')"
+                )
+                return secured, granted
+            finally:
+                await transaction.rollback()
+        finally:
+            await conn.close()
+
+    assert run(_later_partition()) == (True, False)
+
+
+def test_rows_still_reach_partitions_through_the_parent():
+    insert_and_count = """
+        WITH added AS (
+            INSERT INTO audit_events (tenant_id, action, target_type, target_id, occurred_at)
+            VALUES ('{tenant}', 'DRYRUN', 'probe', gen_random_uuid(), '2026-11-20T00:00:00Z')
+            RETURNING tenant_id
+        )
+        SELECT (SELECT count(*) FROM added) + (SELECT count(*) FROM audit_events)
+    """
+    # Tenant B has no audit rows in the seed: its own new row is all it can see.
+    assert as_role("ulp_app_rw", insert_and_count.format(tenant=TENANT_B), tenant=TENANT_B)[0][0] == 1
+    # Tenant A already has one.
+    assert as_role("ulp_app_rw", insert_and_count.format(tenant=TENANT_A), tenant=TENANT_A)[0][0] == 2
+
+
+@pytest.mark.parametrize("role", ["ulp_app_rw", "ulp_exam_session_rw", "ulp_analytics_ro"])
 def test_the_public_question_view_applies_the_callers_rls(role):
+    """F-02: the view is security_invoker, so it shows what the caller's own RLS allows."""
     seen = column(as_role(role, "SELECT stem_json->>'t' FROM v_public_question_versions", tenant=TENANT_B))
     assert seen == {"published"}
 
 
-@pytest.mark.xfail(
-    strict=True, reason="F-03: the immutability trigger reads NEW.status, a column only content_versions has"
-)
+def test_views_run_with_the_callers_privileges():
+    rows = owner(
+        "SELECT relname FROM pg_class WHERE relkind = 'v' AND relnamespace = 'public'::regnamespace"
+        " AND NOT coalesce(reloptions, '{}') @> ARRAY['security_invoker=true']"
+    )
+    assert column(rows) == set()
+
+
 @pytest.mark.parametrize("statement", FROZEN_VERSION_MUTATIONS)
 def test_a_frozen_version_is_refused_with_the_immutability_error(statement):
+    """F-03: the trigger used to fail on NEW.status, a column only content_versions has."""
     with pytest.raises(asyncpg.RaiseError, match="IMMUTABLE_VIOLATION"):
         owner(statement)
