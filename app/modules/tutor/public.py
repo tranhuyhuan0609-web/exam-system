@@ -1,6 +1,7 @@
 """Public API for app.modules.tutor (E02 AI Tutor Exam Lock & Anti-Leakage core)."""
 
 from app.modules.tutor.internal.guard import (
+    KNOWN_ATTEMPT_STATUSES,
     LearnerAttemptSnapshot,
     OutputFilterResult,
     PromptCheckResult,
@@ -16,6 +17,7 @@ from app.modules.tutor.internal.guard import (
 )
 
 __all__ = [
+    "KNOWN_ATTEMPT_STATUSES",
     "LearnerAttemptSnapshot",
     "OutputFilterResult",
     "PromptCheckResult",
