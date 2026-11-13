@@ -51,6 +51,8 @@ ulp_system_scheduler,daily_metric_rollups,INSERT,
 ulp_system_scheduler,daily_metric_rollups,SELECT,
 ulp_system_scheduler,daily_metric_rollups,UPDATE,
 ulp_system_scheduler,outbox_events,SELECT,
+ulp_system_scheduler,outbox_events,UPDATE,attempt_count
+ulp_system_scheduler,outbox_events,UPDATE,next_attempt_at
 ulp_system_scheduler,outbox_events,UPDATE,published_at
 ulp_system_scheduler,outbox_events,UPDATE,status
 ulp_worker_grading,assessment_answer_keys,SELECT,
