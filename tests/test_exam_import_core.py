@@ -96,3 +96,73 @@ def test_validate_catches_dangling_stimulus_duplicate_no_and_points_mismatch() -
 
     with pytest.raises(ExamImportError):
         approve_exam_import_session(bad)
+
+
+def _session(points: float, expected: float | None = 10.0, tenant_id: str = "tenant-a") -> ExamImportSession:
+    return ExamImportSession(
+        session_id="imp-x",
+        tenant_id=tenant_id,
+        source_document_id="doc-x",
+        rights_status=RightsStatus.OWNED,
+        expected_total_points=expected,
+        sections=(
+            ExamSectionDraft(
+                section_code="PART_1",
+                title="Phan I",
+                questions=(ImportedQuestionRef(1, "cand-1", points, 1, paired_answer="A"),),
+            ),
+        ),
+    )
+
+
+@pytest.mark.parametrize("points", [float("nan"), float("inf"), float("-inf"), -1.0, 0.0])
+def test_non_finite_or_non_positive_points_are_invalid(points: float) -> None:
+    # Regression: NaN points made every comparison False, so the session came out valid=True.
+    report = validate_exam_import_structure(_session(points, expected=None))
+    assert report.valid is False
+    with pytest.raises(ExamImportError):
+        approve_exam_import_session(_session(points, expected=None))
+
+
+@pytest.mark.parametrize("expected", [float("nan"), float("inf")])
+def test_non_finite_expected_total_is_invalid(expected: float) -> None:
+    report = validate_exam_import_structure(_session(10.0, expected=expected))
+    assert report.valid is False
+    assert any("expected_total_points" in e for e in report.errors)
+
+
+def test_missing_tenant_or_empty_sections_are_invalid() -> None:
+    assert validate_exam_import_structure(_session(10.0, tenant_id="  ")).valid is False
+    empty = ExamImportSession("i", "t", "d", RightsStatus.OWNED, sections=())
+    assert validate_exam_import_structure(empty).valid is False
+
+
+def test_out_of_sequence_question_numbers_are_reported() -> None:
+    s = ExamImportSession(
+        "i", "t", "d", RightsStatus.OWNED, expected_total_points=None,
+        sections=(ExamSectionDraft("P", "P", (
+            ImportedQuestionRef(2, "a", 1.0, 1, paired_answer="A"),
+            ImportedQuestionRef(1, "b", 1.0, 1, paired_answer="A"),
+        )),),
+    )
+    assert any("out of sequence" in e for e in validate_exam_import_structure(s).errors)
+
+
+@pytest.mark.parametrize(
+    "height,y0",
+    [(float("nan"), 10.0), (842.0, float("nan")), (842.0, float("inf")), (0, 5), (842, -1)],
+)
+def test_banner_adjustment_rejects_bad_geometry(height: float, y0: float) -> None:
+    with pytest.raises(ExamImportError):
+        compute_banner_canvas_adjustment(page_height_pt=height, first_item_y0_pt=y0)
+
+
+def test_unknown_rights_status_never_allows_branded_pdf() -> None:
+    assert is_branded_pdf_allowed("MADE_UP") is False  # type: ignore[arg-type]
+    assert is_branded_pdf_allowed(None) is False  # type: ignore[arg-type]
+
+
+def test_approve_rejects_already_approved_session() -> None:
+    approved, _ = approve_exam_import_session(_session(10.0))
+    with pytest.raises(ExamImportError):
+        approve_exam_import_session(approved)
