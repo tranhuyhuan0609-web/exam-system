@@ -293,3 +293,12 @@ protected_modules =
 allowed_importers =
     app.modules.feature_flags
     app.model_registry
+
+[importlinter:contract:internal-question_bank]
+name = question_bank internals are private to the module
+type = protected
+protected_modules =
+    app.modules.question_bank.internal
+allowed_importers =
+    app.modules.question_bank
+    app.model_registry
