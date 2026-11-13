@@ -377,3 +377,140 @@ từ `origin/main` mới nhất, một PR, kèm test cho từng điểm.
 - A08 ghép cặp: file gộp cả đề và đáp án (ví dụ "Đề + đáp án Toán 11") không được coi là file đáp án thuần; trả loại
   `EXAM_WITH_SOLUTION` và không đưa vào ghép cặp.
 - D05 `apply_attempt`: từ chối `at` không có múi giờ và `at` sớm hơn `last_wrong_at`.
+
+---
+
+## 6. Đợt 3 (giao ngày 13/11/2026)
+
+Làm sau P14–P16 ở mục 5. Tám gói dưới đây đều là lõi thuần (không bảng, không migration, không mạng, không AI), không phụ
+thuộc nhau và không đụng phần luồng chính đang làm (bộ đọc PDF, `app/platform/`, các router). Quy tắc ở mục 2 và năm điều rút
+ra ở mục 4 vẫn áp dụng. Thêm ba điều từ lần rà soát đợt 2:
+
+1. **Làm đủ mọi gạch đầu dòng của gói.** Ở P13, `getQueueState()` có trong yêu cầu nhưng không được làm. Mô tả PR phải có
+   bảng "yêu cầu → test chứng minh" cho từng gạch đầu dòng.
+2. **Dữ liệu người dùng không bị xoá âm thầm.** Mọi nhánh lỗi phải giữ lại dữ liệu hoặc trả mã lỗi để nơi gọi quyết định.
+3. **So khớp đường dẫn, tên miền, tên file trên dạng đã chuẩn hoá**, không so trên chuỗi thô.
+
+Thứ tự đề xuất: P19 → P20 → P17 → P18 → P21 → P22 → P23 → P24.
+
+| Gói | Module | Loại | Ước lượng |
+|---|---|---|---|
+| P17 | A06 hình học bố cục trang | Hàm thuần | vừa |
+| P18 | C02 chuẩn hoá đáp án số và khoá môn học | Hàm thuần | nhỏ |
+| P19 | C05 lọc đáp án khỏi dữ liệu gửi cho phòng thi | Hàm thuần (bảo mật) | nhỏ |
+| P20 | F04/G02 chỉ mục mù, làm sạch nhật ký, xoá văn bản tự do | Hàm thuần (bảo mật) | vừa |
+| P21 | B07 chuẩn hoá văn bản tìm kiếm tiếng Việt | Hàm thuần | nhỏ |
+| P22 | C05/C06 đồng hồ máy chủ và đếm ngược phía trình duyệt | Frontend | nhỏ |
+| P23 | A01 máy trạng thái đợt nạp và khoá khử trùng tài liệu | Hàm thuần | vừa |
+| P24 | E01 trần ngân sách AI và xoay khoá nhà cung cấp | Hàm thuần | vừa |
+
+### P17 — A06: hình học bố cục trang
+
+- Nhánh `feat/a06-layout-geometry`. Module `app/modules/layout/` (`internal/geometry.py`, `internal/margins.py`); test
+  `tests/test_layout_geometry.py`.
+- Đặc tả: `chapters/06_9_thuat_toan_loi.md` dòng 29–195 (`BBoxRect`, `merge_intersecting_rects_union_find`,
+  `detect_dynamic_repeating_margins`). **Không** làm phần đọc PDF (dòng 197 trở đi) và không import thư viện PDF nào.
+- Yêu cầu:
+  - `BBoxRect` đóng băng, từ chối toạ độ NaN/vô hạn và hình có `x1 < x0` hoặc `y1 < y0`; `overlap_ratio` của hình diện tích 0
+    không chia cho 0.
+  - Gộp hình giao nhau bằng union-find có nén đường; kết quả không phụ thuộc thứ tự đầu vào (sắp kết quả theo `(y0, x0)`);
+    2.000 hình chạy dưới 1 giây (dùng lưới hoặc quét theo trục, không so mọi cặp nếu vượt thời gian).
+  - Phát hiện lề lặp (đầu trang, chân trang, watermark): đầu vào là danh sách dòng văn bản theo trang (chuỗi + hộp), đầu ra
+    là các dải cần bỏ; văn bản chỉ khác nhau ở số trang ("Trang 1/4", "Trang 2/4") vẫn được coi là lặp; tài liệu 1 trang
+    không bỏ gì.
+
+### P18 — C02: chuẩn hoá đáp án số và khoá môn học
+
+- Nhánh `feat/c02-answer-canonicalization`. Thêm `app/modules/quality/internal/answers.py`, xuất qua
+  `app/modules/quality/public.py`; test `tests/test_answer_canonicalization.py`. **Không sửa** `sympy_runner.py`,
+  `sympy_sandbox_worker.py` và không gọi SymPy.
+- Đặc tả: dòng 500–526 (`enforce_subject_lock`, `canonicalize_numeric_answer`).
+- Yêu cầu:
+  - `canonicalize_numeric_answer` trả `Decimal | None`: nhận `0,5`, `0.5`, `-1,25`, `3/4`, `50%` (thành `0.5` hay `50` là
+    điểm cần quyết — làm theo mã mẫu là bỏ ký hiệu, và ghi rõ trong PR), đơn vị ở cuối (`10 m/s`, `2,5kg`, `30°`). Mã mẫu
+    cắt nhầm dấu `/` của phân số khi có đơn vị (`3/4 kg`) và chấp nhận `1.000` như một nghìn hay một — phải từ chối dạng mơ
+    hồ này giống `parse_short_numeric_vn` của P1. Không dùng `float`.
+  - `enforce_subject_lock`: môn của nguồn luôn thắng; từ khoá so trên văn bản đã chuẩn hoá NFC và không phân biệt hoa thường;
+    danh sách từ khoá là tham số có giá trị mặc định theo đặc tả; trả thêm `reason_code`.
+
+### P19 — C05: lọc đáp án khỏi dữ liệu gửi cho phòng thi (bảo mật)
+
+- Nhánh `feat/c05-paper-sanitizer`. Module `app/modules/delivery/` (`internal/sanitizer.py`), hợp đồng
+  `app/contracts/delivery.py`; test `tests/test_paper_sanitizer.py`.
+- Đặc tả: dòng module C05 trong `chapters/03_dac_ta_47_modules_va_6_workspaces.md` (dòng 37) và các bảng `question_versions`,
+  `question_options`, `question_version_answers`, `assessment_answer_keys` trong DDL (chỉ để lấy tên cột).
+- Yêu cầu:
+  - Đầu ra dựng theo **danh sách cho phép** các trường (model Pydantic `extra="forbid"`), không phải xoá dần trường cấm: trường
+    lạ ở đầu vào không bao giờ lọt ra.
+  - Không trường nào trong đầu ra mang đáp án, lời giải, điểm từng ý, `is_correct`, thứ tự gốc của phương án, hay id cho
+    phép suy ra phương án đúng. Phương án được xếp theo hoán vị của P8 và gắn lại nhãn hiển thị A–D.
+  - Test "quét rò rỉ": với 200 đề sinh ngẫu nhiên có cài chuỗi đánh dấu vào mọi trường đáp án (kể cả lồng sâu trong JSON),
+    JSON đầu ra không chứa chuỗi đánh dấu nào.
+
+### P20 — F04/G02: chỉ mục mù, làm sạch nhật ký, xoá văn bản tự do (bảo mật)
+
+- Nhánh `feat/f04-pii-helpers-core`. Module `app/modules/privacy/` (`internal/blind_index.py`, `internal/audit_sanitizer.py`,
+  `internal/scrub.py`); test `tests/test_pii_helpers_core.py`. Chỉ dùng thư viện chuẩn (`hmac`, `hashlib`).
+  **Không** làm phần mã hoá AES/Vault (dòng 1430–1484): phần đó cần thư viện mới và thuộc luồng chính.
+- Đặc tả: dòng 1418–1429 (`compute_email_blind_index`), 1486–1503 (`scrub_free_text_pii_records`), 1560–1576
+  (`sanitize_audit_json`).
+- Yêu cầu:
+  - Chỉ mục mù email: chuẩn hoá NFKC + bỏ khoảng trắng + chữ thường trước khi HMAC-SHA256; `pepper` rỗng hoặc ngắn hơn 32
+    byte bị từ chối; so sánh bằng `hmac.compare_digest`.
+  - Làm sạch nhật ký: mã mẫu chỉ đệ quy vào `dict` — phải đi cả vào danh sách lồng nhau; so khoá không phân biệt hoa thường
+    và kiểu viết (`phoneNumber`, `phone_number`, `Phone-Number`); ngoài so theo tên khoá, che thêm giá trị **trông giống**
+    email hoặc số điện thoại Việt Nam nằm trong chuỗi tự do; không sửa đối tượng đầu vào; giới hạn độ sâu để chặn đầu vào
+    lồng vô hạn.
+  - Xoá văn bản tự do: hàm thuần trả bản ghi mới (mã mẫu sửa tại chỗ) và trả số bản ghi đã xoá theo từng loại.
+
+### P21 — B07: chuẩn hoá văn bản tìm kiếm tiếng Việt
+
+- Nhánh `feat/b07-search-normalization`. Module `app/modules/search/` (`internal/normalize.py`); test
+  `tests/test_search_normalization.py`.
+- Đặc tả: dòng module B07 trong chương 03 (dòng 27).
+- Yêu cầu:
+  - `fold_for_search(text)`: NFC → bỏ dấu (kể cả `đ/Đ`) → chữ thường → gộp khoảng trắng; kết quả phải **bằng đúng** kết quả
+    của hàm `f_unaccent` + `lower` trong PostgreSQL. Có test đối chiếu với database (file test riêng, dùng fixture của
+    `tests/conftest.py`) trên ít nhất 300 chuỗi gồm toàn bộ nguyên âm có dấu tiếng Việt, dạng NFD và ký hiệu toán.
+  - `parse_search_query(raw)`: tách cụm trong ngoặc kép, từ loại trừ bằng `-`, bỏ ký tự điều khiển, giới hạn 200 ký tự và
+    20 từ; trả dataclass — **không** ghép chuỗi SQL trong gói này.
+  - Dùng lại `fold_vietnamese_ascii` của P9 nếu hợp, nhưng không import `internal` của module khác: chuyển hàm dùng chung sang
+    `app/contracts/text.py` trong chính PR này và sửa P9 import từ đó.
+
+### P22 — C05/C06: đồng hồ máy chủ và đếm ngược phía trình duyệt
+
+- Nhánh `feat/c06-server-clock`. File `frontend/src/lib/server-clock.ts`, `frontend/src/lib/exam-countdown.ts` và test của
+  chúng. Không sửa `exam-autosave-store.ts`.
+- Yêu cầu:
+  - `ServerClock`: ước lượng độ lệch giờ từ các cặp (giờ gửi, giờ nhận, giờ máy chủ) theo cách của NTP, lấy mẫu có độ trễ
+    khứ hồi nhỏ nhất trong 5 mẫu gần nhất; đồng hồ và hàm `fetch` được tiêm vào; dùng đồng hồ đơn điệu
+    (`performance.now`) để người dùng đổi giờ máy không làm sai thời gian còn lại.
+  - `ExamCountdown`: nhận `deadline_at` (ISO, giờ máy chủ), phát sự kiện mỗi giây, ở mốc còn 5 phút, 1 phút và khi hết giờ
+    (mỗi mốc đúng một lần, kể cả khi tab bị treo rồi tỉnh lại); hết giờ thì gọi `onExpire` đúng một lần.
+  - Test bằng đồng hồ giả: máy chạy nhanh/chậm 10 phút, đổi giờ giữa chừng, tab ngủ 3 phút.
+
+### P23 — A01: máy trạng thái đợt nạp và khoá khử trùng tài liệu
+
+- Nhánh `feat/a01-ingestion-core`. Module `app/modules/ingestion/` (`internal/state.py`, `internal/fingerprint.py`); test
+  `tests/test_ingestion_core.py`.
+- Đặc tả: dòng module A01 trong chương 03 (dòng 7); bảng `acquisition_jobs`, `pipeline_stage_runs`, `dead_letter_items`
+  trong DDL (lấy đúng tên trạng thái từ các ràng buộc `CHECK`, không tự đặt tên mới).
+- Yêu cầu:
+  - Bảng chuyển trạng thái tường minh cho đợt nạp và cho từng chặng; chuyển không hợp lệ ném lỗi có mã; `retry` chỉ từ trạng
+    thái lỗi, `cancel` không được từ trạng thái kết thúc; quá số lần thử thì sang hàng chờ lỗi (`dead_letter`).
+  - Thử lại là idempotent: áp cùng một sự kiện hai lần cho cùng kết quả (test 50 kịch bản sinh ngẫu nhiên có seed).
+  - Khoá khử trùng: SHA-256 đọc theo khối từ luồng byte (không nạp cả file vào bộ nhớ), kèm kích thước; hàm quyết định
+    "trùng → trả bản cũ" là hàm thuần nhận tập khoá đã có.
+
+### P24 — E01: trần ngân sách AI và xoay khoá nhà cung cấp
+
+- Nhánh `feat/e01-gateway-core`. Module `app/modules/ai_gateway/` (`internal/budget.py`, `internal/key_ring.py`); test
+  `tests/test_ai_gateway_core.py`. Không gọi nhà cung cấp AI nào, không import `app/ai/`.
+- Đặc tả: dòng module E01 trong chương 03 (dòng 56).
+- Yêu cầu:
+  - Trần ngân sách theo ngày cho từng tenant, tính bằng `Decimal`; "đặt chỗ trước, quyết toán sau" để hai yêu cầu đồng thời
+    không cùng vượt trần; chạm trần thì từ chối 100% kèm mã lỗi; ngày tính theo `Asia/Ho_Chi_Minh`; đồng hồ được tiêm vào.
+  - Vòng khoá: gặp `429` thì đánh dấu khoá nghỉ đến thời điểm cho trước và chọn khoá kế tiếp trong O(1); mọi khoá đều nghỉ
+    thì trả thời gian phải chờ, không ngủ trong lõi; khoá hỏng vĩnh viễn (`401`) bị loại hẳn; không bao giờ ghi giá trị khoá
+    vào thông báo lỗi, `repr` hay log (test kiểm tra điều này).
+  - Điểm cần chủ dự án quyết: trần mặc định `daily_ai_budget_usd` — để thành tham số bắt buộc, không đặt mặc định.
