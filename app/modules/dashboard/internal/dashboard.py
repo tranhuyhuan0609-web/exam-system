@@ -5,13 +5,36 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal
+
+
+class DashboardError(ValueError):
+    """Raised when dashboard inputs are not trustworthy (non-finite ratios, naive clocks, ...)."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+_ZERO = Decimal("0")
+_ONE = Decimal("1")
+
+
+def _unit_ratio(value: object, field_name: str) -> Decimal:
+    """Accept only a finite Decimal/int in 0..1 (floats are rejected: scores are never floats)."""
+    if isinstance(value, bool) or not isinstance(value, (Decimal, int)):
+        raise DashboardError("INVALID_RATIO", f"{field_name} must be a Decimal between 0 and 1")
+    number = Decimal(value)
+    if not number.is_finite() or number < _ZERO or number > _ONE:
+        raise DashboardError("INVALID_RATIO", f"{field_name} must be a finite value between 0 and 1")
+    return number
 
 
 @dataclass(frozen=True, slots=True)
 class InProgressLessonRef:
     content_item_id: str
     title: str
-    completion_pct: float
+    completion_pct: Decimal  # 0..1
     last_accessed_at: datetime
 
 
@@ -28,7 +51,7 @@ class UpcomingAssignmentRef:
 class ChapterMasterySummary:
     chapter_code: str
     chapter_name: str
-    mastery_estimate: float  # 0.0 .. 1.0
+    mastery_estimate: Decimal  # 0 .. 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,7 +63,7 @@ class LearnerDashboardProjection:
     open_error_notes_count: int
     fsrs_cards_due_today: int
     chapter_mastery: tuple[ChapterMasterySummary, ...]
-    overall_mastery_avg: float
+    overall_mastery_avg: Decimal
 
 
 def build_learner_dashboard_projection(
@@ -56,10 +79,21 @@ def build_learner_dashboard_projection(
     max_recent_lessons: int = 5,
 ) -> LearnerDashboardProjection:
     """Compile sorted D01 learner dashboard projection from learner activity & mastery snapshots."""
+    if now.tzinfo is None:
+        raise DashboardError("NAIVE_CLOCK", "now must be timezone-aware")
+    if isinstance(max_recent_lessons, bool) or not isinstance(max_recent_lessons, int) or max_recent_lessons < 0:
+        raise DashboardError("INVALID_LIMIT", "max_recent_lessons must be a non-negative integer")
+    for lesson in in_progress_lessons:
+        _unit_ratio(lesson.completion_pct, "completion_pct")
+        if lesson.last_accessed_at.tzinfo is None:
+            raise DashboardError("NAIVE_TIMESTAMP", "last_accessed_at must be timezone-aware")
+    for assignment in upcoming_assignments:
+        if assignment.due_at.tzinfo is None:
+            raise DashboardError("NAIVE_TIMESTAMP", "due_at must be timezone-aware")
+    for chapter in chapter_mastery:
+        _unit_ratio(chapter.mastery_estimate, "mastery_estimate")
     sorted_lessons = tuple(
-        sorted(in_progress_lessons, key=lambda lesson: lesson.last_accessed_at, reverse=True)[
-            :max_recent_lessons
-        ]
+        sorted(in_progress_lessons, key=lambda lesson: lesson.last_accessed_at, reverse=True)[:max_recent_lessons]
     )
     # Only include assignments not yet exhausted on max_attempts and not past due
     active_assignments = tuple(
@@ -70,9 +104,11 @@ def build_learner_dashboard_projection(
     )
     sorted_mastery = tuple(sorted(chapter_mastery, key=lambda c: c.chapter_code))
     overall_avg = (
-        round(sum(c.mastery_estimate for c in sorted_mastery) / len(sorted_mastery), 4)
+        (sum((Decimal(c.mastery_estimate) for c in sorted_mastery), _ZERO) / Decimal(len(sorted_mastery))).quantize(
+            Decimal("0.0001"), rounding=ROUND_HALF_UP
+        )
         if sorted_mastery
-        else 0.0
+        else _ZERO
     )
 
     return LearnerDashboardProjection(

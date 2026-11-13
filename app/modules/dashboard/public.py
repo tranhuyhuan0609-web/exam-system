@@ -2,6 +2,7 @@
 
 from app.modules.dashboard.internal.dashboard import (
     ChapterMasterySummary,
+    DashboardError,
     InProgressLessonRef,
     LearnerDashboardProjection,
     UpcomingAssignmentRef,
@@ -10,6 +11,7 @@ from app.modules.dashboard.internal.dashboard import (
 
 __all__ = [
     "ChapterMasterySummary",
+    "DashboardError",
     "InProgressLessonRef",
     "LearnerDashboardProjection",
     "UpcomingAssignmentRef",
