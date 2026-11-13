@@ -91,18 +91,42 @@ class ContentValidationReport:
     issues: tuple[ContentValidationIssue, ...]
 
 
+def _freeze(value: Any) -> Any:
+    """Deep-freeze nested payloads: mappings become read-only proxies, sequences become tuples."""
+    if isinstance(value, Mapping):
+        return MappingProxyType({str(k): _freeze(v) for k, v in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze(v) for v in value)
+    return value
+
+
 def publish_content_version(
     version: ContentVersionState,
     *,
     validator: Callable[[ContentVersionState], ContentValidationReport],
 ) -> ContentVersionState:
-    """Validate (through the injected B02 validator) and freeze a content version as immutable `PUBLISHED`."""
+    """
+    Validate (through the injected B02 validator) and freeze a `DRAFT` content version as immutable `PUBLISHED`.
+
+    Only a mutable `DRAFT` can be published: `PUBLISHED` and `SUPERSEDED` versions are history and
+    `TAKEN_DOWN` ones are legally blocked.
+    """
     if version.status == ContentVersionStatus.TAKEN_DOWN:
         raise ContentStudioError("CONTENT_TAKEN_DOWN", "Cannot publish a TAKEN_DOWN content version")
+    if version.status != ContentVersionStatus.DRAFT or version.is_immutable:
+        raise ContentStudioError("CONTENT_NOT_DRAFT", "Only a mutable DRAFT content version can be published")
     report = validator(version)
-    if not report.valid:
-        raise ContentStudioError(report.issues[0].code, report.issues[0].message)
-    return replace(version, status=ContentVersionStatus.PUBLISHED, is_immutable=True)
+    if report.valid is not True or report.issues:
+        code = report.issues[0].code if report.issues else "CONTENT_VALIDATION_FAILED"
+        message = report.issues[0].message if report.issues else "Validator did not approve the content version"
+        raise ContentStudioError(code, message)
+    frozen_blocks = tuple(replace(block, payload_json=_freeze(block.payload_json)) for block in version.blocks)
+    return replace(
+        version,
+        blocks=frozen_blocks,
+        status=ContentVersionStatus.PUBLISHED,
+        is_immutable=True,
+    )
 
 
 def edit_draft_blocks(
@@ -112,12 +136,14 @@ def edit_draft_blocks(
     summary_md: str | None = None,
     blocks: tuple[ContentBlockDraft, ...] | None = None,
 ) -> ContentVersionState:
-    """Mutate an unpublished `DRAFT` version; rejects any edit to an immutable/published version."""
-    if version.is_immutable or version.status == ContentVersionStatus.PUBLISHED:
+    """Mutate an unpublished `DRAFT` version; any other status (or `is_immutable`) is rejected."""
+    if version.is_immutable or version.status != ContentVersionStatus.DRAFT:
         raise ContentStudioError(
             "CONTENT_VERSION_IMMUTABLE",
-            f"Content version v{version.version_no} is PUBLISHED/immutable; fork v{version.version_no + 1} instead",
+            f"Content version v{version.version_no} is not an editable DRAFT; fork v{version.version_no + 1} instead",
         )
+    if blocks is not None and not isinstance(blocks, tuple):
+        raise ContentStudioError("INVALID_BLOCKS", "blocks must be a tuple of ContentBlockDraft")
     return replace(
         version,
         title=version.title if title is None else title,
@@ -132,12 +158,17 @@ def fork_next_content_version(
     created_by: str,
 ) -> tuple[ContentVersionState, ContentVersionState]:
     """
-    Preserve historical published version and emit a new mutable `DRAFT` at `version_no + 1`.
+    Preserve the historical published version and emit a new mutable `DRAFT` at `version_no + 1`.
 
+    Only an immutable `PUBLISHED` version can be forked (a `TAKEN_DOWN` one never can).
     Returns `(historical_published_version, new_draft_version)`.
     """
-    if not created_by:
+    if not isinstance(created_by, str) or not created_by.strip():
         raise ContentStudioError("MISSING_AUTHOR", "created_by is required")
+    if published.status == ContentVersionStatus.TAKEN_DOWN:
+        raise ContentStudioError("CONTENT_TAKEN_DOWN", "Cannot fork a TAKEN_DOWN content version")
+    if published.status != ContentVersionStatus.PUBLISHED or not published.is_immutable:
+        raise ContentStudioError("CONTENT_NOT_PUBLISHED", "Only a PUBLISHED content version can be forked")
     new_draft = ContentVersionState(
         content_item_id=published.content_item_id,
         tenant_id=published.tenant_id,
