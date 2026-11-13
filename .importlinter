@@ -212,3 +212,12 @@ protected_modules =
 allowed_importers =
     app.modules.error_notebook
     app.model_registry
+
+[importlinter:contract:internal-delivery]
+name = delivery internals are private to the module
+type = protected
+protected_modules =
+    app.modules.delivery.internal
+allowed_importers =
+    app.modules.delivery
+    app.model_registry
