@@ -212,3 +212,12 @@ protected_modules =
 allowed_importers =
     app.modules.error_notebook
     app.model_registry
+
+[importlinter:contract:internal-feature_flags]
+name = feature_flags internals are private to the module
+type = protected
+protected_modules =
+    app.modules.feature_flags.internal
+allowed_importers =
+    app.modules.feature_flags
+    app.model_registry
