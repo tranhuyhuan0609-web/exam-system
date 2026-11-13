@@ -347,3 +347,12 @@ protected_modules =
 allowed_importers =
     app.modules.notifications
     app.model_registry
+
+[importlinter:contract:internal-billing]
+name = billing internals are private to the module
+type = protected
+protected_modules =
+    app.modules.billing.internal
+allowed_importers =
+    app.modules.billing
+    app.model_registry
