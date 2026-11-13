@@ -113,3 +113,12 @@ protected_modules =
 allowed_importers =
     app.modules.dedup
     app.model_registry
+
+[importlinter:contract:internal-flashcards]
+name = flashcards internals are private to the module
+type = protected
+protected_modules =
+    app.modules.flashcards.internal
+allowed_importers =
+    app.modules.flashcards
+    app.model_registry
