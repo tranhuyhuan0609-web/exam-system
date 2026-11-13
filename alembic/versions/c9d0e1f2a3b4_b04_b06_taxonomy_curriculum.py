@@ -1,7 +1,7 @@
 """B04 + B06: taxonomy tree and curriculum mapping tables, hybrid RLS and grants
 
-Revision ID: b8c9d0e1f2a3
-Revises: a7b8c9d0e1f2
+Revision ID: c9d0e1f2a3b4
+Revises: b8c9d0e1f2a3
 Create Date: 2026-11-13
 """
 
@@ -9,8 +9,8 @@ from alembic import op
 
 from app.platform.rls import hybrid_read_child, hybrid_read_root, hybrid_write_rls
 
-revision = "b8c9d0e1f2a3"
-down_revision = "a7b8c9d0e1f2"
+revision = "c9d0e1f2a3b4"
+down_revision = "b8c9d0e1f2a3"
 branch_labels = None
 depends_on = None
 
