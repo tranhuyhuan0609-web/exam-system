@@ -7,6 +7,7 @@ and hardware benchmark evidence validation matching ``platform_manifest.yaml``.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Literal
 
@@ -19,6 +20,10 @@ _MATURITY_ORDER: dict[MaturityStatus, int] = {
     "VERIFIED": 3,
     "OPERATED": 4,
 }
+
+
+class ReleaseGateError(ValueError):
+    """Raised when release-gate capacity parameters are invalid."""
 
 
 @dataclass(frozen=True)
@@ -93,11 +98,14 @@ def evaluate_evidence_record(record: GateEvidenceRecord) -> tuple[bool, tuple[st
         return False, (f"UNKNOWN_GATE_ID:{record.gate_id}",)
 
     errors: list[str] = []
-    if not record.passed:
+    if record.passed is not True:
         errors.append(f"{record.gate_id}:NOT_PASSED")
-    if _MATURITY_ORDER[record.maturity] < _MATURITY_ORDER["VERIFIED"]:
+    maturity_rank = _MATURITY_ORDER.get(record.maturity)
+    if maturity_rank is None:
+        errors.append(f"{record.gate_id}:UNKNOWN_MATURITY:{str(record.maturity)[:32]}")
+    elif maturity_rank < _MATURITY_ORDER["VERIFIED"]:
         errors.append(f"{record.gate_id}:INSUFFICIENT_MATURITY:{record.maturity}")
-    if gate.requires_real_infra and not record.real_infra_executed:
+    if gate.requires_real_infra and record.real_infra_executed is not True:
         errors.append(f"{record.gate_id}:SYNTHETIC_ONLY_CANNOT_CLAIM_VERIFIED")
 
     if gate.gate_id in {"GATE-04", "GATE-05", "GATE-10"}:
@@ -129,6 +137,9 @@ def evaluate_sprint_exit_readiness(
         if rec is None:
             blocking.append(f"{gate.gate_id}:MISSING_EVIDENCE")
             continue
+        if rec.gate_id != gate.gate_id:
+            blocking.append(f"{gate.gate_id}:EVIDENCE_GATE_MISMATCH")
+            continue
         ok, errs = evaluate_evidence_record(rec)
         if not ok:
             blocking.extend(errs)
@@ -149,8 +160,10 @@ def compute_little_law_capacity(
     pgbouncer_default_pool_size: int = 60,
 ) -> LittleLawCapacityReport:
     """Compute Little's Law (L = lambda * W) DB concurrency against PgBouncer pool."""
+    if not (math.isfinite(avg_cycle_seconds) and math.isfinite(db_latency_ms)):
+        raise ReleaseGateError("capacity parameters must be finite")
     if concurrent_users <= 0 or avg_cycle_seconds <= 0 or db_latency_ms < 0 or pgbouncer_default_pool_size <= 0:
-        raise ValueError("capacity parameters must be positive (db_latency_ms >= 0)")
+        raise ReleaseGateError("capacity parameters must be positive (db_latency_ms >= 0)")
 
     rps = concurrent_users / avg_cycle_seconds
     active_conns = rps * (db_latency_ms / 1000.0)
