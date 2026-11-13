@@ -2,28 +2,42 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
+import hmac
 import json
 import math
 import re
+import threading
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
-_IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
+_IDEMPOTENCY_KEY_RE = re.compile(r"[A-Za-z0-9._:-]{8,128}", re.ASCII)
+MAX_IDEMPOTENCY_RECORDS = 100_000
+DEFAULT_PENDING_TTL_SECONDS = 60.0
+
+
+class RateLimitError(ValueError):
+    """Raised on invalid rate-limit rules, costs or clock values."""
+
+
+class RateLimitCostError(RateLimitError):
+    """Raised when a single request costs more than the bucket capacity (can never succeed)."""
 
 
 class IdempotencyError(ValueError):
-    """Raised on missing/malformed Idempotency-Key headers."""
+    """Raised on missing/malformed Idempotency-Key headers or invalid guard input."""
 
 
-class IdempotencyMismatchError(ValueError):
+class IdempotencyMismatchError(IdempotencyError):
     """Raised when an Idempotency-Key is reused with a different request payload."""
 
 
 class IdempotencyOutcome(StrEnum):
     EXECUTE_NEW = "EXECUTE_NEW"
     REPLAY_CACHED = "REPLAY_CACHED"
+    IN_PROGRESS = "IN_PROGRESS"
 
 
 @dataclass(frozen=True)
@@ -54,6 +68,10 @@ class RateLimitDecision:
     headers: dict[str, str]
 
 
+def _is_finite_number(value: object) -> bool:
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
+
+
 def evaluate_token_bucket(
     *,
     rule: RateLimitRule,
@@ -62,14 +80,22 @@ def evaluate_token_bucket(
     cost: float = 1.0,
 ) -> RateLimitDecision:
     """Evaluate a monotonic-clock token bucket check cleanly with Retry-After headers."""
+    if not all(_is_finite_number(n) for n in (rule.capacity, rule.refill_per_second, cost, now_seconds)):
+        raise RateLimitError("rule, cost and clock values must be finite numbers")
     if rule.capacity <= 0 or rule.refill_per_second <= 0 or cost <= 0:
-        raise ValueError("rule capacity, refill_per_second, and cost must be positive")
+        raise RateLimitError("rule capacity, refill_per_second, and cost must be positive")
+    if cost > rule.capacity:
+        raise RateLimitCostError("request cost exceeds bucket capacity and can never be admitted")
 
     if state is None:
         available = rule.capacity
     else:
+        if not (_is_finite_number(state.tokens) and _is_finite_number(state.last_refill_at)) or state.tokens < 0:
+            raise RateLimitError("invalid bucket state")
         elapsed = max(0.0, now_seconds - state.last_refill_at)
         available = min(rule.capacity, state.tokens + elapsed * rule.refill_per_second)
+        # never move the refill clock backwards if the caller's clock jumped
+        now_seconds = max(now_seconds, state.last_refill_at)
 
     if available >= cost:
         leftover = available - cost
@@ -105,10 +131,10 @@ def evaluate_token_bucket(
 
 def validate_idempotency_key(raw_key: str | None) -> str:
     """Ensure Idempotency-Key has safe ASCII characters and 8..128 length."""
-    if not raw_key or not raw_key.strip():
+    if not isinstance(raw_key, str) or not raw_key.strip():
         raise IdempotencyError("missing Idempotency-Key header")
     cleaned = raw_key.strip()
-    if not _IDEMPOTENCY_KEY_RE.match(cleaned):
+    if _IDEMPOTENCY_KEY_RE.fullmatch(cleaned) is None:
         raise IdempotencyError("Idempotency-Key must be 8..128 characters of [A-Za-z0-9._:-]")
     return cleaned
 
@@ -120,39 +146,100 @@ def compute_request_fingerprint(
     payload: dict[str, Any] | list[Any] | str | None = None,
 ) -> str:
     """Compute canonical SHA-256 digest over HTTP method, path, and normalized JSON body."""
-    canonical = json.dumps(
-        {
-            "method": method.strip().upper(),
-            "path": path.strip(),
-            "payload": payload,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    if not isinstance(method, str) or not isinstance(path, str) or not method.strip() or not path.strip():
+        raise IdempotencyError("method and path must be non-empty strings")
+    try:
+        canonical = json.dumps(
+            {
+                "method": method.strip().upper(),
+                "path": path.strip(),
+                "payload": payload,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    except (TypeError, ValueError) as exc:  # UnicodeEncodeError is a ValueError
+        raise IdempotencyError("payload is not canonical JSON") from exc
 
 
 @dataclass(frozen=True)
 class CachedIdempotencyRecord:
     scoped_key: str
     fingerprint: str
-    status_code: int
-    response_body: dict[str, Any]
+    status_code: int | None
+    response_body: dict[str, Any] | None
     expires_at: float
+    in_progress: bool = False
+
+
+def _require_id(label: str, value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise IdempotencyError(f"{label} must be a non-empty string")
+    return value
+
+
+def _fingerprints_equal(a: str, b: str) -> bool:
+    return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
+
+
+def _require_fingerprint(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        raise IdempotencyError("fingerprint must be a non-empty string")
+    return value
+
+
+def _require_now(value: object) -> float:
+    if not _is_finite_number(value):
+        raise IdempotencyError("now_seconds must be finite")
+    return float(value)  # type: ignore[arg-type]
 
 
 class IdempotencyGuard:
-    """Deterministic key-and-fingerprint guard preventing duplicate execution or silent key reuse."""
+    """Atomic key-and-fingerprint guard preventing duplicate execution or silent key reuse.
 
-    def __init__(self, ttl_seconds: float = 86_400.0) -> None:
-        if ttl_seconds <= 0:
-            raise ValueError("ttl_seconds must be positive")
-        self._ttl_seconds = ttl_seconds
-        self._records: dict[str, CachedIdempotencyRecord] = {}
+    ``check_or_replay`` reserves the key in the same locked step that reports EXECUTE_NEW, so two
+    concurrent identical requests cannot both execute: the second one gets IN_PROGRESS. Call
+    ``store`` to complete the reservation or ``release`` to abandon it after a failure.
+    """
 
-    def _scope(self, *, tenant_id: str, actor_id: str, key: str) -> str:
-        return f"{tenant_id}:{actor_id}:{key}"
+    def __init__(
+        self,
+        ttl_seconds: float = 86_400.0,
+        *,
+        pending_ttl_seconds: float = DEFAULT_PENDING_TTL_SECONDS,
+        max_records: int = MAX_IDEMPOTENCY_RECORDS,
+    ) -> None:
+        for value in (ttl_seconds, pending_ttl_seconds):
+            if not _is_finite_number(value) or value <= 0:
+                raise IdempotencyError("ttl_seconds must be a positive finite number")
+        if isinstance(max_records, bool) or not isinstance(max_records, int) or max_records < 1:
+            raise IdempotencyError("max_records must be a positive integer")
+        self._ttl_seconds = float(ttl_seconds)
+        self._pending_ttl_seconds = float(pending_ttl_seconds)
+        self._max_records = max_records
+        self._records: dict[tuple[str, str, str], CachedIdempotencyRecord] = {}
+        self._lock = threading.Lock()
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._records)
+
+    @staticmethod
+    def _scope(*, tenant_id: str, actor_id: str, key: str) -> tuple[str, str, str]:
+        return (_require_id("tenant_id", tenant_id), _require_id("actor_id", actor_id), key)
+
+    @staticmethod
+    def _scoped_label(scope: tuple[str, str, str]) -> str:
+        # Length-prefixed so that ids containing ":" can never collide.
+        return "|".join(f"{len(part)}:{part}" for part in scope)
+
+    def _evict_expired(self, now_seconds: float) -> None:
+        expired = [k for k, rec in self._records.items() if now_seconds >= rec.expires_at]
+        for k in expired:
+            del self._records[k]
 
     def check_or_replay(
         self,
@@ -164,18 +251,29 @@ class IdempotencyGuard:
         now_seconds: float,
     ) -> tuple[IdempotencyOutcome, CachedIdempotencyRecord | None]:
         valid_key = validate_idempotency_key(idempotency_key)
-        scoped = self._scope(tenant_id=tenant_id, actor_id=actor_id, key=valid_key)
-        existing = self._records.get(scoped)
-        if existing is None:
-            return IdempotencyOutcome.EXECUTE_NEW, None
-        if now_seconds >= existing.expires_at:
-            del self._records[scoped]
-            return IdempotencyOutcome.EXECUTE_NEW, None
-        if existing.fingerprint != fingerprint:
-            raise IdempotencyMismatchError(
-                f"Idempotency-Key {valid_key!r} reused with a different request payload"
-            )
-        return IdempotencyOutcome.REPLAY_CACHED, existing
+        scope = self._scope(tenant_id=tenant_id, actor_id=actor_id, key=valid_key)
+        fingerprint = _require_fingerprint(fingerprint)
+        now = _require_now(now_seconds)
+        with self._lock:
+            self._evict_expired(now)
+            existing = self._records.get(scope)
+            if existing is None:
+                if len(self._records) >= self._max_records:
+                    raise IdempotencyError("idempotency registry is full")
+                self._records[scope] = CachedIdempotencyRecord(
+                    scoped_key=self._scoped_label(scope),
+                    fingerprint=fingerprint,
+                    status_code=None,
+                    response_body=None,
+                    expires_at=now + self._pending_ttl_seconds,
+                    in_progress=True,
+                )
+                return IdempotencyOutcome.EXECUTE_NEW, None
+            if not _fingerprints_equal(existing.fingerprint, fingerprint):
+                raise IdempotencyMismatchError("Idempotency-Key reused with a different request payload")
+            if existing.in_progress:
+                return IdempotencyOutcome.IN_PROGRESS, None
+            return IdempotencyOutcome.REPLAY_CACHED, existing
 
     def store(
         self,
@@ -189,13 +287,34 @@ class IdempotencyGuard:
         now_seconds: float,
     ) -> CachedIdempotencyRecord:
         valid_key = validate_idempotency_key(idempotency_key)
-        scoped = self._scope(tenant_id=tenant_id, actor_id=actor_id, key=valid_key)
+        scope = self._scope(tenant_id=tenant_id, actor_id=actor_id, key=valid_key)
+        if isinstance(status_code, bool) or not isinstance(status_code, int) or not 100 <= status_code <= 599:
+            raise IdempotencyError("status_code must be an HTTP status")
+        fingerprint = _require_fingerprint(fingerprint)
+        now = _require_now(now_seconds)
         rec = CachedIdempotencyRecord(
-            scoped_key=scoped,
+            scoped_key=self._scoped_label(scope),
             fingerprint=fingerprint,
             status_code=status_code,
-            response_body=dict(response_body),
-            expires_at=now_seconds + self._ttl_seconds,
+            response_body=copy.deepcopy(dict(response_body)),
+            expires_at=now + self._ttl_seconds,
         )
-        self._records[scoped] = rec
+        with self._lock:
+            existing = self._records.get(scope)
+            if existing is not None and not _fingerprints_equal(existing.fingerprint, fingerprint):
+                raise IdempotencyMismatchError("Idempotency-Key reused with a different request payload")
+            if existing is None:
+                self._evict_expired(now)
+                if len(self._records) >= self._max_records:
+                    raise IdempotencyError("idempotency registry is full")
+            self._records[scope] = rec
         return rec
+
+    def release(self, *, tenant_id: str, actor_id: str, idempotency_key: str) -> None:
+        """Abandon an IN_PROGRESS reservation after a failed execution so a retry can run."""
+        valid_key = validate_idempotency_key(idempotency_key)
+        scope = self._scope(tenant_id=tenant_id, actor_id=actor_id, key=valid_key)
+        with self._lock:
+            existing = self._records.get(scope)
+            if existing is not None and existing.in_progress:
+                del self._records[scope]
