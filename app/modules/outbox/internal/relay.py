@@ -1,9 +1,9 @@
 """Consumer registry and the outbox relay (ADR-001, ADR-012).
 
 The relay runs as ulp_system_scheduler under the outbox_relay job: the only role and job allowed to
-read every tenant's outbox, and only allowed to change the delivery bookkeeping (`status`, `published_at`, `attempt_count`,
-`next_attempt_at`). Each handler runs
-in its own transaction, bound to the event's tenant, under a worker role that may write the inbox.
+read every tenant's outbox, and only allowed to change the delivery bookkeeping (`status`, `published_at`,
+`attempt_count`, `next_attempt_at`). Each handler runs in its own transaction, bound to the event's tenant,
+under a worker role that may write the inbox.
 """
 
 import logging

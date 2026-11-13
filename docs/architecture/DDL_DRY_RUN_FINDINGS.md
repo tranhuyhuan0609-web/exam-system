@@ -25,7 +25,7 @@ File `chapters/04_postgresql_ddl_rls_grants.sql` được áp nguyên văn lên 
 
 ## Lỗi của đặc tả — đã sửa trong DDL ngày 13/11/2026
 
-Ba lỗi F-01..F-03 dưới đây đã được vá trong `chapters/04_postgresql_ddl_rls_grants.sql` và trong file tổng; các test tương ứng
+Bốn lỗi F-01..F-04 dưới đây đã được vá trong `chapters/04_postgresql_ddl_rls_grants.sql` và trong file tổng; các test tương ứng
 giờ là test hồi quy (57 test qua, không còn xfail). Builder dùng lại cho migration của từng module:
 `partition_lockdown()`, `invoker_view()` trong `app/platform/rls.py`.
 
