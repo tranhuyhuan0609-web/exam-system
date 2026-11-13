@@ -350,6 +350,9 @@ class PDFEngineAdapter:
         self._data = data
         self._closed = False
         self._plumber: pdfplumber.PDF | None = None
+        # Images and drawings of the LAST page read: one pdfplumber parse serves images(), drawings(),
+        # cluster_drawings() and drawing_rects() (a page parse costs about a second). One page only.
+        self._vector_page: tuple[int, list[ImageBox], list[Drawing]] | None = None
         self._password = password
         try:
             self._pdfium = pdfium.PdfDocument(data, password=password)
@@ -386,6 +389,7 @@ class PDFEngineAdapter:
         if self._closed:
             return
         self._closed = True
+        self._vector_page = None
         if self._plumber is not None:
             self._plumber.close()
             self._plumber = None
@@ -618,12 +622,7 @@ class PDFEngineAdapter:
         return [t.rect for t in self.tables(index)]
 
     def images(self, index: int) -> list[ImageBox]:
-        with self._plumber_page(index) as page:
-            out = []
-            for i in page.images or []:
-                sw, sh = i.get("srcsize") or (0, 0)
-                out.append(ImageBox(_rect_of(i), int(sw or 0), int(sh or 0), str(i.get("name") or "")))
-        return sorted(out, key=lambda b: (b.rect.y0, b.rect.x0))
+        return list(self._vector(index)[0])
 
     def drawings(self, index: int) -> list[Drawing]:
         """Vector path objects (rects, straight lines, curves) with colours and stroke/fill flags.
@@ -631,8 +630,23 @@ class PDFEngineAdapter:
         ``Drawing.opacity`` is read from pdfium: pdfplumber does not know ExtGState alpha. The pdfium path
         object is matched to each drawing by bounding box (only done when the page has a translucent path).
         """
+        return list(self._vector(index)[1])
+
+    def _vector(self, index: int) -> tuple[list[ImageBox], list[Drawing]]:
+        self._check(index)
+        if self._vector_page is not None and self._vector_page[0] == index:
+            return self._vector_page[1], self._vector_page[2]
+        images, drawings = self._read_vector(index)
+        self._vector_page = (index, images, drawings)
+        return images, drawings
+
+    def _read_vector(self, index: int) -> tuple[list[ImageBox], list[Drawing]]:
         translucent, paths = self._path_alphas(index)
         with self._plumber_page(index) as page:
+            images: list[ImageBox] = []
+            for i in page.images or []:
+                sw, sh = i.get("srcsize") or (0, 0)
+                images.append(ImageBox(_rect_of(i), int(sw or 0), int(sh or 0), str(i.get("name") or "")))
             out: list[Drawing] = []
             for kind, objs in (("rect", page.rects), ("line", page.lines), ("curve", page.curves)):
                 for o in objs or []:
@@ -649,7 +663,10 @@ class PDFEngineAdapter:
                             opacity=_match_alpha(_rect_of(o), width, paths) if translucent else 1.0,
                         )
                     )
-        return sorted(out, key=lambda d: (d.rect.y0, d.rect.x0, d.kind))
+        return (
+            sorted(images, key=lambda b: (b.rect.y0, b.rect.x0)),
+            sorted(out, key=lambda d: (d.rect.y0, d.rect.x0, d.kind)),
+        )
 
     def _path_alphas(self, index: int) -> tuple[bool, list[tuple[Rect, float]]]:
         """(any translucent path?, [(bounds, min alpha of the painted parts)]) of the top-level pdfium paths."""

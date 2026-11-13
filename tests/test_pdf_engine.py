@@ -616,3 +616,15 @@ def test_normalised_matches_collapse_whitespace_and_map_back_to_characters():
     assert _normalised_matches(text, "câu  1", False) == [(4, 5)]  # decomposed needle, extra blanks
     assert _normalised_matches(text, "âu", True) == [(5, 2), (10, 2)]
     assert _normalised_matches(text, "", False) == []
+
+
+def test_vector_data_is_parsed_once_per_page_and_callers_get_copies(pdf, monkeypatch):
+    first = pdf.drawings(0)
+    calls = []
+    original = pdf._read_vector
+    monkeypatch.setattr(pdf, "_read_vector", lambda i: calls.append(i) or original(i))
+    first.clear()  # a caller mutating its list must not corrupt the cached page
+    assert len(pdf.drawings(0)) > 0
+    assert pdf.images(0)
+    pdf.cluster_drawings(0)
+    assert calls == []  # served from the one-page cache
