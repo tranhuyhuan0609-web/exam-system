@@ -60,12 +60,12 @@ def execute_takedown(
     previous_publication_status: PublicationStatus,
 ) -> TakedownExecutionResult:
     """Transition an `OPEN` takedown case to `EXECUTED` and build propagation + audit payloads."""
-    if not executor_id:
+    if not isinstance(executor_id, str) or not executor_id.strip():
         raise GovernancePolicyError("MISSING_EXECUTOR_ID", "executor_id must be non-empty")
     if state.status != TakedownStatus.OPEN:
         raise GovernancePolicyError(
             "TAKEDOWN_NOT_OPEN",
-            f"Only OPEN takedown cases can be executed, got {state.status.value}",
+            f"Only OPEN takedown cases can be executed, got {state.status!s}",
         )
 
     next_state = replace(state, status=TakedownStatus.EXECUTED, executed_by=executor_id)
@@ -87,8 +87,8 @@ def execute_takedown(
         outbox_payload=event_payload,
         audit_before_json={
             "case_status": state.status.value,
-            "rights_status": previous_rights_status.value,
-            "publication_status": previous_publication_status.value,
+            "rights_status": str(previous_rights_status),
+            "publication_status": str(previous_publication_status),
         },
         audit_after_json={
             "case_status": TakedownStatus.EXECUTED.value,
@@ -100,11 +100,11 @@ def execute_takedown(
 
 def reject_takedown(state: TakedownCaseState, *, reviewer_id: str) -> TakedownCaseState:
     """Reject an unsubstantiated `OPEN` takedown claim."""
-    if not reviewer_id:
+    if not isinstance(reviewer_id, str) or not reviewer_id.strip():
         raise GovernancePolicyError("MISSING_EXECUTOR_ID", "reviewer_id must be non-empty")
     if state.status != TakedownStatus.OPEN:
         raise GovernancePolicyError(
             "TAKEDOWN_NOT_OPEN",
-            f"Only OPEN takedown cases can be rejected, got {state.status.value}",
+            f"Only OPEN takedown cases can be rejected, got {state.status!s}",
         )
     return replace(state, status=TakedownStatus.REJECTED, executed_by=reviewer_id)

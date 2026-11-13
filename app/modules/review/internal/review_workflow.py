@@ -77,17 +77,27 @@ class ReviewTaskState:
     applied_decision_ids: frozenset[str] = field(default_factory=frozenset)
 
 
+_OPEN_STATUSES = frozenset({ReviewTaskStatus.OPEN, ReviewTaskStatus.IN_REVIEW})
+
+
 def claim_review_task(state: ReviewTaskState, *, reviewer_id: str) -> ReviewTaskState:
-    """Assign an `OPEN` review task to a human reviewer (`IN_REVIEW`)."""
-    if not reviewer_id:
+    """Assign an `OPEN` review task to a human reviewer (`IN_REVIEW`); a claimed task is not stealable."""
+    if not isinstance(reviewer_id, str) or not reviewer_id.strip():
         raise GovernancePolicyError("MISSING_REVIEWER_ID", "reviewer_id must be non-empty")
     if state.status in {ReviewTaskStatus.RESOLVED, ReviewTaskStatus.CANCELLED}:
         raise GovernancePolicyError(
             "REVIEW_TASK_CLOSED",
-            f"Cannot claim task in terminal status {state.status.value}",
+            f"Cannot claim task in terminal status {state.status!s}",
         )
-    if state.assigned_to == reviewer_id and state.status == ReviewTaskStatus.IN_REVIEW:
-        return state
+    if state.status not in _OPEN_STATUSES:
+        raise GovernancePolicyError("REVIEW_TASK_STATUS_UNKNOWN", "Review task has an unrecognised status")
+    if state.status == ReviewTaskStatus.IN_REVIEW:
+        if state.assigned_to == reviewer_id:
+            return state
+        raise GovernancePolicyError(
+            "REVIEW_TASK_ALREADY_CLAIMED",
+            "Review task is already claimed by another reviewer",
+        )
     return replace(state, status=ReviewTaskStatus.IN_REVIEW, assigned_to=reviewer_id)
 
 
@@ -99,21 +109,47 @@ def submit_review_decision(
     decision: ReviewDecisionType,
     reason: str,
 ) -> ReviewTaskState:
-    """Idempotently record a reviewer's decision and close the review task as `RESOLVED`."""
-    if not decision_id:
+    """
+    Idempotently record the assigned reviewer's decision and close the review task as `RESOLVED`.
+
+    Replaying a `decision_id` is a no-op only when reviewer, decision and reason are identical;
+    any difference is a `DECISION_ID_CONFLICT`.
+    """
+    if not isinstance(decision_id, str) or not decision_id.strip():
         raise GovernancePolicyError("MISSING_DECISION_ID", "decision_id must be non-empty")
-    if not reviewer_id:
+    if not isinstance(reviewer_id, str) or not reviewer_id.strip():
         raise GovernancePolicyError("MISSING_REVIEWER_ID", "reviewer_id must be non-empty")
-    if not reason.strip():
+    if not isinstance(reason, str) or not reason.strip():
         raise GovernancePolicyError("MISSING_DECISION_REASON", "Review decision requires non-empty reason")
+    if decision not in _DECISION_TO_VERIFICATION or not isinstance(decision, ReviewDecisionType):
+        raise GovernancePolicyError("INVALID_DECISION", "decision must be a ReviewDecisionType member")
 
     if decision_id in state.applied_decision_ids:
-        return state
+        for existing in state.decisions:
+            if existing.decision_id == decision_id:
+                if (existing.reviewer_id, existing.decision, existing.reason) == (
+                    reviewer_id,
+                    decision,
+                    reason.strip(),
+                ):
+                    return state
+                break
+        raise GovernancePolicyError(
+            "DECISION_ID_CONFLICT",
+            "decision_id was already applied with different content",
+        )
 
     if state.status in {ReviewTaskStatus.RESOLVED, ReviewTaskStatus.CANCELLED}:
         raise GovernancePolicyError(
             "REVIEW_TASK_CLOSED",
-            f"Cannot submit decision for closed task ({state.status.value})",
+            f"Cannot submit decision for closed task ({state.status!s})",
+        )
+    if state.status != ReviewTaskStatus.IN_REVIEW:
+        raise GovernancePolicyError("REVIEW_TASK_NOT_CLAIMED", "Review task must be claimed before a decision")
+    if state.assigned_to != reviewer_id:
+        raise GovernancePolicyError(
+            "REVIEWER_NOT_ASSIGNED",
+            "Only the reviewer who claimed the task may decide it",
         )
 
     recorded = RecordedReviewDecision(
@@ -126,7 +162,6 @@ def submit_review_decision(
     return replace(
         state,
         status=ReviewTaskStatus.RESOLVED,
-        assigned_to=reviewer_id,
         decisions=state.decisions + (recorded,),
         applied_decision_ids=state.applied_decision_ids | {decision_id},
     )
@@ -138,4 +173,6 @@ def cancel_review_task(state: ReviewTaskState) -> ReviewTaskState:
         return state
     if state.status == ReviewTaskStatus.RESOLVED:
         raise GovernancePolicyError("REVIEW_TASK_CLOSED", "Cannot cancel an already RESOLVED review task")
+    if state.status not in _OPEN_STATUSES:
+        raise GovernancePolicyError("REVIEW_TASK_STATUS_UNKNOWN", "Review task has an unrecognised status")
     return replace(state, status=ReviewTaskStatus.CANCELLED)

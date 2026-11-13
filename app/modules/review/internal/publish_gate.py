@@ -96,13 +96,13 @@ def evaluate_publish_gate(
 
     if verification_status != VerificationStatus.VERIFIED:
         codes.append("PUBLISH_NOT_VERIFIED")
-        reasons.append(f"verification_status must be VERIFIED, got {verification_status.value}")
+        reasons.append(f"verification_status must be VERIFIED, got {verification_status!s}")
 
     if rights_status not in PUBLISHABLE_RIGHTS_STATUSES:
         codes.append("PUBLISH_RIGHTS_BLOCKED")
-        reasons.append(f"rights_status={rights_status.value} does not permit publication")
+        reasons.append(f"rights_status={rights_status!s} does not permit publication")
 
-    if not current_version_id:
+    if not isinstance(current_version_id, str) or not current_version_id.strip():
         codes.append("PUBLISH_MISSING_VERSION")
         reasons.append("current_version_id must be present before publication")
 
