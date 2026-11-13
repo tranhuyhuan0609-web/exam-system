@@ -26,8 +26,10 @@ from app.modules.quality.internal.sympy_runner import (
     evaluate_expression,
     verify_numeric_answer,
 )
+from app.modules.quality.internal.sympy_sandbox_worker import ALLOWED_SYMPY_NAMES
 
 __all__ = [
+    "ALLOWED_SYMPY_NAMES",
     "DEFAULT_MATH_PROBABILITY_KEYWORDS",
     "DISALLOWED_CHARACTER",
     "DISALLOWED_IDENTIFIER",

@@ -5,7 +5,10 @@ import { SharedArray } from "k6/data";
 import crypto from "k6/crypto";
 
 const sessions = new SharedArray("sessions", () => JSON.parse(open("./data/sessions.json")));
-const BASE_URL = __ENV.API_BASE_URL || "https://staging-api.ulp.edu.vn";
+const BASE_URL = __ENV.API_BASE_URL;
+if (!BASE_URL) {
+  throw new Error("API_BASE_URL is required, e.g. k6 run -e API_BASE_URL=https://<target> k6_exam_5000ccu.js");
+}
 
 export const options = {
   scenarios: {
