@@ -106,14 +106,14 @@ class SloEvaluationReport:
     violations: tuple[str, ...]
 
 
-def _scrub_string(value: str) -> str:
+def scrub_string(value: str) -> str:
     masked = _JWT_VALUE_RE.sub("[REDACTED_JWT]", value)
     masked = _EMAIL_VALUE_RE.sub("[REDACTED_EMAIL]", masked)
     masked = _VN_PHONE_RE.sub("[REDACTED_PHONE]", masked)
     return masked
 
 
-def _is_sensitive_key(key: str) -> bool:
+def is_sensitive_key(key: str) -> bool:
     spaced = _CAMEL_RE.sub("_", key)
     segments = [seg for seg in _NON_ALNUM_RE.split(spaced.lower()) if seg]
     if any(seg in _SENSITIVE_SEGMENTS for seg in segments):
@@ -127,7 +127,7 @@ def redact_telemetry_value(value: Any, *, key_hint: str = "", _depth: int = 0) -
 
     The result only contains JSON-safe scalars, lists and dicts.
     """
-    if key_hint and _is_sensitive_key(key_hint):
+    if key_hint and is_sensitive_key(key_hint):
         return "[REDACTED]"
     if _depth > MAX_REDACTION_DEPTH:
         return "[DEPTH_LIMIT]"
@@ -136,10 +136,10 @@ def redact_telemetry_value(value: Any, *, key_hint: str = "", _depth: int = 0) -
     if isinstance(value, float):
         return value if math.isfinite(value) else None
     if isinstance(value, str):
-        return _scrub_string(value)
+        return scrub_string(value)
     if isinstance(value, dict):
         return {
-            _scrub_string(str(k)): redact_telemetry_value(v, key_hint=str(k), _depth=_depth + 1)
+            scrub_string(str(k)): redact_telemetry_value(v, key_hint=str(k), _depth=_depth + 1)
             for k, v in value.items()
         }
     if isinstance(value, (list, tuple, set, frozenset)):
@@ -148,7 +148,7 @@ def redact_telemetry_value(value: Any, *, key_hint: str = "", _depth: int = 0) -
         return "[BYTES]"
     if isinstance(value, (datetime, date)):
         return value.isoformat()
-    return _scrub_string(str(value))
+    return scrub_string(str(value))
 
 
 def format_structured_log_event(
@@ -163,14 +163,14 @@ def format_structured_log_event(
 ) -> str:
     """Serialize one JSON telemetry event guaranteed free of PII or bearer secrets."""
     payload: dict[str, Any] = {
-        "level": _scrub_string(str(level).upper()),
-        "event": _scrub_string(str(event)),
-        "correlation_id": _scrub_string(str(correlation_id)),
+        "level": scrub_string(str(level).upper()),
+        "event": scrub_string(str(event)),
+        "correlation_id": scrub_string(str(correlation_id)),
     }
     if tenant_id:
-        payload["tenant_id"] = _scrub_string(str(tenant_id))
+        payload["tenant_id"] = scrub_string(str(tenant_id))
     if module:
-        payload["module"] = _scrub_string(str(module))
+        payload["module"] = scrub_string(str(module))
     if duration_ms is not None and math.isfinite(duration_ms):
         payload["duration_ms"] = round(duration_ms, 3)
     if attributes:

@@ -6,8 +6,9 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+from app.platform.telemetry import redact_telemetry_value, scrub_string
+
 _PROBLEM_BASE_URI = "https://errors.ulp.edu.vn/problems"
-_SENSITIVE_KEY_TOKENS: tuple[str, ...] = ("password", "secret", "token", "api_key", "authorization", "cookie")
 
 
 class PlatformErrorCode(StrEnum):
@@ -20,8 +21,8 @@ class PlatformErrorCode(StrEnum):
     STALE_CLIENT_SEQUENCE = "STALE_CLIENT_SEQUENCE"
     PREREQUISITE_CYCLE_DETECTED = "PREREQUISITE_CYCLE_DETECTED"
     PUBLISH_GATE_BLOCKED = "PUBLISH_GATE_BLOCKED"
-    IDEMPOTENCY_PAYLOAD_MISMATCH = "IDEMPOTENCY_PAYLOAD_MISMATCH"
-    AI_DAILY_BUDGET_EXCEEDED = "AI_DAILY_BUDGET_EXCEEDED"
+    PAYLOAD_HASH_MISMATCH = "PAYLOAD_HASH_MISMATCH"
+    DAILY_AI_BUDGET_EXCEEDED = "DAILY_AI_BUDGET_EXCEEDED"
     RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED"
     VALIDATION_ERROR = "VALIDATION_ERROR"
     INTERNAL_ERROR = "INTERNAL_ERROR"
@@ -37,12 +38,20 @@ _ERROR_HTTP_SPEC: dict[PlatformErrorCode, tuple[int, str]] = {
     PlatformErrorCode.STALE_CLIENT_SEQUENCE: (409, "Stale Autosave Client Sequence"),
     PlatformErrorCode.PREREQUISITE_CYCLE_DETECTED: (422, "Knowledge Graph Cycle Detected"),
     PlatformErrorCode.PUBLISH_GATE_BLOCKED: (422, "Publish Gate Check Failed"),
-    PlatformErrorCode.IDEMPOTENCY_PAYLOAD_MISMATCH: (422, "Idempotency Key Reused With Different Payload"),
-    PlatformErrorCode.AI_DAILY_BUDGET_EXCEEDED: (429, "Tenant Daily AI Budget Exceeded"),
+    PlatformErrorCode.PAYLOAD_HASH_MISMATCH: (422, "Idempotency Key Reused With Different Payload"),
+    PlatformErrorCode.DAILY_AI_BUDGET_EXCEEDED: (429, "Tenant Daily AI Budget Exceeded"),
     PlatformErrorCode.RATE_LIMIT_EXCEEDED: (429, "Rate Limit Exceeded"),
     PlatformErrorCode.VALIDATION_ERROR: (422, "Validation Failed"),
     PlatformErrorCode.INTERNAL_ERROR: (500, "Internal Server Error"),
 }
+
+
+def _validated_status(override: int | None, default: int) -> int:
+    if override is None:
+        return default
+    if isinstance(override, bool) or not isinstance(override, int) or not 400 <= override <= 599:
+        return default
+    return override
 
 
 class PlatformError(Exception):
@@ -57,9 +66,10 @@ class PlatformError(Exception):
         extensions: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(detail)
+        code = PlatformErrorCode(code)
         default_status, title = _ERROR_HTTP_SPEC[code]
         self.code = code
-        self.status_code = status_code or default_status
+        self.status_code = _validated_status(status_code, default_status)
         self.title = title
         self.detail = detail
         self.extensions = dict(extensions or {})
@@ -94,16 +104,9 @@ class ProblemDetail:
 
 
 def _sanitize_extensions(raw: dict[str, Any]) -> dict[str, Any]:
-    sanitized: dict[str, Any] = {}
-    for key, val in raw.items():
-        lowered = key.lower()
-        if any(tok in lowered for tok in _SENSITIVE_KEY_TOKENS):
-            sanitized[key] = "[REDACTED]"
-        elif isinstance(val, dict):
-            sanitized[key] = _sanitize_extensions(val)
-        else:
-            sanitized[key] = val
-    return sanitized
+    """Redact secret-like keys at any depth (dicts inside lists/tuples included) and scrub PII text."""
+    cleaned = redact_telemetry_value(dict(raw))
+    return cleaned if isinstance(cleaned, dict) else {}
 
 
 def build_problem_detail(
@@ -121,8 +124,8 @@ def build_problem_detail(
     return ProblemDetail(
         type=f"{_PROBLEM_BASE_URI}/{slug}",
         title=title,
-        status=status_override or default_status,
-        detail=detail,
+        status=_validated_status(status_override, default_status),
+        detail=scrub_string(str(detail)),
         instance=instance,
         error_code=code.value,
         correlation_id=correlation_id,
