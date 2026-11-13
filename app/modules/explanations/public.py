@@ -1,4 +1,4 @@
-"""Public API of the solution_explainer module (E04)."""
+"""Public API of the explanations module (E04)."""
 
 from .internal.explainer import (
     CrossCheckResult,

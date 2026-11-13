@@ -1,4 +1,4 @@
-"""Public API of the ai_generation module (E03)."""
+"""Public API of the generation module (E03)."""
 
 from .internal.gap_filler import (
     ALLOWED_ANCHOR_RIGHTS,

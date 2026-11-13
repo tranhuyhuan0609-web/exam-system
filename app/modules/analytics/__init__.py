@@ -1,1 +1,1 @@
-"""G04 Operational Analytics Warehouse & G06 Vertical Packs domain package."""
+"""G04 Operational Analytics rollups domain package."""

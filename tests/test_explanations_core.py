@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.solution_explainer.public import (
+from app.modules.explanations.public import (
     CrossCheckVerdict,
     SolutionSectionKind,
     SolutionStep,

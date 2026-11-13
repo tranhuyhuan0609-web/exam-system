@@ -285,40 +285,49 @@ allowed_importers =
     app.modules.exam_import
     app.model_registry
 
-[importlinter:contract:internal-parser_registry]
-name = parser_registry internals are private to the module
+[importlinter:contract:internal-parsers]
+name = parsers internals are private to the module
 type = protected
 protected_modules =
-    app.modules.parser_registry.internal
+    app.modules.parsers.internal
 allowed_importers =
-    app.modules.parser_registry
+    app.modules.parsers
     app.model_registry
 
-[importlinter:contract:internal-ai_generation]
-name = ai_generation internals are private to the module
+[importlinter:contract:internal-generation]
+name = generation internals are private to the module
 type = protected
 protected_modules =
-    app.modules.ai_generation.internal
+    app.modules.generation.internal
 allowed_importers =
-    app.modules.ai_generation
+    app.modules.generation
     app.model_registry
 
-[importlinter:contract:internal-solution_explainer]
-name = solution_explainer internals are private to the module
+[importlinter:contract:internal-explanations]
+name = explanations internals are private to the module
 type = protected
 protected_modules =
-    app.modules.solution_explainer.internal
+    app.modules.explanations.internal
 allowed_importers =
-    app.modules.solution_explainer
+    app.modules.explanations
     app.model_registry
 
-[importlinter:contract:internal-copilot]
-name = copilot internals are private to the module
+[importlinter:contract:internal-recommendations]
+name = recommendations internals are private to the module
 type = protected
 protected_modules =
-    app.modules.copilot.internal
+    app.modules.recommendations.internal
 allowed_importers =
-    app.modules.copilot
+    app.modules.recommendations
+    app.model_registry
+
+[importlinter:contract:internal-teacher_copilot]
+name = teacher_copilot internals are private to the module
+type = protected
+protected_modules =
+    app.modules.teacher_copilot.internal
+allowed_importers =
+    app.modules.teacher_copilot
     app.model_registry
 
 [importlinter:contract:internal-analytics]
@@ -328,4 +337,13 @@ protected_modules =
     app.modules.analytics.internal
 allowed_importers =
     app.modules.analytics
+    app.model_registry
+
+[importlinter:contract:internal-vertical_packs]
+name = vertical_packs internals are private to the module
+type = protected
+protected_modules =
+    app.modules.vertical_packs.internal
+allowed_importers =
+    app.modules.vertical_packs
     app.model_registry

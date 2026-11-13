@@ -11,7 +11,7 @@ from app.contracts.enums import (
     RightsStatus,
     VerificationStatus,
 )
-from app.modules.ai_generation.public import (
+from app.modules.generation.public import (
     GenerationPolicyError,
     GenerationStatus,
     MatrixGapCell,

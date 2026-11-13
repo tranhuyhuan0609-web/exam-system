@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.modules.parser_registry.public import (
+from app.modules.parsers.public import (
     MAX_DOCUMENT_XML_BYTES,
     DocumentFormat,
     DocumentXmlTooLargeError,

@@ -1,4 +1,4 @@
-"""Public API of the parser_registry module (A05)."""
+"""Public API of the parsers module (A05)."""
 
 from .internal.routing import (
     DEFAULT_OCR_CHAR_THRESHOLD,

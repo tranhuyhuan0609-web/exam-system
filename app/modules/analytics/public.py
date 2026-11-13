@@ -1,4 +1,4 @@
-"""Public API of the analytics module (G04 & G06)."""
+"""Public API of the analytics module (G04)."""
 
 from .internal.rollups import (
     AnalyticsEvent,
@@ -6,20 +6,10 @@ from .internal.rollups import (
     DailyMetricRollup,
     compute_daily_metric_rollup,
 )
-from .internal.verticals import (
-    VerticalPackConfig,
-    VerticalPackError,
-    VerticalPackRegistry,
-    resolve_localized_label,
-)
 
 __all__ = [
     "AnalyticsEvent",
     "AnalyticsEventType",
     "DailyMetricRollup",
-    "VerticalPackConfig",
-    "VerticalPackError",
-    "VerticalPackRegistry",
     "compute_daily_metric_rollup",
-    "resolve_localized_label",
 ]
