@@ -167,3 +167,21 @@ protected_modules =
 allowed_importers =
     app.modules.curriculum
     app.model_registry
+
+[importlinter:contract:internal-mastery]
+name = mastery internals are private to the module
+type = protected
+protected_modules =
+    app.modules.mastery.internal
+allowed_importers =
+    app.modules.mastery
+    app.model_registry
+
+[importlinter:contract:internal-learning_path]
+name = learning_path internals are private to the module
+type = protected
+protected_modules =
+    app.modules.learning_path.internal
+allowed_importers =
+    app.modules.learning_path
+    app.model_registry
