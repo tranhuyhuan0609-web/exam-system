@@ -230,3 +230,12 @@ protected_modules =
 allowed_importers =
     app.modules.privacy
     app.model_registry
+
+[importlinter:contract:internal-layout]
+name = layout internals are private to the module
+type = protected
+protected_modules =
+    app.modules.layout.internal
+allowed_importers =
+    app.modules.layout
+    app.model_registry
