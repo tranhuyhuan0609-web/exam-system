@@ -2,6 +2,7 @@
 
 from app.modules.gradebook.internal.analytics import (
     ClassAnalyticsSummary,
+    GradebookError,
     ItemResponseObservation,
     QuestionDistractorReport,
     StudentAttemptGrade,
@@ -11,6 +12,7 @@ from app.modules.gradebook.internal.analytics import (
 
 __all__ = [
     "ClassAnalyticsSummary",
+    "GradebookError",
     "ItemResponseObservation",
     "QuestionDistractorReport",
     "StudentAttemptGrade",
