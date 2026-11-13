@@ -266,3 +266,12 @@ protected_modules =
 allowed_importers =
     app.modules.ai_gateway
     app.model_registry
+
+[importlinter:contract:internal-assets]
+name = assets internals are private to the module
+type = protected
+protected_modules =
+    app.modules.assets.internal
+allowed_importers =
+    app.modules.assets
+    app.model_registry
