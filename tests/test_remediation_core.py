@@ -46,11 +46,16 @@ def test_handles_cycles_self_loops_and_duplicate_edges_deterministically():
     mastery = {n1: 0.10, n2: 0.20, n3: 0.30}
 
     p1 = resolve_prerequisite_remediation_order([n3, n1], edges, mastery)
-    p2 = resolve_prerequisite_remediation_order([n1, n3], list(reversed(edges)), mastery)
+    p2 = resolve_prerequisite_remediation_order([n3, n1], list(reversed(edges)), mastery)
 
     assert p1 == p2
     assert len(p1) == 3
     assert {step.node_id for step in p1} == {n1, n2, n3}
+    assert all(
+        step.reason_code == "WEAK_TARGET" and step.dependent_node_id is None
+        for step in p1
+        if step.node_id in {n1, n3}
+    )
 
 
 def test_deep_graph_exceeding_recursion_limit_runs_iteratively():
@@ -82,3 +87,25 @@ def test_configurable_prerequisite_mastery_threshold():
         resolve_prerequisite_remediation_order(
             [target], edges, mastery, prerequisite_mastery_threshold=1.5
         )
+
+
+def test_preserves_caller_weak_priority_order_and_marks_dual_role_as_weak_target():
+    low_id, high_id = _u(10), _u(999)
+    mastery = {low_id: 0.20, high_id: 0.25}
+
+    # Caller puts higher UUID first -> must NOT be re-sorted by UUID.
+    plan = resolve_prerequisite_remediation_order([high_id, low_id], [], mastery)
+    assert [s.node_id for s in plan] == [high_id, low_id]
+
+    # When prereq is BOTH a prerequisite of target AND explicitly in weak_node_ids,
+    # it must still carry WEAK_TARGET (even when target comes first in weak_node_ids).
+    prereq, target = _u(500), _u(1)
+    dual_plan = resolve_prerequisite_remediation_order(
+        [target, prereq],
+        [PrerequisiteEdge(prereq, target)],
+        {prereq: 0.15, target: 0.20},
+    )
+    assert dual_plan == (
+        RemediationStep(node_id=prereq, reason_code="WEAK_TARGET", dependent_node_id=None),
+        RemediationStep(node_id=target, reason_code="WEAK_TARGET", dependent_node_id=None),
+    )

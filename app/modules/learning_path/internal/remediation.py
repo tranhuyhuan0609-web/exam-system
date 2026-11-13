@@ -59,10 +59,13 @@ def resolve_prerequisite_remediation_order(
         for node_id, parents in parents_by_node.items()
     }
 
+    ordered_weak_ids = tuple(dict.fromkeys(weak_node_ids))
+    weak_set = set(ordered_weak_ids)
+
     state: dict[UUID, int] = {}
     plan: list[RemediationStep] = []
 
-    for weak_id in sorted(set(weak_node_ids)):
+    for weak_id in ordered_weak_ids:
         if state.get(weak_id, _UNVISITED) != _UNVISITED:
             continue
 
@@ -79,7 +82,9 @@ def resolve_prerequisite_remediation_order(
                 if current_state != _UNVISITED:
                     continue
                 state[node_id] = _VISITING
-                stack.append((node_id, reason_code, dependent_id, False))
+                step_reason: ReasonCode = "WEAK_TARGET" if node_id in weak_set else reason_code
+                step_dependent: UUID | None = None if node_id in weak_set else dependent_id
+                stack.append((node_id, step_reason, step_dependent, False))
 
                 parents = sorted_parents.get(node_id, ())
                 for parent_id in reversed(parents):
@@ -88,7 +93,10 @@ def resolve_prerequisite_remediation_order(
                         state.get(parent_id, _UNVISITED) == _UNVISITED
                         and parent_mastery < prerequisite_mastery_threshold
                     ):
-                        stack.append((parent_id, "PREREQUISITE_OF", node_id, True))
+                        if parent_id in weak_set:
+                            stack.append((parent_id, "WEAK_TARGET", None, True))
+                        else:
+                            stack.append((parent_id, "PREREQUISITE_OF", node_id, True))
             else:
                 if current_state == _VISITING:
                     state[node_id] = _DONE

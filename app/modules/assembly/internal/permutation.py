@@ -52,7 +52,11 @@ class AttemptPermutation:
 
 
 def _section_sort_key(section_code: str) -> tuple[int, str]:
-    return (_SECTION_RANK.get(section_code, len(_SECTION_RANK)), section_code)
+    rank = _SECTION_RANK.get(section_code)
+    if rank is None:
+        supported = ", ".join(sorted(_SECTION_RANK))
+        raise ValueError(f"Unknown section_code {section_code!r}; expected one of: {supported}")
+    return (rank, section_code)
 
 
 def _item_sort_key(item: PermutationItemInput) -> tuple[int, str, str, int, str]:
