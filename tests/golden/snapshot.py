@@ -59,7 +59,11 @@ def git_commit() -> dict[str, Any]:
             return ""
 
     dirty = run("status", "--porcelain", "--", "app")
-    return {"commit": run("rev-parse", "HEAD"), "branch": run("rev-parse", "--abbrev-ref", "HEAD"), "app_dirty": bool(dirty)}
+    return {
+        "commit": run("rev-parse", "HEAD"),
+        "branch": run("rev-parse", "--abbrev-ref", "HEAD"),
+        "app_dirty": bool(dirty),
+    }
 
 
 def _r(values: Any, nd: int = 2) -> list[float]:
@@ -118,7 +122,12 @@ def record_renders(log: list[dict[str, Any]]):
 # -- per-page readings -----------------------------------------------------------------------------
 
 
-def read_pages(pdf: Path) -> list[dict[str, Any]]:
+# PyMuPDF's own table finder (not used by the application; recorded only as extra reference data)
+# dies with an access violation on these files, which no try/except can catch.
+TABLE_PROBE_CRASHES = frozenset({"g10"})
+
+
+def read_pages(pdf: Path, probe_tables: bool = True) -> list[dict[str, Any]]:
     import pymupdf
 
     from app.ai import essay_exam
@@ -129,10 +138,13 @@ def read_pages(pdf: Path) -> list[dict[str, Any]]:
         lines, geometries = essay_exam._extract_pdf_lines(doc)
         for index, page in enumerate(doc):
             geom = page_geometry(page)
-            try:
-                tables = [_r(t.bbox) for t in page.find_tables().tables]
-            except Exception as exc:  # noqa: BLE001 - recorded, not fatal
-                tables = [f"error: {exc}"]
+            if not probe_tables:
+                tables = ["skipped: PyMuPDF table finder crashes on this file"]
+            else:
+                try:
+                    tables = [_r(t.bbox) for t in page.find_tables().tables]
+                except Exception as exc:  # noqa: BLE001 - recorded, not fatal
+                    tables = [f"error: {exc}"]
             pages.append(
                 {
                     "index": index,
@@ -286,7 +298,7 @@ def snapshot(path: Path) -> dict[str, Any]:
         pdf = converted_pdf(path)
         result["converted_pdf"] = str(pdf.relative_to(golden_dir()))
     t = time.perf_counter()
-    result["pages"] = read_pages(pdf)
+    result["pages"] = read_pages(pdf, probe_tables=file_id(path) not in TABLE_PROBE_CRASHES)
     result["page_count"] = len(result["pages"])
     pages_time = time.perf_counter() - t
     result.update(read_document(pdf))
