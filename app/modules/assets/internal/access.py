@@ -1,4 +1,7 @@
-"""B03 Media & Asset Management core rules: two-step upload finalize, ClamAV/MIME/SHA256, and signed URL access policy."""
+"""B03 Media & Asset Management core rules.
+
+Two-step upload finalize, ClamAV/MIME/SHA256, and signed URL access policy.
+"""
 
 from __future__ import annotations
 
@@ -20,7 +23,9 @@ ALLOWED_MIME_TYPES: frozenset[str] = frozenset(
     }
 )
 
-_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_SHA256_RE = re.compile(r"[0-9a-f]{64}")
+# Identifiers become part of object keys: no separators, dots or whitespace, so no traversal.
+_SAFE_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 class UploadSessionStatus(StrEnum):
@@ -116,14 +121,24 @@ class SignedUrlPlan:
     page_limit: int | None
 
 
+def _safe_id(name: str, value: object) -> str:
+    if not isinstance(value, str) or not _SAFE_ID_RE.fullmatch(value):
+        raise UploadValidationError(f"{name} must match [A-Za-z0-9_-]{{1,64}}")
+    return value
+
+
 def _normalize_sha256(value: str) -> str:
+    if not isinstance(value, str):
+        raise UploadValidationError("sha256 must be a string")
     cleaned = value.strip().lower()
-    if not _SHA256_RE.match(cleaned):
+    if not _SHA256_RE.fullmatch(cleaned):
         raise UploadValidationError("sha256 must be a 64-character lowercase hex digest")
     return cleaned
 
 
 def _normalize_mime(value: str) -> str:
+    if not isinstance(value, str):
+        raise UploadValidationError("mime type must be a string")
     cleaned = value.strip().lower().split(";", 1)[0].strip()
     if cleaned not in ALLOWED_MIME_TYPES:
         raise UploadValidationError(f"unsupported mime type: {value!r}")
@@ -151,21 +166,28 @@ def initiate_upload_session(
     put_ttl_seconds: int = MAX_SIGNED_URL_TTL_SECONDS,
 ) -> tuple[UploadSession, PresignedPutDescriptor]:
     """Create step-1 private upload session and constrained Presigned PUT descriptor."""
-    if not tenant_id.strip() or not asset_id.strip() or not session_id.strip():
-        raise UploadValidationError("session_id, tenant_id, and asset_id are required")
+    session_id = _safe_id("session_id", session_id)
+    tenant_id = _safe_id("tenant_id", tenant_id)
+    asset_id = _safe_id("asset_id", asset_id)
+    if visibility not in tuple(AssetVisibility):
+        raise UploadValidationError(f"unknown visibility: {visibility!r}")
+    if isinstance(declared_size_bytes, bool) or not isinstance(declared_size_bytes, int):
+        raise UploadValidationError("declared_size_bytes must be an integer")
     if declared_size_bytes <= 0 or declared_size_bytes > MAX_ASSET_BYTES:
         raise UploadValidationError(f"declared_size_bytes out of bounds: {declared_size_bytes}")
+    if isinstance(put_ttl_seconds, bool) or not isinstance(put_ttl_seconds, int):
+        raise SignedUrlPolicyError("PUT TTL must be an integer number of seconds")
     if put_ttl_seconds <= 0 or put_ttl_seconds > MAX_SIGNED_URL_TTL_SECONDS:
         raise SignedUrlPolicyError(f"PUT TTL must be between 1 and {MAX_SIGNED_URL_TTL_SECONDS}s")
 
     norm_mime = _normalize_mime(declared_mime_type)
     norm_sha = _normalize_sha256(declared_sha256)
-    object_key = f"private/{tenant_id.strip()}/assets/{asset_id.strip()}/{norm_sha}"
+    object_key = f"private/{tenant_id}/assets/{asset_id}/{norm_sha}"
 
     session = UploadSession(
-        session_id=session_id.strip(),
-        tenant_id=tenant_id.strip(),
-        asset_id=asset_id.strip(),
+        session_id=session_id,
+        tenant_id=tenant_id,
+        asset_id=asset_id,
         declared_mime_type=norm_mime,
         declared_sha256=norm_sha,
         declared_size_bytes=declared_size_bytes,
@@ -207,6 +229,8 @@ def finalize_upload_session(
             f"observed mime {norm_mime} mismatches declared {session.declared_mime_type}"
         )
 
+    if isinstance(observed_size_bytes, bool) or not isinstance(observed_size_bytes, int):
+        raise UploadValidationError("observed size must be an integer")
     if observed_size_bytes <= 0 or observed_size_bytes != session.declared_size_bytes:
         raise UploadValidationError("observed file size does not match declared size")
 
@@ -218,7 +242,7 @@ def finalize_upload_session(
     preview_key: str | None = None
     preview_pages: int | None = None
     if norm_mime == "application/pdf":
-        if page_count is None or page_count <= 0:
+        if isinstance(page_count, bool) or not isinstance(page_count, int) or page_count <= 0:
             raise UploadValidationError("PDF assets require positive page_count for preview generation")
         preview_pages = min(page_count, PREVIEW_MAX_PAGES)
         preview_key = f"private/{session.tenant_id}/previews/{session.asset_id}/{norm_sha}_p{preview_pages}.pdf"
@@ -248,10 +272,19 @@ def resolve_asset_download_plan(
     ttl_seconds: int = MAX_SIGNED_URL_TTL_SECONDS,
 ) -> SignedUrlPlan:
     """Resolve signed GET URL plan enforcing tenant RLS (404 IDOR guard), <=15m TTL, and FREE preview-only cap."""
-    if asset.visibility == AssetVisibility.TENANT_PRIVATE and asset.tenant_id != actor_tenant_id:
+    if not isinstance(actor_tenant_id, str) or not actor_tenant_id.strip():
+        raise AssetNotFoundError(f"asset {asset.asset_id!r} not found")
+    if actor_tier not in tuple(AssetEntitlementTier):
+        raise SignedUrlPolicyError(f"unknown entitlement tier: {actor_tier!r}")
+    if asset.visibility != AssetVisibility.SYSTEM_PUBLIC and (
+        asset.visibility != AssetVisibility.TENANT_PRIVATE or asset.tenant_id != actor_tenant_id
+    ):
+        # Unknown visibility values are treated as private (fail closed).
         raise AssetNotFoundError(f"asset {asset.asset_id!r} not found")
     if not asset.finalized:
         raise SignedUrlPolicyError("cannot issue signed URL before upload finalize")
+    if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, int):
+        raise SignedUrlPolicyError("GET TTL must be an integer number of seconds")
     if ttl_seconds <= 0 or ttl_seconds > MAX_SIGNED_URL_TTL_SECONDS:
         raise SignedUrlPolicyError(f"GET TTL must be within 1..{MAX_SIGNED_URL_TTL_SECONDS}s")
 
