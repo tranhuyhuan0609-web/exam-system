@@ -11,7 +11,15 @@ git-ignored golden folder; the comparison test only commits numbers.
 (the same way the import pipeline does) and the converted PDF is kept under ``_baseline/_converted`` so that the
 before and after runs read the very same bytes.
 
-This version drives the PyMuPDF-based readers (engine ``pymupdf``).
+Engines. The snapshot always drives the readers as they are in the checked-out code, and the ``engine`` field of
+each JSON says which PDF engine produced it:
+
+* ``pymupdf``: written by the first version of this tool (``git show e523140:tests/golden/snapshot.py``), run at
+  the commit before the readers moved to the adapter. Reference data, never regenerated. Its ``blocks`` / ``words``
+  / ``tables`` / ``clusters_*`` are PyMuPDF's own page methods.
+* ``pdfium``: this version, run on the migrated readers (``PDFEngineAdapter``). ``blocks`` are the adapter's
+  blocks, ``words`` are the whitespace tokens of the adapter's text lines (boxed with their line), ``tables`` are
+  the adapter's ruled tables and ``clusters_*`` its ``cluster_drawings``.
 """
 
 from __future__ import annotations
@@ -29,7 +37,7 @@ from pathlib import Path
 from typing import Any
 
 REPO = Path(__file__).resolve().parents[2]
-ENGINE = "pymupdf"
+ENGINE = "pdfium"
 
 
 def golden_dir() -> Path:
@@ -105,55 +113,48 @@ def patched(module: Any, name: str, wrapper_factory):
 @contextmanager
 def record_renders(log: list[dict[str, Any]]):
     """Log the clip rectangle of every page render (figure crops are renders of a clip)."""
-    import pymupdf
+    from app.infrastructure.pdf_engine import PDFEngineAdapter
 
     def factory(original):
-        def get_pixmap(self, *args, **kwargs):
-            clip = kwargs.get("clip")
-            log.append({"page": self.number + 1, "clip": _r(pymupdf.Rect(clip)) if clip is not None else None})
-            return original(self, *args, **kwargs)
+        def render(self, index, dpi=300.0, clip=None):
+            log.append({"page": index + 1, "clip": _r(clip.as_tuple()) if clip is not None else None})
+            return original(self, index, dpi, clip)
 
-        return get_pixmap
+        return render
 
-    with patched(pymupdf.Page, "get_pixmap", factory):
+    with patched(PDFEngineAdapter, "render", factory):
         yield
 
 
 # -- per-page readings -----------------------------------------------------------------------------
 
 
-# PyMuPDF's own table finder (not used by the application; recorded only as extra reference data)
-# dies with an access violation on these files, which no try/except can catch.
-TABLE_PROBE_CRASHES = frozenset({"g10"})
-
-
-def read_pages(pdf: Path, probe_tables: bool = True) -> list[dict[str, Any]]:
-    import pymupdf
-
+def read_pages(pdf: Path) -> list[dict[str, Any]]:
     from app.ai import essay_exam
     from app.ai.figures import extract_unlabeled_diagrams, page_geometry
+    from app.infrastructure.pdf_engine import PDFEngineAdapter
 
     pages: list[dict[str, Any]] = []
-    with pymupdf.open(pdf) as doc:
+    with PDFEngineAdapter.open(pdf) as doc:
         lines, geometries = essay_exam._extract_pdf_lines(doc)
-        for index, page in enumerate(doc):
-            geom = page_geometry(page)
-            if not probe_tables:
-                tables = ["skipped: PyMuPDF table finder crashes on this file"]
-            else:
-                try:
-                    tables = [_r(t.bbox) for t in page.find_tables().tables]
-                except Exception as exc:  # noqa: BLE001 - recorded, not fatal
-                    tables = [f"error: {exc}"]
+        for index in range(doc.page_count):
+            geom = page_geometry(doc, index)
+            try:
+                tables = [_r(t.as_tuple()) for t in doc.table_rects(index)]
+            except Exception as exc:  # noqa: BLE001 - recorded, not fatal
+                tables = [f"error: {exc}"]
+            words = [
+                [*_r(ln.rect.as_tuple()), token] for ln in doc.rich_lines(index) for token in ln.text.split()
+            ]
             pages.append(
                 {
                     "index": index,
-                    "size": _r((page.rect.width, page.rect.height)),
+                    "size": _r(doc.page_size(index)),
                     "essay_lines": [
                         [ln.ymin, ln.xmin, ln.ymax, ln.xmax, ln.text] for ln in lines if ln.page == index + 1
                     ],
-                    "blocks": [[*_r(b[:4]), b[4], int(b[6])] for b in page.get_text("blocks")],
-                    "words": [[*_r(w[:4]), w[4]] for w in page.get_text("words")],
+                    "blocks": [[*_r(b.rect.as_tuple()), b.text, b.kind] for b in doc.blocks(index)],
+                    "words": words,
                     "geometry": {
                         "graphics": [_box(b) for b in geom.graphics],
                         "images": [_box(b) for b in geom.images],
@@ -162,9 +163,11 @@ def read_pages(pdf: Path, probe_tables: bool = True) -> list[dict[str, Any]]:
                     "essay_geometry_graphics": len(geometries[index].graphics),
                     "figure_bands": [_box(b.box) for b in essay_exam.figure_band_crops(geom, 0, 1000)],
                     "tables": tables,
-                    "clusters_3": [_r(r) for r in page.cluster_drawings()],
-                    "clusters_25": [_r(r) for r in page.cluster_drawings(x_tolerance=25, y_tolerance=25)],
-                    "unlabeled_diagrams": [_box(b) for b in extract_unlabeled_diagrams(page)],
+                    "clusters_3": [_r(r.as_tuple()) for r in doc.cluster_drawings(index)],
+                    "clusters_25": [
+                        _r(r.as_tuple()) for r in doc.cluster_drawings(index, x_tolerance=25, y_tolerance=25)
+                    ],
+                    "unlabeled_diagrams": [_box(b) for b in extract_unlabeled_diagrams(doc, index)],
                 }
             )
     return pages
@@ -298,7 +301,7 @@ def snapshot(path: Path) -> dict[str, Any]:
         pdf = converted_pdf(path)
         result["converted_pdf"] = str(pdf.relative_to(golden_dir()))
     t = time.perf_counter()
-    result["pages"] = read_pages(pdf, probe_tables=file_id(path) not in TABLE_PROBE_CRASHES)
+    result["pages"] = read_pages(pdf)
     result["page_count"] = len(result["pages"])
     pages_time = time.perf_counter() - t
     result.update(read_document(pdf))
