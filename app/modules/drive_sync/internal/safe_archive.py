@@ -32,6 +32,9 @@ class SafeArchivePolicy:
     allowed_extensions: tuple[str, ...] = (".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png")
 
 
+DEFAULT_POLICY = SafeArchivePolicy()
+
+
 @dataclass(frozen=True)
 class ArchiveEntrySummary:
     """Validated metadata for a single file entry inside a ZIP archive."""
@@ -60,9 +63,6 @@ def _validate_entry_path(raw_name: str) -> str:
         raise ArchiveSecurityViolationError(f"PATH_TRAVERSAL_BLOCKED: {raw_name}")
 
     raw_parts = raw_name.rstrip("/").split("/")
-    if any(part in ("..", "") for part in raw_parts if part != ""):
-        # Catch raw ".." segments before normalization collapses them.
-        pass
     if ".." in raw_parts:
         raise ArchiveSecurityViolationError(f"PATH_TRAVERSAL_BLOCKED: {raw_name}")
     if raw_parts and ":" in raw_parts[0]:
@@ -76,7 +76,7 @@ def _validate_entry_path(raw_name: str) -> str:
 
 def inspect_zip(
     path: str | Path,
-    policy: SafeArchivePolicy = SafeArchivePolicy(),
+    policy: SafeArchivePolicy = DEFAULT_POLICY,
 ) -> ArchiveInspectionResult:
     """Inspect a ZIP archive's central directory without extracting any files."""
     zip_path = Path(path)
@@ -153,7 +153,7 @@ def inspect_zip(
 def extract_zip_safely(
     zip_path: str | Path,
     target_extract_dir: str | Path,
-    policy: SafeArchivePolicy = SafeArchivePolicy(),
+    policy: SafeArchivePolicy = DEFAULT_POLICY,
 ) -> tuple[Path, ...]:
     """Validate central directory via ``inspect_zip`` then extract allowed extensions."""
     inspection = inspect_zip(zip_path, policy=policy)
