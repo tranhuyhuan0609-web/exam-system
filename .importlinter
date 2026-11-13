@@ -167,3 +167,21 @@ protected_modules =
 allowed_importers =
     app.modules.curriculum
     app.model_registry
+
+[importlinter:contract:internal-knowledge_graph]
+name = knowledge_graph internals are private to the module
+type = protected
+protected_modules =
+    app.modules.knowledge_graph.internal
+allowed_importers =
+    app.modules.knowledge_graph
+    app.model_registry
+
+[importlinter:contract:internal-error_notebook]
+name = error_notebook internals are private to the module
+type = protected
+protected_modules =
+    app.modules.error_notebook.internal
+allowed_importers =
+    app.modules.error_notebook
+    app.model_registry
