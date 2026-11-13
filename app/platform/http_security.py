@@ -5,7 +5,10 @@ from __future__ import annotations
 import ipaddress
 import re
 
-_ORIGIN_RE = re.compile(r"^https?://[A-Za-z0-9.-]+(?::\d{1,5})?$")
+_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+_ORIGIN_RE = re.compile(rf"(?i:https?)://{_LABEL}(?:\.{_LABEL})*(?::(\d{{1,5}}))?", re.ASCII)
+MAX_FORWARDED_FOR_LENGTH = 2048
+MAX_FORWARDED_HOPS = 50
 
 
 class SecurityConfigError(ValueError):
@@ -51,6 +54,8 @@ def validate_cors_origins(
     """Validate CORS origin list: forbid wildcard '*' with credentials and reject pathful origins."""
     normalized: list[str] = []
     for raw in allowed_origins:
+        if not isinstance(raw, str):
+            raise SecurityConfigError("CORS origin entries must be strings")
         origin = raw.strip().rstrip("/")
         if not origin:
             raise SecurityConfigError("CORS origin entries cannot be empty")
@@ -59,8 +64,9 @@ def validate_cors_origins(
                 raise SecurityConfigError("CORS wildcard '*' is forbidden when allow_credentials=True")
             normalized.append("*")
             continue
-        if not _ORIGIN_RE.match(origin):
-            raise SecurityConfigError(f"invalid CORS origin syntax: {raw!r}")
+        match = _ORIGIN_RE.fullmatch(origin)
+        if match is None or (match.group(1) is not None and int(match.group(1)) > 65535):
+            raise SecurityConfigError("invalid CORS origin syntax")
         normalized.append(origin.lower())
     return tuple(dict.fromkeys(normalized))
 
@@ -72,13 +78,41 @@ def is_origin_allowed(
     allow_credentials: bool,
 ) -> bool:
     """Check whether an incoming Origin header matches the validated CORS allowlist."""
-    if not origin:
+    if not origin or not isinstance(origin, str):
         return False
     validated = validate_cors_origins(allowed_origins, allow_credentials=allow_credentials)
     candidate = origin.strip().rstrip("/").lower()
     if "*" in validated:
         return True
     return candidate in validated
+
+
+def _parse_ip(raw: object) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """Parse a literal IP; IPv4-mapped IPv6 is unwrapped, zone ids and junk are rejected."""
+    if not isinstance(raw, str):
+        return None
+    try:
+        ip_obj = ipaddress.ip_address(raw.strip())
+    except ValueError:
+        return None
+    if isinstance(ip_obj, ipaddress.IPv6Address):
+        if ip_obj.scope_id is not None:
+            return None
+        if ip_obj.ipv4_mapped is not None:
+            return ip_obj.ipv4_mapped
+    return ip_obj
+
+
+def _parse_trusted_networks(cidrs: tuple[str, ...]) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+    nets: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    for cidr in cidrs:
+        if not isinstance(cidr, str):
+            raise SecurityConfigError("invalid trusted proxy CIDR")
+        try:
+            nets.append(ipaddress.ip_network(cidr.strip(), strict=False))
+        except ValueError as exc:
+            raise SecurityConfigError("invalid trusted proxy CIDR") from exc
+    return nets
 
 
 def extract_client_ip(
@@ -88,16 +122,19 @@ def extract_client_ip(
     trusted_proxy_cidrs: tuple[str, ...] = (),
 ) -> str:
     """Resolve client IP from X-Forwarded-For walking right-to-left across trusted proxy CIDRs only."""
-    try:
-        direct_ip = ipaddress.ip_address(remote_addr.strip())
-    except ValueError as exc:
-        raise SecurityConfigError(f"invalid remote_addr: {remote_addr!r}") from exc
+    direct_ip = _parse_ip(remote_addr)
+    if direct_ip is None:
+        raise SecurityConfigError("invalid remote_addr")
 
-    trusted_nets = [ipaddress.ip_network(cidr.strip(), strict=False) for cidr in trusted_proxy_cidrs]
+    trusted_nets = _parse_trusted_networks(trusted_proxy_cidrs)
     if not trusted_nets or not any(direct_ip in net for net in trusted_nets):
         return str(direct_ip)
 
-    if not x_forwarded_for or not x_forwarded_for.strip():
+    if (
+        not isinstance(x_forwarded_for, str)
+        or not x_forwarded_for.strip()
+        or len(x_forwarded_for) > MAX_FORWARDED_FOR_LENGTH
+    ):
         return str(direct_ip)
 
     chain: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
@@ -105,11 +142,11 @@ def extract_client_ip(
         candidate = part.strip()
         if not candidate:
             continue
-        try:
-            chain.append(ipaddress.ip_address(candidate))
-        except ValueError:
-            # Stop trusting forged right-side header corruption if encountered
+        parsed = _parse_ip(candidate)
+        if parsed is None or len(chain) >= MAX_FORWARDED_HOPS:
+            # Stop trusting forged or oversized header chains
             return str(direct_ip)
+        chain.append(parsed)
 
     for ip_obj in reversed(chain):
         if any(ip_obj in net for net in trusted_nets):
