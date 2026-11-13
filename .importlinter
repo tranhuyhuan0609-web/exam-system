@@ -95,3 +95,12 @@ protected_modules =
 allowed_importers =
     app.modules.outbox
     app.model_registry
+
+[importlinter:contract:internal-frameworks]
+name = frameworks internals are private to the module
+type = protected
+protected_modules =
+    app.modules.frameworks.internal
+allowed_importers =
+    app.modules.frameworks
+    app.model_registry
