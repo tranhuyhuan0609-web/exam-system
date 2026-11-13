@@ -212,3 +212,12 @@ protected_modules =
 allowed_importers =
     app.modules.error_notebook
     app.model_registry
+
+[importlinter:contract:internal-access_control]
+name = access_control internals are private to the module
+type = protected
+protected_modules =
+    app.modules.access_control.internal
+allowed_importers =
+    app.modules.access_control
+    app.model_registry
