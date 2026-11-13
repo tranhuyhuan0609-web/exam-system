@@ -212,3 +212,12 @@ protected_modules =
 allowed_importers =
     app.modules.error_notebook
     app.model_registry
+
+[importlinter:contract:internal-search]
+name = search internals are private to the module
+type = protected
+protected_modules =
+    app.modules.search.internal
+allowed_importers =
+    app.modules.search
+    app.model_registry

@@ -10,12 +10,13 @@ Fixes several defects from the architecture pseudo-code:
 from __future__ import annotations
 
 import re
-import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Literal
+
+from app.contracts.text import fold_vietnamese_ascii
 
 _WEIGHT_FILENAME = Decimal("0.40")
 _WEIGHT_FOLDER = Decimal("0.25")
@@ -77,16 +78,6 @@ class DocumentPairing:
 
 def _quantize(value: Decimal) -> Decimal:
     return value.quantize(_SCORE_QUANT, rounding=ROUND_HALF_UP)
-
-
-def fold_vietnamese_ascii(raw: str) -> str:
-    """Fold NFC/NFD Vietnamese text and separators into space-delimited ASCII tokens."""
-    nfc = unicodedata.normalize("NFC", raw or "")
-    nfc = nfc.replace("đ", "d").replace("Đ", "D")
-    nfd = unicodedata.normalize("NFD", nfc)
-    stripped = "".join(ch for ch in nfd if unicodedata.category(ch) != "Mn")
-    lowered = stripped.casefold()
-    return _SEPARATORS_RE.sub(" ", lowered).strip()
 
 
 def is_solution_filename(filename: str) -> bool:
