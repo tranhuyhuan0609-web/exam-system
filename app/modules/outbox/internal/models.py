@@ -21,7 +21,7 @@ class OutboxEvent(Base):
     __tablename__ = "outbox_events"
     __table_args__ = (
         CheckConstraint("status IN ('PENDING', 'PUBLISHED', 'FAILED')", name="outbox_events_status_check"),
-        Index("ix_outbox_events_pending", "status", "created_at", postgresql_where=text("status = 'PENDING'")),
+        Index("ix_outbox_events_pending", "created_at", "event_id", postgresql_where=text("status = 'PENDING'")),
     )
 
     event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=UUID_V7)
@@ -31,10 +31,15 @@ class OutboxEvent(Base):
     aggregate_type: Mapped[str] = mapped_column(String(60))
     aggregate_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     correlation_id: Mapped[str | None] = mapped_column(String(100))
+    causation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(String(20), server_default=PENDING)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=NOW)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempt_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    """Failed delivery attempts so far; the event is FAILED when this reaches the retry policy's maximum."""
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    """Earliest time of the next attempt; NULL means deliverable now."""
 
 
 class InboxEvent(Base):
