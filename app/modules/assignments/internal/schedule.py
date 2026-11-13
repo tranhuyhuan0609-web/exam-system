@@ -28,10 +28,22 @@ class AssignmentSchedule:
     manually_released: bool = False
 
     def __post_init__(self) -> None:
-        if self.max_attempts < 1:
-            raise ValueError("max_attempts must be >= 1")
+        if isinstance(self.max_attempts, bool) or not isinstance(self.max_attempts, int) or self.max_attempts < 1:
+            raise ValueError("max_attempts must be an integer >= 1")
+        for stamp in (self.available_from, self.due_at):
+            if stamp is not None and (not isinstance(stamp, datetime) or stamp.tzinfo is None):
+                raise ValueError("available_from and due_at must be timezone-aware datetimes")
         if self.due_at is not None and self.due_at < self.available_from:
             raise ValueError("due_at cannot be earlier than available_from")
+        if not isinstance(self.reveal_policy, RevealPolicy):
+            raise ValueError("reveal_policy must be a RevealPolicy member")
+        if not isinstance(self.manually_released, bool):
+            raise ValueError("manually_released must be a bool")
+
+
+def _require_aware(now: datetime) -> None:
+    if not isinstance(now, datetime) or now.tzinfo is None:
+        raise ClassroomPolicyError("NAIVE_TIMESTAMP", "now must be a timezone-aware datetime")
 
 
 def assert_can_start_assignment(
@@ -43,6 +55,9 @@ def assert_can_start_assignment(
     allow_late_submission: bool = False,
 ) -> None:
     """Enforce F01 membership status + F02 `available_from`, `due_at`, and `max_attempts` gates."""
+    _require_aware(now)
+    if isinstance(attempts_used, bool) or not isinstance(attempts_used, int) or attempts_used < 0:
+        raise ClassroomPolicyError("INVALID_ATTEMPTS_USED", "attempts_used must be a non-negative integer")
     if member.status != ClassMemberStatus.ACTIVE:
         raise ClassroomPolicyError(
             "MEMBER_INACTIVE",
@@ -72,7 +87,8 @@ def can_reveal_assignment_answers(
     now: datetime,
 ) -> bool:
     """Evaluate F02 `reveal_policy` strictly across all 4 policy variants."""
-    if not learner_submitted:
+    _require_aware(now)
+    if learner_submitted is not True:
         return False
     if schedule.reveal_policy == RevealPolicy.IMMEDIATE:
         return True

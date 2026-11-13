@@ -41,6 +41,8 @@ class ClassMemberState:
 
 def soft_leave_class(member: ClassMemberState, *, left_at: datetime) -> ClassMemberState:
     """Soft-delete member (`INACTIVE`, `left_at`) while preserving historical grades."""
+    if not isinstance(left_at, datetime) or left_at.tzinfo is None:
+        raise ClassroomPolicyError("NAIVE_TIMESTAMP", "left_at must be a timezone-aware datetime")
     if member.status == ClassMemberStatus.INACTIVE:
         return member
     return replace(member, status=ClassMemberStatus.INACTIVE, left_at=left_at)
@@ -55,8 +57,22 @@ def rejoin_class(member: ClassMemberState) -> ClassMemberState:
 
 def filter_active_assignment_recipients(
     roster: tuple[ClassMemberState, ...] | list[ClassMemberState],
+    *,
+    tenant_id: str,
+    class_id: str,
 ) -> tuple[ClassMemberState, ...]:
-    """Only `ACTIVE` class students receive new assignments (`INACTIVE` leavers excluded)."""
+    """
+    Only `ACTIVE` students of this tenant's class receive new assignments.
+
+    `INACTIVE` leavers and members of other tenants or classes are excluded.
+    """
+    if not isinstance(tenant_id, str) or not tenant_id.strip() or not isinstance(class_id, str) or not class_id.strip():
+        raise ClassroomPolicyError("SCOPE_REQUIRED", "tenant_id and class_id must be non-empty")
     return tuple(
-        m for m in roster if m.status == ClassMemberStatus.ACTIVE and m.role_in_class == ClassRole.STUDENT
+        m
+        for m in roster
+        if m.tenant_id == tenant_id
+        and m.class_id == class_id
+        and m.status == ClassMemberStatus.ACTIVE
+        and m.role_in_class == ClassRole.STUDENT
     )
