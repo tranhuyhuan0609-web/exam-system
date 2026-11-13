@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+import math
+import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 
 MAX_EXAM_FAILOVER_RTO_SECONDS = 30
 MAX_REGIONAL_PITR_RTO_MINUTES = 120
+
+_SHA256_RE = re.compile(r"[0-9a-fA-F]{64}", re.ASCII)
+_SAFE_SYNC_COMMIT = frozenset({"on", "remote_apply"})
+
+
+class PitrTombstoneError(ValueError):
+    """Raised when tombstones or restored rows are malformed (the drill cannot be trusted)."""
 
 
 @dataclass(frozen=True)
@@ -41,6 +51,8 @@ class PitrTombstoneReplayReport:
     already_clean_count: int
     resurrected_pii_remaining: int
     passed: bool
+    resurrected_pii_found: int = 0
+    verified_against_post_scrub_rows: bool = False
 
 
 @dataclass(frozen=True)
@@ -60,30 +72,49 @@ class PatroniQuorumReport:
     violations: tuple[str, ...]
 
 
+def _key(tenant_id: object, subject_id: object) -> tuple[str, str]:
+    """Identity key: whitespace-stripped, NFKC-normalised and case-folded (UUIDs are case-insensitive)."""
+    parts: list[str] = []
+    for label, value in (("tenant_id", tenant_id), ("subject_id", subject_id)):
+        if not isinstance(value, str) or not value.strip():
+            raise PitrTombstoneError(f"{label} must be a non-empty string")
+        parts.append(unicodedata.normalize("NFKC", value.strip()).casefold())
+    return parts[0], parts[1]
+
+
+def _has_pii(row: RestoredSubjectRow | ScrubbedSubjectRow) -> bool:
+    return bool(row.has_active_pii) or bool(row.pii_fields_present)
+
+
 def reapply_tombstones_after_pitr_restore(
     *,
     restored_rows: list[RestoredSubjectRow] | tuple[RestoredSubjectRow, ...],
     worm_tombstones: list[ErasureTombstone] | tuple[ErasureTombstone, ...],
+    post_scrub_rows: list[RestoredSubjectRow] | tuple[RestoredSubjectRow, ...] | None = None,
 ) -> PitrTombstoneReplayReport:
     """GATE-10: prevent deleted learner/teacher PII from resurrecting after PITR restore.
 
-    Replays immutable WORM erasure certificates against rows restored from a
-    pre-erasure PostgreSQL WAL/basebackup point-in-time snapshot.
+    Replays immutable WORM erasure certificates against rows restored from a pre-erasure
+    PostgreSQL WAL/basebackup point-in-time snapshot and returns the scrub plan.
+
+    ``passed`` is only true when ``post_scrub_rows`` (the rows re-read from the database AFTER the
+    scrub ran) show no PII for any tombstoned subject. Without them the drill cannot attest anything
+    and fails closed (``verified_against_post_scrub_rows`` is False).
     """
-    tombstone_map: dict[tuple[str, str], ErasureTombstone] = {
-        (t.tenant_id.strip(), t.subject_id.strip()): t for t in worm_tombstones
-    }
+    tombstone_map: dict[tuple[str, str], ErasureTombstone] = {}
+    for tomb in worm_tombstones:
+        if not isinstance(tomb.certificate_sha256, str) or _SHA256_RE.fullmatch(tomb.certificate_sha256) is None:
+            raise PitrTombstoneError("tombstone certificate must be a 64-character hex SHA-256")
+        tombstone_map[_key(tomb.tenant_id, tomb.subject_id)] = tomb
 
     output: list[ScrubbedSubjectRow] = []
     applied = 0
     already_clean = 0
-    resurrected_remaining = 0
 
     for row in restored_rows:
-        key = (row.tenant_id.strip(), row.subject_id.strip())
-        tombstone = tombstone_map.get(key)
+        tombstone = tombstone_map.get(_key(row.tenant_id, row.subject_id))
         if tombstone is not None:
-            if row.has_active_pii or row.pii_fields_present:
+            if _has_pii(row):
                 applied += 1
             else:
                 already_clean += 1
@@ -107,45 +138,67 @@ def reapply_tombstones_after_pitr_restore(
                 )
             )
 
-    for item in output:
-        key = (item.tenant_id.strip(), item.subject_id.strip())
-        if key in tombstone_map and (item.has_active_pii or item.pii_fields_present):
-            resurrected_remaining += 1
+    remaining = 0
+    verified = post_scrub_rows is not None
+    if post_scrub_rows is not None:
+        remaining = sum(
+            1 for row in post_scrub_rows if _key(row.tenant_id, row.subject_id) in tombstone_map and _has_pii(row)
+        )
 
     return PitrTombstoneReplayReport(
         restored_rows=tuple(output),
         tombstones_applied_count=applied,
         already_clean_count=already_clean,
-        resurrected_pii_remaining=resurrected_remaining,
-        passed=resurrected_remaining == 0,
+        resurrected_pii_remaining=remaining,
+        passed=verified and remaining == 0,
+        resurrected_pii_found=applied,
+        verified_against_post_scrub_rows=verified,
     )
 
 
+def _finite_within(value: object, limit: float) -> bool:
+    """True only for a finite, non-negative number not above ``limit`` (NaN and inf fail)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return math.isfinite(value) and 0 <= value <= limit
+
+
 def evaluate_patroni_quorum_config(config: PatroniQuorumConfig) -> PatroniQuorumReport:
-    """Validate Patroni synchronous strict mode & DR RTO targets for GATE-10."""
+    """Validate Patroni synchronous strict mode & DR RTO targets for GATE-10 (fails closed on bad data)."""
     violations: list[str] = []
-    if not config.synchronous_mode:
+    sync_commit = config.synchronous_commit.strip().lower() if isinstance(config.synchronous_commit, str) else ""
+    standbys_ok = (
+        isinstance(config.healthy_sync_standbys, int)
+        and not isinstance(config.healthy_sync_standbys, bool)
+        and config.healthy_sync_standbys >= 1
+    )
+
+    if config.synchronous_mode is not True:
         violations.append("PATRONI_SYNC_MODE_DISABLED")
-    if not config.synchronous_mode_strict:
+    if config.synchronous_mode_strict is not True:
         violations.append("PATRONI_STRICT_QUORUM_DISABLED")
-    if config.synchronous_commit.strip().lower() not in {"on", "remote_apply"}:
-        violations.append(f"UNSAFE_SYNCHRONOUS_COMMIT:{config.synchronous_commit}")
-    if config.healthy_sync_standbys < 1:
+    if sync_commit not in _SAFE_SYNC_COMMIT:
+        violations.append(f"UNSAFE_SYNCHRONOUS_COMMIT:{sync_commit[:16] or 'MISSING'}")
+    if not standbys_ok:
         violations.append("NO_HEALTHY_SYNC_STANDBY")
-    if config.measured_failover_rto_seconds > MAX_EXAM_FAILOVER_RTO_SECONDS:
-        violations.append(
-            f"FAILOVER_RTO_EXCEEDED:{config.measured_failover_rto_seconds}s>{MAX_EXAM_FAILOVER_RTO_SECONDS}s"
-        )
-    if config.measured_pitr_rto_minutes > MAX_REGIONAL_PITR_RTO_MINUTES:
-        violations.append(
-            f"PITR_RTO_EXCEEDED:{config.measured_pitr_rto_minutes}m>{MAX_REGIONAL_PITR_RTO_MINUTES}m"
-        )
+
+    failover = config.measured_failover_rto_seconds
+    if not _finite_within(failover, math.inf):
+        violations.append("INVALID_FAILOVER_RTO_MEASUREMENT")
+    elif not _finite_within(failover, MAX_EXAM_FAILOVER_RTO_SECONDS):
+        violations.append(f"FAILOVER_RTO_EXCEEDED:{failover}s>{MAX_EXAM_FAILOVER_RTO_SECONDS}s")
+
+    pitr = config.measured_pitr_rto_minutes
+    if not _finite_within(pitr, math.inf):
+        violations.append("INVALID_PITR_RTO_MEASUREMENT")
+    elif not _finite_within(pitr, MAX_REGIONAL_PITR_RTO_MINUTES):
+        violations.append(f"PITR_RTO_EXCEEDED:{pitr}m>{MAX_REGIONAL_PITR_RTO_MINUTES}m")
 
     rpo_zero = (
-        config.synchronous_mode
-        and config.synchronous_mode_strict
-        and config.synchronous_commit.strip().lower() in {"on", "remote_apply"}
-        and config.healthy_sync_standbys >= 1
+        config.synchronous_mode is True
+        and config.synchronous_mode_strict is True
+        and sync_commit in _SAFE_SYNC_COMMIT
+        and standbys_ok
     )
     return PatroniQuorumReport(
         compliant=len(violations) == 0,
