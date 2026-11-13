@@ -155,9 +155,9 @@ async def compile_books(session: AsyncSession, render: Renderer | None = None, o
             session.add(doc)
         doc.title, doc.folder_path, doc.status = book.title[:500], [FOLDER, book.root], LibraryStatus.PUBLISHED
         doc.storage_key, doc.size, doc.checksum, doc.mime = key, len(pdf), digest, "application/pdf"
-        doc.authors, doc.year = "Exam System biên soạn", datetime.now(VN).year
+        doc.authors, doc.year = "H2Edu biên soạn", datetime.now(VN).year
         sources = ", ".join(_sources(book)[:4])
-        doc.license_note = f"Exam System biên soạn{' · câu hỏi tổng hợp từ ' + sources if sources else ''}"[:300]
+        doc.license_note = f"H2Edu biên soạn{' · câu hỏi tổng hợp từ ' + sources if sources else ''}"[:300]
         await session.commit()
         stats["printed"] += 1
         log.info("Book printed: %s (%s questions)", book.title, len(book.questions))

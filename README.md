@@ -1,4 +1,4 @@
-# Exam System
+# H2Edu
 
 Hệ thống thi trắc nghiệm online. Ban đầu phục vụ **dưới 100 người dùng đồng thời**, sau đó nâng cấp dần lên quy mô lớn.
 

@@ -727,13 +727,16 @@
   {% if user %}
     <div class="welcome-banner">
       <h1>Xin chào, {{ user.full_name }} 👋</h1>
-      <p class="muted">Chào mừng bạn quay trở lại. Hãy chọn một trong 4 mục dưới đây để tiếp tục học tập và ôn luyện.</p>
+      <p class="muted">Chào mừng bạn đến với <strong>{{ BRAND_NAME }}</strong> ({{ BRAND_SLOGAN }}). Hãy chọn một trong 4 mục dưới đây để tiếp tục học tập và ôn luyện.</p>
     </div>
   {% else %}
     <section class="portal-hero">
-      <div class="portal-hero-badge">🚀 NỀN TẢNG KHẢO THÍ & HỌC TẬP THÔNG MINH</div>
-      <h1 class="portal-hero-title">Hệ Thống Học Tập & Luyện Thi Trực Tuyến</h1>
-      <p class="portal-hero-desc">Luyện thi trắc nghiệm theo chương trình mới GDPT, làm bài bấm giờ, chấm điểm tự động và lời giải chi tiết tức thì từ Tiểu học đến Đại học.</p>
+      <div style="margin-bottom: 14px;">
+        <img src="{{ url_for('static', path='img/logo_transparent_128.png') }}" alt="{{ BRAND_NAME }} Logo" style="width: 72px; height: 72px; object-fit: contain;">
+      </div>
+      <div class="portal-hero-badge">🚀 {{ BRAND_NAME }} · {{ BRAND_SLOGAN | upper }}</div>
+      <h1 class="portal-hero-title">{{ BRAND_NAME }} — Học thông minh - Thi bứt phá</h1>
+      <p class="portal-hero-desc">Nền tảng học tập &amp; luyện thi trực tuyến thế hệ mới theo chương trình GDPT, làm bài bấm giờ, chấm điểm tự động và lời giải chi tiết tức thì từ Tiểu học đến Đại học.</p>
       <div class="portal-hero-actions">
         <a class="btn btn-hero" href="/register">Tạo tài khoản học sinh</a>
         <a class="btn btn-hero btn-outline" href="/login">Đăng nhập</a>

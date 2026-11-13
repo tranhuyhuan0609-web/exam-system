@@ -3,17 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Exam System{% endblock %}</title>
+  <title>{% block title %}{{ BRAND_NAME }} · {{ BRAND_SLOGAN }}{% endblock %}</title>
   <link rel="icon" type="image/png" href="{{ url_for('static', path='img/favicon.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}?v=20261106_05">
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}?v=20261113_h2edu">
   {% block head %}{% endblock %}
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-left">
       <a class="brand" href="/">
-        <img src="{{ url_for('static', path='img/logo_128.png') }}" alt="Logo" class="brand-logo">
-        <span>Exam System</span>
+        <img src="{{ url_for('static', path='img/logo_transparent_128.png') }}" alt="{{ BRAND_NAME }} Logo" class="brand-logo">
+        <span class="brand-text">
+          <span class="brand-name">{{ BRAND_NAME }}</span>
+          <span class="brand-slogan">{{ BRAND_SLOGAN }}</span>
+        </span>
       </a>
       <nav class="nav-sections">
         <a href="/section/ngoai-ngu" class="nav-sec-link">🌐 Học ngoại ngữ</a>

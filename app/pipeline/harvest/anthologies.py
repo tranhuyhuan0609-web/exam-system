@@ -103,7 +103,7 @@ async def compile_anthologies(session: AsyncSession, render: Renderer | None = N
                     mime="application/pdf",
                     size=len(pdf),
                     checksum=digest,
-                    authors=f"Exam System tuyển chọn · {len(papers)} bài",
+                    authors=f"H2Edu tuyển chọn · {len(papers)} bài",
                     year=years[-1] if years else None,
                     license_note="Tuyển tập bài báo mở; tác giả, nguồn và giấy phép từng bài ở mục lục",
                 )

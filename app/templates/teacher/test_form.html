@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ "Sửa" if exam else "Tạo" }} bài kiểm tra · Exam System{% endblock %}
+{% block title %}{{ "Sửa" if exam else "Tạo" }} bài kiểm tra · H2Edu{% endblock %}
 {% block content %}
 <p><a href="{{ '/teacher/tests/' ~ exam.id if exam else '/teacher' }}">← Quay lại</a></p>
 <h1>{{ "Sửa bài kiểm tra" if exam else "Tạo bài kiểm tra" }}</h1>

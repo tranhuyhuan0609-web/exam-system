@@ -7,6 +7,7 @@ from markupsafe import Markup
 
 from app.infrastructure.storage import media_url
 from app.models import Difficulty, SourceType
+from app.platform.branding import BRAND_NAME, BRAND_SLOGAN
 from app.question_rules import TYPE_LABELS as _TYPE_LABELS
 from app.security import get_or_create_csrf_token
 
@@ -31,6 +32,8 @@ def _csrf_input(request: Request) -> Markup:
 
 
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates", context_processors=[_flash_context])
+templates.env.globals["BRAND_NAME"] = BRAND_NAME
+templates.env.globals["BRAND_SLOGAN"] = BRAND_SLOGAN
 templates.env.globals["csrf_token"] = get_or_create_csrf_token
 templates.env.globals["csrf_input"] = _csrf_input
 templates.env.globals["TYPE_LABELS"] = {t.value: label for t, label in _TYPE_LABELS.items()}
