@@ -6,13 +6,16 @@ and never from untrusted client headers or body overrides.
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import hmac
 import json
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
+
+from app.platform.b64url import Base64UrlError, b64url_decode_strict, b64url_encode
+
+MAX_TOKEN_LENGTH = 8192
 
 
 class AuthTokenError(ValueError):
@@ -37,23 +40,22 @@ class ActorContext:
 
 
 def _b64url_encode(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+    return b64url_encode(data)
 
 
 def _b64url_decode(segment: str) -> bytes:
-    if not segment:
-        raise AuthTokenError("empty base64url segment")
-    padding = "=" * (-len(segment) % 4)
     try:
-        return base64.urlsafe_b64decode(segment + padding)
-    except Exception as exc:
+        return b64url_decode_strict(segment)
+    except Base64UrlError as exc:
         raise AuthTokenError("malformed base64url segment") from exc
 
 
 def extract_bearer_token(authorization_header: str | None) -> str:
     """Strictly parse `Authorization: Bearer <token>` header."""
-    if not authorization_header:
+    if not authorization_header or not isinstance(authorization_header, str):
         raise AuthTokenError("missing Authorization header")
+    if len(authorization_header) > MAX_TOKEN_LENGTH + 16:
+        raise AuthTokenError("Authorization header too long")
     parts = authorization_header.strip().split()
     if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1]:
         raise AuthTokenError("Authorization header must use Bearer scheme")
@@ -76,10 +78,10 @@ def mint_hs256_token(
     ttl_seconds: int = 900,
 ) -> str:
     """Mint a deterministic HS256 JWT carrying V11.3 principal + tenant claims."""
-    if not secret:
-        raise ValueError("JWT secret cannot be empty")
-    if ttl_seconds <= 0:
-        raise ValueError("ttl_seconds must be positive")
+    if not secret or not isinstance(secret, str):
+        raise AuthTokenError("JWT secret cannot be empty")
+    if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, int) or ttl_seconds <= 0:
+        raise AuthTokenError("ttl_seconds must be a positive integer")
 
     header = {"alg": "HS256", "typ": "JWT"}
     payload = {
@@ -114,8 +116,16 @@ def decode_and_verify_actor_token(
     revoked_jtis: frozenset[str] = frozenset(),
 ) -> ActorContext:
     """Verify HS256 JWT signature, algorithm, timestamps, revocation, and required V11.3 claims."""
-    if not secret:
-        raise ValueError("JWT secret cannot be empty")
+    if not secret or not isinstance(secret, str):
+        raise AuthTokenError("JWT secret cannot be empty")
+    if not isinstance(token, str) or not token.strip():
+        raise AuthTokenError("missing JWT")
+    if len(token) > MAX_TOKEN_LENGTH:
+        raise AuthTokenError("JWT too long")
+    if isinstance(now_epoch, bool) or not isinstance(now_epoch, int):
+        raise AuthTokenError("now_epoch must be an integer")
+    if isinstance(leeway_seconds, bool) or not isinstance(leeway_seconds, int) or leeway_seconds < 0:
+        raise AuthTokenError("leeway_seconds must be a non-negative integer")
     parts = token.strip().split(".")
     if len(parts) != 3:
         raise AuthTokenError("JWT must contain exactly 3 dot-separated segments")
@@ -151,13 +161,17 @@ def decode_and_verify_actor_token(
 
     exp = payload.get("exp")
     nbf = payload.get("nbf")
-    iat = payload.get("iat", nbf or 0)
-    if not isinstance(exp, int):
+    iat = payload.get("iat", nbf if nbf is not None else 0)
+    if isinstance(exp, bool) or not isinstance(exp, int):
         raise AuthTokenError("JWT missing integer exp claim")
+    if isinstance(iat, bool) or not isinstance(iat, int):
+        raise AuthTokenError("JWT iat claim must be an integer")
+    if iat > now_epoch + leeway_seconds:
+        raise AuthTokenError("JWT iat is in the future")
     if now_epoch - leeway_seconds >= exp:
         raise AuthTokenError("JWT has expired")
     if nbf is not None:
-        if not isinstance(nbf, int):
+        if isinstance(nbf, bool) or not isinstance(nbf, int):
             raise AuthTokenError("JWT nbf claim must be an integer")
         if now_epoch + leeway_seconds < nbf:
             raise AuthTokenError("JWT is not yet valid (nbf)")
@@ -166,7 +180,7 @@ def decode_and_verify_actor_token(
     if not jti:
         raise AuthTokenError("JWT missing jti claim")
     if jti in revoked_jtis:
-        raise AuthTokenError(f"JWT jti {jti!r} has been revoked")
+        raise AuthTokenError("JWT has been revoked")
 
     try:
         user_id = uuid.UUID(str(payload["sub"]))
@@ -176,8 +190,8 @@ def decode_and_verify_actor_token(
         raise AuthTokenError("JWT missing valid UUID sub/tenant_id/membership_id") from exc
 
     raw_roles = payload.get("roles", [])
-    if not isinstance(raw_roles, list):
-        raise AuthTokenError("JWT roles claim must be a list")
+    if not isinstance(raw_roles, list) or not all(isinstance(r, str) for r in raw_roles):
+        raise AuthTokenError("JWT roles claim must be a list of strings")
     roles = frozenset(str(r).strip() for r in raw_roles if str(r).strip())
 
     tier = str(payload.get("entitlement_tier", "FREE")).strip() or "FREE"
@@ -191,7 +205,7 @@ def decode_and_verify_actor_token(
         entitlement_tier=tier,
         session_id=sid,
         jti=jti,
-        issued_at=int(iat),
+        issued_at=iat,
         expires_at=exp,
     )
 
@@ -203,6 +217,9 @@ def guard_no_tenant_spoofing(
     claimed_membership_header: str | None = None,
 ) -> ActorContext:
     """Reject any request whose client-supplied tenant/membership header conflicts with signed JWT claims."""
+    for header in (claimed_tenant_header, claimed_membership_header):
+        if header is not None and not isinstance(header, str):
+            raise TenantSpoofingError("malformed override header")
     if claimed_tenant_header is not None and claimed_tenant_header.strip():
         try:
             hdr_tenant = uuid.UUID(claimed_tenant_header.strip())
