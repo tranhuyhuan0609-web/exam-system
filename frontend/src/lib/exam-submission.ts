@@ -14,12 +14,23 @@ export interface AutosaveFlushOutcome {
   remainingPendingCount: number;
   status: "ok" | "offline" | "auth_required" | "rejected";
   errorMessage?: string;
+  /**
+   * Question ids whose local answers the server permanently rejected (only meaningful for
+   * `status: "rejected"`). Surfaced to the UI and forwarded with a forced submit so that nothing
+   * is dropped silently.
+   */
+  unsyncedAnswerIds?: readonly string[];
 }
 
 export interface SubmitAttemptRequest {
   attemptId: string;
   submitIdempotencyKey: string;
+  /** Original trigger of the submission (`manual` or `auto_expire`); never `retry`. */
   trigger: SubmissionTrigger;
+  /** True only when sent via `submitWithUnsyncedAnswers` (autosave batch permanently rejected). */
+  forcedWithUnsyncedAnswers?: boolean;
+  /** Local answers that never reached the server; present only for a forced submit. */
+  unsyncedAnswerIds?: readonly string[];
 }
 
 export interface SubmitAttemptResponse {
@@ -43,6 +54,13 @@ export interface SubmissionStateSnapshot {
   submittedAtServerIso: string | null;
   errorCode: string | null;
   errorMessage: string | null;
+  /** Answers the server rejected permanently (empty unless `canSubmitWithUnsynced`). */
+  unsyncedAnswerIds: readonly string[];
+  /**
+   * True when the autosave batch was permanently rejected (`AUTOSAVE_REJECTED`): the UI should show
+   * the unsynced answers and offer `submitWithUnsyncedAnswers()` as the explicit way out.
+   */
+  canSubmitWithUnsynced: boolean;
 }
 
 export interface ExamSubmissionCoordinatorOptions {
@@ -52,6 +70,10 @@ export interface ExamSubmissionCoordinatorOptions {
   createIdempotencyKey?: (attemptId: string) => string;
   retryDelaysMs?: readonly number[];
   onStateChange?: (state: SubmissionStateSnapshot) => void;
+}
+
+function sanitizeCount(value: number): number {
+  return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 1;
 }
 
 const DEFAULT_RETRY_DELAYS_MS: readonly number[] = [1_000, 2_000, 5_000, 10_000, 15_000];
@@ -64,6 +86,15 @@ const DEFAULT_RETRY_DELAYS_MS: readonly number[] = [1_000, 2_000, 5_000, 10_000,
  * - Mandatory autosave flush barrier before final `/submit`.
  * - Immediate `inputLocked = true` on `auto_expire` even during transient network outages, surfacing
  *   `offline_retry_banner` / `sequence_conflict` cleanly without losing unsynced local responses.
+ * - Once the exam expired, input stays locked for good (even after a rejection); the original trigger
+ *   (`manual` / `auto_expire`) is sent on every retry, `retry` is never forwarded.
+ * - One submission = one idempotency key, reused for every retry from the offline banner. After a
+ *   terminal outcome (`rejected` / `sequence_conflict`) the next call starts a NEW submission with a
+ *   fresh, never-before-used key.
+ * - Way out of a permanently rejected autosave batch: phase `rejected` + `errorCode: AUTOSAVE_REJECTED`
+ *   + `canSubmitWithUnsynced: true` + `unsyncedAnswerIds`; the UI then calls
+ *   `submitWithUnsyncedAnswers()`, which skips the flush barrier, sends the list of unsynced answers
+ *   with the request, and goes through the same single-flight guard (no double submit).
  */
 export class ExamSubmissionCoordinator {
   private readonly attemptId: string;
@@ -76,6 +107,9 @@ export class ExamSubmissionCoordinator {
   private state: SubmissionStateSnapshot;
   private inFlightPromise: Promise<SubmissionStateSnapshot> | null = null;
   private counter = 0;
+  private expired = false;
+  private effectiveTrigger: "manual" | "auto_expire" | null = null;
+  private readonly usedKeys = new Set<string>();
 
   constructor(options: ExamSubmissionCoordinatorOptions) {
     if (!options.attemptId) {
@@ -106,11 +140,13 @@ export class ExamSubmissionCoordinator {
       submittedAtServerIso: null,
       errorCode: null,
       errorMessage: null,
+      unsyncedAnswerIds: [],
+      canSubmitWithUnsynced: false,
     };
   }
 
   getSnapshot(): SubmissionStateSnapshot {
-    return { ...this.state };
+    return { ...this.state, unsyncedAnswerIds: [...this.state.unsyncedAnswerIds] };
   }
 
   private transition(patch: Partial<SubmissionStateSnapshot>): SubmissionStateSnapshot {
@@ -124,66 +160,146 @@ export class ExamSubmissionCoordinator {
       return 2_000;
     }
     const idx = Math.min(retryCount - 1, this.retryDelaysMs.length - 1);
-    return this.retryDelaysMs[idx] ?? 2_000;
+    const delay = this.retryDelaysMs[idx];
+    return delay !== undefined && Number.isFinite(delay) && delay >= 0 ? delay : 2_000;
+  }
+
+  private freshKey(): string {
+    const base = this.createIdempotencyKey(this.attemptId);
+    let key = base;
+    let n = 1;
+    while (this.usedKeys.has(key)) {
+      n += 1;
+      key = `${base}#${n}`;
+    }
+    this.usedKeys.add(key);
+    return key;
+  }
+
+  private markExpired(): void {
+    this.expired = true;
+    this.effectiveTrigger = "auto_expire";
+    if (!this.state.inputLocked || this.state.trigger !== "auto_expire") {
+      this.transition({ inputLocked: true, trigger: "auto_expire" });
+    }
   }
 
   /**
-   * Execute or join an active submission flow. Safe to call simultaneously from manual click + auto-expire.
+   * Execute or join an active submission flow. Safe to call simultaneously from manual click + auto-expire:
+   * concurrent callers share ONE in-flight submission (one network request).
    */
   async submit(trigger: SubmissionTrigger): Promise<SubmissionStateSnapshot> {
     if (this.state.phase === "submitted") {
       return this.getSnapshot();
     }
     if (this.inFlightPromise) {
+      if (trigger === "auto_expire") {
+        this.markExpired();
+      }
       return this.inFlightPromise;
     }
+    return this.start(trigger, false);
+  }
 
+  /**
+   * Explicit way out of a permanently rejected autosave batch (`phase: "rejected"`,
+   * `errorCode: "AUTOSAVE_REJECTED"`, `canSubmitWithUnsynced: true`). Skips the flush barrier and submits
+   * with the answers that could not be synced listed in `unsyncedAnswerIds` of the request, so nothing
+   * is dropped silently. Joins an in-flight submission instead of starting a second one.
+   *
+   * @throws Error when the coordinator is not in the rejected-autosave state.
+   */
+  async submitWithUnsyncedAnswers(
+    trigger: Exclude<SubmissionTrigger, "retry"> = "manual",
+  ): Promise<SubmissionStateSnapshot> {
+    if (this.state.phase === "submitted") {
+      return this.getSnapshot();
+    }
+    if (this.inFlightPromise) {
+      if (trigger === "auto_expire") {
+        this.markExpired();
+      }
+      return this.inFlightPromise;
+    }
+    if (!this.state.canSubmitWithUnsynced) {
+      throw new Error("submitWithUnsyncedAnswers requires a permanently rejected autosave batch");
+    }
+    return this.start(trigger, true);
+  }
+
+  private async start(trigger: SubmissionTrigger, forced: boolean): Promise<SubmissionStateSnapshot> {
+    // Same submission only while paused on the offline banner (or when forcing after a rejected
+    // flush, whose key never reached the network). Everything else is a new submission.
+    const continuing = forced || this.state.phase === "offline_retry_banner";
     const idempotencyKey =
-      this.state.submitIdempotencyKey ?? this.createIdempotencyKey(this.attemptId);
+      continuing && this.state.submitIdempotencyKey !== null
+        ? this.state.submitIdempotencyKey
+        : this.freshKey();
+    if (trigger === "auto_expire") {
+      this.expired = true;
+    }
+    const original = continuing ? this.effectiveTrigger : null;
+    this.effectiveTrigger = this.expired
+      ? "auto_expire"
+      : (original ?? (trigger === "retry" ? "manual" : trigger));
+    const effective = this.effectiveTrigger;
+    const unsyncedIds = forced ? [...this.state.unsyncedAnswerIds] : [];
 
     const run = (async (): Promise<SubmissionStateSnapshot> => {
       this.transition({
         phase: "flushing_autosave",
-        inputLocked: this.state.inputLocked || trigger === "auto_expire" || trigger === "manual",
-        trigger,
+        inputLocked: true,
+        trigger: effective,
         submitIdempotencyKey: idempotencyKey,
+        retryCount: continuing ? this.state.retryCount : 0,
         errorCode: null,
         errorMessage: null,
+        canSubmitWithUnsynced: false,
+        unsyncedAnswerIds: unsyncedIds,
       });
 
-      let flushOutcome: AutosaveFlushOutcome;
-      try {
-        flushOutcome = await this.flushPendingAutosaves();
-      } catch (err) {
-        const retryCount = this.state.retryCount + 1;
-        return this.transition({
-          phase: "offline_retry_banner",
-          retryCount,
-          nextRetryDelayMs: this.nextBackoffDelay(retryCount),
-          errorCode: "AUTOSAVE_FLUSH_OFFLINE",
-          errorMessage: err instanceof Error ? err.message : "Network offline during autosave flush",
-        });
+      let flushOutcome: AutosaveFlushOutcome = { flushedCount: 0, remainingPendingCount: 0, status: "ok" };
+      if (!forced) {
+        try {
+          flushOutcome = await this.flushPendingAutosaves();
+        } catch (err) {
+          const retryCount = this.state.retryCount + 1;
+          return this.transition({
+            phase: "offline_retry_banner",
+            retryCount,
+            nextRetryDelayMs: this.nextBackoffDelay(retryCount),
+            errorCode: "AUTOSAVE_FLUSH_OFFLINE",
+            errorMessage: err instanceof Error ? err.message : "Network offline during autosave flush",
+          });
+        }
       }
 
       if (flushOutcome.status === "auth_required" || flushOutcome.status === "rejected") {
+        const rejectedBatch = flushOutcome.status === "rejected";
         return this.transition({
           phase: "rejected",
-          inputLocked: trigger === "auto_expire",
+          inputLocked: this.expired,
           nextRetryDelayMs: null,
-          pendingCount: flushOutcome.remainingPendingCount,
-          errorCode:
-            flushOutcome.status === "auth_required" ? "AUTH_REQUIRED" : "AUTOSAVE_REJECTED",
+          pendingCount: sanitizeCount(flushOutcome.remainingPendingCount),
+          unsyncedAnswerIds: rejectedBatch ? [...(flushOutcome.unsyncedAnswerIds ?? [])] : [],
+          canSubmitWithUnsynced: rejectedBatch,
+          errorCode: rejectedBatch ? "AUTOSAVE_REJECTED" : "AUTH_REQUIRED",
           errorMessage: flushOutcome.errorMessage ?? "Submission blocked by rejected autosave batch",
         });
       }
 
-      if (flushOutcome.status === "offline" || flushOutcome.remainingPendingCount > 0) {
+      // Fail closed: anything but a clean "ok" with a valid zero pending count keeps the barrier shut.
+      if (
+        flushOutcome.status !== "ok" ||
+        !Number.isFinite(flushOutcome.remainingPendingCount) ||
+        flushOutcome.remainingPendingCount !== 0
+      ) {
         const retryCount = this.state.retryCount + 1;
         return this.transition({
           phase: "offline_retry_banner",
           retryCount,
           nextRetryDelayMs: this.nextBackoffDelay(retryCount),
-          pendingCount: flushOutcome.remainingPendingCount,
+          pendingCount: sanitizeCount(flushOutcome.remainingPendingCount),
           errorCode: "AUTOSAVE_PENDING_OFFLINE",
           errorMessage: flushOutcome.errorMessage ?? "Pending responses awaiting network connection",
         });
@@ -196,11 +312,16 @@ export class ExamSubmissionCoordinator {
 
       let submitResp: SubmitAttemptResponse;
       try {
-        submitResp = await this.submitAttempt({
+        const request: SubmitAttemptRequest = {
           attemptId: this.attemptId,
           submitIdempotencyKey: idempotencyKey,
-          trigger,
-        });
+          trigger: this.effectiveTrigger ?? effective,
+        };
+        if (forced) {
+          request.forcedWithUnsyncedAnswers = true;
+          request.unsyncedAnswerIds = unsyncedIds;
+        }
+        submitResp = await this.submitAttempt(request);
       } catch (err) {
         const retryCount = this.state.retryCount + 1;
         return this.transition({
@@ -247,7 +368,7 @@ export class ExamSubmissionCoordinator {
 
       return this.transition({
         phase: "rejected",
-        inputLocked: trigger === "auto_expire",
+        inputLocked: this.expired,
         nextRetryDelayMs: null,
         errorCode: submitResp.errorCode ?? "SUBMIT_REJECTED",
         errorMessage: submitResp.errorMessage ?? "Submission rejected by server",
