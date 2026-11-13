@@ -21,7 +21,15 @@ export type ExamPayloadValue =
   | { [key: string]: ExamPayloadValue };
 export type ExamPayload = Record<string, ExamPayloadValue>;
 
-export type PendingAutosaveStatus = "pending" | "conflict";
+export type PendingAutosaveStatus = "pending" | "conflict" | "rejected";
+export type ConflictResolution = "keep_mine" | "take_server";
+
+export interface QueueState {
+  pending: number;
+  conflict: number;
+  rejected: number;
+  authRequired: boolean;
+}
 
 export interface PendingAutosave {
   id?: number;
@@ -35,6 +43,7 @@ export interface PendingAutosave {
   createdAtMs: number;
   tries: number;
   status?: PendingAutosaveStatus;
+  errorCode?: string;
 }
 
 export interface MetaRow {
@@ -114,6 +123,8 @@ export class ExamAutosaveStore {
   private flushing = false;
   private activeFlushPromise: Promise<void> | null = null;
   private detachListeners: (() => void) | null = null;
+  private authRequired = false;
+  private authRequiredToken: string | null = null;
 
   constructor(options: ExamAutosaveStoreOptions = {}) {
     this.db = new ExamDatabase(options.dbName ?? "ulp_exam_offline_db");
@@ -185,6 +196,70 @@ export class ExamAutosaveStore {
     return this.db.pending.orderBy("id").toArray();
   }
 
+  async getQueueState(attemptId?: string): Promise<QueueState> {
+    const authRequired = this._syncAuthState();
+    const rows =
+      attemptId !== undefined
+        ? await this.db.pending.where("attemptId").equals(attemptId).toArray()
+        : await this.db.pending.toArray();
+    let pending = 0;
+    let conflict = 0;
+    let rejected = 0;
+    for (const row of rows) {
+      const status = row.status ?? "pending";
+      if (status === "pending") {
+        pending += 1;
+      } else if (status === "conflict") {
+        conflict += 1;
+      } else if (status === "rejected") {
+        rejected += 1;
+      }
+    }
+    return { pending, conflict, rejected, authRequired };
+  }
+
+  async resolveConflict(
+    id: number,
+    resolution: ConflictResolution,
+    options: { autoFlush?: boolean } = {},
+  ): Promise<void> {
+    const row = await this.db.pending.get(id);
+    if (!row || row.status !== "conflict") {
+      return;
+    }
+    if (resolution === "take_server") {
+      await this.db.pending.delete(id);
+      return;
+    }
+
+    // `keep_mine`: return row to `pending` so flush sends it with the latest
+    // synced `expected_response_version` stored in `db.meta`.
+    const currentSeq = (await this.db.meta.get(seqKey(row.attemptId, row.questionVersionId)))?.value ?? 0;
+    const nextClientSeq = Math.max(row.clientSequence, currentSeq);
+    await this.db.meta.put({
+      key: seqKey(row.attemptId, row.questionVersionId),
+      value: nextClientSeq,
+    });
+    await this.db.pending.update(id, {
+      status: "pending",
+      clientSequence: nextClientSeq,
+      errorCode: undefined,
+    });
+    if (options.autoFlush === true && !this._syncAuthState()) {
+      void this.flush();
+    }
+  }
+
+  async discard(id: number): Promise<void> {
+    await this.db.pending.delete(id);
+  }
+
+  async resume(): Promise<void> {
+    this.authRequired = false;
+    this.authRequiredToken = null;
+    await this.flush();
+  }
+
   /**
    * Persist an autosave change to IndexedDB BEFORE triggering network flush.
    * Passing an existing `explicitIdempotencyKey` prevents duplicate pending entries.
@@ -247,13 +322,16 @@ export class ExamAutosaveStore {
       return { ...record, id };
     });
 
-    if (options.autoFlush !== false) {
+    if (options.autoFlush !== false && !this._syncAuthState()) {
       void this.flush();
     }
     return saved;
   }
 
   async flush(): Promise<void> {
+    if (this._syncAuthState()) {
+      return;
+    }
     if (this.flushing && this.activeFlushPromise) {
       return this.activeFlushPromise;
     }
@@ -265,14 +343,48 @@ export class ExamAutosaveStore {
     return this.activeFlushPromise;
   }
 
-  private async _readErrorBody(
-    res: Response,
-  ): Promise<{ error_code?: string; server_payload?: unknown; response_payload?: unknown }> {
+  private _syncAuthState(): boolean {
+    if (!this.authRequired) {
+      return false;
+    }
+    const currentToken = this.getToken() ?? null;
+    if (currentToken !== this.authRequiredToken) {
+      this.authRequired = false;
+      this.authRequiredToken = null;
+      return false;
+    }
+    return true;
+  }
+
+  private _handleAuthError(
+    status: 401 | 403,
+    errorCode: string | undefined,
+    failedToken: string | null,
+  ): void {
+    const alreadyBlocked = this.authRequired && failedToken === this.authRequiredToken;
+    this.authRequired = true;
+    this.authRequiredToken = failedToken;
+    if (!alreadyBlocked) {
+      this.onAuthRequired?.(status, errorCode);
+    }
+  }
+
+  private async _readErrorBody(res: Response): Promise<{
+    error_code?: string;
+    server_payload?: unknown;
+    response_payload?: unknown;
+    current_response_version?: number;
+    revision_no?: number;
+    current_sequence?: number;
+  }> {
     try {
       return (await res.clone().json()) as {
         error_code?: string;
         server_payload?: unknown;
         response_payload?: unknown;
+        current_response_version?: number;
+        revision_no?: number;
+        current_sequence?: number;
       };
     } catch {
       return {};
@@ -349,7 +461,7 @@ export class ExamAutosaveStore {
 
       if (res.status === 401) {
         const errBody = await this._readErrorBody(res);
-        this.onAuthRequired?.(401, errBody.error_code);
+        this._handleAuthError(401, errBody.error_code, token ?? null);
         return;
       }
 
@@ -359,7 +471,7 @@ export class ExamAutosaveStore {
           await this._deleteAttemptRows(r.attemptId);
           continue;
         }
-        this.onAuthRequired?.(403, errBody.error_code);
+        this._handleAuthError(403, errBody.error_code, token ?? null);
         return;
       }
 
@@ -371,7 +483,27 @@ export class ExamAutosaveStore {
         }
 
         if (resyncedIds.has(r.id)) {
-          await this.db.pending.update(r.id, { status: "conflict" });
+          const latestVersion = errBody.current_response_version ?? errBody.revision_no;
+          if (typeof latestVersion === "number" && Number.isFinite(latestVersion)) {
+            await this.db.meta.put({
+              key: verKey(r.attemptId, r.questionVersionId),
+              value: latestVersion,
+            });
+          }
+          const conflictUpdate: Partial<PendingAutosave> = { status: "conflict" };
+          if (
+            typeof errBody.current_sequence === "number" &&
+            Number.isFinite(errBody.current_sequence) &&
+            r.clientSequence <= errBody.current_sequence
+          ) {
+            const bumpedSeq = errBody.current_sequence + 1;
+            await this.db.meta.put({
+              key: seqKey(r.attemptId, r.questionVersionId),
+              value: bumpedSeq,
+            });
+            conflictUpdate.clientSequence = bumpedSeq;
+          }
+          await this.db.pending.update(r.id, conflictUpdate);
           const serverPayload =
             errBody.server_payload ?? errBody.response_payload ?? syncedPayloads.get(r.id) ?? null;
           this.onConflictModal?.(r.questionVersionId, serverPayload);
@@ -390,8 +522,13 @@ export class ExamAutosaveStore {
         continue;
       }
 
-      // Other 4xx (e.g. 422 PAYLOAD_HASH_MISMATCH): drop malformed entry and move on.
-      await this.db.pending.delete(r.id);
+      // Other 4xx (e.g. 422 PAYLOAD_HASH_MISMATCH, 400, 404): mark rejected, keep answer, do not retry or block queue.
+      const errBody = await this._readErrorBody(res);
+      await this.db.pending.update(r.id, {
+        status: "rejected",
+        errorCode: errBody.error_code ?? `HTTP_${res.status}`,
+        tries: r.tries + 1,
+      });
     }
   }
 
@@ -428,7 +565,7 @@ export class ExamAutosaveStore {
 
     if (syncRes.status === 401) {
       const errBody = await this._readErrorBody(syncRes);
-      this.onAuthRequired?.(401, errBody.error_code);
+      this._handleAuthError(401, errBody.error_code, token ?? null);
       return "stop";
     }
 
@@ -438,7 +575,7 @@ export class ExamAutosaveStore {
         await this._deleteAttemptRows(r.attemptId);
         return "resolved_deleted";
       }
-      this.onAuthRequired?.(403, errBody.error_code);
+      this._handleAuthError(403, errBody.error_code, token ?? null);
       return "stop";
     }
 
