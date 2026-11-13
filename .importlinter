@@ -212,3 +212,12 @@ protected_modules =
 allowed_importers =
     app.modules.error_notebook
     app.model_registry
+
+[importlinter:contract:internal-study_guide]
+name = study_guide internals are private to the module
+type = protected
+protected_modules =
+    app.modules.study_guide.internal
+allowed_importers =
+    app.modules.study_guide
+    app.model_registry
