@@ -59,6 +59,30 @@ forbidden_modules =
     app.ai
     app.attempts
 
+[importlinter:contract:ops-is-offline-tooling]
+name = app.ops is offline tooling and may import only app.platform and app.contracts
+type = forbidden
+; Direct imports only: app.db -> app.config still pulls in legacy code lazily.
+allow_indirect_imports = True
+source_modules =
+    app.ops
+forbidden_modules =
+    app.modules
+    app.routers
+    app.models
+    app.application
+    app.ai
+    app.pipeline
+
+[importlinter:contract:kernel-and-contracts-not-on-ops]
+name = app.platform and app.contracts must not import app.ops
+type = forbidden
+source_modules =
+    app.platform
+    app.contracts
+forbidden_modules =
+    app.ops
+
 ; --- one "protected" contract per module, added when the module lands ---------------------
 ; [importlinter:contract:internal-<name>]
 ; name = <name> internals are private to the module
@@ -265,4 +289,13 @@ protected_modules =
     app.modules.ai_gateway.internal
 allowed_importers =
     app.modules.ai_gateway
+    app.model_registry
+
+[importlinter:contract:internal-audit]
+name = audit internals are private to the module
+type = protected
+protected_modules =
+    app.modules.audit.internal
+allowed_importers =
+    app.modules.audit
     app.model_registry

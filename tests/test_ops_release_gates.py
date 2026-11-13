@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.platform.release_gates import (
+from app.ops.release_gates import (
     CANONICAL_RELEASE_GATES,
     GateEvidenceRecord,
     HardwareBenchmarkSpec,

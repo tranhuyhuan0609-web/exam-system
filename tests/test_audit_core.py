@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.platform.audit_diff import (
+from app.modules.audit.public import (
     AuditDiffError,
     build_audit_event_record,
     compute_rollback_patch,

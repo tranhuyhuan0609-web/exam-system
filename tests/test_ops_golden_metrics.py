@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.platform.golden_metrics import (
+from app.ops.golden_metrics import (
     CANONICAL_GOLDEN_CORPUS,
     DocumentExtractionObservation,
     evaluate_extraction_quality,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.platform.sbom_license_audit import (
+from app.ops.sbom_license_audit import (
     audit_cyclonedx_sbom,
     audit_requirements_lines,
 )

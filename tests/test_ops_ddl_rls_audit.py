@@ -1,8 +1,8 @@
-"""Tests for app.platform.ddl_rls_audit static PostgreSQL DDL & RLS verifier (EV-V11-03)."""
+"""Tests for app.ops.ddl_rls_audit static PostgreSQL DDL & RLS verifier (EV-V11-03)."""
 
 from __future__ import annotations
 
-from app.platform.ddl_rls_audit import audit_ddl_rls_hardening
+from app.ops.ddl_rls_audit import audit_ddl_rls_hardening
 
 
 def test_audit_passes_hardened_rls_ddl_and_respects_exempt_global_tables() -> None:

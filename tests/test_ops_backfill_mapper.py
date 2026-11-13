@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.platform.backfill_mapper import (
+from app.ops.backfill_mapper import (
     BackfillMappingError,
     compute_batch_reconciliation_report,
     format_legacy_stable_code,

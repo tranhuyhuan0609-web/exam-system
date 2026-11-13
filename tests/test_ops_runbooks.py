@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from app.platform.runbooks import (
+from app.ops.runbooks import (
     CANONICAL_RUNBOOKS,
     compute_rb05_deadline_compensation,
     evaluate_incident_response_sla,

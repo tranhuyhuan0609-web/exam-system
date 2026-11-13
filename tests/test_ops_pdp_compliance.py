@@ -6,7 +6,7 @@ from datetime import date
 
 import pytest
 
-from app.platform.pdp_compliance import (
+from app.ops.pdp_compliance import (
     PdpComplianceError,
     evaluate_crypto_shredding_erasure,
     evaluate_minor_consent,
