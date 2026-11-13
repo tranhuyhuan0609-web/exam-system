@@ -3,6 +3,13 @@ from PIL import Image, ImageDraw
 
 from app.ai.figures import crop_figure, locate_crop, page_geometry, snap_to_graphics, trim_cut_text
 from app.ai.schemas import BoundingBox
+from app.infrastructure.pdf_engine import PDFEngineAdapter
+
+
+def geometry_of(page):
+    """The geometry the readers see: the page is saved and read back through the PDF engine adapter."""
+    with PDFEngineAdapter.open(page.parent.tobytes()) as reader:
+        return page_geometry(reader, page.number)
 
 
 def exam_page(tmp_path):
@@ -19,7 +26,7 @@ def exam_page(tmp_path):
     page.draw_circle((300, 360), 200, color=(0.87, 0.92, 0.96), fill=(0.87, 0.92, 0.96), fill_opacity=0.5)  # watermark
     png = tmp_path / "page.png"
     page.get_pixmap(dpi=150).save(png)
-    return page_geometry(page), png
+    return geometry_of(page), png
 
 
 def test_snapping_keeps_the_figure_and_its_labels_but_not_question_text(tmp_path):

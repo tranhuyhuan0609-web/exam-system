@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from app.domain.question_hash import normalize_text
+from app.infrastructure.pdf_engine import PDFEngineAdapter, Rect
 
 log = logging.getLogger(__name__)
 
@@ -217,20 +218,20 @@ def docx_to_markdown_latex(docx_path: Path | str) -> str:
     return md_text
 
 def pdf_to_continuous_text(pdf_path: Path | str) -> str:
-    """PyMuPDF đọc luồng văn bản xuyên suốt tất cả các trang, loại bỏ Header/Footer và tiêu đề đầu trang 1."""
-    import pymupdf
-    with pymupdf.open(pdf_path) as doc:
+    """Đọc luồng văn bản xuyên suốt tất cả các trang (PDFEngineAdapter), bỏ Header/Footer và tiêu đề đầu trang 1."""
+    with PDFEngineAdapter.open(pdf_path) as doc:
         full_pages_text = []
 
-        for page_idx, page in enumerate(doc):
+        for page_idx in range(doc.page_count):
             # Cắt bỏ 50px mép trên (chứa "PRO: admin...") và 50px mép dưới (chứa "Trang 1/3")
-            clean_rect = pymupdf.Rect(0, 50, page.rect.width, max(50.0, page.rect.height - 50))
-            blocks = page.get_text("blocks", clip=clean_rect)
-            blocks.sort(key=lambda b: (round(b[1], 1), round(b[0], 1)))
+            page_width, page_height = doc.page_size(page_idx)
+            clean_rect = Rect(0, 50, page_width, max(50.0, page_height - 50))
+            blocks = doc.blocks(page_idx, clip=clean_rect)
+            blocks.sort(key=lambda b: (round(b.rect.y0, 1), round(b.rect.x0, 1)))
 
             page_lines = []
             for b in blocks:
-                text = b[4].strip()
+                text = b.text.strip()
                 # Bỏ qua khối tiêu đề trường/kỳ thi ở đầu trang 1
                 if page_idx == 0 and any(k in text.upper() for k in ["KỲ THI CHỌN", "ĐỀ CHÍNH THỨC", "THỜI GIAN LÀM BÀI", "HƯỚNG DẪN CHẤM ĐỀ"]):  # noqa: E501
                     continue
@@ -248,34 +249,45 @@ def pdf_to_continuous_text(pdf_path: Path | str) -> str:
 CAPTION_REGEX = re.compile(r"(?:^|\b)((?:Hình|Sơ đồ|Đồ thị)\s*\d+(?:[\.\,]\d+|[a-zA-Z])?)\b", re.IGNORECASE)
 
 
+def _first_placements(images) -> list[Rect]:
+    """One box per distinct embedded picture: its first placement, like PyMuPDF's ``get_image_rects(xref)[0]``."""
+    seen: set[str] = set()
+    boxes: list[Rect] = []
+    for image in images:
+        if image.name and image.name in seen:
+            continue
+        if image.name:
+            seen.add(image.name)
+        boxes.append(image.rect)
+    return boxes
+
+
 def extract_figures_by_caption(pdf_path: Path | str) -> dict[str, bytes]:
     """Quét nhãn chú thích 'Hình X', 'Hình 2a', 'Hình 1.1' trên bản PDF và chụp vùng hình tương ứng.
     Bỏ qua logo ở y0 < 160 trên trang 1.
     Trả về dict: {'Hình 1': png_bytes, 'Hình 2a': png_bytes, 'Hình 1.1': png_bytes}
     """
-    import pymupdf
-    with pymupdf.open(pdf_path) as doc:
+    with PDFEngineAdapter.open(pdf_path) as doc:
         figure_map: dict[str, bytes] = {}
 
-        for page_idx, page in enumerate(doc):
+        for page_idx in range(doc.page_count):
+            page_width, page_height = doc.page_size(page_idx)
+            page_rect = doc.page_rect(page_idx)
             # 1. Danh sách các ảnh Raster nhúng trên trang (bỏ qua logo ở y0 < 160 trang 1)
             raster_boxes = []
-            for img in page.get_images(full=True):
-                rects = page.get_image_rects(img[0])
-                if rects:
-                    r = rects[0]
-                    if not (page_idx == 0 and r.y0 < 160):
-                        raster_boxes.append(r)
+            for r in _first_placements(doc.images(page_idx)):
+                if not (page_idx == 0 and r.y0 < 160):
+                    raster_boxes.append(r)
 
             # 2. Quét các dòng chữ chứa caption
-            blocks = page.get_text("blocks")
+            blocks = doc.blocks(page_idx)
             for b in blocks:
-                match = CAPTION_REGEX.search(b[4])
+                match = CAPTION_REGEX.search(b.text)
                 if not match:
                     continue
                 fig_label = re.sub(r"\s+", " ", match.group(1).strip())
                 fig_label = fig_label[0].upper() + fig_label[1:]
-                cap_rect = pymupdf.Rect(b[:4])
+                cap_rect = b.rect
 
                 # Tìm ảnh raster nằm ngay sát phía trên chú thích này
                 matched_raster = None
@@ -288,18 +300,17 @@ def extract_figures_by_caption(pdf_path: Path | str) -> dict[str, bytes]:
                     crop_rect = matched_raster
                 else:
                     # Nếu là hình vẽ Vector / Word Shapes, chụp khung phía trên dòng chữ caption
-                    crop_rect = pymupdf.Rect(
+                    crop_rect = Rect(
                         max(cap_rect.x0 - 80, 20),
                         max(cap_rect.y0 - 240, 50),
-                        min(cap_rect.x1 + 140, page.rect.width - 20),
+                        min(cap_rect.x1 + 140, page_width - 20),
                         cap_rect.y0 + 2,
                     )
 
-                crop_rect = pymupdf.Rect(crop_rect) & page.rect
-                if crop_rect.is_empty or crop_rect.width < 5 or crop_rect.height < 5:
+                crop_rect = crop_rect.intersection(page_rect)
+                if crop_rect is None or crop_rect.width < 5 or crop_rect.height < 5:
                     continue  # a caption at the very top of a page: nothing above it to cut
-                pix = page.get_pixmap(clip=crop_rect, dpi=300)
-                figure_map[fig_label] = pix.tobytes("png")
+                figure_map[fig_label] = doc.render_png(page_idx, 300, crop_rect)
 
         return figure_map
 
@@ -310,20 +321,15 @@ def extract_chemistry_schemes(pdf_path: Path | str) -> list[tuple[int, float, by
     The source PDF is never modified.  Each result is ``(page, y0, png)`` and
     can be attached to the question occupying the same page.
     """
-    import pymupdf
-
     schemes: list[tuple[int, float, bytes]] = []
-    with pymupdf.open(pdf_path) as doc:
-        for page_index, page in enumerate(doc):
-            boxes = list(page.cluster_drawings(x_tolerance=25, y_tolerance=25))
-            for image in page.get_images(full=True):
-                rects = page.get_image_rects(image[0])
-                if rects:
-                    boxes.append(rects[0])
+    with PDFEngineAdapter.open(pdf_path) as doc:
+        for page_index in range(doc.page_count):
+            page_width, page_height = doc.page_size(page_index)
+            boxes = list(doc.cluster_drawings(page_index, x_tolerance=25, y_tolerance=25))
+            boxes.extend(_first_placements(doc.images(page_index)))
 
-            unique: list[pymupdf.Rect] = []
-            for box in boxes:
-                rect = pymupdf.Rect(box)
+            unique: list[Rect] = []
+            for rect in boxes:
                 if page_index == 0 and rect.y0 < 140:
                     continue
                 if rect.height < 30 or rect.width < 20:
@@ -333,14 +339,13 @@ def extract_chemistry_schemes(pdf_path: Path | str) -> list[tuple[int, float, by
                 unique.append(rect)
 
             for rect in sorted(unique, key=lambda item: (item.y0, item.x0)):
-                padded = pymupdf.Rect(
+                padded = Rect(
                     max(0, rect.x0 - 10),
                     max(0, rect.y0 - 10),
-                    min(page.rect.width, rect.x1 + 10),
-                    min(page.rect.height, rect.y1 + 10),
+                    min(page_width, rect.x1 + 10),
+                    min(page_height, rect.y1 + 10),
                 )
-                pix = page.get_pixmap(clip=padded, dpi=300, alpha=False)
-                schemes.append((page_index + 1, rect.y0, pix.tobytes("png")))
+                schemes.append((page_index + 1, rect.y0, doc.render_png(page_index, 300, padded)))
     return schemes
 
 

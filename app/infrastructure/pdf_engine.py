@@ -133,6 +133,7 @@ class ImageBox:
     rect: Rect
     src_width: int  # pixel size of the embedded bitmap (0 when unknown)
     src_height: int
+    name: str = ""  # XObject name; the same picture drawn twice shares it
 
 
 @dataclass(frozen=True, slots=True)
@@ -621,7 +622,7 @@ class PDFEngineAdapter:
             out = []
             for i in page.images or []:
                 sw, sh = i.get("srcsize") or (0, 0)
-                out.append(ImageBox(_rect_of(i), int(sw or 0), int(sh or 0)))
+                out.append(ImageBox(_rect_of(i), int(sw or 0), int(sh or 0), str(i.get("name") or "")))
         return sorted(out, key=lambda b: (b.rect.y0, b.rect.x0))
 
     def drawings(self, index: int) -> list[Drawing]:
@@ -762,12 +763,15 @@ class PDFEngineAdapter:
         finally:
             page.close()
 
-    def rich_lines(self, index: int, *, line_gap: float = LINE_BREAK_GAP_EM) -> list[RichLine]:
+    def rich_lines(
+        self, index: int, *, clip: Rect | None = None, line_gap: float = LINE_BREAK_GAP_EM
+    ) -> list[RichLine]:
         """Text lines with spans (font, size, colour, alpha), in content-stream order.
 
         A line is a run of characters sharing a text row: it ends when the next
         character overlaps the row by less than 40 %, jumps back to the left, or sits more than ``line_gap`` em
         to the right (table cells, tab stops: PyMuPDF reports those as separate blocks too).
+        With ``clip`` only characters whose centre lies inside the rectangle are read.
         """
         lines: list[RichLine] = []
         cur: list[_PChar] = []
@@ -816,6 +820,8 @@ class PDFEngineAdapter:
         row: tuple[float, float, float] | None = None  # y0, y1, right edge of the last boxed char
         space = _PChar(" ", 0.0, 0.0, 0.0, 0.0, 0.0, "", 0, 255, False)
         for c in self._pdfium_chars(index):
+            if clip is not None and c.boxed and not clip.contains_point((c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2):
+                continue
             if not c.boxed:
                 # A generated space between two text objects. Generated CR/LF are ignored: pdfium also emits them
                 # between a text and its superscript, so geometry alone decides about lines and word gaps.
@@ -839,12 +845,13 @@ class PDFEngineAdapter:
         flush()
         return lines
 
-    def blocks(self, index: int) -> list[Block]:
+    def blocks(self, index: int, *, clip: Rect | None = None) -> list[Block]:
         """Paragraph-like text blocks in content-stream order, like ``get_text("blocks")`` (which, with
         PyMuPDF's default flags, reports no image blocks either).
 
         Consecutive lines belong to one block while the vertical gap stays below ``BLOCK_GAP_EM`` times the line
         height and the lines overlap horizontally; a jump up the page or sideways starts a new block.
+        ``clip`` restricts the text like ``get_text("blocks", clip=)``.
         """
         blocks: list[Block] = []
         group: list[RichLine] = []
@@ -857,7 +864,7 @@ class PDFEngineAdapter:
             group.clear()
             bounds = None
 
-        for ln in self.rich_lines(index):
+        for ln in self.rich_lines(index, clip=clip):
             if group and bounds is not None:
                 prev = group[-1].rect
                 height = max(prev.height, ln.rect.height)

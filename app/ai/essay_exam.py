@@ -4,8 +4,8 @@ the marking scheme (HƯỚNG DẪN CHẤM / ĐÁP ÁN).
 
 7-Step Deterministic Extraction Architecture:
 1. Regex header matching: `^(Bài|Câu)\\s*(\\d+)[.:]?\\s*\\(([\\d,.]+)\\s*điểm\\)` extracts problem number and points.
-   Blocks are cut from one header to the next across pages. For PDFs with text, PyMuPDF (`get_text("dict")`)
-   extracts line coordinates sorted in reading order, stripping page headers, footers, and "HẾT".
+   Blocks are cut from one header to the next across pages. For PDFs with text, the PDF engine adapter
+   (`rich_lines`) extracts line coordinates sorted in reading order, stripping page headers, footers, and "HẾT".
 2. Sub-parts ("1.", "2.", "1.1", "2a)", "3b)", "a)", "b)") stay intact inside the problem's content.
 3. Figure attachment by caption & coordinate geometry: "Hình 1.1" in the stem belongs to the whole problem,
    "Hình 1.2" in part 3 belongs to part 3. Uses `page_geometry` and `figures.py` to crop figures cleanly.
@@ -38,11 +38,12 @@ from app.ai.figures import (
     BoundingBox,
     PageGeometry,
     cut,
-    is_light_text,
+    is_light_colour,
     page_geometry,
     remove_light_text,
 )
 from app.ai.schemas import ExtractedQuestion
+from app.infrastructure.pdf_engine import PDFEngineAdapter, PDFEngineError
 from app.pipeline.domain.html_content import to_content
 
 log = logging.getLogger(__name__)
@@ -770,49 +771,72 @@ def _is_broken_text(text: str, has_pua: bool = False) -> bool:
     return False
 
 
-def _extract_pdf_lines(doc) -> tuple[list[PdfLine], list[PageGeometry]]:
-    """Step 1: Use PyMuPDF `get_text("dict")` to collect positioned lines in reading order,
+class _WatermarkRedactor:
+    """Renders a page of a PDF without its watermark-style text (PyMuPDF redaction; opened on first use)."""
+
+    def __init__(self, path: Path, dpi: int) -> None:
+        self._path, self._dpi, self._doc = path, dpi, None
+
+    def render(self, index: int) -> Image.Image | None:
+        import pymupdf
+
+        try:
+            if self._doc is None:
+                self._doc = pymupdf.open(self._path)
+            page = self._doc[index]
+            if not remove_light_text(page):
+                return None
+            return Image.open(io.BytesIO(page.get_pixmap(dpi=self._dpi).tobytes("png"))).convert("RGB")
+        except Exception:
+            log.warning("watermark removal failed on page %d", index + 1, exc_info=True)
+            return None
+
+    def close(self) -> None:
+        if self._doc is not None:
+            self._doc.close()
+            self._doc = None
+
+
+def _extract_pdf_lines(reader: PDFEngineAdapter) -> tuple[list[PdfLine], list[PageGeometry]]:
+    """Step 1: Use the adapter's `rich_lines` to collect positioned lines in reading order,
     stripping headers, footers, and light watermarks."""
     all_lines: list[PdfLine] = []
     geometries: list[PageGeometry] = []
 
-    for page_idx, page in enumerate(doc, start=1):
-        width, height = page.rect.width, page.rect.height
+    for page_idx in range(1, reader.page_count + 1):
+        width, height = reader.page_size(page_idx - 1)
         if width <= 0 or height <= 0:
             geometries.append(PageGeometry())
             continue
-        geom = page_geometry(page)
+        rich_lines = reader.rich_lines(page_idx - 1)
+        geom = page_geometry(reader, page_idx - 1, rich_lines)
         geometries.append(geom)
 
-        raw_dict = page.get_text("dict")
         page_lines: list[PdfLine] = []
-        for block in raw_dict.get("blocks", []):
-            if block.get("type") != 0:
+        for line in rich_lines:
+            spans = [s for s in line.spans if s.text.strip() and not is_light_colour(s.color, s.alpha)]
+            if not spans:
                 continue
-            for line in block.get("lines", []):
-                spans = [s for s in line.get("spans", []) if s.get("text", "").strip() and not is_light_text(s)]
-                if not spans:
-                    continue
-                bbox = line.get("bbox", (0, 0, 0, 0))
-                ymin = round(max(0.0, bbox[1]) / height * 1000)
-                xmin = round(max(0.0, bbox[0]) / width * 1000)
-                ymax = round(min(height, bbox[3]) / height * 1000)
-                xmax = round(min(width, bbox[2]) / width * 1000)
-                line_text = clean_symbol_pua("".join(s.get("text", "") for s in spans).strip())
-                if not line_text:
-                    continue
-                has_pua = any(0xE000 <= ord(c) <= 0xF8FF for c in line_text)
-                page_lines.append(
-                    PdfLine(
-                        page=page_idx,
-                        ymin=ymin,
-                        xmin=xmin,
-                        ymax=ymax,
-                        xmax=xmax,
-                        text=line_text,
-                        has_pua=has_pua,
-                    )
+            bbox = line.rect
+            ymin = round(max(0.0, bbox.y0) / height * 1000)
+            xmin = round(max(0.0, bbox.x0) / width * 1000)
+            ymax = round(min(height, bbox.y1) / height * 1000)
+            xmax = round(min(width, bbox.x1) / width * 1000)
+            line_text = clean_symbol_pua("".join(s.text for s in spans).strip())
+            if not line_text:
+                continue
+            has_pua = any(0xE000 <= ord(c) <= 0xF8FF for c in line_text)
+            page_lines.append(
+                PdfLine(
+                    page=page_idx,
+                    ymin=ymin,
+                    xmin=xmin,
+                    ymax=ymax,
+                    xmax=xmax,
+                    text=line_text,
+                    has_pua=has_pua,
                 )
+            )
 
         # Sort by vertical position (bucketed by 6 units ~ 0.6% page height) then horizontal position
         page_lines.sort(key=lambda l: (l.ymin // 6, l.xmin))  # noqa: E741
@@ -1395,15 +1419,13 @@ def _parse_pdf_answer_section(lines: list[PdfLine]) -> dict[int, str]:
 def read_essay_pdf(path: Path, dpi: int = 300) -> EssayPaper | None:
     """Steps 1–5 & 7: Coordinate-based PDF splitter for structured Essay / HSG papers
     ('Bài 1. (5,0 điểm) – DAO ĐỘNG CƠ HỌC')."""
-    import pymupdf
-
     try:
-        doc = pymupdf.open(path)
-    except Exception:
+        doc = PDFEngineAdapter.open(path)
+    except PDFEngineError:  # unreadable, or password protected
         return None
 
     with doc:
-        if doc.needs_pass or doc.page_count == 0:
+        if doc.page_count == 0:
             return None
         lines, geometries = _extract_pdf_lines(doc)
         if not lines:
@@ -1445,19 +1467,26 @@ def read_essay_pdf(path: Path, dpi: int = 300) -> EssayPaper | None:
         raw_page_imgs: dict[int, Image.Image] = {}
         clean_page_imgs: dict[int, Image.Image] = {}
         page_blocks: dict[int, list[tuple]] = {
-            p_idx: page.get_text("blocks") for p_idx, page in enumerate(doc, start=1)
+            p_idx: [
+                (b.rect.x0, b.rect.y0, b.rect.x1, b.rect.y1, b.text, b.number, b.kind) for b in doc.blocks(p_idx - 1)
+            ]
+            for p_idx in range(1, doc.page_count + 1)
         }
         page_rects: dict[int, tuple[float, float]] = {
-            p_idx: (page.rect.width, page.rect.height) for p_idx, page in enumerate(doc, start=1)
+            p_idx: doc.page_size(p_idx - 1) for p_idx in range(1, doc.page_count + 1)
         }
-        for p_idx, page in enumerate(doc, start=1):
-            pix = page.get_pixmap(dpi=dpi)
-            raw_page_imgs[p_idx] = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
-            if remove_light_text(page):
-                pix_clean = page.get_pixmap(dpi=dpi)
-                clean_page_imgs[p_idx] = Image.open(io.BytesIO(pix_clean.tobytes("png"))).convert("RGB")
-            else:
-                clean_page_imgs[p_idx] = raw_page_imgs[p_idx]
+        # Redaction is not available in the PDF engine adapter yet, so a page with watermark text is rendered
+        # a second time by PyMuPDF with that text removed (the only PyMuPDF use left in this function).
+        redactor = _WatermarkRedactor(path, dpi)
+        try:
+            for p_idx in range(1, doc.page_count + 1):
+                raw_page_imgs[p_idx] = doc.render(p_idx - 1, dpi)
+                if geometries[p_idx - 1].has_light_text:
+                    clean_page_imgs[p_idx] = redactor.render(p_idx - 1) or raw_page_imgs[p_idx]
+                else:
+                    clean_page_imgs[p_idx] = raw_page_imgs[p_idx]
+        finally:
+            redactor.close()
 
     questions: list[ExtractedQuestion] = []
     points: dict[int, float] = {}
