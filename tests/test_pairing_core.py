@@ -8,8 +8,10 @@ from decimal import Decimal
 import pytest
 
 from app.modules.dedup.public import (
+    DocumentKind,
     PairingDocumentInput,
     auto_pair_exam_and_hdc_documents,
+    classify_pairing_document,
     clean_pairing_stem,
     is_solution_filename,
     score_exam_and_solution_pairing,
@@ -137,3 +139,30 @@ def test_strict_one_to_one_pairing_by_descending_score_and_doc_id_tiebreak():
     assert p1[1].exam_doc_id == "exam-c"
     assert p1[1].solution_doc_id == "sol-2"
     assert p1[1].status == "PROPOSED"
+
+
+def test_combined_exam_with_solution_is_classified_distinctly_and_excluded_from_pairing():
+    assert classify_pairing_document("Đề + đáp án Toán 11.pdf") == DocumentKind.EXAM_WITH_SOLUTION
+    assert classify_pairing_document("De_va_loi_giai_Toan_11.docx") == DocumentKind.EXAM_WITH_SOLUTION
+    assert classify_pairing_document("Đề thi kèm HDC Vật lí 12.pdf") == DocumentKind.EXAM_WITH_SOLUTION
+    assert is_solution_filename("Đề + đáp án Toán 11.pdf") is False
+
+    # Accented non-"đề" words whose unaccented form is "de" (e.g. "dễ") stay pure SOLUTION.
+    assert classify_pairing_document("Hướng dẫn chấm dễ hiểu.pdf") == DocumentKind.SOLUTION
+    assert is_solution_filename("Hướng dẫn chấm dễ hiểu.pdf") is True
+
+    pure_exam = PairingDocumentInput(
+        doc_id="ex-11",
+        filename="Đề Toán 11.pdf",
+        folder_id="f-11",
+        subject_code="MATH",
+        question_count=30,
+    )
+    combined = PairingDocumentInput(
+        doc_id="mix-11",
+        filename="Đề + đáp án Toán 11.pdf",
+        folder_id="f-11",
+        subject_code="MATH",
+        question_count=30,
+    )
+    assert auto_pair_exam_and_hdc_documents([pure_exam, combined]) == ()

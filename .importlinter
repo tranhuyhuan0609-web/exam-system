@@ -212,3 +212,57 @@ protected_modules =
 allowed_importers =
     app.modules.error_notebook
     app.model_registry
+
+[importlinter:contract:internal-delivery]
+name = delivery internals are private to the module
+type = protected
+protected_modules =
+    app.modules.delivery.internal
+allowed_importers =
+    app.modules.delivery
+    app.model_registry
+
+[importlinter:contract:internal-privacy]
+name = privacy internals are private to the module
+type = protected
+protected_modules =
+    app.modules.privacy.internal
+allowed_importers =
+    app.modules.privacy
+    app.model_registry
+
+[importlinter:contract:internal-layout]
+name = layout internals are private to the module
+type = protected
+protected_modules =
+    app.modules.layout.internal
+allowed_importers =
+    app.modules.layout
+    app.model_registry
+
+[importlinter:contract:internal-search]
+name = search internals are private to the module
+type = protected
+protected_modules =
+    app.modules.search.internal
+allowed_importers =
+    app.modules.search
+    app.model_registry
+
+[importlinter:contract:internal-ingestion]
+name = ingestion internals are private to the module
+type = protected
+protected_modules =
+    app.modules.ingestion.internal
+allowed_importers =
+    app.modules.ingestion
+    app.model_registry
+
+[importlinter:contract:internal-ai_gateway]
+name = ai_gateway internals are private to the module
+type = protected
+protected_modules =
+    app.modules.ai_gateway.internal
+allowed_importers =
+    app.modules.ai_gateway
+    app.model_registry

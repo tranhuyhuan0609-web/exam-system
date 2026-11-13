@@ -9,8 +9,9 @@ from __future__ import annotations
 import ipaddress
 import urllib.parse
 import urllib.robotparser
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 
 from app.modules.crawler.internal.ssrf import SSRFCheckResult, check_resolved_addresses
 
@@ -61,14 +62,94 @@ class VerifiedHopResult:
     visited_urls: frozenset[str]
 
 
-def _normalize_url_for_loop_check(parsed: urllib.parse.ParseResult) -> str:
+class RobotsStatus(StrEnum):
+    """Explicit state of a host's robots.txt policy fetch."""
+
+    PRESENT = "PRESENT"
+    NOT_FOUND = "NOT_FOUND"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
+@dataclass(frozen=True, slots=True)
+class RobotsPolicy:
+    """Explicit robots.txt outcome for a host (content, NOT_FOUND, or UNAVAILABLE)."""
+
+    status: RobotsStatus
+    content: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.status == RobotsStatus.PRESENT and self.content is None:
+            raise ValueError("RobotsPolicy with status=PRESENT requires non-None content")
+        if self.status != RobotsStatus.PRESENT and self.content is not None:
+            raise ValueError(f"RobotsPolicy with status={self.status} must not carry content")
+
+    @classmethod
+    def with_content(cls, content: str) -> RobotsPolicy:
+        return cls(status=RobotsStatus.PRESENT, content=content)
+
+    @classmethod
+    def not_found(cls) -> RobotsPolicy:
+        return cls(status=RobotsStatus.NOT_FOUND)
+
+    @classmethod
+    def unavailable(cls) -> RobotsPolicy:
+        return cls(status=RobotsStatus.UNAVAILABLE)
+
+
+def _normalize_url_for_loop_check(
+    parsed: urllib.parse.ParseResult,
+    normalized_path: str,
+) -> str:
     # Fragments are client-side only; strip fragment and lowercase scheme/netloc.
     normalized = parsed._replace(
         scheme=parsed.scheme.lower(),
         netloc=parsed.netloc.lower(),
+        path=normalized_path,
         fragment="",
     )
     return urllib.parse.urlunparse(normalized)
+
+
+def _normalize_and_validate_path(raw_path: str) -> tuple[str, tuple[str, ...]]:
+    """Decode percent-encoding once, reject unsafe forms, and return canonical path + segments."""
+    candidate = raw_path or "/"
+    decoded = urllib.parse.unquote(candidate)
+
+    # Reject remaining '%' (blocks double encoding e.g. %252e or invalid escapes),
+    # backslashes (literal or %5c), and ASCII control characters (including DEL 0x7f).
+    if "%" in decoded or "\\" in decoded:
+        raise CrawlPolicyError("PATH_NOT_ALLOWED", f"unsafe escape or backslash in path={raw_path!r}")
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in decoded):
+        raise CrawlPolicyError("PATH_NOT_ALLOWED", f"control character in path={raw_path!r}")
+    if not decoded.startswith("/"):
+        raise CrawlPolicyError("PATH_NOT_ALLOWED", f"path must be absolute: {raw_path!r}")
+
+    raw_segments = decoded.split("/")
+    if ".." in raw_segments:
+        raise CrawlPolicyError("PATH_NOT_ALLOWED", f"dot-dot traversal disallowed: {raw_path!r}")
+
+    segments = tuple(seg for seg in raw_segments if seg and seg != ".")
+    trailing_slash = decoded.endswith("/") and bool(segments)
+    normalized_path = "/" + "/".join(segments) + ("/" if trailing_slash else "")
+    return normalized_path, segments
+
+
+def _matches_allowed_prefix(path_segments: tuple[str, ...], prefix: str) -> bool:
+    if not prefix.startswith("/"):
+        return False
+    prefix_decoded = urllib.parse.unquote(prefix)
+    if "%" in prefix_decoded or "\\" in prefix_decoded:
+        return False
+    prefix_raw = prefix_decoded.split("/")
+    if ".." in prefix_raw:
+        return False
+    prefix_segments = tuple(seg for seg in prefix_raw if seg and seg != ".")
+    if not prefix_segments:
+        return True
+    return (
+        len(path_segments) >= len(prefix_segments)
+        and path_segments[: len(prefix_segments)] == prefix_segments
+    )
 
 
 def _is_bare_ip_host(hostname: str) -> bool:
@@ -85,7 +166,7 @@ def verify_url_or_redirect_hop(
     target_url: str,
     resolve_dns: DnsResolver,
     *,
-    robots_txt_content: str | None = None,
+    robots: RobotsPolicy,
     hop_count: int = 0,
     visited_urls: frozenset[str] = _EMPTY_VISITED,
 ) -> VerifiedHopResult:
@@ -98,6 +179,9 @@ def verify_url_or_redirect_hop(
 
     if hop_count > policy.max_redirects:
         raise CrawlPolicyError("TOO_MANY_REDIRECTS", f"exceeded max_redirects={policy.max_redirects}")
+
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in target_url):
+        raise CrawlPolicyError("PATH_NOT_ALLOWED", f"control character in target_url={target_url!r}")
 
     parsed = urllib.parse.urlparse(target_url)
     scheme = parsed.scheme.lower()
@@ -128,18 +212,21 @@ def verify_url_or_redirect_hop(
     if port not in policy.allowed_ports:
         raise CrawlPolicyError("DISALLOWED_PORT", f"port={port}")
 
-    path = parsed.path or "/"
-    if not any(path.startswith(prefix) for prefix in policy.allowed_path_prefixes):
-        raise CrawlPolicyError("PATH_NOT_ALLOWED", f"path={path!r}")
+    normalized_path, path_segments = _normalize_and_validate_path(parsed.path)
+    if not any(_matches_allowed_prefix(path_segments, prefix) for prefix in policy.allowed_path_prefixes):
+        raise CrawlPolicyError("PATH_NOT_ALLOWED", f"path={normalized_path!r}")
 
-    canonical_url = _normalize_url_for_loop_check(parsed)
+    canonical_url = _normalize_url_for_loop_check(parsed, normalized_path)
     if canonical_url in visited_urls:
         raise CrawlPolicyError("REDIRECT_LOOP_DETECTED", f"url={canonical_url!r}")
 
-    if robots_txt_content is not None:
+    if robots.status == RobotsStatus.UNAVAILABLE:
+        raise CrawlPolicyError("ROBOTS_TXT_UNAVAILABLE", f"host={host!r}")
+    if robots.status == RobotsStatus.PRESENT:
         rp = urllib.robotparser.RobotFileParser()
-        rp.parse(robots_txt_content.splitlines())
-        if not rp.can_fetch(policy.user_agent, target_url):
+        assert robots.content is not None
+        rp.parse(robots.content.splitlines())
+        if not rp.can_fetch(policy.user_agent, canonical_url):
             raise CrawlPolicyError("ROBOTS_TXT_DISALLOWED", f"url={canonical_url!r}")
 
     resolved_ips = resolve_dns(host)
@@ -160,22 +247,23 @@ def verify_redirect_chain(
     urls: Sequence[str],
     resolve_dns: DnsResolver,
     *,
-    robots_txt_by_host: dict[str, str] | None = None,
+    robots_by_host: Mapping[str, RobotsPolicy],
 ) -> tuple[VerifiedHopResult, ...]:
     """Validate an entire sequence of redirect hops starting at hop 0."""
     if not urls:
         raise CrawlPolicyError("EMPTY_URL_CHAIN", "at least one URL is required")
 
+    normalized_robots = {k.lower().rstrip("."): v for k, v in robots_by_host.items()}
     visited: frozenset[str] = frozenset()
     results: list[VerifiedHopResult] = []
     for hop_idx, url in enumerate(urls):
         host = (urllib.parse.urlparse(url).hostname or "").lower().rstrip(".")
-        robots = robots_txt_by_host.get(host) if robots_txt_by_host is not None else None
+        robots = normalized_robots.get(host, RobotsPolicy.unavailable())
         hop_result = verify_url_or_redirect_hop(
             policy,
             url,
             resolve_dns,
-            robots_txt_content=robots,
+            robots=robots,
             hop_count=hop_idx,
             visited_urls=visited,
         )

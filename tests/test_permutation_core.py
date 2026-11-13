@@ -184,3 +184,12 @@ def test_golden_vectors(seed, expected_order, expected_opts):
     res = generate_attempt_permutation(items, attempt_seed=seed)
     assert res.ordered_question_ids == expected_order
     assert dict(res.option_permutations) == expected_opts
+
+
+def test_rejects_unknown_section_code():
+    items = [
+        PermutationItemInput(Q1, "PART_I", None, "SINGLE_CHOICE"),
+        PermutationItemInput(Q2, "PART_UNKNOWN", None, "SINGLE_CHOICE"),
+    ]
+    with pytest.raises(ValueError, match="Unknown section_code"):
+        generate_attempt_permutation(items, attempt_seed=42)

@@ -28,6 +28,10 @@ class ErrorNoteState:
     resolved_at: datetime | None = None
 
 
+def _is_tz_aware(dt: datetime) -> bool:
+    return dt.tzinfo is not None and dt.utcoffset() is not None
+
+
 def apply_attempt(
     state: ErrorNoteState,
     is_correct: bool,
@@ -41,6 +45,12 @@ def apply_attempt(
     """
     if state.wrong_count < 0 or state.consecutive_correct_count < 0:
         raise ValueError("counts must be non-negative")
+    if not _is_tz_aware(at):
+        raise ValueError("at must be timezone-aware")
+    if not _is_tz_aware(state.last_wrong_at):
+        raise ValueError("state.last_wrong_at must be timezone-aware")
+    if at < state.last_wrong_at:
+        raise ValueError("at cannot be earlier than state.last_wrong_at")
 
     if is_correct:
         next_consecutive = state.consecutive_correct_count + 1
