@@ -33,6 +33,10 @@ class FeatureFlagRule:
     def __post_init__(self) -> None:
         if not self.key or not self.key.strip():
             raise ValueError("FeatureFlagRule.key must be non-empty")
+        if not isinstance(self.is_enabled, bool):
+            raise TypeError("FeatureFlagRule.is_enabled must be a bool")
+        if isinstance(self.rollout_percent, bool) or not isinstance(self.rollout_percent, int):
+            raise TypeError("rollout_percent must be an int")
         if not 0 <= self.rollout_percent <= 100:
             raise ValueError(f"rollout_percent must be in 0..100, got {self.rollout_percent}")
 
