@@ -232,7 +232,7 @@ phụ huynh, mã hóa); E01 (cổng AI); mọi thay đổi ở `app/platform/`; 
 
 ## 4. Đợt 2 (giao ngày 13/11/2026)
 
-Đợt 1 (P1–P5, P7) đã được rà soát và gộp vào `main` qua nhánh tích hợp. Trước khi làm tiếp: `git fetch origin` rồi tạo mọi
+Đợt 1 (P1–P7) đã được rà soát và gộp vào `main` qua nhánh tích hợp. Trước khi làm tiếp: `git fetch origin` rồi tạo mọi
 nhánh mới từ `origin/main` mới nhất. Quy tắc ở mục 2 giữ nguyên, cộng thêm các điều rút ra từ đợt 1:
 
 1. **`.importlinter`: chỉ thêm khối của chính gói đang làm.** Ở đợt 1, PR của P2 và P7 chép cả khối của gói khác nên CI đỏ
@@ -242,32 +242,22 @@ nhánh mới từ `origin/main` mới nhất. Quy tắc ở mục 2 giữ nguyê
 4. Gói frontend chạy thêm `npm run typecheck` và `npm test` trong `frontend/` (CI đã có job `frontend`).
 5. Chuỗi hiển thị cho người dùng không nằm trong lõi: lõi trả mã lý do (`reason_code`), không trả câu tiếng Việt.
 
-Thứ tự đề xuất: P6 (làm nốt) → P8 → P9 → P10 → P11 → P12. P13 chỉ làm sau khi chủ dự án duyệt.
+Thứ tự đề xuất: P13 → P8 → P9 → P10 → P11 → P12. Các gói không phụ thuộc nhau.
 
 | Gói | Module | Loại | Cần trước | Ước lượng |
 |---|---|---|---|---|
-| P6 (làm nốt) | B04 + B06 | Có bảng + migration | PR "G03 retry columns" đã vào `main` | lớn |
 | P8 | C04 hoán vị đề tất định | Hàm thuần | P1 (đã có) | nhỏ |
 | P9 | A08/A03 ghép cặp đề – đáp án 4 tín hiệu | Hàm thuần | P2 (đã có) | vừa |
 | P10 | D06 cổng chọn bậc IRT + D02 thứ tự học bù | Hàm thuần | — | vừa |
 | P11 | B05 chặn chu trình đồ thị tri thức + D05 sổ lỗi | Hàm thuần | — | vừa |
 | P12 | A02 lõi cào phần 2 (kiểm tra redirect, giãn nhịp, giám sát parser) | Hàm thuần | P7 (đã có) | vừa |
-| P13 | C06 gia cố kho lưu bài ngoại tuyến | Frontend | **Chờ chủ dự án duyệt** | nhỏ |
+| P13 | C06 gia cố kho lưu bài ngoại tuyến | Frontend | P5 (đã có) — chủ dự án đã duyệt 13/11 | nhỏ |
 
-### P6 (làm nốt) — các điểm phải sửa trước khi mở PR
+### P6 — đã xong
 
-- **Trùng mã migration.** `b8c9d0e1f2a3` đã được dùng cho migration "G03 outbox retry columns" của luồng chính. Đổi file
-  và `revision` của P6 thành `c9d0e1f2a3b4`, đặt `down_revision = "b8c9d0e1f2a3"`, và chỉ mở PR sau khi migration G03 đó
-  đã có trên `origin/main` (`alembic heads` phải ra đúng một head).
-- **GRANT phải khớp đặc tả.** Migration hiện chỉ cấp cho `ulp_app_rw`. Đối chiếu từng bảng với mục 5 của
-  `docs/architecture/chapters/04_postgresql_ddl_rls_grants.sql` và với `tests/security/grants_manifest.csv`, cấp đủ cho các
-  role khác (đọc cho worker/analytics nếu đặc tả ghi). Thêm test: quyền thực tế trên 6 bảng bằng đúng các dòng trong manifest.
-- **Policy đọc của bảng con** phải dùng đúng điều kiện của bảng cha trong đặc tả; chép nguyên văn câu `CREATE POLICY` do
-  migration sinh ra vào mô tả PR để rà soát.
-- Cột `created_by` bỏ khoá ngoại tới `users` là chấp nhận được trước F04; ghi lại ở "Điểm cần chủ dự án quyết".
-- Chạy `alembic downgrade -1` rồi `alembic upgrade head` và `alembic check`; cả ba phải sạch.
-- Test RLS tối thiểu: tenant A không thấy nút riêng của tenant B; nút hệ thống `is_active = false` không lộ cho tenant; bảng
-  con ẩn theo cha; role runtime (không phải owner) chạy mọi truy vấn trong test.
+P6 đã được tích hợp. Luồng chính đổi mã migration thành `c9d0e1f2a3b4` (nối sau `b8c9d0e1f2a3` của G03) vì trùng mã;
+quyền chỉ cấp cho `ulp_app_rw` là đúng đặc tả mục 5. Migration mới của đợt sau phải nối sau head hiện tại
+(`alembic heads`), không tự đặt mã trùng với file đã có.
 
 ### P8 — C04: hoán vị câu hỏi và phương án tất định
 
@@ -336,10 +326,11 @@ Thứ tự đề xuất: P6 (làm nốt) → P8 → P9 → P10 → P11 → P12. 
   - Giãn nhịp theo tên miền: đồng hồ được tiêm vào, không `time.sleep` trong lõi — trả về số giây phải chờ.
   - `ParserDriftMonitor`: cửa sổ 30, ngưỡng 15%, chưa đủ 10 mẫu thì chưa báo; không dùng giá trị mặc định khả biến.
 
-### P13 — C06: gia cố kho lưu bài ngoại tuyến (CHỜ DUYỆT — chưa làm)
+### P13 — C06: gia cố kho lưu bài ngoại tuyến (đã duyệt 13/11)
 
-Đợt 1 làm đúng theo mã mẫu Mục 6.9, nhưng mã mẫu có ba chỗ có thể làm mất bài của học sinh. Đề xuất (lệch đặc tả theo
-hướng an toàn hơn, cần chủ dự án duyệt):
+- Nhánh `feat/c06-autosave-hardening`. Chỉ sửa `frontend/src/lib/exam-autosave-store.ts` và test của nó.
+- Đợt 1 làm đúng theo mã mẫu Mục 6.9, nhưng mã mẫu có ba chỗ có thể làm mất bài của học sinh. Chủ dự án đã duyệt lệch
+  đặc tả theo hướng an toàn hơn; ghi rõ điều này trong mô tả PR. Mỗi điểm dưới đây phải có test riêng:
 
 - `401` và `403` không mang `error_code = ATTEMPT_DEADLINE_EXPIRED`: **giữ** hàng đợi, dừng gửi, báo lên giao diện để đăng
   nhập lại. Hiện tại `401` làm xoá từng bản ghi, `403` bất kỳ xoá toàn bộ hàng đợi.
@@ -347,3 +338,5 @@ hướng an toàn hơn, cần chủ dự án duyệt):
 - `409` lần thứ hai sau khi đồng bộ lại: không xoá âm thầm; chuyển bản ghi sang trạng thái `conflict` và gọi
   `onConflictModal` để học sinh chọn.
 - Không tạo `defaultExamAutosaveStore` ngay khi import; tạo lười qua hàm.
+- Bản ghi bị giữ lại không được chặn các câu khác: hàng đợi bỏ qua bản ghi `conflict` và gửi tiếp các bản ghi sau.
+- Thêm `getQueueState()` trả số bản ghi đang chờ / đang xung đột / cần đăng nhập lại để giao diện hiển thị.
