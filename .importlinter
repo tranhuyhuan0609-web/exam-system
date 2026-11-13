@@ -86,3 +86,12 @@ protected_modules =
 allowed_importers =
     app.modules.attempts
     app.model_registry
+
+[importlinter:contract:internal-outbox]
+name = outbox internals are private to the module
+type = protected
+protected_modules =
+    app.modules.outbox.internal
+allowed_importers =
+    app.modules.outbox
+    app.model_registry
