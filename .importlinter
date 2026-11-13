@@ -131,3 +131,21 @@ protected_modules =
 allowed_importers =
     app.modules.frameworks
     app.model_registry
+
+[importlinter:contract:internal-crawler]
+name = crawler internals are private to the module
+type = protected
+protected_modules =
+    app.modules.crawler.internal
+allowed_importers =
+    app.modules.crawler
+    app.model_registry
+
+[importlinter:contract:internal-drive_sync]
+name = drive_sync internals are private to the module
+type = protected
+protected_modules =
+    app.modules.drive_sync.internal
+allowed_importers =
+    app.modules.drive_sync
+    app.model_registry
