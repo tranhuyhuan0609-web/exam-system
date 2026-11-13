@@ -227,3 +227,123 @@ Thứ tự đề xuất: P1 → P2 → P3 → P4 → P5 → P7 → P6. Các gói
 
 Chuyển engine PDF và bộ đề mẫu (`tests/golden/`); G03 và các bổ sung của nó; F05/F04 (xác thực, phân quyền, đồng ý của
 phụ huynh, mã hóa); E01 (cổng AI); mọi thay đổi ở `app/platform/`; tích hợp, rà soát và merge mọi PR.
+
+---
+
+## 4. Đợt 2 (giao ngày 13/11/2026)
+
+Đợt 1 (P1–P5, P7) đã được rà soát và gộp vào `main` qua nhánh tích hợp. Trước khi làm tiếp: `git fetch origin` rồi tạo mọi
+nhánh mới từ `origin/main` mới nhất. Quy tắc ở mục 2 giữ nguyên, cộng thêm các điều rút ra từ đợt 1:
+
+1. **`.importlinter`: chỉ thêm khối của chính gói đang làm.** Ở đợt 1, PR của P2 và P7 chép cả khối của gói khác nên CI đỏ
+   (`"app.modules.grading" not present in the graph`). Nhánh nào cũng phải xanh khi đứng một mình trên `main`.
+2. **Không gọi hàm trong giá trị mặc định của tham số** (`policy: X = X()` bị ruff báo `B008`). Dùng hằng ở mức module.
+3. Chạy `ruff check .` bằng đúng `.venv\Scripts\ruff.exe` của repo trước khi mở PR.
+4. Gói frontend chạy thêm `npm run typecheck` và `npm test` trong `frontend/` (CI đã có job `frontend`).
+5. Chuỗi hiển thị cho người dùng không nằm trong lõi: lõi trả mã lý do (`reason_code`), không trả câu tiếng Việt.
+
+Thứ tự đề xuất: P6 (làm nốt) → P8 → P9 → P10 → P11 → P12. P13 chỉ làm sau khi chủ dự án duyệt.
+
+| Gói | Module | Loại | Cần trước | Ước lượng |
+|---|---|---|---|---|
+| P6 (làm nốt) | B04 + B06 | Có bảng + migration | PR "G03 retry columns" đã vào `main` | lớn |
+| P8 | C04 hoán vị đề tất định | Hàm thuần | P1 (đã có) | nhỏ |
+| P9 | A08/A03 ghép cặp đề – đáp án 4 tín hiệu | Hàm thuần | P2 (đã có) | vừa |
+| P10 | D06 cổng chọn bậc IRT + D02 thứ tự học bù | Hàm thuần | — | vừa |
+| P11 | B05 chặn chu trình đồ thị tri thức + D05 sổ lỗi | Hàm thuần | — | vừa |
+| P12 | A02 lõi cào phần 2 (kiểm tra redirect, giãn nhịp, giám sát parser) | Hàm thuần | P7 (đã có) | vừa |
+| P13 | C06 gia cố kho lưu bài ngoại tuyến | Frontend | **Chờ chủ dự án duyệt** | nhỏ |
+
+### P6 (làm nốt) — các điểm phải sửa trước khi mở PR
+
+- **Trùng mã migration.** `b8c9d0e1f2a3` đã được dùng cho migration "G03 outbox retry columns" của luồng chính. Đổi file
+  và `revision` của P6 thành `c9d0e1f2a3b4`, đặt `down_revision = "b8c9d0e1f2a3"`, và chỉ mở PR sau khi migration G03 đó
+  đã có trên `origin/main` (`alembic heads` phải ra đúng một head).
+- **GRANT phải khớp đặc tả.** Migration hiện chỉ cấp cho `ulp_app_rw`. Đối chiếu từng bảng với mục 5 của
+  `docs/architecture/chapters/04_postgresql_ddl_rls_grants.sql` và với `tests/security/grants_manifest.csv`, cấp đủ cho các
+  role khác (đọc cho worker/analytics nếu đặc tả ghi). Thêm test: quyền thực tế trên 6 bảng bằng đúng các dòng trong manifest.
+- **Policy đọc của bảng con** phải dùng đúng điều kiện của bảng cha trong đặc tả; chép nguyên văn câu `CREATE POLICY` do
+  migration sinh ra vào mô tả PR để rà soát.
+- Cột `created_by` bỏ khoá ngoại tới `users` là chấp nhận được trước F04; ghi lại ở "Điểm cần chủ dự án quyết".
+- Chạy `alembic downgrade -1` rồi `alembic upgrade head` và `alembic check`; cả ba phải sạch.
+- Test RLS tối thiểu: tenant A không thấy nút riêng của tenant B; nút hệ thống `is_active = false` không lộ cho tenant; bảng
+  con ẩn theo cha; role runtime (không phải owner) chạy mọi truy vấn trong test.
+
+### P8 — C04: hoán vị câu hỏi và phương án tất định
+
+- Nhánh `feat/c04-permutation-core`. Module `app/modules/assembly/` (`public.py`, `internal/permutation.py`), test
+  `tests/test_permutation_core.py`.
+- Đặc tả: `chapters/06_9_thuat_toan_loi.md` dòng 617–650 (`generate_attempt_permutation`).
+- Yêu cầu:
+  - Đầu vào là dataclass đóng băng (`question_version_id`, `section_code`, `stimulus_id | None`, `item_type`), đầu ra là
+    dataclass (`ordered_question_ids`, `option_permutations`). Cùng `attempt_seed` ⇒ cùng kết quả, không phụ thuộc thứ tự
+    phần tử đầu vào (sắp đầu vào theo khoá ổn định trước khi xáo).
+  - Các phần giữ thứ tự `PART_I` → `PART_II` → `PART_III` → `PART_IV`; câu chung một `stimulus_id` luôn liền nhau và giữ
+    thứ tự gốc trong nhóm; chỉ câu `SINGLE_CHOICE` có hoán vị phương án.
+  - Ngữ nghĩa hoán vị phải khớp P1: `option_permutation[vị trí hiển thị] = khoá gốc`. Test vòng kín với
+    `app.modules.grading.public.grade_item` (chỉ import trong test): chọn đúng phương án ở vị trí hiển thị ⇒ được điểm.
+  - Không dùng trạng thái `random` toàn cục. Có ít nhất 3 vector vàng ghi cứng (seed → kết quả) để bắt thay đổi thuật toán.
+- Điểm cần chủ dự án quyết (ghi trong PR): phương án cố định vị trí kiểu "Cả A, B, C đều đúng" — đặc tả chưa nói.
+
+### P9 — A08/A03: ghép cặp đề và đáp án bằng 4 tín hiệu
+
+- Nhánh `feat/a08-pairing-core`. Thêm `app/modules/dedup/internal/pairing.py`, xuất qua `app/modules/dedup/public.py`; test
+  `tests/test_pairing_core.py`. Không sửa `hashing.py`.
+- Đặc tả: dòng 402–427 (`score_exam_and_solution_pairing`) và 1352–1395 (`auto_pair_exam_and_hdc_documents`).
+- Yêu cầu:
+  - Trọng số 0,40 tên file / 0,25 cùng thư mục / 0,20 cùng môn / 0,15 số câu; ngưỡng 0,85 `CONFIRMED`, 0,60 `PROPOSED`.
+    Tính bằng `Decimal` hoặc làm tròn tại một chỗ duy nhất.
+  - Nhận diện file đáp án và làm sạch tên phải đúng cho cả có dấu, không dấu, NFC/NFD, gạch dưới/gạch nối
+    (`Đáp án`, `dap_an`, `HDC`, `hướng dẫn chấm`, `loi-giai`). Mã mẫu trong đặc tả bỏ sót dạng có dấu — sửa và ghi trong PR.
+  - Thiếu `folder_id` hoặc `subject_code` ở cả hai bên **không** được tính là "giống nhau".
+  - Một file đáp án chỉ gán cho tối đa một đề (ghép theo điểm giảm dần, hoà thì theo `doc_id`); kết quả tất định.
+- Điểm cần chủ dự án quyết: mã mẫu cho phép một đáp án ghép nhiều đề; gói này làm chặt hơn.
+
+### P10 — D06: cổng chọn bậc IRT; D02: thứ tự học bù kiến thức tiên quyết
+
+- Nhánh `feat/d06-irt-tier-core`. Module `app/modules/mastery/` (`internal/irt_tier.py`) và `app/modules/learning_path/`
+  (`internal/remediation.py`), mỗi module một khối `.importlinter`; test `tests/test_irt_tier_core.py`,
+  `tests/test_remediation_core.py`.
+- Đặc tả: dòng 957–1029; nguồn chuẩn ngưỡng là `irt_tier_registry` trong `docs/architecture/platform_manifest.yaml`.
+- Yêu cầu D06: trả về bậc **và** danh sách tiêu chí không đạt của bậc kế trên. Có test đọc `platform_manifest.yaml` và
+  khẳng định mọi ngưỡng trong mã bằng đúng manifest (4 bậc, `fallback_to`). Test biên từng ngưỡng (bằng / ngay dưới), NaN
+  và số âm bị từ chối.
+- Yêu cầu D02: chịu được đồ thị có chu trình và cạnh trùng (không đệ quy vô hạn; dùng duyệt lặp), thứ tự tất định, nút tiên
+  quyết đứng trước nút phụ thuộc, trả `reason_code` (`WEAK_TARGET`, `PREREQUISITE_OF`) kèm id nút phụ thuộc.
+- Điểm cần chủ dự án quyết: đặc tả ghi ngưỡng tiên quyết 0,60 nhưng câu giải thích ghi "< 50%"; để thành tham số, mặc
+  định 0,60.
+
+### P11 — B05: chặn chu trình đồ thị tri thức; D05: máy trạng thái sổ lỗi
+
+- Nhánh `feat/b05-d05-cores`. Module `app/modules/knowledge_graph/` (`internal/cycles.py`) và
+  `app/modules/error_notebook/` (`internal/state.py`); test `tests/test_graph_cycles.py`, `tests/test_error_notebook_core.py`.
+- Đặc tả: dòng của module B05 và D05 trong `chapters/03_dac_ta_47_modules_va_6_workspaces.md`; các bảng tương ứng trong
+  `chapters/04_postgresql_ddl_rls_grants.sql` (chỉ để lấy tên trạng thái và cột, không tạo bảng).
+- Yêu cầu B05: hàm `would_create_cycle(edges, new_edge)` và `find_cycle(edges)` trả về đường đi của chu trình để API sau
+  này trả `422` có nội dung; tự nối chính nó bị từ chối; chạy được 50.000 cạnh dưới 1 giây (duyệt lặp).
+- Yêu cầu D05: hàm chuyển trạng thái thuần `apply_attempt(state, is_correct, at)`; đúng **2 lần liên tiếp** mới
+  `RESOLVED`; sai một lần thì đếm lại từ 0 và mở lại nếu đang `RESOLVED`; tên trạng thái lấy đúng từ DDL.
+
+### P12 — A02: lõi cào phần 2
+
+- Nhánh `feat/a02-crawl-policy-core`. Thêm vào `app/modules/crawler/internal/` các file `redirects.py`, `politeness.py`,
+  `drift.py`; test `tests/test_crawl_policy_core.py`. Không sửa `ssrf.py`.
+- Đặc tả: dòng 1087–1168.
+- Yêu cầu:
+  - `verify_url_or_redirect_hop`: chỉ `https` (và cổng 443 trừ khi cấu hình), từ chối URL có `user:pass@`, host là IP
+    trần, tên miền ngoài danh sách cho phép; mỗi bước redirect kiểm lại bằng `check_resolved_addresses` (P7) với hàm phân
+    giải DNS **được tiêm vào**; giới hạn số bước (mặc định 5); phát hiện vòng lặp redirect. Không mở socket trong gói này.
+  - Giãn nhịp theo tên miền: đồng hồ được tiêm vào, không `time.sleep` trong lõi — trả về số giây phải chờ.
+  - `ParserDriftMonitor`: cửa sổ 30, ngưỡng 15%, chưa đủ 10 mẫu thì chưa báo; không dùng giá trị mặc định khả biến.
+
+### P13 — C06: gia cố kho lưu bài ngoại tuyến (CHỜ DUYỆT — chưa làm)
+
+Đợt 1 làm đúng theo mã mẫu Mục 6.9, nhưng mã mẫu có ba chỗ có thể làm mất bài của học sinh. Đề xuất (lệch đặc tả theo
+hướng an toàn hơn, cần chủ dự án duyệt):
+
+- `401` và `403` không mang `error_code = ATTEMPT_DEADLINE_EXPIRED`: **giữ** hàng đợi, dừng gửi, báo lên giao diện để đăng
+  nhập lại. Hiện tại `401` làm xoá từng bản ghi, `403` bất kỳ xoá toàn bộ hàng đợi.
+- Hết giờ / đã nộp: chỉ xoá các bản ghi của đúng `attemptId` đó, không `clear()` cả bảng.
+- `409` lần thứ hai sau khi đồng bộ lại: không xoá âm thầm; chuyển bản ghi sang trạng thái `conflict` và gọi
+  `onConflictModal` để học sinh chọn.
+- Không tạo `defaultExamAutosaveStore` ngay khi import; tạo lười qua hàm.
