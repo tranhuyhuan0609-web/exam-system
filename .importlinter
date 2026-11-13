@@ -293,3 +293,12 @@ protected_modules =
 allowed_importers =
     app.modules.parser_registry
     app.model_registry
+
+[importlinter:contract:internal-ai_generation]
+name = ai_generation internals are private to the module
+type = protected
+protected_modules =
+    app.modules.ai_generation.internal
+allowed_importers =
+    app.modules.ai_generation
+    app.model_registry
