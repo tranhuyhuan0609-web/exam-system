@@ -16,3 +16,8 @@ htmlcov/
 
 # Scratch output of the exam import engine (figures, previews, temp PDFs)
 /storage/
+
+# Claude Code session settings (machine-specific)
+.claude/
+# Sample exams for the golden corpus stay out of Git (teacher names, phone numbers)
+tests/golden/files/
