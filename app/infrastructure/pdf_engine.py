@@ -19,7 +19,9 @@ Out of scope on purpose: writing/assembling PDFs, redaction, OCR
 
 from __future__ import annotations
 
+import ctypes
 import io
+import unicodedata
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -29,6 +31,7 @@ from typing import Any
 
 import pdfplumber
 import pypdfium2 as pdfium
+import pypdfium2.raw as pdfium_raw
 from PIL import Image
 
 PathOrBytes = str | Path | bytes | bytearray | memoryview
@@ -143,6 +146,62 @@ class Drawing:
     stroke_color: tuple[float, ...] | None
     fill_color: tuple[float, ...] | None
     linewidth: float
+    # min(stroke alpha, fill alpha) of the matching pdfium path object; 1.0 when no object could be matched.
+    opacity: float = 1.0
+
+
+@dataclass(frozen=True, slots=True)
+class Span:
+    """A run of characters with one font, size, colour and alpha on one text line."""
+
+    text: str
+    rect: Rect
+    size: float
+    fontname: str
+    color: int  # 0xRRGGBB fill colour, converted to RGB by pdfium (also for gray / CMYK)
+    alpha: int  # 0..255, from the fill alpha of the text (ExtGState ca)
+
+
+@dataclass(frozen=True, slots=True)
+class RichLine:
+    """A text line with its spans, in the style of ``get_text("dict")`` lines."""
+
+    spans: tuple[Span, ...]
+    rect: Rect
+
+    @property
+    def text(self) -> str:
+        return "".join(s.text for s in self.spans)
+
+
+@dataclass(frozen=True, slots=True)
+class Block:
+    """Like a ``get_text("blocks")`` tuple. ``kind`` 0 = text, 1 = image; text ends with a newline."""
+
+    rect: Rect
+    text: str
+    number: int
+    kind: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class _PChar:
+    ch: str
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+    size: float
+    font: str
+    color: int
+    alpha: int
+    boxed: bool
+
+
+# Tunables of the fitz-style line/block grouping (calibrated against PyMuPDF on the golden corpus).
+LINE_BREAK_GAP_EM = 4.0  # a horizontal gap wider than this many em ends a text line
+SPACE_GAP_EM = 0.2  # a gap wider than this many em between two characters of a row reads as a space
+BLOCK_GAP_EM = 0.35  # lines closer than this many line heights (vertically) share a block
 
 
 def _color(value: Any) -> tuple[float, ...] | None:
@@ -163,6 +222,77 @@ def _rect_of(obj: dict[str, Any]) -> Rect:
 def _center_in(obj: dict[str, Any], boxes: Sequence[Rect]) -> bool:
     cx, cy = (float(obj["x0"]) + float(obj["x1"])) / 2.0, (float(obj["top"]) + float(obj["bottom"])) / 2.0
     return any(b.contains_point(cx, cy) for b in boxes)
+
+
+def _match_alpha(rect: Rect, linewidth: float, paths: Sequence[tuple[Rect, float]]) -> float:
+    """Alpha of the pdfium path whose bounds best fit ``rect`` (grown by the stroke width); 1.0 when none fits."""
+    slack = linewidth + 1.5
+    best, best_dev = 1.0, None
+    for bounds, alpha in paths:
+        dev = max(
+            abs(bounds.x0 - rect.x0), abs(bounds.y0 - rect.y0), abs(bounds.x1 - rect.x1), abs(bounds.y1 - rect.y1)
+        )
+        if dev <= slack and (best_dev is None or dev < best_dev):
+            best, best_dev = alpha, dev
+    return best
+
+
+def _normalised_matches(text: str, needle: str, match_case: bool) -> list[tuple[int, int]]:
+    """(start, count) character spans of ``needle`` in ``text`` compared as NFD with collapsed whitespace."""
+    haystack: list[str] = []
+    origin: list[int] = []  # index in ``text`` of the character each normalised character came from
+    for i, ch in enumerate(text):
+        for part in unicodedata.normalize("NFD", ch):
+            if part.isspace():
+                if haystack and haystack[-1] == " ":
+                    continue
+                part = " "
+            haystack.append(part if match_case else part.lower())
+            origin.append(i)
+    want = " ".join(unicodedata.normalize("NFD", needle).split())
+    want = want if match_case else want.lower()
+    flat = "".join(haystack)
+    out: list[tuple[int, int]] = []
+    pos = flat.find(want)
+    while want and pos != -1:
+        first, last = origin[pos], origin[pos + len(want) - 1]
+        out.append((first, last - first + 1))
+        pos = flat.find(want, pos + len(want))
+    return out
+
+
+def cluster_rects(
+    rects: Iterable[Rect], x_tolerance: float = 3.0, y_tolerance: float = 3.0, final_filter: bool = True
+) -> list[Rect]:
+    """The clustering of ``PDFEngineAdapter.cluster_drawings`` on plain rectangles (see there)."""
+
+    def neighbours(a: Rect, b: Rect) -> bool:
+        return not (
+            a.x1 < b.x0 - x_tolerance
+            or a.x0 > b.x1 + x_tolerance
+            or a.y1 < b.y0 - y_tolerance
+            or a.y0 > b.y1 + y_tolerance
+        )
+
+    pending = sorted(set(rects), key=lambda r: (r.y1, r.x0))
+    clusters: list[Rect] = []
+    while pending:
+        grown = pending[0]
+        repeat = True
+        while repeat:
+            repeat = False
+            for i in range(len(pending) - 1, 0, -1):  # back to front; the first box is the seed itself
+                if neighbours(pending[i], grown):
+                    grown = grown.union(pending[i])
+                    del pending[i]
+                    repeat = True
+        clusters.append(grown)
+        del pending[0]
+        pending = sorted(set(pending), key=lambda r: (r.y1, r.x0))
+    clusters = sorted(set(clusters), key=lambda r: (r.y1, r.x0))
+    if not final_filter:
+        return clusters
+    return [r for r in clusters if r.width > x_tolerance and r.height > y_tolerance]
 
 
 def merge_intersecting_rects_union_find(rects: Iterable[Rect], pad: float = 10.0) -> list[Rect]:
@@ -394,7 +524,8 @@ class PDFEngineAdapter:
         """Bounding boxes (top-left origin) of every occurrence of ``needle``, like ``page.search_for``.
 
         One rectangle per occurrence (a match wrapped over two lines yields their union).
-        Matching is exact on code points: no Unicode normalisation is applied.
+        pdfium matches on code points; when it finds nothing, a second pass compares both sides decomposed
+        (NFD, so NFC and NFD Vietnamese match each other) and with whitespace runs collapsed (gap G6).
         """
         if not needle:
             return []
@@ -404,10 +535,14 @@ class PDFEngineAdapter:
             _, height = page.get_size()
             textpage = page.get_textpage()
             try:
+                spans: list[tuple[int, int]] = []
                 searcher = textpage.search(needle, match_case=match_case)
-                found: list[Rect] = []
                 while (match := searcher.get_next()) is not None:
-                    start, count = match
+                    spans.append(match)
+                if not spans:
+                    spans = _normalised_matches(textpage.get_text_range(), needle, match_case)
+                found: list[Rect] = []
+                for start, count in spans:
                     boxes = [textpage.get_charbox(i) for i in range(start, start + count)]
                     boxes = [b for b in boxes if b[2] > b[0] and b[3] > b[1]]
                     if boxes:
@@ -490,11 +625,17 @@ class PDFEngineAdapter:
         return sorted(out, key=lambda b: (b.rect.y0, b.rect.x0))
 
     def drawings(self, index: int) -> list[Drawing]:
-        """Vector path objects (rects, straight lines, curves) with colours and stroke/fill flags."""
+        """Vector path objects (rects, straight lines, curves) with colours and stroke/fill flags.
+
+        ``Drawing.opacity`` is read from pdfium: pdfplumber does not know ExtGState alpha. The pdfium path
+        object is matched to each drawing by bounding box (only done when the page has a translucent path).
+        """
+        translucent, paths = self._path_alphas(index)
         with self._plumber_page(index) as page:
             out: list[Drawing] = []
             for kind, objs in (("rect", page.rects), ("line", page.lines), ("curve", page.curves)):
                 for o in objs or []:
+                    width = float(o.get("linewidth") or 0.0)
                     out.append(
                         Drawing(
                             rect=_rect_of(o),
@@ -503,10 +644,55 @@ class PDFEngineAdapter:
                             fill=bool(o.get("fill")),
                             stroke_color=_color(o.get("stroking_color")),
                             fill_color=_color(o.get("non_stroking_color")),
-                            linewidth=float(o.get("linewidth") or 0.0),
+                            linewidth=width,
+                            opacity=_match_alpha(_rect_of(o), width, paths) if translucent else 1.0,
                         )
                     )
         return sorted(out, key=lambda d: (d.rect.y0, d.rect.x0, d.kind))
+
+    def _path_alphas(self, index: int) -> tuple[bool, list[tuple[Rect, float]]]:
+        """(any translucent path?, [(bounds, min alpha of the painted parts)]) of the top-level pdfium paths."""
+        self._check(index)
+        page = self._pdfium[index]
+        try:
+            height = page.get_size()[1]
+            out: list[tuple[Rect, float]] = []
+            fill_mode, stroke = ctypes.c_int(), ctypes.c_int()
+            r_, g_, b_, a_ = (ctypes.c_uint() for _ in range(4))
+            for obj in page.get_objects(filter=[pdfium_raw.FPDF_PAGEOBJ_PATH], max_depth=0):
+                pdfium_raw.FPDFPath_GetDrawMode(obj.raw, ctypes.byref(fill_mode), ctypes.byref(stroke))
+                alphas = [1.0]
+                if fill_mode.value:
+                    pdfium_raw.FPDFPageObj_GetFillColor(
+                        obj.raw, ctypes.byref(r_), ctypes.byref(g_), ctypes.byref(b_), ctypes.byref(a_)
+                    )
+                    alphas.append(a_.value / 255.0)
+                if stroke.value:
+                    pdfium_raw.FPDFPageObj_GetStrokeColor(
+                        obj.raw, ctypes.byref(r_), ctypes.byref(g_), ctypes.byref(b_), ctypes.byref(a_)
+                    )
+                    alphas.append(a_.value / 255.0)
+                left, bottom, right, top = obj.get_bounds()
+                out.append((Rect(left, height - top, right, height - bottom), min(alphas)))
+            return any(alpha < 1.0 for _, alpha in out), out
+        except Exception as exc:
+            raise PDFEngineError(f"Cannot read paths of page {index}: {exc}") from exc
+        finally:
+            page.close()
+
+    def cluster_drawings(
+        self, index: int, *, x_tolerance: float = 3.0, y_tolerance: float = 3.0, final_filter: bool = True
+    ) -> list[Rect]:
+        """Join the boxes of neighbouring vector paths, like PyMuPDF's ``page.cluster_drawings``.
+
+        Two boxes are neighbours when the gap between them is at most the tolerance on both axes. Only paths
+        fully inside the page take part. Unlike ``merge_intersecting_rects_union_find`` the clusters are grown
+        greedily from the lowest box upwards (same order as PyMuPDF), and with ``final_filter`` clusters not
+        wider than ``x_tolerance`` or not taller than ``y_tolerance`` are dropped.
+        """
+        page_rect = self.page_rect(index)
+        boxes = [d.rect for d in self.drawings(index) if page_rect.contains(d.rect)]
+        return cluster_rects(boxes, x_tolerance, y_tolerance, final_filter)
 
     def drawing_rects(self, index: int, *, include_tables: bool = False) -> list[Rect]:
         """Bounding boxes of images and vector objects, by default WITHOUT those inside a detected table.
@@ -516,3 +702,174 @@ class PDFEngineAdapter:
         tables = [] if include_tables else [t.expanded(4.0) for t in self.table_rects(index)]
         boxes = [i.rect for i in self.images(index)] + [d.rect for d in self.drawings(index)]
         return [b for b in boxes if not any(b.overlap_ratio(t) >= 0.5 for t in tables)]
+
+    # -- fitz-style text structure (pdfium text page) ------------------------------------------
+
+    def _pdfium_chars(self, index: int) -> list[_PChar]:
+        """Every character of the pdfium text page in content-stream order, with its LOOSE box.
+
+        The loose box spans the font's ascent..descent (like PyMuPDF line/span boxes), unlike the tight
+        glyph box. Generated characters (pdfium inserts spaces and CR/LF between text objects) have an empty box.
+        Fill colour and alpha come from pdfium, which converts gray/CMYK to RGB and applies ExtGState alpha.
+        """
+        self._check(index)
+        page = self._pdfium[index]
+        try:
+            height = page.get_size()[1]
+            textpage = page.get_textpage()
+            try:
+                tp = textpage.raw
+                out: list[_PChar] = []
+                r_, g_, b_, a_ = (ctypes.c_uint() for _ in range(4))
+                font_buf = ctypes.create_string_buffer(160)
+                flags = ctypes.c_int()
+                box = pdfium_raw.FS_RECTF()
+                for i in range(textpage.count_chars()):
+                    code = pdfium_raw.FPDFText_GetUnicode(tp, i)
+                    if code in (0xFFFE, 0xFFFF):
+                        continue
+                    ch = chr(code) if code else ""
+                    ok = pdfium_raw.FPDFText_GetLooseCharBox(tp, i, ctypes.byref(box))
+                    if not (ok and box.right > box.left and box.top > box.bottom):
+                        out.append(_PChar(ch, 0.0, 0.0, 0.0, 0.0, 0.0, "", 0, 255, False))
+                        continue
+                    # FPDFText_GetFontSize is the unscaled font size (often 1.0 when the text matrix scales it):
+                    # the loose box height is the reliable em proxy.
+                    size = (float(box.top) - float(box.bottom)) / 1.15
+                    pdfium_raw.FPDFText_GetFillColor(
+                        tp, i, ctypes.byref(r_), ctypes.byref(g_), ctypes.byref(b_), ctypes.byref(a_)
+                    )
+                    n = pdfium_raw.FPDFText_GetFontInfo(tp, i, font_buf, len(font_buf), ctypes.byref(flags))
+                    out.append(
+                        _PChar(
+                            ch,
+                            float(box.left),
+                            height - float(box.top),
+                            float(box.right),
+                            height - float(box.bottom),
+                            size,
+                            font_buf.value.decode("latin-1") if n else "",
+                            (r_.value << 16) | (g_.value << 8) | b_.value,
+                            a_.value,
+                            True,
+                        )
+                    )
+                return out
+            finally:
+                textpage.close()
+        except Exception as exc:
+            raise PDFEngineError(f"Cannot read text structure of page {index}: {exc}") from exc
+        finally:
+            page.close()
+
+    def rich_lines(self, index: int, *, line_gap: float = LINE_BREAK_GAP_EM) -> list[RichLine]:
+        """Text lines with spans (font, size, colour, alpha), in content-stream order.
+
+        A line is a run of characters sharing a text row: it ends when the next
+        character overlaps the row by less than 40 %, jumps back to the left, or sits more than ``line_gap`` em
+        to the right (table cells, tab stops: PyMuPDF reports those as separate blocks too).
+        """
+        lines: list[RichLine] = []
+        cur: list[_PChar] = []
+
+        def flush() -> None:
+            nonlocal cur
+            chars, cur = cur, []
+            if not any(c.ch.strip() for c in chars):
+                return
+            spans: list[Span] = []
+            group: list[_PChar] = []
+
+            def close_group() -> None:
+                boxed = [c for c in group if c.boxed]
+                if boxed:
+                    rect = Rect(
+                        min(c.x0 for c in boxed),
+                        min(c.y0 for c in boxed),
+                        max(c.x1 for c in boxed),
+                        max(c.y1 for c in boxed),
+                    )
+                    first = boxed[0]
+                    text = "".join(c.ch for c in group)
+                    spans.append(Span(text, rect, first.size, first.font, first.color, first.alpha))
+                group.clear()
+
+            ref: _PChar | None = None
+            for c in chars:
+                if c.boxed:
+                    if ref is not None and (
+                        abs(ref.size - c.size) > 0.05
+                        or ref.font != c.font
+                        or ref.color != c.color
+                        or ref.alpha != c.alpha
+                    ):
+                        close_group()
+                    ref = c
+                group.append(c)
+            close_group()
+            if spans:
+                rect = spans[0].rect
+                for s in spans[1:]:
+                    rect = rect.union(s.rect)
+                lines.append(RichLine(tuple(spans), rect))
+
+        row: tuple[float, float, float] | None = None  # y0, y1, right edge of the last boxed char
+        space = _PChar(" ", 0.0, 0.0, 0.0, 0.0, 0.0, "", 0, 255, False)
+        for c in self._pdfium_chars(index):
+            if not c.boxed:
+                # A generated space between two text objects. Generated CR/LF are ignored: pdfium also emits them
+                # between a text and its superscript, so geometry alone decides about lines and word gaps.
+                if c.ch == " " and cur and not cur[-1].ch.isspace():
+                    cur.append(space)
+                continue
+            if row is not None:
+                overlap = min(row[1], c.y1) - max(row[0], c.y0)
+                smaller = min(row[1] - row[0], c.y1 - c.y0)
+                if (
+                    overlap < 0.4 * smaller
+                    or c.x0 < row[2] - 1.5 * c.size
+                    or c.x0 - row[2] > line_gap * c.size
+                ):
+                    flush()
+                    row = None
+                elif c.x0 - row[2] > SPACE_GAP_EM * c.size and cur and not cur[-1].ch.isspace() and not c.ch.isspace():
+                    cur.append(space)  # PyMuPDF inserts a space where a gap separates two words
+            cur.append(c)
+            row = (c.y0, c.y1, c.x1) if row is None else (min(row[0], c.y0), max(row[1], c.y1), c.x1)
+        flush()
+        return lines
+
+    def blocks(self, index: int) -> list[Block]:
+        """Paragraph-like text blocks in content-stream order, like ``get_text("blocks")`` (which, with
+        PyMuPDF's default flags, reports no image blocks either).
+
+        Consecutive lines belong to one block while the vertical gap stays below ``BLOCK_GAP_EM`` times the line
+        height and the lines overlap horizontally; a jump up the page or sideways starts a new block.
+        """
+        blocks: list[Block] = []
+        group: list[RichLine] = []
+        bounds: Rect | None = None
+
+        def close() -> None:
+            nonlocal bounds
+            if group and bounds is not None:
+                blocks.append(Block(bounds, "".join(ln.text.rstrip("\n") + "\n" for ln in group), len(blocks)))
+            group.clear()
+            bounds = None
+
+        for ln in self.rich_lines(index):
+            if group and bounds is not None:
+                prev = group[-1].rect
+                height = max(prev.height, ln.rect.height)
+                gap = ln.rect.y0 - prev.y1
+                horizontal_ok = ln.rect.x0 <= bounds.x1 + height and ln.rect.x1 >= bounds.x0 - height
+                if not (
+                    -0.6 * height <= gap <= BLOCK_GAP_EM * height
+                    and ln.rect.y0 >= prev.y0 - 0.6 * height
+                    and horizontal_ok
+                ):
+                    close()
+            group.append(ln)
+            bounds = ln.rect if bounds is None else bounds.union(ln.rect)
+        close()
+        return blocks

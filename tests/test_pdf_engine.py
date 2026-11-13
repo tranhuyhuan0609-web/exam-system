@@ -14,6 +14,7 @@ from app.infrastructure.pdf_engine import (
     PDFEngineError,
     PDFPasswordRequired,
     Rect,
+    cluster_rects,
     merge_intersecting_rects_union_find,
 )
 
@@ -29,19 +30,25 @@ class _Builder:
         self.h = height
         self._font = raw.FPDFText_LoadStandardFont(self.doc.raw, b"Helvetica")
 
-    def text(self, x: float, baseline_top: float, s: str, size: float = 12.0) -> None:
+    def text(
+        self, x: float, baseline_top: float, s: str, size: float = 12.0, rgba: tuple[int, int, int, int] | None = None
+    ) -> None:
         obj = raw.FPDFPageObj_CreateTextObj(self.doc.raw, self._font, size)
+        if rgba is not None:
+            raw.FPDFPageObj_SetFillColor(obj, *rgba)
         buf = (s + "\0").encode("utf-16-le")
         arr = (ctypes.c_ubyte * len(buf)).from_buffer_copy(buf)
         raw.FPDFText_SetText(obj, ctypes.cast(arr, raw.FPDF_WIDESTRING))
         raw.FPDFPageObj_Transform(obj, 1, 0, 0, 1, x, self.h - baseline_top)
         raw.FPDFPage_InsertObject(self.page.raw, obj)
 
-    def rect(self, x: float, top: float, w: float, h: float, *, fill: bool = False, rgb=(0, 0, 0)) -> None:
+    def rect(
+        self, x: float, top: float, w: float, h: float, *, fill: bool = False, rgb=(0, 0, 0), alpha: int = 255
+    ) -> None:
         obj = raw.FPDFPageObj_CreateNewRect(x, self.h - top - h, w, h)
-        raw.FPDFPageObj_SetStrokeColor(obj, *rgb, 255)
+        raw.FPDFPageObj_SetStrokeColor(obj, *rgb, alpha)
         raw.FPDFPageObj_SetStrokeWidth(obj, 1)
-        raw.FPDFPageObj_SetFillColor(obj, *rgb, 255)
+        raw.FPDFPageObj_SetFillColor(obj, *rgb, alpha)
         raw.FPDFPath_SetDrawMode(obj, 1 if fill else 0, 0 if fill else 1)
         raw.FPDFPage_InsertObject(self.page.raw, obj)
 
@@ -403,3 +410,209 @@ def test_union_find_order_independent():
         rng.shuffle(shuffled)
         assert merge_intersecting_rects_union_find(shuffled, pad=2) == expected
     assert len(expected) == 3
+
+
+# -- text structure: spans, lines, blocks (gap G5) ------------------------------------------------
+
+
+def _build(draw) -> bytes:
+    b = _Builder()
+    draw(b)
+    return b.build()
+
+
+def test_rich_lines_spans_carry_colour_and_alpha():
+    def draw(b):
+        b.text(72, 100, "dark text")
+        b.text(72, 130, "light grey", rgba=(200, 200, 200, 255))
+        b.text(72, 160, "see-through", rgba=(0, 0, 0, 60))
+        b.text(72, 190, "red text", rgba=(255, 0, 0, 255))
+
+    with PDFEngineAdapter.open(_build(draw)) as pdf:
+        lines = {ln.text.strip(): ln for ln in pdf.rich_lines(0)}
+    assert set(lines) == {"dark text", "light grey", "see-through", "red text"}
+    dark, grey, glass, red = (lines[k].spans[0] for k in ("dark text", "light grey", "see-through", "red text"))
+    assert (dark.color, dark.alpha) == (0x000000, 255)
+    assert (grey.color, grey.alpha) == (0xC8C8C8, 255)
+    assert glass.alpha < 128
+    assert red.color == 0xFF0000
+
+
+def test_rich_lines_boxes_are_top_left_and_font_tall():
+    with PDFEngineAdapter.open(_build(lambda b: b.text(72, 100, "Hello world"))) as pdf:
+        (line,) = pdf.rich_lines(0)
+    assert line.text.strip() == "Hello world"
+    assert 72 <= line.rect.x0 < 75
+    # loose box: ascent..descent around the baseline at y=100 (top-left origin), taller than the glyphs
+    assert line.rect.y0 < 100 < line.rect.y1
+    assert 11 <= line.rect.height <= 16
+
+
+def test_rich_lines_split_rows_and_distant_cells():
+    def draw(b):
+        b.text(72, 100, "first row")
+        b.text(72, 120, "second row")
+        b.text(72, 200, "left cell")
+        b.text(400, 200, "right cell")
+
+    with PDFEngineAdapter.open(_build(draw)) as pdf:
+        texts = [ln.text.strip() for ln in pdf.rich_lines(0)]
+    assert sorted(texts) == ["first row", "left cell", "right cell", "second row"]
+
+
+def test_rich_lines_keep_a_superscript_on_its_line():
+    def draw(b):
+        b.text(72, 100, "x=10")
+        b.text(96.5, 96, "31", size=8)  # raised, smaller
+        b.text(106, 100, ".")
+
+    with PDFEngineAdapter.open(_build(draw)) as pdf:
+        (line,) = pdf.rich_lines(0)
+    assert line.text.replace(" ", "") == "x=1031."
+    assert len(line.spans) == 3  # base, superscript size, base again
+
+
+def test_rich_lines_insert_a_space_at_a_word_gap():
+    def draw(b):
+        b.text(72, 100, "ab")
+        b.text(72 + 12 + 4, 100, "cd")  # 4 pt gap after "ab" (about 12 pt wide)
+
+    with PDFEngineAdapter.open(_build(draw)) as pdf:
+        (line,) = pdf.rich_lines(0)
+    assert line.text.split() == ["ab", "cd"]
+
+
+def test_rich_lines_of_a_blank_page_are_empty():
+    with PDFEngineAdapter.open(_build(lambda b: None)) as pdf:
+        assert pdf.rich_lines(0) == []
+        assert pdf.blocks(0) == []
+
+
+def test_blocks_group_close_lines_and_split_paragraphs():
+    def draw(b):
+        for k, t in enumerate(["Para one line one", "Para one line two", "Para one line three"]):
+            b.text(72, 100 + 14 * k, t)
+        b.text(72, 200, "Para two")
+        b.text(72, 214, "still para two")
+
+    with PDFEngineAdapter.open(_build(draw)) as pdf:
+        blocks = pdf.blocks(0)
+    assert len(blocks) == 2
+    assert blocks[0].text == "Para one line one\nPara one line two\nPara one line three\n"
+    assert blocks[1].text.splitlines() == ["Para two", "still para two"]
+    assert blocks[0].kind == 0
+    assert [b.number for b in blocks] == [0, 1]
+    assert blocks[0].rect.y1 < blocks[1].rect.y0
+    assert blocks[0].rect.x0 < 75
+    assert blocks[0].rect.x1 > 72 + 60
+
+
+def test_blocks_report_no_image_blocks():
+    def draw(b):
+        b.text(72, 100, "caption")
+        b.image(72, 200, 100, 80)
+
+    with PDFEngineAdapter.open(_build(draw)) as pdf:
+        assert [b.text.strip() for b in pdf.blocks(0)] == ["caption"]
+
+
+def test_blocks_start_a_new_block_for_a_side_column():
+    def draw(b):
+        b.text(72, 100, "left column")
+        b.text(72, 114, "left second")
+        b.text(350, 100, "right column")  # same row as the first line, far to the right
+
+    with PDFEngineAdapter.open(_build(draw)) as pdf:
+        texts = [b.text.strip() for b in pdf.blocks(0)]
+    assert len(texts) == 2
+    assert sorted(texts)[0].splitlines() == ["left column", "left second"]
+    assert "right column" in texts
+
+
+# -- drawing opacity (gap G4) and clustering --------------------------------------------------------
+
+
+def test_drawing_opacity_is_read_from_pdfium():
+    def draw(b):
+        b.rect(72, 100, 80, 40, fill=True, rgb=(10, 10, 10))
+        b.rect(72, 200, 80, 40, fill=True, rgb=(10, 10, 10), alpha=60)
+        b.rect(300, 300, 50, 50)  # stroke only, opaque
+
+    with PDFEngineAdapter.open(_build(draw)) as pdf:
+        by_top = {round(d.rect.y0): d for d in pdf.drawings(0)}
+    assert by_top[100].opacity == 1.0
+    assert 0.2 < by_top[200].opacity < 0.3
+    assert by_top[300].opacity == 1.0
+
+
+def test_drawing_opacity_defaults_to_one_without_translucent_paths(pdf):
+    assert all(d.opacity == 1.0 for d in pdf.drawings(0))
+
+
+def test_cluster_rects_neighbours_within_tolerance_join():
+    a, b, far = Rect(0, 0, 50, 50), Rect(52, 0, 100, 50), Rect(200, 0, 260, 50)
+    assert cluster_rects([a, b, far]) == [Rect(0, 0, 100, 50), far]
+    near = Rect(60, 0, 100, 50)
+    assert cluster_rects([a, near]) == [a, near]  # 10 pt apart: not neighbours
+    assert cluster_rects([a, near], 25, 25) == [Rect(0, 0, 100, 50)]
+
+
+def test_cluster_rects_chain_and_filter():
+    chain = [Rect(i * 52, 0, i * 52 + 50, 40) for i in range(5)]
+    assert cluster_rects(chain) == [Rect(0, 0, 258, 40)]
+    thin = Rect(0, 100, 80, 100)  # a horizontal rule: no height
+    assert cluster_rects([thin]) == []
+    assert cluster_rects([thin], final_filter=False) == [thin]
+    assert cluster_rects([]) == []
+
+
+def test_cluster_rects_do_not_depend_on_input_order():
+    rects = [Rect(0, 0, 40, 40), Rect(42, 0, 80, 40), Rect(300, 300, 360, 360), Rect(82, 40, 120, 80)]
+    assert cluster_rects(rects) == cluster_rects(list(reversed(rects)))
+
+
+def test_cluster_drawings_on_a_page_ignores_paths_outside_the_page():
+    def draw(b):
+        b.rect(72, 100, 60, 60)
+        b.rect(134, 100, 60, 60)  # 2 pt from the first
+        b.rect(400, 100, 60, 60)
+        b.rect(560, 800, 80, 80)  # sticks out of the 595 x 842 page
+
+    with PDFEngineAdapter.open(_build(draw)) as pdf:
+        clusters = pdf.cluster_drawings(0)
+        wide = pdf.cluster_drawings(0, x_tolerance=250)
+    assert len(clusters) == 2
+    assert clusters[0].x0 < 73
+    assert clusters[0].x1 > 193
+    assert len(wide) == 1
+
+
+# -- NFC / NFD tolerant search (gap G6) ----------------------------------------------------------------
+
+
+def test_find_text_matches_a_decomposed_needle_against_composed_text():
+    composed = "café"  # WinAnsi has the composed e-acute, so the standard font can show it
+    with PDFEngineAdapter.open(_build(lambda b: b.text(72, 100, composed + " menu"))) as pdf:
+        assert pdf.find_text(0, "café")  # decomposed needle
+        assert pdf.find_text(0, "CAFÉ")  # and case-insensitive
+        assert not pdf.find_text(0, "CAFÉ", match_case=True)
+        assert pdf.find_text(0, "café")
+        assert pdf.find_text(0, "nothing here") == []
+
+
+def test_find_text_box_covers_the_match_in_the_normalised_pass():
+    with PDFEngineAdapter.open(_build(lambda b: b.text(72, 100, "Xcafé"))) as pdf:
+        (hit,) = pdf.find_text(0, "café")
+    assert 78 < hit.x0 < 82
+    assert hit.x1 > hit.x0 + 20
+    assert hit.y0 < 100 < hit.y1
+
+
+def test_normalised_matches_collapse_whitespace_and_map_back_to_characters():
+    from app.infrastructure.pdf_engine import _normalised_matches
+
+    text = "ab  Câu 1 âu"  # composed a-circumflex
+    assert _normalised_matches(text, "Câu 1", False) == [(4, 5)]
+    assert _normalised_matches(text, "câu  1", False) == [(4, 5)]  # decomposed needle, extra blanks
+    assert _normalised_matches(text, "âu", True) == [(5, 2), (10, 2)]
+    assert _normalised_matches(text, "", False) == []
