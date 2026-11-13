@@ -5,6 +5,8 @@
  * - Safe KaTeX render options (throwOnError: false, trust: false) & XSS filter
  */
 
+import { scanUnsafeLatexCommands } from "./katex-security";
+
 export const MAX_SHORT_NUMERIC_CHARS = 4;
 
 export const SAFE_KATEX_OPTIONS = Object.freeze({
@@ -117,16 +119,11 @@ export interface KatexSafetyCheck {
   reasons: string[];
 }
 
-const UNSAFE_KATEX_PATTERNS: Array<{ re: RegExp; reason: string }> = [
-  { re: /\\href\s*\{\s*javascript:/i, reason: "javascript: URI blocked in \\href" },
-  { re: /\\url\s*\{\s*javascript:/i, reason: "javascript: URI blocked in \\url" },
-  { re: /\\html(Class|Style|Id|Data)\b/i, reason: "trust-required HTML macro blocked" },
-];
-
 export function checkKatexSafety(tex: string): KatexSafetyCheck {
-  const reasons = UNSAFE_KATEX_PATTERNS.filter((p) => p.re.test(tex)).map((p) => p.reason);
+  // Single source of truth: the same rules as the Studio linter (katex-security.ts).
+  const scan = scanUnsafeLatexCommands(tex);
   return {
-    safe: reasons.length === 0,
-    reasons,
+    safe: scan.safe,
+    reasons: [...scan.violations],
   };
 }

@@ -49,7 +49,9 @@ function hasProAccess(tier: UserTier | undefined): boolean {
  * Resolves the active UI state with fail-closed security guarantees:
  * 1. Conflict Modal (`409 STALE_CLIENT_SEQUENCE`) takes precedence for attempt safety.
  * 2. Offline exam sessions NEVER lock input (`interactiveExamAllowed: true`).
- * 3. `FREE` tier viewing Pro assets NEVER exposes `rawAssetUrl` to DOM state.
+ * 3. `FREE` tier viewing Pro assets NEVER exposes `rawAssetUrl` to DOM state; a missing
+ *    `requiresProAsset` flag counts as "requires Pro" (locked).
+ * 4. Non-finite counts never open anything: an invalid `itemCount` renders EmptyState.
  */
 export function resolveWorkspaceUiState(
   input: WorkspaceUiInput,
@@ -88,8 +90,8 @@ export function resolveWorkspaceUiState(
     };
   }
 
-  const lockedPro =
-    Boolean(input.requiresProAsset) && !hasProAccess(input.userTier);
+  // Fail closed: only an explicit `requiresProAsset: false` unlocks the asset for non-Pro users.
+  const lockedPro = input.requiresProAsset !== false && !hasProAccess(input.userTier);
 
   if (lockedPro) {
     return {
@@ -106,7 +108,8 @@ export function resolveWorkspaceUiState(
   const allowedUrl = input.rawAssetUrl ?? input.previewPdfUrl ?? null;
 
   if (input.isOffline) {
-    const pending = Math.max(0, input.pendingAutosaveCount ?? 0);
+    const rawPending = input.pendingAutosaveCount ?? 0;
+    const pending = Number.isFinite(rawPending) ? Math.max(0, Math.floor(rawPending)) : 0;
     return {
       kind: "OfflineRetryBanner",
       interactiveExamAllowed: true,
@@ -117,7 +120,8 @@ export function resolveWorkspaceUiState(
     };
   }
 
-  if ((input.itemCount ?? 1) === 0) {
+  const itemCount = input.itemCount ?? 1;
+  if (!Number.isFinite(itemCount) || itemCount <= 0) {
     return {
       kind: "EmptyState",
       interactiveExamAllowed: true,

@@ -27,6 +27,7 @@ describe("Workspace UI 6-state resolver", () => {
     const state = resolveWorkspaceUiState({
       isLoading: false,
       isOffline: true,
+      requiresProAsset: false,
       pendingAutosaveCount: 7,
       itemCount: 22,
     });
@@ -54,7 +55,7 @@ describe("Workspace UI 6-state resolver", () => {
     expect(
       resolveWorkspaceUiState({ isLoading: false, fatalErrorCode: "HTTP_500" }).kind,
     ).toBe("ErrorBoundary");
-    expect(resolveWorkspaceUiState({ isLoading: false, itemCount: 0 }).kind).toBe(
+    expect(resolveWorkspaceUiState({ isLoading: false, itemCount: 0, requiresProAsset: false }).kind).toBe(
       "EmptyState",
     );
     expect(
