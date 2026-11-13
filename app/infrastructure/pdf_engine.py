@@ -201,6 +201,8 @@ class _PChar:
 
 # Tunables of the fitz-style line/block grouping (calibrated against PyMuPDF on the golden corpus).
 LINE_BREAK_GAP_EM = 4.0  # a horizontal gap wider than this many em ends a text line
+LINE_SHIFT_EM = 0.7  # a character whose centre is this many heights above or below the last one starts a new line
+SPAN_SIZE_RATIO = 1.3  # a glyph box this much taller or shorter than its neighbour starts a new span
 SPACE_GAP_EM = 0.2  # a gap wider than this many em between two characters of a row reads as a space
 BLOCK_GAP_EM = 0.35  # lines closer than this many line heights (vertically) share a block
 
@@ -225,17 +227,152 @@ def _center_in(obj: dict[str, Any], boxes: Sequence[Rect]) -> bool:
     return any(b.contains_point(cx, cy) for b in boxes)
 
 
-def _match_alpha(rect: Rect, linewidth: float, paths: Sequence[tuple[Rect, float]]) -> float:
-    """Alpha of the pdfium path whose bounds best fit ``rect`` (grown by the stroke width); 1.0 when none fits."""
-    slack = linewidth + 1.5
-    best, best_dev = 1.0, None
-    for bounds, alpha in paths:
-        dev = max(
-            abs(bounds.x0 - rect.x0), abs(bounds.y0 - rect.y0), abs(bounds.x1 - rect.x1), abs(bounds.y1 - rect.y1)
-        )
-        if dev <= slack and (best_dev is None or dev < best_dev):
-            best, best_dev = alpha, dev
-    return best
+_FORM_DEPTH = 15  # how deep into nested form XObjects page objects are read
+
+Matrix = tuple[float, float, float, float, float, float]
+
+
+def _compose(first: Matrix, then: Matrix) -> Matrix:
+    """The matrix that applies ``first`` and afterwards ``then`` (PDF row-vector convention)."""
+    a, b, c, d, e, f = first
+    p, q, r, s, t, u = then
+    return (a * p + b * r, a * q + b * s, c * p + d * r, c * q + d * s, e * p + f * r + t, e * q + f * s + u)
+
+
+def _page_matrix(obj: Any) -> Matrix:
+    """The transform from the object's own space to page space (its matrix, then those of its forms)."""
+    matrix: Matrix = tuple(obj.get_matrix().get())  # type: ignore[assignment]
+    container = obj.container
+    while container is not None and not isinstance(container, pdfium.PdfPage):
+        matrix = _compose(matrix, tuple(container.get_matrix().get()))  # type: ignore[arg-type]
+        container = getattr(container, "container", None)
+    return matrix
+
+
+def _apply(m: Matrix, x: float, y: float) -> tuple[float, float]:
+    return m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]
+
+
+def _image_box(obj: Any, page: Any, matrix: Matrix, height: float) -> ImageBox:
+    corners = [_apply(matrix, x, y) for x, y in ((0, 0), (1, 0), (0, 1), (1, 1))]
+    xs, ys = [c[0] for c in corners], [c[1] for c in corners]
+    rect = Rect(min(xs), height - max(ys), max(xs), height - min(ys))
+    meta = pdfium_raw.FPDF_IMAGEOBJ_METADATA()
+    ok = pdfium_raw.FPDFImageObj_GetImageMetadata(obj.raw, page.raw, ctypes.byref(meta))
+    width_px, height_px = (int(meta.width), int(meta.height)) if ok else (0, 0)
+    # The same picture drawn twice has the same pixel size and encoded length: that is its identity here.
+    encoded = pdfium_raw.FPDFImageObj_GetImageDataRaw(obj.raw, None, 0)
+    name = f"{width_px}x{height_px}:{encoded}" if width_px and height_px and encoded else ""
+    return ImageBox(rect, width_px, height_px, name)
+
+
+def _path_drawing(obj: Any, matrix: Matrix, height: float) -> tuple[Drawing, tuple[tuple[int, int], ...]] | None:
+    fill_mode, stroke = ctypes.c_int(), ctypes.c_int()
+    pdfium_raw.FPDFPath_GetDrawMode(obj.raw, ctypes.byref(fill_mode), ctypes.byref(stroke))
+    fill, stroked = bool(fill_mode.value), bool(stroke.value)
+    if not (fill or stroked):
+        return None
+    points: list[tuple[float, float]] = []
+    curved = False
+    px, py = ctypes.c_float(), ctypes.c_float()
+    for i in range(pdfium_raw.FPDFPath_CountSegments(obj.raw)):
+        segment = pdfium_raw.FPDFPath_GetPathSegment(obj.raw, i)
+        pdfium_raw.FPDFPathSegment_GetPoint(segment, ctypes.byref(px), ctypes.byref(py))
+        curved = curved or pdfium_raw.FPDFPathSegment_GetType(segment) == pdfium_raw.FPDF_SEGMENT_BEZIERTO
+        points.append(_apply(matrix, px.value, py.value))
+    if not points:
+        return None
+    xs, ys = [p[0] for p in points], [p[1] for p in points]
+    rect = Rect(min(xs), height - max(ys), max(xs), height - min(ys))
+    r_, g_, b_, a_ = (ctypes.c_uint() for _ in range(4))
+    alphas = [1.0]
+    stroke_color = fill_color = None
+    if fill:
+        pdfium_raw.FPDFPageObj_GetFillColor(obj.raw, *(ctypes.byref(v) for v in (r_, g_, b_, a_)))
+        fill_color = (r_.value / 255.0, g_.value / 255.0, b_.value / 255.0)
+        alphas.append(a_.value / 255.0)
+    if stroked:
+        pdfium_raw.FPDFPageObj_GetStrokeColor(obj.raw, *(ctypes.byref(v) for v in (r_, g_, b_, a_)))
+        stroke_color = (r_.value / 255.0, g_.value / 255.0, b_.value / 255.0)
+        alphas.append(a_.value / 255.0)
+    width = ctypes.c_float()
+    pdfium_raw.FPDFPageObj_GetStrokeWidth(obj.raw, ctypes.byref(width))
+    scale = abs(matrix[0] * matrix[3] - matrix[1] * matrix[2]) ** 0.5
+    if curved:
+        kind = "curve"
+    elif len({(round(x, 3), round(y, 3)) for x, y in points}) <= 2:
+        kind = "line"
+    elif _axis_aligned_box(points):
+        kind = "rect"
+    else:
+        kind = "curve"
+    drawing = Drawing(
+        rect=rect,
+        kind=kind,
+        stroke=stroked,
+        fill=fill,
+        stroke_color=stroke_color,
+        fill_color=fill_color,
+        linewidth=float(width.value) * scale if stroked else 0.0,
+        opacity=min(alphas),
+    )
+    return drawing, tuple((round(x * 100), round(y * 100)) for x, y in points)
+
+
+def _complementary(first: Drawing, second: Drawing) -> bool:
+    """One is only filled and the other only stroked."""
+    return first.fill != second.fill and first.stroke != second.stroke and (first.fill or first.stroke) and (
+        second.fill or second.stroke
+    )
+
+
+def _same_fill_and_touching(first: Drawing, second: Drawing) -> bool:
+    """Consecutive fill-only paths of one colour whose boxes touch: pdfium reports the subpaths of one
+    fill operation (a bar and its arrow head) as separate objects, PyMuPDF as one drawing."""
+    return (
+        first.fill
+        and second.fill
+        and not first.stroke
+        and not second.stroke
+        and first.fill_color == second.fill_color
+        and first.opacity == second.opacity
+        and first.rect.intersects(second.rect)
+    )
+
+
+def _union_fills(first: Drawing, second: Drawing) -> Drawing:
+    return Drawing(
+        rect=first.rect.union(second.rect),
+        kind="curve",
+        stroke=False,
+        fill=True,
+        stroke_color=None,
+        fill_color=first.fill_color,
+        linewidth=0.0,
+        opacity=first.opacity,
+    )
+
+
+def _fill_and_stroke(first: Drawing, second: Drawing) -> Drawing:
+    filled, stroked = (first, second) if first.fill else (second, first)
+    return Drawing(
+        rect=first.rect,
+        kind=first.kind,
+        stroke=True,
+        fill=True,
+        stroke_color=stroked.stroke_color,
+        fill_color=filled.fill_color,
+        linewidth=stroked.linewidth,
+        opacity=min(first.opacity, second.opacity),
+    )
+
+
+def _axis_aligned_box(points: list[tuple[float, float]]) -> bool:
+    """True for the 4 (or 5, closed) corner points of an axis-aligned rectangle."""
+    distinct = {(round(x, 3), round(y, 3)) for x, y in points}
+    if len(distinct) != 4:
+        return False
+    return len({x for x, _ in distinct}) == 2 and len({y for _, y in distinct}) == 2
 
 
 def _normalised_matches(text: str, needle: str, match_case: bool) -> list[tuple[int, int]]:
@@ -641,60 +778,41 @@ class PDFEngineAdapter:
         return images, drawings
 
     def _read_vector(self, index: int) -> tuple[list[ImageBox], list[Drawing]]:
-        translucent, paths = self._path_alphas(index)
-        with self._plumber_page(index) as page:
-            images: list[ImageBox] = []
-            for i in page.images or []:
-                sw, sh = i.get("srcsize") or (0, 0)
-                images.append(ImageBox(_rect_of(i), int(sw or 0), int(sh or 0), str(i.get("name") or "")))
-            out: list[Drawing] = []
-            for kind, objs in (("rect", page.rects), ("line", page.lines), ("curve", page.curves)):
-                for o in objs or []:
-                    width = float(o.get("linewidth") or 0.0)
-                    out.append(
-                        Drawing(
-                            rect=_rect_of(o),
-                            kind=kind,
-                            stroke=bool(o.get("stroke")),
-                            fill=bool(o.get("fill")),
-                            stroke_color=_color(o.get("stroking_color")),
-                            fill_color=_color(o.get("non_stroking_color")),
-                            linewidth=width,
-                            opacity=_match_alpha(_rect_of(o), width, paths) if translucent else 1.0,
-                        )
-                    )
-        return (
-            sorted(images, key=lambda b: (b.rect.y0, b.rect.x0)),
-            sorted(out, key=lambda d: (d.rect.y0, d.rect.x0, d.kind)),
-        )
+        """Images and vector paths of a page from the pdfium page objects (one object = one painted path).
 
-    def _path_alphas(self, index: int) -> tuple[bool, list[tuple[Rect, float]]]:
-        """(any translucent path?, [(bounds, min alpha of the painted parts)]) of the top-level pdfium paths."""
+        This is how PyMuPDF counts drawings too: a path with several subpaths (an arrow with its head) is ONE
+        drawing whose rectangle is the box of all its points. Objects inside form XObjects are mapped to page
+        space by composing the matrices of their containers.
+        """
         self._check(index)
         page = self._pdfium[index]
         try:
             height = page.get_size()[1]
-            out: list[tuple[Rect, float]] = []
-            fill_mode, stroke = ctypes.c_int(), ctypes.c_int()
-            r_, g_, b_, a_ = (ctypes.c_uint() for _ in range(4))
-            for obj in page.get_objects(filter=[pdfium_raw.FPDF_PAGEOBJ_PATH], max_depth=0):
-                pdfium_raw.FPDFPath_GetDrawMode(obj.raw, ctypes.byref(fill_mode), ctypes.byref(stroke))
-                alphas = [1.0]
-                if fill_mode.value:
-                    pdfium_raw.FPDFPageObj_GetFillColor(
-                        obj.raw, ctypes.byref(r_), ctypes.byref(g_), ctypes.byref(b_), ctypes.byref(a_)
-                    )
-                    alphas.append(a_.value / 255.0)
-                if stroke.value:
-                    pdfium_raw.FPDFPageObj_GetStrokeColor(
-                        obj.raw, ctypes.byref(r_), ctypes.byref(g_), ctypes.byref(b_), ctypes.byref(a_)
-                    )
-                    alphas.append(a_.value / 255.0)
-                left, bottom, right, top = obj.get_bounds()
-                out.append((Rect(left, height - top, right, height - bottom), min(alphas)))
-            return any(alpha < 1.0 for _, alpha in out), out
+            images: list[ImageBox] = []
+            drawings: list[Drawing] = []
+            last_points: tuple[tuple[int, int], ...] = ()
+            wanted = [pdfium_raw.FPDF_PAGEOBJ_PATH, pdfium_raw.FPDF_PAGEOBJ_IMAGE]
+            for obj in page.get_objects(filter=wanted, max_depth=_FORM_DEPTH):
+                matrix = _page_matrix(obj)
+                if obj.type == pdfium_raw.FPDF_PAGEOBJ_IMAGE:
+                    images.append(_image_box(obj, page, matrix, height))
+                    continue
+                found = _path_drawing(obj, matrix, height)
+                if found is None:
+                    continue
+                drawing, points = found
+                # A path that is filled and then stroked (two operators, one path) is one drawing, as in PyMuPDF.
+                if drawings and points == last_points and _complementary(drawings[-1], drawing):
+                    drawings[-1] = _fill_and_stroke(drawings[-1], drawing)
+                else:
+                    drawings.append(drawing)
+                    last_points = points
+            return (
+                sorted(images, key=lambda b: (b.rect.y0, b.rect.x0)),
+                sorted(drawings, key=lambda d: (d.rect.y0, d.rect.x0, d.kind)),
+            )
         except Exception as exc:
-            raise PDFEngineError(f"Cannot read paths of page {index}: {exc}") from exc
+            raise PDFEngineError(f"Cannot read graphics of page {index}: {exc}") from exc
         finally:
             page.close()
 
@@ -819,7 +937,7 @@ class PDFEngineAdapter:
             for c in chars:
                 if c.boxed:
                     if ref is not None and (
-                        abs(ref.size - c.size) > 0.05
+                        max(ref.size, c.size) > SPAN_SIZE_RATIO * min(ref.size, c.size)
                         or ref.font != c.font
                         or ref.color != c.color
                         or ref.alpha != c.alpha
@@ -836,6 +954,7 @@ class PDFEngineAdapter:
 
         row: tuple[float, float, float] | None = None  # y0, y1, right edge of the last boxed char
         space = _PChar(" ", 0.0, 0.0, 0.0, 0.0, 0.0, "", 0, 255, False)
+        prev = space  # the last boxed character
         for c in self._pdfium_chars(index):
             if clip is not None and c.boxed and not clip.contains_point((c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2):
                 continue
@@ -846,10 +965,9 @@ class PDFEngineAdapter:
                     cur.append(space)
                 continue
             if row is not None:
-                overlap = min(row[1], c.y1) - max(row[0], c.y0)
-                smaller = min(row[1] - row[0], c.y1 - c.y0)
+                shift = abs((c.y0 + c.y1) / 2 - (prev.y0 + prev.y1) / 2)
                 if (
-                    overlap < 0.4 * smaller
+                    shift > LINE_SHIFT_EM * max(c.y1 - c.y0, prev.y1 - prev.y0)
                     or c.x0 < row[2] - 1.5 * c.size
                     or c.x0 - row[2] > line_gap * c.size
                 ):
@@ -858,6 +976,7 @@ class PDFEngineAdapter:
                 elif c.x0 - row[2] > SPACE_GAP_EM * c.size and cur and not cur[-1].ch.isspace() and not c.ch.isspace():
                     cur.append(space)  # PyMuPDF inserts a space where a gap separates two words
             cur.append(c)
+            prev = c
             row = (c.y0, c.y1, c.x1) if row is None else (min(row[0], c.y0), max(row[1], c.y1), c.x1)
         flush()
         return lines

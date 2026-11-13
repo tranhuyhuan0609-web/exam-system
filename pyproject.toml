@@ -9,6 +9,7 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["golden: before/after comparison on the real exam corpus (needs GOLDEN_DIR snapshots; skipped without them)"]
 
 [tool.ruff.lint.per-file-ignores]
 # Long Vietnamese prompt / sample strings.

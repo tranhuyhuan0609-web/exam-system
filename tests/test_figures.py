@@ -73,3 +73,72 @@ def test_locate_crop_finds_an_exact_sub_image():
 
 def test_no_graphics_means_no_snapping():
     assert snap_to_graphics(BoundingBox(ymin=0, xmin=0, ymax=100, xmax=100), None) is None
+
+
+def test_watermark_text_is_flagged_and_not_a_label():
+    doc = pymupdf.open()
+    page = doc.new_page(width=600, height=800)
+    page.insert_text((60, 100), "dark question text", fontsize=12)
+    page.insert_text((60, 300), "WATERMARK", fontsize=20, color=(0.85, 0.85, 0.85))
+    geometry = geometry_of(page)
+    assert geometry.has_light_text
+    assert len(geometry.lines) == 1  # only the dark line; the watermark is not a label candidate
+
+
+def test_page_without_watermark_is_not_flagged():
+    doc = pymupdf.open()
+    page = doc.new_page(width=600, height=800)
+    page.insert_text((60, 100), "dark question text", fontsize=12)
+    assert not geometry_of(page).has_light_text
+
+
+def test_translucent_and_light_shapes_are_not_figure_parts():
+    doc = pymupdf.open()
+    page = doc.new_page(width=600, height=800)
+    page.draw_rect(pymupdf.Rect(100, 100, 200, 200), color=(0, 0, 0), width=1.5)  # a real figure part
+    page.draw_rect(
+        pymupdf.Rect(300, 100, 400, 200), color=(0, 0, 0), fill=(0, 0, 0), stroke_opacity=0.2, fill_opacity=0.2
+    )  # see-through watermark shape
+    page.draw_rect(pymupdf.Rect(100, 300, 200, 400), color=(0.9, 0.9, 0.9), fill=(0.9, 0.9, 0.9))  # light tint
+    geometry = geometry_of(page)
+    assert len(geometry.graphics) == 1
+    box = geometry.graphics[0]
+    assert (box.xmin, box.xmax) == (167, 333)  # x 100..200 of 600
+
+
+def test_embedded_images_are_graphics_and_tiny_dummies_are_ignored():
+    import io
+
+    doc = pymupdf.open()
+    page = doc.new_page(width=600, height=800)
+    big, tiny = io.BytesIO(), io.BytesIO()
+    Image.new("RGB", (80, 60), "black").save(big, format="PNG")
+    Image.new("RGB", (4, 4), "black").save(tiny, format="PNG")  # inline-equation placeholder
+    page.insert_image(pymupdf.Rect(100, 100, 260, 220), stream=big.getvalue())
+    page.insert_image(pymupdf.Rect(300, 100, 310, 110), stream=tiny.getvalue())
+    geometry = geometry_of(page)
+    assert len(geometry.images) == 1
+    assert geometry.images == geometry.graphics
+
+
+def test_page_sized_frames_are_not_graphics():
+    doc = pymupdf.open()
+    page = doc.new_page(width=600, height=800)
+    page.draw_rect(pymupdf.Rect(10, 10, 590, 790), color=(0, 0, 0), width=1)  # page border
+    page.draw_rect(pymupdf.Rect(100, 100, 200, 200), color=(0, 0, 0), width=1)
+    assert len(geometry_of(page).graphics) == 1
+
+
+def test_unlabeled_diagrams_are_clustered_drawings_of_a_sensible_size():
+    from app.ai.figures import extract_unlabeled_diagrams
+
+    doc = pymupdf.open()
+    page = doc.new_page(width=600, height=800)
+    for x in (100, 160, 220):  # a circuit-like row of boxes 5 pt apart
+        page.draw_rect(pymupdf.Rect(x, 300, x + 55, 400), color=(0, 0, 0), width=1)
+    page.draw_line((50, 700), (60, 700), width=1)  # a short dash: smaller than the cluster tolerance
+    with PDFEngineAdapter.open(page.parent.tobytes()) as reader:
+        boxes = extract_unlabeled_diagrams(reader, 0)
+    assert len(boxes) == 1
+    assert (boxes[0].xmin, boxes[0].xmax) == (167, 458)  # x 100..275 of 600
+    assert (boxes[0].ymin, boxes[0].ymax) == (375, 500)  # y 300..400 of 800
