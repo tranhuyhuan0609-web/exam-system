@@ -1,0 +1,392 @@
+[
+ {
+  "file": "g01",
+  "check": "words_jaccard",
+  "measured": 0.974,
+  "reason": "words split at font and sub/superscript changes differ between the engines; page text is the same"
+ },
+ {
+  "file": "g01",
+  "check": "question_text",
+  "measured": 0.8847,
+  "reason": "question text is assembled from line fragments that the engines split and order differently (math); no question is gained or lost"
+ },
+ {
+  "file": "g01",
+  "check": "figure_bands",
+  "measured": 0.6666,
+  "reason": "band edges follow text-line fragments and vector paths that the engines report slightly differently; band count is equal except where noted in graphics"
+ },
+ {
+  "file": "g01",
+  "check": "essay_line_count",
+  "measured": 0.862,
+  "reason": "sub/superscript and formula fragments are split into lines differently between the engines"
+ },
+ {
+  "file": "g01",
+  "check": "essay_line_text",
+  "measured": 0.9274,
+  "reason": "sub/superscript and formula fragments are ordered differently within merged lines"
+ },
+ {
+  "file": "g02",
+  "check": "words_jaccard",
+  "measured": 0.9798,
+  "reason": "words split at font and sub/superscript changes differ between the engines; page text is the same"
+ },
+ {
+  "file": "g02",
+  "check": "question_text",
+  "measured": 0.9637,
+  "reason": "question text is assembled from line fragments that the engines split and order differently (math); no question is gained or lost"
+ },
+ {
+  "file": "g02",
+  "check": "graphics_boxes",
+  "measured": 0.9824,
+  "reason": "one drawing in PyMuPDF is two paths (fill, then outline drawn separately) in PDFium"
+ },
+ {
+  "file": "g02",
+  "check": "image_boxes",
+  "measured": 0.9583,
+  "reason": "PyMuPDF lists extra images (zero-area boxes at the page origin, or ones without an xref) that neither PDFium nor pdfplumber report"
+ },
+ {
+  "file": "g02",
+  "check": "figure_bands",
+  "measured": 0.6666,
+  "reason": "band edges follow text-line fragments and vector paths that the engines report slightly differently; band count is equal except where noted in graphics"
+ },
+ {
+  "file": "g02",
+  "check": "essay_line_count",
+  "measured": 0.9107,
+  "reason": "sub/superscript and formula fragments are split into lines differently between the engines"
+ },
+ {
+  "file": "g02",
+  "check": "essay_line_text",
+  "measured": 0.9685,
+  "reason": "sub/superscript and formula fragments are ordered differently within merged lines"
+ },
+ {
+  "file": "g03",
+  "check": "words_jaccard",
+  "measured": 0.9879,
+  "reason": "words split at font and sub/superscript changes differ between the engines; page text is the same"
+ },
+ {
+  "file": "g03",
+  "check": "question_text",
+  "measured": 0.9515,
+  "reason": "question text is assembled from line fragments that the engines split and order differently (math); no question is gained or lost"
+ },
+ {
+  "file": "g03",
+  "check": "clusters_3",
+  "measured": 0.909,
+  "reason": "clusters follow the vector paths that differ between the engines (see graphics_boxes)"
+ },
+ {
+  "file": "g03",
+  "check": "essay_line_count",
+  "measured": 0.9402,
+  "reason": "sub/superscript and formula fragments are split into lines differently between the engines"
+ },
+ {
+  "file": "g04",
+  "check": "question_text",
+  "measured": 0.8097,
+  "reason": "question text is assembled from line fragments that the engines split and order differently (math); no question is gained or lost"
+ },
+ {
+  "file": "g04",
+  "check": "figure_bands",
+  "measured": 0.5,
+  "reason": "band edges follow text-line fragments and vector paths that the engines report slightly differently; band count is equal except where noted in graphics"
+ },
+ {
+  "file": "g04",
+  "check": "essay_line_count",
+  "measured": 0.9361,
+  "reason": "sub/superscript and formula fragments are split into lines differently between the engines"
+ },
+ {
+  "file": "g05",
+  "check": "words_jaccard",
+  "measured": 0.9761,
+  "reason": "words split at font and sub/superscript changes differ between the engines; page text is the same"
+ },
+ {
+  "file": "g05",
+  "check": "question_text",
+  "measured": 0.976,
+  "reason": "question text is assembled from line fragments that the engines split and order differently (math); no question is gained or lost"
+ },
+ {
+  "file": "g05",
+  "check": "essay_line_count",
+  "measured": 0.9777,
+  "reason": "sub/superscript and formula fragments are split into lines differently between the engines"
+ },
+ {
+  "file": "g06",
+  "check": "words_jaccard",
+  "measured": 0.9892,
+  "reason": "words split at font and sub/superscript changes differ between the engines; page text is the same"
+ },
+ {
+  "file": "g06",
+  "check": "question_text",
+  "measured": 0.9729,
+  "reason": "question text is assembled from line fragments that the engines split and order differently (math); no question is gained or lost"
+ },
+ {
+  "file": "g06",
+  "check": "graphics_boxes",
+  "measured": 0.9393,
+  "reason": "PyMuPDF omits some vector paths that PDFium and pdfplumber both report (and lists zero-area boxes at the page origin)"
+ },
+ {
+  "file": "g06",
+  "check": "image_boxes",
+  "measured": 0.875,
+  "reason": "PyMuPDF lists extra images (zero-area boxes at the page origin, or ones without an xref) that neither PDFium nor pdfplumber report"
+ },
+ {
+  "file": "g06",
+  "check": "unlabeled_diagrams",
+  "measured": 0.5,
+  "reason": "clusters follow the vector paths that differ between the engines (see graphics_boxes)"
+ },
+ {
+  "file": "g06",
+  "check": "clusters_3",
+  "measured": 0.6666,
+  "reason": "clusters follow the vector paths that differ between the engines (see graphics_boxes)"
+ },
+ {
+  "file": "g06",
+  "check": "essay_line_count",
+  "measured": 0.8918,
+  "reason": "sub/superscript and formula fragments are split into lines differently between the engines"
+ },
+ {
+  "file": "g07",
+  "check": "words_jaccard",
+  "measured": 0.983,
+  "reason": "words split at font and sub/superscript changes differ between the engines; page text is the same"
+ },
+ {
+  "file": "g07",
+  "check": "graphics_boxes",
+  "measured": 0.8974,
+  "reason": "PyMuPDF omits some vector paths that PDFium and pdfplumber both report (and lists zero-area boxes at the page origin)"
+ },
+ {
+  "file": "g07",
+  "check": "image_boxes",
+  "measured": 0.8571,
+  "reason": "PyMuPDF lists extra images (zero-area boxes at the page origin, or ones without an xref) that neither PDFium nor pdfplumber report"
+ },
+ {
+  "file": "g07",
+  "check": "figure_bands",
+  "measured": -0.0001,
+  "reason": "band edges follow text-line fragments and vector paths that the engines report slightly differently; band count is equal except where noted in graphics"
+ },
+ {
+  "file": "g07",
+  "check": "unlabeled_diagrams",
+  "measured": 0.3333,
+  "reason": "clusters follow the vector paths that differ between the engines (see graphics_boxes)"
+ },
+ {
+  "file": "g07",
+  "check": "clusters_3",
+  "measured": 0.2,
+  "reason": "clusters follow the vector paths that differ between the engines (see graphics_boxes)"
+ },
+ {
+  "file": "g07",
+  "check": "essay_line_count",
+  "measured": 0.9259,
+  "reason": "sub/superscript and formula fragments are split into lines differently between the engines"
+ },
+ {
+  "file": "g08",
+  "check": "question_text",
+  "measured": 0.975,
+  "reason": "question text is assembled from line fragments that the engines split and order differently (math); no question is gained or lost"
+ },
+ {
+  "file": "g08",
+  "check": "graphics_boxes",
+  "measured": 0.9,
+  "reason": "PyMuPDF omits some vector paths that PDFium and pdfplumber both report (and lists zero-area boxes at the page origin)"
+ },
+ {
+  "file": "g08",
+  "check": "image_boxes",
+  "measured": 0.8333,
+  "reason": "PyMuPDF lists extra images (zero-area boxes at the page origin, or ones without an xref) that neither PDFium nor pdfplumber report"
+ },
+ {
+  "file": "g08",
+  "check": "figure_bands",
+  "measured": 0.75,
+  "reason": "band edges follow text-line fragments and vector paths that the engines report slightly differently; band count is equal except where noted in graphics"
+ },
+ {
+  "file": "g08",
+  "check": "unlabeled_diagrams",
+  "measured": 0.6666,
+  "reason": "clusters follow the vector paths that differ between the engines (see graphics_boxes)"
+ },
+ {
+  "file": "g08",
+  "check": "clusters_3",
+  "measured": 0.5999,
+  "reason": "clusters follow the vector paths that differ between the engines (see graphics_boxes)"
+ },
+ {
+  "file": "g08",
+  "check": "clusters_25",
+  "measured": 0.75,
+  "reason": "clusters follow the vector paths that differ between the engines (see graphics_boxes)"
+ },
+ {
+  "file": "g08",
+  "check": "essay_line_count",
+  "measured": 0.8837,
+  "reason": "sub/superscript and formula fragments are split into lines differently between the engines"
+ },
+ {
+  "file": "g09",
+  "check": "words_jaccard",
+  "measured": 0.9599,
+  "reason": "words split at font and sub/superscript changes differ between the engines; page text is the same"
+ },
+ {
+  "file": "g09",
+  "check": "text_similarity",
+  "measured": 0.9686,
+  "reason": "math-heavy page: sub/superscript and fraction fragments are ordered differently; the adapter also keeps some text the PyMuPDF baseline dropped"
+ },
+ {
+  "file": "g09",
+  "check": "graphics_boxes",
+  "measured": 0.9111,
+  "reason": "PyMuPDF omits some vector paths that PDFium and pdfplumber both report (and lists zero-area boxes at the page origin)"
+ },
+ {
+  "file": "g09",
+  "check": "image_boxes",
+  "measured": 0.8571,
+  "reason": "PyMuPDF lists extra images (zero-area boxes at the page origin, or ones without an xref) that neither PDFium nor pdfplumber report"
+ },
+ {
+  "file": "g09",
+  "check": "figure_bands",
+  "measured": 0.6666,
+  "reason": "band edges follow text-line fragments and vector paths that the engines report slightly differently; band count is equal except where noted in graphics"
+ },
+ {
+  "file": "g09",
+  "check": "essay_line_count",
+  "measured": 0.8684,
+  "reason": "sub/superscript and formula fragments are split into lines differently between the engines"
+ },
+ {
+  "file": "g09",
+  "check": "essay_line_text",
+  "measured": 0.9167,
+  "reason": "sub/superscript and formula fragments are ordered differently within merged lines"
+ },
+ {
+  "file": "g10",
+  "check": "words_jaccard",
+  "measured": 0.9523,
+  "reason": "words split at font and sub/superscript changes differ between the engines; page text is the same"
+ },
+ {
+  "file": "g10",
+  "check": "text_similarity",
+  "measured": 0.8902,
+  "reason": "math-heavy page: sub/superscript and fraction fragments are ordered differently; the adapter also keeps some text the PyMuPDF baseline dropped"
+ },
+ {
+  "file": "g10",
+  "check": "question_text",
+  "measured": 0.2121,
+  "reason": "question text is assembled from line fragments that the engines split and order differently (math); no question is gained or lost"
+ },
+ {
+  "file": "g10",
+  "check": "graphics_boxes",
+  "measured": 0.9022,
+  "reason": "PyMuPDF omits some vector paths that PDFium and pdfplumber both report (and lists zero-area boxes at the page origin)"
+ },
+ {
+  "file": "g10",
+  "check": "image_boxes",
+  "measured": 0.2272,
+  "reason": "PyMuPDF lists extra images (zero-area boxes at the page origin, or ones without an xref) that neither PDFium nor pdfplumber report"
+ },
+ {
+  "file": "g10",
+  "check": "figure_bands",
+  "measured": 0.3333,
+  "reason": "band edges follow text-line fragments and vector paths that the engines report slightly differently; band count is equal except where noted in graphics"
+ },
+ {
+  "file": "g10",
+  "check": "essay_line_count",
+  "measured": 0.6078,
+  "reason": "sub/superscript and formula fragments are split into lines differently between the engines"
+ },
+ {
+  "file": "g10",
+  "check": "essay_line_text",
+  "measured": 0.7637,
+  "reason": "sub/superscript and formula fragments are ordered differently within merged lines"
+ },
+ {
+  "file": "g11",
+  "check": "words_jaccard",
+  "measured": 0.9824,
+  "reason": "words split at font and sub/superscript changes differ between the engines; page text is the same"
+ },
+ {
+  "file": "g11",
+  "check": "text_similarity",
+  "measured": 0.9116,
+  "reason": "math-heavy page: sub/superscript and fraction fragments are ordered differently; the adapter also keeps some text the PyMuPDF baseline dropped"
+ },
+ {
+  "file": "g11",
+  "check": "question_text",
+  "measured": 0.344,
+  "reason": "the adapter keeps question stems that the PyMuPDF baseline lost; the rest is fragment order in math"
+ },
+ {
+  "file": "g11",
+  "check": "figure_bands",
+  "measured": 0.5,
+  "reason": "band edges follow text-line fragments and vector paths that the engines report slightly differently; band count is equal except where noted in graphics"
+ },
+ {
+  "file": "g11",
+  "check": "essay_line_count",
+  "measured": 0.8478,
+  "reason": "sub/superscript and formula fragments are split into lines differently between the engines"
+ },
+ {
+  "file": "g11",
+  "check": "essay_line_text",
+  "measured": 0.7612,
+  "reason": "sub/superscript and formula fragments are ordered differently within merged lines"
+ }
+]
