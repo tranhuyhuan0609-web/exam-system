@@ -18,6 +18,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
+from app.contracts.text import fold_vietnamese_ascii
+
 _WEIGHT_FILENAME = Decimal("0.40")
 _WEIGHT_FOLDER = Decimal("0.25")
 _WEIGHT_SUBJECT = Decimal("0.20")
@@ -27,7 +29,6 @@ _SCORE_QUANT = Decimal("0.001")
 DEFAULT_AUTO_CONFIRM_THRESHOLD = Decimal("0.85")
 DEFAULT_PROPOSE_THRESHOLD = Decimal("0.60")
 
-_SEPARATORS_RE = re.compile(r"[^0-9a-z]+")
 _UNICODE_TOKEN_RE = re.compile(r"[^\W_]+")
 _SOLUTION_MARKER_RE = re.compile(
     r"\b(?:hdc|huong dan cham|dap an|loi giai)\b"
@@ -87,16 +88,6 @@ class DocumentPairing:
 
 def _quantize(value: Decimal) -> Decimal:
     return value.quantize(_SCORE_QUANT, rounding=ROUND_HALF_UP)
-
-
-def fold_vietnamese_ascii(raw: str) -> str:
-    """Fold NFC/NFD Vietnamese text and separators into space-delimited ASCII tokens."""
-    nfc = unicodedata.normalize("NFC", raw or "")
-    nfc = nfc.replace("đ", "d").replace("Đ", "D")
-    nfd = unicodedata.normalize("NFD", nfc)
-    stripped = "".join(ch for ch in nfd if unicodedata.category(ch) != "Mn")
-    lowered = stripped.casefold()
-    return _SEPARATORS_RE.sub(" ", lowered).strip()
 
 
 def classify_pairing_document(filename: str) -> DocumentKind:
