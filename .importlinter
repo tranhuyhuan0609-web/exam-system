@@ -338,3 +338,12 @@ protected_modules =
 allowed_importers =
     app.modules.classroom
     app.model_registry
+
+[importlinter:contract:internal-notifications]
+name = notifications internals are private to the module
+type = protected
+protected_modules =
+    app.modules.notifications.internal
+allowed_importers =
+    app.modules.notifications
+    app.model_registry
