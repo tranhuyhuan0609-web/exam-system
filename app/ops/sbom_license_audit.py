@@ -84,6 +84,7 @@ def _evaluate_expression(expression: str) -> int:
     """Evaluate an SPDX-like expression: AND/WITH raise the severity, OR picks the best alternative."""
     tokens = _TOKEN_RE.findall(expression)
     pos = 0
+    malformed = False
 
     def parse_or(depth: int) -> int:
         nonlocal pos
@@ -105,8 +106,9 @@ def _evaluate_expression(expression: str) -> int:
         return result
 
     def parse_atom(depth: int) -> int:
-        nonlocal pos
+        nonlocal pos, malformed
         if depth > 16 or pos >= len(tokens):
+            malformed = True
             return _BLOCK  # malformed or absurdly nested: fail closed
         token = tokens[pos]
         if token == "(":
@@ -115,6 +117,7 @@ def _evaluate_expression(expression: str) -> int:
             if pos < len(tokens) and tokens[pos] == ")":
                 pos += 1
                 return value
+            malformed = True
             return _BLOCK  # unclosed parenthesis: fail closed
         pos += 1
         words = [token]
@@ -128,7 +131,7 @@ def _evaluate_expression(expression: str) -> int:
         value = parse_or(0)
     except RecursionError:
         return _BLOCK
-    return _BLOCK if pos < len(tokens) else value  # leftover tokens (stray parenthesis): fail closed
+    return _BLOCK if (malformed or pos < len(tokens)) else value  # stray parenthesis: fail closed
 
 
 def _extract_component_license_ids(component: dict[str, Any]) -> list[str]:
