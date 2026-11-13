@@ -267,58 +267,76 @@ allowed_importers =
     app.modules.ai_gateway
     app.model_registry
 
-[importlinter:contract:internal-governance]
-name = governance internals are private to the module
+[importlinter:contract:internal-review]
+name = review internals are private to the module
 type = protected
 protected_modules =
-    app.modules.governance.internal
+    app.modules.review.internal
 allowed_importers =
-    app.modules.governance
+    app.modules.review
     app.model_registry
 
-[importlinter:contract:internal-access_control]
-name = access_control internals are private to the module
+[importlinter:contract:internal-audit]
+name = audit internals are private to the module
 type = protected
 protected_modules =
-    app.modules.access_control.internal
+    app.modules.audit.internal
 allowed_importers =
-    app.modules.access_control
+    app.modules.audit
     app.model_registry
 
-[importlinter:contract:internal-feature_flags]
-name = feature_flags internals are private to the module
+[importlinter:contract:internal-access]
+name = access internals are private to the module
 type = protected
 protected_modules =
-    app.modules.feature_flags.internal
+    app.modules.access.internal
 allowed_importers =
-    app.modules.feature_flags
+    app.modules.access
     app.model_registry
 
-[importlinter:contract:internal-question_bank]
-name = question_bank internals are private to the module
+[importlinter:contract:internal-config]
+name = config internals are private to the module
 type = protected
 protected_modules =
-    app.modules.question_bank.internal
+    app.modules.config.internal
 allowed_importers =
-    app.modules.question_bank
+    app.modules.config
     app.model_registry
 
-[importlinter:contract:internal-tutor_guard]
-name = tutor_guard internals are private to the module
+[importlinter:contract:internal-questions]
+name = questions internals are private to the module
 type = protected
 protected_modules =
-    app.modules.tutor_guard.internal
+    app.modules.questions.internal
 allowed_importers =
-    app.modules.tutor_guard
+    app.modules.questions
     app.model_registry
 
-[importlinter:contract:internal-content_studio]
-name = content_studio internals are private to the module
+[importlinter:contract:internal-tutor]
+name = tutor internals are private to the module
 type = protected
 protected_modules =
-    app.modules.content_studio.internal
+    app.modules.tutor.internal
 allowed_importers =
-    app.modules.content_studio
+    app.modules.tutor
+    app.model_registry
+
+[importlinter:contract:internal-content]
+name = content internals are private to the module
+type = protected
+protected_modules =
+    app.modules.content.internal
+allowed_importers =
+    app.modules.content
+    app.model_registry
+
+[importlinter:contract:internal-authoring]
+name = authoring internals are private to the module
+type = protected
+protected_modules =
+    app.modules.authoring.internal
+allowed_importers =
+    app.modules.authoring
     app.model_registry
 
 [importlinter:contract:internal-practice]
@@ -330,13 +348,40 @@ allowed_importers =
     app.modules.practice
     app.model_registry
 
-[importlinter:contract:internal-classroom]
-name = classroom internals are private to the module
+[importlinter:contract:internal-dashboard]
+name = dashboard internals are private to the module
 type = protected
 protected_modules =
-    app.modules.classroom.internal
+    app.modules.dashboard.internal
 allowed_importers =
-    app.modules.classroom
+    app.modules.dashboard
+    app.model_registry
+
+[importlinter:contract:internal-classes]
+name = classes internals are private to the module
+type = protected
+protected_modules =
+    app.modules.classes.internal
+allowed_importers =
+    app.modules.classes
+    app.model_registry
+
+[importlinter:contract:internal-assignments]
+name = assignments internals are private to the module
+type = protected
+protected_modules =
+    app.modules.assignments.internal
+allowed_importers =
+    app.modules.assignments
+    app.model_registry
+
+[importlinter:contract:internal-gradebook]
+name = gradebook internals are private to the module
+type = protected
+protected_modules =
+    app.modules.gradebook.internal
+allowed_importers =
+    app.modules.gradebook
     app.model_registry
 
 [importlinter:contract:internal-notifications]
@@ -357,11 +402,11 @@ allowed_importers =
     app.modules.billing
     app.model_registry
 
-[importlinter:contract:internal-study_guide]
-name = study_guide internals are private to the module
+[importlinter:contract:internal-extraction]
+name = extraction internals are private to the module
 type = protected
 protected_modules =
-    app.modules.study_guide.internal
+    app.modules.extraction.internal
 allowed_importers =
-    app.modules.study_guide
+    app.modules.extraction
     app.model_registry
