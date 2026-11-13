@@ -5,6 +5,7 @@ the test database) only creates tenants and the probe table, and reads the privi
 """
 
 import asyncio
+import collections
 import csv
 import uuid
 from pathlib import Path
@@ -124,6 +125,27 @@ async def outbox_rows(job: SystemJob | None = SystemJob.OUTBOX_RELAY) -> dict[uu
             await set_system_job(session, job)
         rows = await session.execute(text("SELECT event_id, tenant_id, status, published_at FROM outbox_events"))
         return {r.event_id: (r.tenant_id, r.status, r.published_at) for r in rows}
+
+
+async def outbox_state() -> dict[uuid.UUID, tuple[str, int, float | None]]:
+    """(status, attempt_count, seconds until next_attempt_at: negative once passed, None if unset), as the owner."""
+    async with engine.begin() as conn:
+        rows = await conn.execute(
+            text(
+                "SELECT event_id, status, attempt_count, extract(epoch FROM next_attempt_at - now()) AS wait "
+                "FROM outbox_events"
+            )
+        )
+        return {r.event_id: (r.status, r.attempt_count, None if r.wait is None else float(r.wait)) for r in rows}
+
+
+async def make_due(event_id: uuid.UUID) -> None:
+    """Move next_attempt_at into the past (as the owner) instead of sleeping through the backoff."""
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("UPDATE outbox_events SET next_attempt_at = now() - interval '1 second' WHERE event_id = :e"),
+            {"e": event_id},
+        )
 
 
 # --- contract ---------------------------------------------------------------------------------
@@ -324,19 +346,19 @@ def test_concurrent_relays_never_deliver_the_same_event_twice(tenants, effects):
 def test_a_failing_consumer_is_retried_then_failed_without_blocking_the_others(tenants, effects):
     tenant_a, _ = tenants
     registry = ConsumerRegistry()
-    attempts = {"broken": 0, "flaky": 0}
+    attempts: dict[str, int] = collections.Counter()
 
     async def healthy(session, event):
         await apply_effect(session, event, "healthy")
 
     async def broken(session, event):
-        attempts["broken"] += 1
+        attempts[f"broken {event.event_id}"] += 1
         await apply_effect(session, event, "broken (rolled back)")
         raise RuntimeError("downstream unavailable")
 
     async def flaky(session, event):
-        attempts["flaky"] += 1
-        if attempts["flaky"] < 3:
+        attempts[f"flaky {event.event_id}"] += 1
+        if attempts[f"flaky {event.event_id}"] < 3:
             raise RuntimeError("transient")
         await apply_effect(session, event, "flaky")
 
@@ -347,35 +369,146 @@ def test_a_failing_consumer_is_retried_then_failed_without_blocking_the_others(t
     async def scenario():
         [event] = await publish(tenant_a)
         [other] = await publish(tenant_a)
-        stats = await relay_once(1, registry=registry, retry=NO_WAIT)
-        broken_attempts = attempts["broken"]
-        later = await relay_once(registry=registry, retry=NO_WAIT)  # the next event is not held back
-        return event, other, stats, broken_attempts, later, await outbox_rows()
+        rounds = [await relay_once(registry=registry, retry=NO_WAIT) for _ in range(6)]
+        return event, other, rounds, await outbox_state()
 
-    event, other, stats, broken_attempts, later, rows = run(scenario())
-    assert broken_attempts == 5, "at most 5 attempts (ADR-012)"
-    assert (stats.claimed, stats.published, stats.failed, stats.failed_event_ids) == (1, 0, 1, [event.event_id])
-    assert stats.handler_errors == 5 + 2 and stats.deliveries == 2
-    assert rows[event.event_id][1:] == (FAILED, None)
-    assert rows[other.event_id][1] == FAILED and later.deliveries == 2  # broken fails it too, others delivered
+    event, other, rounds, state = run(scenario())
+    assert [r.claimed for r in rounds] == [2, 2, 2, 2, 2, 0], "FAILED events are not claimed again"
+    assert [(r.rescheduled, r.failed) for r in rounds] == [(2, 0)] * 4 + [(0, 2), (0, 0)]
+    assert all(attempts[f"broken {e.event_id}"] == 5 for e in (event, other)), "at most 5 attempts (ADR-012)"
+    assert sum(r.handler_errors for r in rounds) == 2 * (5 + 2)
+    assert rounds[4].failed_event_ids == [event.event_id, other.event_id]
+    assert {state[e.event_id][:2] for e in (event, other)} == {(FAILED, 5)}
     assert run(effect_notes(tenant_a)) == ["flaky", "flaky", "healthy", "healthy"]
 
     # Replay after the fix (what the A01 dead-letter replay will do): only the missing effect is applied.
     async def replay():
         async with system_job_transaction(SystemJob.OUTBOX_RELAY) as session:
             await session.execute(
-                text("UPDATE outbox_events SET status = 'PENDING' WHERE event_id = :e"), {"e": event.event_id}
+                text("UPDATE outbox_events SET status = 'PENDING', attempt_count = 0 WHERE event_id = :e"),
+                {"e": event.event_id},
             )
         fixed = ConsumerRegistry()
         fixed.subscribe(EVENT_TYPE, "probe.broken", healthy)
         fixed.subscribe(EVENT_TYPE, "probe.healthy", healthy)
         fixed.subscribe(EVENT_TYPE, "probe.flaky", flaky, role=DbRole.WORKER_GRADING)
-        return await relay_once(registry=fixed, retry=NO_WAIT), await outbox_rows()
+        return await relay_once(registry=fixed, retry=NO_WAIT), await outbox_state()
 
-    stats, rows = run(replay())
+    stats, state = run(replay())
     assert (stats.claimed, stats.published, stats.deliveries, stats.duplicates) == (1, 1, 1, 2)
-    assert rows[event.event_id][1] == PUBLISHED
+    assert state[event.event_id][0] == PUBLISHED
     assert run(effect_notes(tenant_a)) == ["flaky", "flaky", "healthy", "healthy", "healthy"]
+
+
+def test_a_failed_attempt_is_persisted_and_the_event_waits_until_it_is_due(tenants):
+    tenant_a, _ = tenants
+    registry = ConsumerRegistry()
+    calls = 0
+
+    async def broken(session, event):
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("down")
+
+    registry.subscribe(EVENT_TYPE, "probe.broken", broken)
+    slow = RetryPolicy(base_delay_seconds=3600, max_delay_seconds=3600)
+    calls_when_not_due: list[int] = []
+
+    async def scenario():
+        [event] = await publish(tenant_a)
+        first = await relay_once(registry=registry, retry=slow)
+        after_first = (await outbox_state())[event.event_id]
+        not_due = await relay_once(registry=registry, retry=slow)  # a fresh call, as after a relay restart
+        calls_when_not_due.append(calls)
+        await make_due(event.event_id)
+        second = await relay_once(registry=registry, retry=slow)
+        return first, after_first, not_due, second, (await outbox_state())[event.event_id]
+
+    first, after_first, not_due, second, after_second = run(scenario())
+    status, count, wait_seconds = after_first
+    assert (first.claimed, first.rescheduled, first.failed) == (1, 1, 0)
+    assert (status, count) == (PENDING, 1)
+    assert 1700 <= wait_seconds <= 3600, "backoff with jitter, in the future"
+    assert (not_due.claimed, calls_when_not_due) == (0, [1]), "not claimed again before next_attempt_at"
+    assert (second.claimed, second.rescheduled, calls) == (1, 1, 2)
+    assert after_second[:2] == (PENDING, 2), "the count continues across relay_once calls"
+
+
+def test_only_the_failing_consumer_is_retried_and_recovery_applies_the_effect_once(tenants, effects):
+    tenant_a, _ = tenants
+    registry = ConsumerRegistry()
+    runs = {"steady": 0, "recovering": 0}
+
+    async def steady(session, event):
+        runs["steady"] += 1
+        await apply_effect(session, event, "steady")
+
+    async def recovering(session, event):
+        runs["recovering"] += 1
+        if runs["recovering"] == 1:
+            await apply_effect(session, event, "recovering (rolled back)")
+            raise RuntimeError("transient")
+        await apply_effect(session, event, "recovering")
+
+    registry.subscribe(EVENT_TYPE, "probe.steady", steady)
+    registry.subscribe(EVENT_TYPE, "probe.recovering", recovering, role=DbRole.WORKER_GRADING)
+
+    async def scenario():
+        [event] = await publish(tenant_a)
+        first = await relay_once(registry=registry, retry=NO_WAIT)
+        mid = (await outbox_state())[event.event_id]
+        second = await relay_once(registry=registry, retry=NO_WAIT)
+        third = await relay_once(registry=registry, retry=NO_WAIT)
+        return first, mid, second, third, await outbox_rows()
+
+    first, mid, second, third, rows = run(scenario())
+    assert (first.deliveries, first.rescheduled, mid[:2]) == (1, 1, (PENDING, 1))
+    assert (second.deliveries, second.duplicates, second.published) == (1, 1, 1), "steady is not re-run"
+    assert third.claimed == 0
+    assert runs == {"steady": 1, "recovering": 2}
+    assert {status for _, status, _ in rows.values()} == {PUBLISHED}
+    assert run(effect_notes(tenant_a)) == ["recovering", "steady"]
+
+
+def test_causation_id_round_trips_from_enqueue_to_the_handler(tenants):
+    tenant_a, _ = tenants
+    cause = uuid.uuid4()
+    seen: dict[str, uuid.UUID | None] = {}
+    registry = ConsumerRegistry()
+
+    async def record(session, event):
+        seen[event.payload["name"]] = event.causation_id
+
+    registry.subscribe(EVENT_TYPE, "probe.record", record)
+
+    async def scenario():
+        async with tenant_transaction(tenant_a, role=DbRole.APP_RW) as session:
+            await enqueue(session, envelope(tenant_a, causation_id=cause, payload={"name": "caused"}))
+            await enqueue(session, envelope(tenant_a, payload={"name": "direct"}))
+        return await relay_once(registry=registry, retry=NO_WAIT)
+
+    assert run(scenario()).published == 2
+    assert seen == {"caused": cause, "direct": None}
+
+
+async def as_relay(statement: str) -> None:
+    async with system_job_transaction(SystemJob.OUTBOX_RELAY) as session:
+        await session.execute(text(statement))
+
+
+def test_the_relay_updates_retry_columns_but_nothing_else_of_an_event(tenants):
+    tenant_a, _ = tenants
+
+    async def scenario():
+        [event] = await publish(tenant_a)
+        await as_relay("UPDATE outbox_events SET attempt_count = 3, next_attempt_at = now() + interval '1 hour'")
+        return event, await outbox_state()
+
+    event, state = run(scenario())
+    assert state[event.event_id][:2] == (PENDING, 3)
+    for column in ("payload_json", "tenant_id", "causation_id", "event_type", "created_at"):
+        with pytest.raises(DBAPIError, match="permission denied"):
+            run(as_relay(f"UPDATE outbox_events SET {column} = {column}"))
 
 
 def test_retry_backoff_grows_exponentially_with_jitter_and_a_cap():

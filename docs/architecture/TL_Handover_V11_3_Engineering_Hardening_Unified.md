@@ -2085,9 +2085,15 @@ CREATE TABLE outbox_events (
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING'
         CHECK (status IN ('PENDING', 'PUBLISHED', 'FAILED')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    published_at TIMESTAMPTZ
+    published_at TIMESTAMPTZ,
+    -- Ba cột dưới đây được bổ sung sau khi triển khai G03 (finding F-04): Relay lưu số lần thử và thời điểm thử lại
+    -- thay vì ngủ khi đang giữ khóa dòng; causation_id là trường bắt buộc của envelope theo ADR-012.
+    attempt_count INT NOT NULL DEFAULT 0,
+    next_attempt_at TIMESTAMPTZ,  -- NULL = có thể giao ngay
+    causation_id UUID
 );
-CREATE INDEX ix_outbox_events_pending ON outbox_events (status, created_at) WHERE status = 'PENDING';
+-- Phục vụ truy vấn nhận việc của Relay: dòng PENDING đã đến hạn, cũ nhất trước (next_attempt_at lọc phần dư).
+CREATE INDEX ix_outbox_events_pending ON outbox_events (created_at, event_id) WHERE status = 'PENDING';
 
 -- Bảng Inbox cho Idempotent Event Consumers (Khắc phục lỗi thiếu Consumer Idempotency)
 CREATE TABLE inbox_events (
@@ -2647,7 +2653,7 @@ GRANT SELECT, INSERT ON inbox_events TO ulp_worker_ingestion;
 
 -- 5e. Role Scheduler Hệ Thống (ulp_system_scheduler): Chỉ có quyền đọc/cập nhật đúng cột phục vụ Outbox Relay, Quét Hết Giờ & Rollup
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM ulp_system_scheduler;
-GRANT SELECT, UPDATE (status, published_at) ON outbox_events TO ulp_system_scheduler;
+GRANT SELECT, UPDATE (status, published_at, attempt_count, next_attempt_at) ON outbox_events TO ulp_system_scheduler;
 GRANT SELECT (id, tenant_id, status, deadline_at) ON attempts TO ulp_system_scheduler;
 GRANT SELECT ON analytics_events TO ulp_system_scheduler;
 GRANT SELECT, INSERT, UPDATE ON daily_metric_rollups TO ulp_system_scheduler;
