@@ -95,3 +95,21 @@ protected_modules =
 allowed_importers =
     app.modules.outbox
     app.model_registry
+
+[importlinter:contract:internal-taxonomy]
+name = taxonomy internals are private to the module
+type = protected
+protected_modules =
+    app.modules.taxonomy.internal
+allowed_importers =
+    app.modules.taxonomy
+    app.model_registry
+
+[importlinter:contract:internal-curriculum]
+name = curriculum internals are private to the module
+type = protected
+protected_modules =
+    app.modules.curriculum.internal
+allowed_importers =
+    app.modules.curriculum
+    app.model_registry
