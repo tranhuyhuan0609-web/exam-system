@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, replace
 from enum import StrEnum
 
@@ -55,10 +56,19 @@ def rank_next_step_recommendations(
     top_k: int = 3,
 ) -> tuple[RankedRecommendation, ...]:
     """Rank top-K high-impact study steps combining error notes, mastery deficit, and prerequisite gaps."""
-    if not learner_id.strip():
+    if not isinstance(learner_id, str) or not learner_id.strip():
         raise ValueError("learner_id is required")
-    if top_k <= 0:
-        raise ValueError("top_k must be positive")
+    if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k <= 0:
+        raise ValueError("top_k must be a positive integer")
+    seen_ids: set[str] = set()
+    for n in nodes:
+        if isinstance(n.mastery_estimate, bool) or not isinstance(n.mastery_estimate, (int, float)):
+            raise ValueError(f"mastery_estimate of {n.taxonomy_node_id!r} must be a number")
+        if not math.isfinite(n.mastery_estimate):
+            raise ValueError(f"mastery_estimate of {n.taxonomy_node_id!r} must be finite")
+        if n.taxonomy_node_id in seen_ids:
+            raise ValueError(f"duplicate taxonomy_node_id {n.taxonomy_node_id!r}")
+        seen_ids.add(n.taxonomy_node_id)
 
     mastery_by_id = {n.taxonomy_node_id: n.mastery_estimate for n in nodes}
     scored: list[RankedRecommendation] = []
@@ -124,5 +134,7 @@ def apply_recommendation_feedback(
     feedback: RecommendationFeedbackKind,
 ) -> RankedRecommendation:
     """Record student relevance/dismiss feedback on an explainable recommendation."""
+    if feedback not in tuple(RecommendationFeedbackKind):
+        raise ValueError(f"unknown feedback kind: {feedback!r}")
     hide = feedback in (RecommendationFeedbackKind.DISMISSED, RecommendationFeedbackKind.NOT_RELEVANT)
     return replace(recommendation, feedback=feedback, hidden=hide)
