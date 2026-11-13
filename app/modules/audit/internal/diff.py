@@ -79,7 +79,18 @@ def _redact_snapshot(obj: Any, *, depth: int = 0) -> Any:
         return out
     if isinstance(obj, list):
         return [_redact_snapshot(item, depth=depth + 1) for item in obj]
+    if isinstance(obj, tuple):
+        return tuple(_redact_snapshot(item, depth=depth + 1) for item in obj)
+    # Set members are hashable, so they can never be a dict holding a secret.
     return copy.deepcopy(obj)
+
+
+def _require_state(label: str, state: Any) -> dict[str, Any]:
+    if state is None:
+        return {}
+    if not isinstance(state, dict):
+        raise AuditDiffError(f"{label} must be a mapping or None")
+    return {str(k): v for k, v in state.items()}
 
 
 def monthly_audit_partition_name(ts: datetime) -> str:
@@ -109,10 +120,12 @@ def build_audit_event_record(
         ("target_table", target_table),
         ("target_id", target_id),
     ):
-        if not val or not val.strip():
-            raise AuditDiffError(f"{label} must not be empty")
+        if not isinstance(val, str) or not val.strip():
+            raise AuditDiffError(f"{label} must be a non-empty string")
 
     norm_action = action.strip().upper()
+    if not isinstance(reason, str):
+        raise AuditDiffError("reason must be a non-empty string")
     norm_reason = " ".join(reason.strip().split())
     if not norm_reason:
         raise AuditDiffError("reason must not be empty")
@@ -121,11 +134,16 @@ def build_audit_event_record(
             f"action {norm_action} requires audit reason >= {MIN_SENSITIVE_REASON_LEN} characters"
         )
 
-    before_clean = _redact_snapshot(before_state or {})
-    after_clean = _redact_snapshot(after_state or {})
+    before_raw = _require_state("before_state", before_state)
+    after_raw = _require_state("after_state", after_state)
 
-    all_keys = sorted(set(before_clean.keys()) | set(after_clean.keys()))
-    changed = tuple(k for k in all_keys if before_clean.get(k) != after_clean.get(k))
+    # Diff the RAW states (a changed secret must still be listed as changed); only the stored
+    # values are redacted.
+    missing = object()
+    all_keys = sorted(set(before_raw) | set(after_raw))
+    changed = tuple(k for k in all_keys if before_raw.get(k, missing) != after_raw.get(k, missing))
+    before_clean = _redact_snapshot(before_raw)
+    after_clean = _redact_snapshot(after_raw)
     ts = datetime.now(timezone.utc) if occurred_at is None else occurred_at
 
     return AuditEventSpec(
