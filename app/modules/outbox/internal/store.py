@@ -17,8 +17,6 @@ async def enqueue(session: AsyncSession, envelope: EventEnvelopeContract) -> Non
     Nothing is committed here: the event exists if and only if the caller's business change commits.
     The tenant policy rejects an envelope whose tenant is not the transaction's tenant. No RETURNING
     is used, so roles that may only INSERT into the outbox (the workers) can publish too.
-
-    `causation_id` is not stored: outbox_events has no column for it (see the module report).
     """
     await session.execute(
         insert(OutboxEvent).values(
@@ -29,6 +27,7 @@ async def enqueue(session: AsyncSession, envelope: EventEnvelopeContract) -> Non
             aggregate_type=envelope.aggregate_type,
             aggregate_id=envelope.aggregate_id,
             correlation_id=envelope.correlation_id,
+            causation_id=envelope.causation_id,
             payload_json=envelope.payload,
             created_at=envelope.occurred_at,
         )
