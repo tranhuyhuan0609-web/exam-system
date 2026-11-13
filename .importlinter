@@ -95,3 +95,57 @@ protected_modules =
 allowed_importers =
     app.modules.outbox
     app.model_registry
+
+[importlinter:contract:internal-grading]
+name = grading internals are private to the module
+type = protected
+protected_modules =
+    app.modules.grading.internal
+allowed_importers =
+    app.modules.grading
+    app.model_registry
+
+[importlinter:contract:internal-dedup]
+name = dedup internals are private to the module
+type = protected
+protected_modules =
+    app.modules.dedup.internal
+allowed_importers =
+    app.modules.dedup
+    app.model_registry
+
+[importlinter:contract:internal-flashcards]
+name = flashcards internals are private to the module
+type = protected
+protected_modules =
+    app.modules.flashcards.internal
+allowed_importers =
+    app.modules.flashcards
+    app.model_registry
+
+[importlinter:contract:internal-frameworks]
+name = frameworks internals are private to the module
+type = protected
+protected_modules =
+    app.modules.frameworks.internal
+allowed_importers =
+    app.modules.frameworks
+    app.model_registry
+
+[importlinter:contract:internal-crawler]
+name = crawler internals are private to the module
+type = protected
+protected_modules =
+    app.modules.crawler.internal
+allowed_importers =
+    app.modules.crawler
+    app.model_registry
+
+[importlinter:contract:internal-drive_sync]
+name = drive_sync internals are private to the module
+type = protected
+protected_modules =
+    app.modules.drive_sync.internal
+allowed_importers =
+    app.modules.drive_sync
+    app.model_registry
