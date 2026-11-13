@@ -18,8 +18,14 @@ export function normalizeAndClampBBox(
   pageHeight: number,
   minSize = 8,
 ): BoundingBox {
-  if (pageWidth <= 0 || pageHeight <= 0) {
+  if (!(Number.isFinite(pageWidth) && pageWidth > 0 && Number.isFinite(pageHeight) && pageHeight > 0)) {
     throw new Error("pageWidth and pageHeight must be positive");
+  }
+  if (![box.x0, box.y0, box.x1, box.y1].every(Number.isFinite)) {
+    throw new Error("bounding box coordinates must be finite numbers");
+  }
+  if (!Number.isFinite(minSize) || minSize < 0) {
+    throw new Error("minSize must be a non-negative finite number");
   }
   const minX = Math.max(0, Math.min(pageWidth, Math.min(box.x0, box.x1)));
   const maxX = Math.max(0, Math.min(pageWidth, Math.max(box.x0, box.x1)));
@@ -46,11 +52,14 @@ export function normalizeAndClampBBox(
 function normalizeAnswerForComparison(raw: string): string {
   const trimmed = raw.trim().replace(/^\$+|\$+$/g, "").trim();
   // Normalize decimal comma if simple numeric token
+  // Only collapse to a number when it stays finite: "9"x400 would otherwise become "Infinity" for both
+  // sides and two different answers would be reported as MATCHED.
   if (/^-?\d+,\d+$/.test(trimmed)) {
-    return String(Number(trimmed.replace(",", ".")));
-  }
-  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
-    return String(Number(trimmed));
+    const n = Number(trimmed.replace(",", "."));
+    if (Number.isFinite(n)) return String(n);
+  } else if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+    const n = Number(trimmed);
+    if (Number.isFinite(n)) return String(n);
   }
   return trimmed.toUpperCase();
 }
@@ -118,7 +127,8 @@ export function evaluatePublishButtonState(params: {
   if (params.verificationStatus !== "VERIFIED") {
     reasons.push(`Chuyên môn cần đạt VERIFIED (hiện tại: ${params.verificationStatus})`);
   }
-  if (params.isDisputed) {
+  // Fail closed: only an explicit `false` means "not disputed".
+  if (params.isDisputed !== false) {
     reasons.push("Cần xử lý nhãn DISPUTED_ANSWER trước khi Publish");
   }
 

@@ -22,7 +22,16 @@ export function resolveMasteryIndicator(params: {
   readonly answeredCount: number;
   readonly standardError: number;
 }): MasteryIndicator {
-  if (params.answeredCount < 20 || params.standardError >= 0.35) {
+  // Fail closed: any non-finite or impossible input is "not enough data", never a fabricated score.
+  const { masteryRatio, answeredCount, standardError } = params;
+  if (
+    !Number.isFinite(masteryRatio) ||
+    !Number.isFinite(answeredCount) ||
+    !Number.isFinite(standardError) ||
+    standardError < 0 ||
+    answeredCount < 20 ||
+    standardError >= 0.35
+  ) {
     return {
       status: "INSUFFICIENT_DATA",
       color: "GRAY",
@@ -31,9 +40,13 @@ export function resolveMasteryIndicator(params: {
     };
   }
 
-  const clamped = Math.max(0, Math.min(1, params.masteryRatio));
-  const percent = Math.round(clamped * 100);
-  if (percent >= 80) {
+  const clamped = Math.max(0, Math.min(1, masteryRatio));
+  // Thresholds use the UNROUNDED value; the displayed percent is rounded but kept inside its band so a
+  // 79.6% ratio is never shown as "80%" under the YELLOW colour.
+  const exact = clamped * 100;
+  const rounded = Math.round(exact);
+  if (exact >= 80) {
+    const percent = Math.max(80, rounded);
     return {
       status: "ESTIMATED",
       color: "GREEN",
@@ -41,7 +54,8 @@ export function resolveMasteryIndicator(params: {
       label: `Làm chủ tốt (${percent}%)`,
     };
   }
-  if (percent >= 50) {
+  if (exact >= 50) {
+    const percent = Math.min(79, Math.max(50, rounded));
     return {
       status: "ESTIMATED",
       color: "YELLOW",
@@ -49,6 +63,7 @@ export function resolveMasteryIndicator(params: {
       label: `Cần củng cố (${percent}%)`,
     };
   }
+  const percent = Math.min(49, rounded);
   return {
     status: "ESTIMATED",
     color: "RED",
@@ -84,7 +99,9 @@ export function buildInteractivePracticeTabs(
   countsByType: Partial<Record<PracticeTabType, number>>,
 ): readonly PracticeTabSpec[] {
   return CANONICAL_TAB_ORDER.map((item) => {
-    const count = Math.max(0, Math.floor(countsByType[item.type] ?? 0));
+    const raw = Object.hasOwn(countsByType, item.type) ? countsByType[item.type] : 0;
+    // Non-finite counts (NaN, Infinity) disable the tab instead of producing a NaN badge.
+    const count = typeof raw === "number" && Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : 0;
     return {
       type: item.type,
       label: item.label,

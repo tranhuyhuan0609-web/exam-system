@@ -11,6 +11,9 @@ export type CriticalAdminAction =
 
 export const MIN_ADMIN_AUDIT_REASON_CHARS = 15;
 
+/** Zero-width, bidi-control, BOM, soft-hyphen and similar invisible characters. */
+const INVISIBLE_CHARS_RE = /[\u200B-\u200F\u2028-\u202F\u2060-\u206F\uFEFF\u00AD\u180E\u034F]/g;
+
 export interface AdminReasonValidation {
   readonly ok: boolean;
   readonly action: CriticalAdminAction;
@@ -28,7 +31,10 @@ export function validateAdminMutationReason(
   action: CriticalAdminAction,
   rawReason: string,
 ): AdminReasonValidation {
-  const normalizedReason = rawReason.trim().replace(/\s+/g, " ");
+  const normalizedReason = (typeof rawReason === "string" ? rawReason : "")
+    .replace(INVISIBLE_CHARS_RE, "")
+    .trim()
+    .replace(/\s+/g, " ");
   const charLength = Array.from(normalizedReason).length;
 
   if (charLength === 0) {
@@ -92,7 +98,12 @@ export function evaluateDrivePairingCandidate(
   const titleScore = clampUnit(signals.titleOverlap);
 
   let countScore = 0;
-  if (signals.examQuestionCount > 0 && signals.keyQuestionCount > 0) {
+  const countsValid =
+    Number.isFinite(signals.examQuestionCount) &&
+    Number.isFinite(signals.keyQuestionCount) &&
+    signals.examQuestionCount > 0 &&
+    signals.keyQuestionCount > 0;
+  if (countsValid) {
     const maxCount = Math.max(signals.examQuestionCount, signals.keyQuestionCount);
     const diff = Math.abs(signals.examQuestionCount - signals.keyQuestionCount);
     countScore = Math.max(0, 1 - diff / maxCount);
@@ -109,12 +120,16 @@ export function evaluateDrivePairingCandidate(
 
   const weighted =
     fnScore * 0.35 + folderScore * 0.25 + titleScore * 0.2 + countScore * 0.2;
-  const confidencePct = Math.round(weighted * 100);
+  const exactPct = weighted * 100;
+  const confidencePct = Math.round(exactPct);
+  // Thresholds use the unrounded value (1e-9 only absorbs floating-point noise of the weighted sum).
+  const EPS = 1e-9;
 
   return {
     confidencePct,
-    canConfirm: confidencePct >= 50,
-    highConfidence: confidencePct >= 85 && warnings.length === 0,
+    // A different number of questions in exam and answer key can never be confirmed.
+    canConfirm: exactPct + EPS >= 50 && !warnings.includes("QUESTION_COUNT_MISMATCH"),
+    highConfidence: exactPct + EPS >= 85 && warnings.length === 0,
     warningCodes: warnings,
   };
 }
@@ -133,6 +148,10 @@ export function evaluateParserDriftStatus(
   emptyPageCount: number,
   consecutivePages: number,
 ): ParserDriftStatus {
+  if (!Number.isFinite(emptyPageCount) || !Number.isFinite(consecutivePages)) {
+    // Fail closed: unknown telemetry is never reported as healthy (but does not auto-pause on garbage).
+    return { status: "WATCH", emptyRatePct: 100, shouldAutoPause: false };
+  }
   if (consecutivePages <= 0) {
     return { status: "HEALTHY", emptyRatePct: 0, shouldAutoPause: false };
   }
@@ -176,10 +195,13 @@ export function evaluateOutboxQueueHealth(
   dlqSize: number,
 ): OutboxSloStatus {
   const alerts: string[] = [];
-  if (oldestQueuedAgeSeconds > 90) {
+  if (!Number.isFinite(oldestQueuedAgeSeconds)) {
+    // Fail closed: an unknown queue age is a breach.
+    alerts.push("INGESTION_QUEUE_AGE_UNKNOWN", "INGESTION_QUEUE_SLO_BREACH");
+  } else if (oldestQueuedAgeSeconds > 90) {
     alerts.push("INGESTION_QUEUE_SLO_BREACH");
   }
-  if (dlqSize > 0) {
+  if (!Number.isFinite(dlqSize) || dlqSize > 0) {
     alerts.push("DLQ_NON_EMPTY");
   }
   return {

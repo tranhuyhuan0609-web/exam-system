@@ -31,6 +31,8 @@ export interface ProctorSummary {
   readonly copyAttemptCount: number;
   readonly riskLevel: ProctorRiskLevel;
   readonly flagForTeacherReview: boolean;
+  /** True while the tab is hidden right now (no matching TAB_VISIBLE yet). */
+  readonly tabHiddenNow: boolean;
   readonly events: readonly ProctorEventRecord[];
 }
 
@@ -44,6 +46,8 @@ export class ExamProctorTracker {
   private readonly minHiddenMs: number;
   private readonly maxEvents: number;
   private readonly records: ProctorEventRecord[] = [];
+  private hiddenOpen = false;
+  /** Start of the open hidden period; null with `hiddenOpen` means the start time was invalid. */
   private hiddenSinceMs: number | null = null;
   private hiddenCount = 0;
   private totalHiddenDurationMs = 0;
@@ -52,8 +56,11 @@ export class ExamProctorTracker {
   private copyAttempts = 0;
 
   constructor(options: ProctorTrackerOptions = {}) {
-    this.minHiddenMs = options.minHiddenDurationMs ?? 300;
-    this.maxEvents = options.maxStoredEvents ?? 250;
+    const minHidden = options.minHiddenDurationMs;
+    const maxEvents = options.maxStoredEvents;
+    this.minHiddenMs = minHidden !== undefined && Number.isFinite(minHidden) && minHidden >= 0 ? minHidden : 300;
+    this.maxEvents =
+      maxEvents !== undefined && Number.isFinite(maxEvents) && maxEvents >= 0 ? Math.floor(maxEvents) : 250;
   }
 
   private pushEvent(ev: ProctorEventRecord): void {
@@ -63,17 +70,27 @@ export class ExamProctorTracker {
   }
 
   public recordVisibilityHidden(monotonicNowMs: number): void {
-    if (this.hiddenSinceMs === null) {
-      this.hiddenSinceMs = monotonicNowMs;
+    if (!this.hiddenOpen) {
+      this.hiddenOpen = true;
+      this.hiddenSinceMs = Number.isFinite(monotonicNowMs) ? monotonicNowMs : null;
     }
   }
 
   public recordVisibilityVisible(monotonicNowMs: number): void {
-    if (this.hiddenSinceMs === null) {
+    if (!this.hiddenOpen) {
       return;
     }
-    const elapsed = Math.max(0, monotonicNowMs - this.hiddenSinceMs);
+    const start = this.hiddenSinceMs;
+    this.hiddenOpen = false;
     this.hiddenSinceMs = null;
+    if (start === null || !Number.isFinite(monotonicNowMs)) {
+      // Fail closed: the duration is unknown, so count the switch instead of silently dropping it.
+      this.hiddenCount += 1;
+      this.pushEvent({ kind: "TAB_HIDDEN", occurredAtMs: Number.isFinite(start ?? Number.NaN) ? (start as number) : 0 });
+      this.pushEvent({ kind: "TAB_VISIBLE", occurredAtMs: Number.isFinite(monotonicNowMs) ? monotonicNowMs : 0 });
+      return;
+    }
+    const elapsed = Math.max(0, monotonicNowMs - start);
 
     if (elapsed < this.minHiddenMs) {
       // Transient OS alert / micro-flicker below threshold: do not penalize.
@@ -95,7 +112,7 @@ export class ExamProctorTracker {
 
   public recordFullscreenExit(monotonicNowMs: number): void {
     this.fullscreenExits += 1;
-    this.pushEvent({ kind: "FULLSCREEN_EXIT", occurredAtMs: monotonicNowMs });
+    this.pushEvent({ kind: "FULLSCREEN_EXIT", occurredAtMs: Number.isFinite(monotonicNowMs) ? monotonicNowMs : 0 });
   }
 
   public recordClipboardAction(
@@ -103,28 +120,30 @@ export class ExamProctorTracker {
     monotonicNowMs: number,
     textLength: number,
   ): void {
-    const safeLen = Math.max(0, Math.floor(textLength));
+    const safeLen = Number.isFinite(textLength) ? Math.max(0, Math.floor(textLength)) : 0;
+    const at = Number.isFinite(monotonicNowMs) ? monotonicNowMs : 0;
     if (action === "PASTE") {
       this.pasteAttempts += 1;
       this.pushEvent({
         kind: "PASTE_ATTEMPT",
-        occurredAtMs: monotonicNowMs,
+        occurredAtMs: at,
         clipboardLength: safeLen,
       });
     } else {
       this.copyAttempts += 1;
       this.pushEvent({
         kind: "COPY_ATTEMPT",
-        occurredAtMs: monotonicNowMs,
+        occurredAtMs: at,
         clipboardLength: safeLen,
       });
     }
   }
 
   public getSummary(monotonicNowMs?: number): ProctorSummary {
+    const nowKnown = monotonicNowMs !== undefined && Number.isFinite(monotonicNowMs);
     const openHiddenMs =
-      this.hiddenSinceMs !== null && monotonicNowMs !== undefined
-        ? Math.max(0, monotonicNowMs - this.hiddenSinceMs)
+      this.hiddenOpen && this.hiddenSinceMs !== null && nowKnown
+        ? Math.max(0, (monotonicNowMs as number) - this.hiddenSinceMs)
         : 0;
     const effectiveHiddenMs =
       this.totalHiddenDurationMs + (openHiddenMs >= this.minHiddenMs ? openHiddenMs : 0);
@@ -145,7 +164,13 @@ export class ExamProctorTracker {
       risk = "MEDIUM";
     }
 
+    // A still-hidden tab whose duration cannot be measured (no / invalid timestamp) is never LOW risk.
+    if (this.hiddenOpen && (!nowKnown || this.hiddenSinceMs === null) && risk === "LOW") {
+      risk = "MEDIUM";
+    }
+
     return {
+      tabHiddenNow: this.hiddenOpen,
       hiddenSwitchCount: this.hiddenCount,
       totalHiddenMs: effectiveHiddenMs,
       fullscreenExitCount: this.fullscreenExits,

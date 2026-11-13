@@ -30,16 +30,24 @@ export interface MatrixShortageReport {
   totalDesired: number;
   totalShortage: number;
   shortages: ShortageCell[];
+  /** Cells with a non-finite or negative count; any such cell makes the report not ready. */
+  invalidCellCount: number;
 }
 
 export function computeMatrixShortages(cells: MatrixCellSpec[]): MatrixShortageReport {
   const shortages: ShortageCell[] = [];
   let totalDesired = 0;
   let totalShortage = 0;
+  let invalidCellCount = 0;
 
   for (const cell of cells) {
-    const desired = Math.max(0, Math.trunc(cell.desiredCount));
-    const available = Math.max(0, Math.trunc(cell.availableCount));
+    const validDesired = Number.isFinite(cell.desiredCount) && cell.desiredCount >= 0;
+    const validAvailable = Number.isFinite(cell.availableCount) && cell.availableCount >= 0;
+    if (!validDesired || !validAvailable) {
+      invalidCellCount += 1;
+    }
+    const desired = validDesired ? Math.trunc(cell.desiredCount) : 0;
+    const available = validAvailable ? Math.trunc(cell.availableCount) : 0;
     totalDesired += desired;
     const shortage = Math.max(0, desired - available);
     if (shortage > 0) {
@@ -56,10 +64,11 @@ export function computeMatrixShortages(cells: MatrixCellSpec[]): MatrixShortageR
   }
 
   return {
-    readyToAssemble: totalShortage === 0 && totalDesired > 0,
+    readyToAssemble: totalShortage === 0 && totalDesired > 0 && invalidCellCount === 0,
     totalDesired,
     totalShortage,
     shortages,
+    invalidCellCount,
   };
 }
 
@@ -89,8 +98,27 @@ export function validateThptqg2025Preset(
   subjectGroup: SubjectGroup2025,
   counts: ThptqgPresetCounts,
 ): ThptqgPresetValidation {
+  if (!Object.hasOwn(PRESET_EXPECTATIONS, subjectGroup)) {
+    return {
+      valid: false,
+      expectedTotalItems: 0,
+      actualTotalItems: 0,
+      computedTotalPoints: 0,
+      errors: ["Nhóm môn không được hỗ trợ"],
+    };
+  }
   const exp = PRESET_EXPECTATIONS[subjectGroup];
   const errors: string[] = [];
+  const parts = [counts.part1SingleChoice, counts.part2ClusterTrueFalse, counts.part3ShortNumeric];
+  if (!parts.every((n) => Number.isInteger(n) && n >= 0)) {
+    return {
+      valid: false,
+      expectedTotalItems: exp.p1 + exp.p2 + exp.p3,
+      actualTotalItems: 0,
+      computedTotalPoints: 0,
+      errors: ["Số câu mỗi phần phải là số nguyên không âm hữu hạn"],
+    };
+  }
 
   if (counts.part1SingleChoice !== exp.p1) {
     errors.push(`Phần I yêu cầu ${exp.p1} câu ABCD (nhập ${counts.part1SingleChoice})`);
