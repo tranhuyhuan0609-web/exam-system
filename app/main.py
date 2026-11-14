@@ -23,7 +23,9 @@ from app.modules.config.router import router as config_router
 from app.modules.content.router import router as content_router
 from app.modules.curriculum.router import router as curriculum_router
 from app.modules.ingestion.router import router as ingestion_router
+from app.modules.layout.router import router as layout_router
 from app.modules.outbox.router import router as outbox_router
+from app.modules.parsers.router import router as parsers_router
 from app.modules.privacy.router import router as privacy_router
 from app.modules.taxonomy.router import router as taxonomy_router
 from app.platform.branding import BRAND_NAME, BRAND_SEO_DESCRIPTION
@@ -124,6 +126,8 @@ for _module_router in (
     authoring_router,
     ai_gateway_router,
     audit_router,
+    parsers_router,
+    layout_router,
 ):
     app.include_router(_module_router)
 

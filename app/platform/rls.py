@@ -17,6 +17,7 @@ GLOBAL_TABLES = frozenset(
         "ai_providers",
         "ai_models",
         "prompt_versions",
+        "parser_definitions",
     }
 )
 """Platform tables with no tenant of their own."""

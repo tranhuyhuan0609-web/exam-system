@@ -53,7 +53,7 @@ def _migrate() -> None:
 
 
 # Tables whose rows are seeded by migrations and must survive between tests.
-SEEDED_TABLES = {"tenants", "fts_dictionary_versions", "permissions", "ai_providers"}
+SEEDED_TABLES = {"tenants", "fts_dictionary_versions", "permissions", "ai_providers", "parser_definitions"}
 
 
 async def _truncate_all() -> None:
