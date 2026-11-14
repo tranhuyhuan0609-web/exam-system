@@ -143,9 +143,7 @@ def read_pages(pdf: Path) -> list[dict[str, Any]]:
                 tables = [_r(t.as_tuple()) for t in doc.table_rects(index)]
             except Exception as exc:  # noqa: BLE001 - recorded, not fatal
                 tables = [f"error: {exc}"]
-            words = [
-                [*_r(ln.rect.as_tuple()), token] for ln in doc.rich_lines(index) for token in ln.text.split()
-            ]
+            words = [[*_r(ln.rect.as_tuple()), token] for ln in doc.rich_lines(index) for token in ln.text.split()]
             pages.append(
                 {
                     "index": index,

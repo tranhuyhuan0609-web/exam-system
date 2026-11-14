@@ -101,9 +101,7 @@ def build_session_records(
 
     now = int(time.time()) if issued_at is None else issued_at
     tenant_ids = [str(uuid.uuid5(_NAMESPACE, f"{seed}:tenant:{t}")) for t in range(tenant_count)]
-    question_pool = [
-        str(uuid.uuid5(_NAMESPACE, f"{seed}:qver:{q}")) for q in range(questions_per_attempt)
-    ]
+    question_pool = [str(uuid.uuid5(_NAMESPACE, f"{seed}:qver:{q}")) for q in range(questions_per_attempt)]
 
     records: list[dict[str, Any]] = []
     for idx in range(count):

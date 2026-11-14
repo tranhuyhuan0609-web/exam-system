@@ -125,9 +125,7 @@ def test_tenant_context_is_null_until_set_and_ends_with_the_transaction():
             before = (await conn.execute(text("SELECT current_app_tenant_id()"))).scalar()
             await conn.rollback()
             async with conn.begin():
-                await conn.execute(
-                    text("SELECT set_config('app.current_tenant_id', :t, true)"), {"t": str(tenant_id)}
-                )
+                await conn.execute(text("SELECT set_config('app.current_tenant_id', :t, true)"), {"t": str(tenant_id)})
                 inside = (await conn.execute(text("SELECT current_app_tenant_id()"))).scalar()
             after = (await conn.execute(text("SELECT current_app_tenant_id()"))).scalar()
             return before, inside, after

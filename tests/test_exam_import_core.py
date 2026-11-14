@@ -139,11 +139,21 @@ def test_missing_tenant_or_empty_sections_are_invalid() -> None:
 
 def test_out_of_sequence_question_numbers_are_reported() -> None:
     s = ExamImportSession(
-        "i", "t", "d", RightsStatus.OWNED, expected_total_points=None,
-        sections=(ExamSectionDraft("P", "P", (
-            ImportedQuestionRef(2, "a", 1.0, 1, paired_answer="A"),
-            ImportedQuestionRef(1, "b", 1.0, 1, paired_answer="A"),
-        )),),
+        "i",
+        "t",
+        "d",
+        RightsStatus.OWNED,
+        expected_total_points=None,
+        sections=(
+            ExamSectionDraft(
+                "P",
+                "P",
+                (
+                    ImportedQuestionRef(2, "a", 1.0, 1, paired_answer="A"),
+                    ImportedQuestionRef(1, "b", 1.0, 1, paired_answer="A"),
+                ),
+            ),
+        ),
     )
     assert any("out of sequence" in e for e in validate_exam_import_structure(s).errors)
 

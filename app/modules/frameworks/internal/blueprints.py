@@ -181,8 +181,7 @@ def validate_blueprint(
                 BlueprintValidationError(
                     code="INVALID_SECTION_ITEM_TYPE",
                     message=(
-                        f"Section {code} expected item_type {ref_sec.item_type.value}, "
-                        f"got {actual_sec.item_type.value}"
+                        f"Section {code} expected item_type {ref_sec.item_type.value}, got {actual_sec.item_type.value}"
                     ),
                     field=f"sections.{code}.item_type",
                 )
@@ -192,8 +191,7 @@ def validate_blueprint(
                 BlueprintValidationError(
                     code="INVALID_SECTION_QUESTION_COUNT",
                     message=(
-                        f"Section {code} expected {ref_sec.question_count} questions, "
-                        f"got {actual_sec.question_count}"
+                        f"Section {code} expected {ref_sec.question_count} questions, got {actual_sec.question_count}"
                     ),
                     field=f"sections.{code}.question_count",
                 )
@@ -251,10 +249,7 @@ def validate_blueprint(
                 errors.append(
                     BlueprintValidationError(
                         code="MATRIX_ITEM_COUNT_MISMATCH",
-                        message=(
-                            f"Matrix requests {mat_cnt} items of {itype.value}, "
-                            f"but sections specify {sec_cnt}"
-                        ),
+                        message=(f"Matrix requests {mat_cnt} items of {itype.value}, but sections specify {sec_cnt}"),
                         field="matrix_cells",
                     )
                 )

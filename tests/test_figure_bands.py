@@ -15,11 +15,15 @@ def geometry_of(page):
     with PDFEngineAdapter.open(page.parent.tobytes()) as reader:
         return page_geometry(reader, page.number)
 
+
 PROSE = "Xác định cấu tạo của các chất từ A đến M trong sơ đồ sau và viết phương trình phản ứng xảy ra"
 
 
 def _hexagon(page, cx, cy, r=14):
-    pts = [(cx + r * dx, cy + r * dy) for dx, dy in ((0, -1), (0.87, -0.5), (0.87, 0.5), (0, 1), (-0.87, 0.5), (-0.87, -0.5))]  # noqa: E501
+    pts = [
+        (cx + r * dx, cy + r * dy)
+        for dx, dy in ((0, -1), (0.87, -0.5), (0.87, 0.5), (0, 1), (-0.87, 0.5), (-0.87, -0.5))
+    ]  # noqa: E501
     for a, b in zip(pts, pts[1:] + pts[:1]):  # noqa: B905
         page.draw_line(a, b, width=0.8)
 

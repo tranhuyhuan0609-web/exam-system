@@ -31,9 +31,7 @@ def test_e06_clusters_class_mistakes_requires_confirmation_and_enforces_class_rl
     confirmed = confirm_remedial_draft(draft, teacher_id="teacher-1", actor_tenant_id="t1")
     assert confirmed.status == DraftAssignmentStatus.CONFIRMED
 
-    foreign_obs = obs + (
-        StudentMistakeObservation("t1", "cls-OTHER", "s9", "MATH.INT", "q1", "C", "A"),
-    )
+    foreign_obs = obs + (StudentMistakeObservation("t1", "cls-OTHER", "s9", "MATH.INT", "q1", "C", "A"),)
     with pytest.raises(CrossClassScopeError):
         generate_class_copilot_summary(tenant_id="t1", class_id="cls-12A", run_id="r1", observations=foreign_obs)
 
@@ -91,10 +89,13 @@ def test_question_target_must_be_positive_integer(target: object) -> None:
 
 
 def test_top_distractor_ties_break_alphabetically_and_clusters_sort_by_volume() -> None:
-    obs = [_obs(student="s1", chosen="C"), _obs(student="s2", chosen="B"),
-           _obs(student="s3", node="MATH.LOG", q="q5", chosen="D"),
-           _obs(student="s4", node="MATH.LOG", q="q5", chosen="D"),
-           _obs(student="s5", node="MATH.LOG", q="q5", chosen="D")]
+    obs = [
+        _obs(student="s1", chosen="C"),
+        _obs(student="s2", chosen="B"),
+        _obs(student="s3", node="MATH.LOG", q="q5", chosen="D"),
+        _obs(student="s4", node="MATH.LOG", q="q5", chosen="D"),
+        _obs(student="s5", node="MATH.LOG", q="q5", chosen="D"),
+    ]
     summary = _summary(obs)
     assert [c.taxonomy_node_id for c in summary.clusters] == ["MATH.LOG", "MATH.INT"]
     assert summary.clusters[1].top_distractor == "B"

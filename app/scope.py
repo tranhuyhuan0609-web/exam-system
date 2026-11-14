@@ -45,9 +45,7 @@ class Scope:
                     or_(
                         model.root_id == self.root_id,
                         model.id.in_(
-                            select(QuestionCategory.question_id).where(
-                                QuestionCategory.category_id.in_(branch_cats)
-                            )
+                            select(QuestionCategory.question_id).where(QuestionCategory.category_id.in_(branch_cats))
                         ),
                     )
                 ]
@@ -55,11 +53,7 @@ class Scope:
             return [
                 or_(
                     model.category_id.in_(branch),
-                    model.id.in_(
-                        select(QuestionCategory.question_id).where(
-                            QuestionCategory.category_id.in_(branch)
-                        )
-                    ),
+                    model.id.in_(select(QuestionCategory.question_id).where(QuestionCategory.category_id.in_(branch))),
                 )
             ]
 
@@ -109,14 +103,10 @@ class TargetScope:
         mapped_units_subq = select(TargetCurriculumMapping.knowledge_unit_id).where(
             TargetCurriculumMapping.target_id == self.target_id
         )
-        clauses.append(
-            model.knowledge_unit_id.in_(mapped_units_subq) & model.difficulty.in_(standard_diffs)
-        )
+        clauses.append(model.knowledge_unit_id.in_(mapped_units_subq) & model.difficulty.in_(standard_diffs))
 
         # 2. Tagged in question_target_tags
-        tagged_q_ids_subq = select(QuestionTargetTag.question_id).where(
-            QuestionTargetTag.target_id == self.target_id
-        )
+        tagged_q_ids_subq = select(QuestionTargetTag.question_id).where(QuestionTargetTag.target_id == self.target_id)
         if self.code in ("THPTQG", "VAO_10", "SGK_KNTT"):
             clauses.append(model.id.in_(tagged_q_ids_subq) & model.difficulty.in_(standard_diffs))
         else:
@@ -140,7 +130,11 @@ class TargetScope:
                 model.difficulty.in_([Difficulty.HSG, Difficulty.ADVANCED_APPLICATION])
                 | (
                     (model.difficulty == Difficulty.APPLICATION)
-                    & (model.is_thinking_skill.is_(True) | (model.access_tier == AccessTier.PRO) | model.id.in_(tagged_q_ids_subq))  # noqa: E501
+                    & (
+                        model.is_thinking_skill.is_(True)
+                        | (model.access_tier == AccessTier.PRO)
+                        | model.id.in_(tagged_q_ids_subq)
+                    )  # noqa: E501
                 )
             )
         elif self.code == "VAO_10_CHUYEN":
@@ -178,34 +172,76 @@ class SectionScope:
             return []
 
         if self.section == "curriculum":
-            curr_root_ids = [1, 2, 3, 18, 91, 116, 221, 240, 243, 270, 353, 355, 357, 362, 372, 388, 395, 436, 439, 443, 446, 448, 469, 472, 520, 564]  # noqa: E501
+            curr_root_ids = [
+                1,
+                2,
+                3,
+                18,
+                91,
+                116,
+                221,
+                240,
+                243,
+                270,
+                353,
+                355,
+                357,
+                362,
+                372,
+                388,
+                395,
+                436,
+                439,
+                443,
+                446,
+                448,
+                469,
+                472,
+                520,
+                564,
+            ]  # noqa: E501
             return [model.root_id.in_(curr_root_ids)]
 
         if self.section == "major_exam":
             major_root_ids = [81, 85, 139, 161, 179, 187, 194, 348]
-            target_subq = select(QuestionTargetTag.question_id).join(ExamTarget).where(ExamTarget.group_category == "MAJOR_EXAM")  # noqa: E501
-            map_subq = select(TargetCurriculumMapping.knowledge_unit_id).join(ExamTarget).where(ExamTarget.group_category == "MAJOR_EXAM")  # noqa: E501
+            target_subq = (
+                select(QuestionTargetTag.question_id).join(ExamTarget).where(ExamTarget.group_category == "MAJOR_EXAM")
+            )  # noqa: E501
+            map_subq = (
+                select(TargetCurriculumMapping.knowledge_unit_id)
+                .join(ExamTarget)
+                .where(ExamTarget.group_category == "MAJOR_EXAM")
+            )  # noqa: E501
             standard_diffs = [
                 Difficulty.RECOGNITION,
                 Difficulty.UNDERSTANDING,
                 Difficulty.APPLICATION,
                 Difficulty.ADVANCED_APPLICATION,
             ]
-            return [or_(
-                model.root_id.in_(major_root_ids),
-                model.id.in_(target_subq),
-                (model.knowledge_unit_id.in_(map_subq) & model.difficulty.in_(standard_diffs)),
-                model.is_thinking_skill.is_(True),
-            )]
+            return [
+                or_(
+                    model.root_id.in_(major_root_ids),
+                    model.id.in_(target_subq),
+                    (model.knowledge_unit_id.in_(map_subq) & model.difficulty.in_(standard_diffs)),
+                    model.is_thinking_skill.is_(True),
+                )
+            ]
 
         if self.section == "olympiad":
-            hsg_target_subq = select(QuestionTargetTag.question_id).join(ExamTarget).where(ExamTarget.group_category == "OLYMPIAD")  # noqa: E501
-            return [or_(
-                model.root_id == 111,
-                model.difficulty.in_([Difficulty.HSG, Difficulty.ADVANCED_APPLICATION]),
-                model.id.in_(hsg_target_subq),
-                ((model.difficulty == Difficulty.APPLICATION) & (model.is_thinking_skill.is_(True) | (model.access_tier == AccessTier.PRO))),  # noqa: E501
-            )]
+            hsg_target_subq = (
+                select(QuestionTargetTag.question_id).join(ExamTarget).where(ExamTarget.group_category == "OLYMPIAD")
+            )  # noqa: E501
+            return [
+                or_(
+                    model.root_id == 111,
+                    model.difficulty.in_([Difficulty.HSG, Difficulty.ADVANCED_APPLICATION]),
+                    model.id.in_(hsg_target_subq),
+                    (
+                        (model.difficulty == Difficulty.APPLICATION)
+                        & (model.is_thinking_skill.is_(True) | (model.access_tier == AccessTier.PRO))
+                    ),  # noqa: E501
+                )
+            ]
 
         return []
 
@@ -344,11 +380,8 @@ async def get_section_scope_data(session: AsyncSession) -> dict[str, Any]:
     Level 2: scope options belonging strictly to that selected section.
     """
     curr_roots = await load_curriculum_categories(session)
-    curr_opts = [
-        {"key": "", "label": "— Tất cả môn học SGK KNTT —", "path": "Tất cả SGK"}
-    ] + [
-        {"key": o.key, "label": o.label, "path": o.path}
-        for o in scope_options(curr_roots)
+    curr_opts = [{"key": "", "label": "— Tất cả môn học SGK KNTT —", "path": "Tất cả SGK"}] + [
+        {"key": o.key, "label": o.label, "path": o.path} for o in scope_options(curr_roots)
     ]
 
     targets = list((await session.scalars(select(ExamTarget).order_by(ExamTarget.id))).all())
@@ -362,16 +395,18 @@ async def get_section_scope_data(session: AsyncSession) -> dict[str, Any]:
     ]
 
     olympiad_opts = [
-        {"key": "section:olympiad", "label": "— Tất cả Học sinh giỏi & Chuyên (VD + VDC) —", "path": "Học sinh giỏi & Chuyên"}  # noqa: E501
+        {
+            "key": "section:olympiad",
+            "label": "— Tất cả Học sinh giỏi & Chuyên (VD + VDC) —",
+            "path": "Học sinh giỏi & Chuyên",
+        }  # noqa: E501
     ] + [
         {"key": f"target:{t.code}", "label": t.name, "path": t.name}
         for t in targets
         if str(t.group_category) == "OLYMPIAD"
     ]
 
-    all_opts = [
-        {"key": "", "label": "— Tất cả câu hỏi trong ngân hàng —", "path": "Tất cả ngân hàng"}
-    ]
+    all_opts = [{"key": "", "label": "— Tất cả câu hỏi trong ngân hàng —", "path": "Tất cả ngân hàng"}]
 
     section_options = {
         "all": all_opts,
@@ -462,7 +497,20 @@ def normalize_chapter_key(name: str) -> str:
     m = re.match(r"^(chương\s*(\d+|[ivxldcm]+)|chủ\s*đề\s*(\d+))\b", s)
     if m:
         num_str = m.group(2) or m.group(3)
-        roman_map = {"i": 1, "ii": 2, "iii": 3, "iv": 4, "v": 5, "vi": 6, "vii": 7, "viii": 8, "ix": 9, "x": 10, "xi": 11, "xii": 12}  # noqa: E501
+        roman_map = {
+            "i": 1,
+            "ii": 2,
+            "iii": 3,
+            "iv": 4,
+            "v": 5,
+            "vi": 6,
+            "vii": 7,
+            "viii": 8,
+            "ix": 9,
+            "x": 10,
+            "xi": 11,
+            "xii": 12,
+        }  # noqa: E501
         num = roman_map.get(num_str.lower(), int(num_str) if num_str.isdigit() else num_str)
         return f"ch_{num}"
     return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", "", s))
@@ -475,7 +523,7 @@ def normalize_lesson_name(name: str) -> str:
         return f"bai_{m.group(2)}"
     m_unit = re.match(r"^(unit\s*(\d+))\b", s)
     if m_unit:
-        rest = s[m_unit.end():].strip()
+        rest = s[m_unit.end() :].strip()
         for part in ["reading", "writing", "listening", "speaking", "vocabulary", "grammar", "phonetics"]:
             if part in rest:
                 return f"unit_{m_unit.group(2)}_{part}"
@@ -500,16 +548,16 @@ async def get_drilldown_catalog(session: AsyncSession) -> dict[str, Any]:
 
     from app.models import Question
 
-    all_categories = list(
-        (await session.scalars(select(Category).order_by(Category.position, Category.id))).all()
-    )
+    all_categories = list((await session.scalars(select(Category).order_by(Category.position, Category.id))).all())
 
     q_counts: dict[int, int] = dict(
-        (await session.execute(
-            select(Question.category_id, func.count(Question.id))
-            .where(Question.category_id.is_not(None))
-            .group_by(Question.category_id)
-        )).all()
+        (
+            await session.execute(
+                select(Question.category_id, func.count(Question.id))
+                .where(Question.category_id.is_not(None))
+                .group_by(Question.category_id)
+            )
+        ).all()
     )
 
     by_parent: dict[int | None, list[Category]] = {}
@@ -573,40 +621,59 @@ async def get_drilldown_catalog(session: AsyncSession) -> dict[str, Any]:
             def _les_order_key(item):
                 m_num = re.search(r"(\d+)", item["name"])
                 return int(m_num.group(1)) if m_num else 9999
+
             lessons_data.sort(key=_les_order_key)
 
-            chapters_data.append({
-                "id": best_ch.id,
-                "name": best_ch.name,
-                "is_exam": is_exam,
-                "lessons": lessons_data,
-            })
+            chapters_data.append(
+                {
+                    "id": best_ch.id,
+                    "name": best_ch.name,
+                    "is_exam": is_exam,
+                    "lessons": lessons_data,
+                }
+            )
 
         def _ch_order_key(item):
             if item.get("is_exam"):
                 return 9999
             m_num = re.search(r"(\d+)", item["name"])
             return int(m_num.group(1)) if m_num else 999
+
         chapters_data.sort(key=_ch_order_key)
 
-        grades_dict[g]["subjects"].append({
-            "id": root.id,
-            "name": root.name,
-            "chapters": chapters_data,
-        })
+        grades_dict[g]["subjects"].append(
+            {
+                "id": root.id,
+                "name": root.name,
+                "chapters": chapters_data,
+            }
+        )
 
     subj_order = [
-        "toán", "tiếng việt", "ngữ văn", "tiếng anh", "khoa học tự nhiên",
-        "vật lí", "hoá học", "hóa học", "sinh học", "lịch sử", "địa lí",
-        "tin học", "công nghệ", "giáo dục kinh tế"
+        "toán",
+        "tiếng việt",
+        "ngữ văn",
+        "tiếng anh",
+        "khoa học tự nhiên",
+        "vật lí",
+        "hoá học",
+        "hóa học",
+        "sinh học",
+        "lịch sử",
+        "địa lí",
+        "tin học",
+        "công nghệ",
+        "giáo dục kinh tế",
     ]
     for g_data in grades_dict.values():
+
         def _subj_sort_key(s):
             n = s["name"].lower()
             for idx, kw in enumerate(subj_order):
                 if kw in n:
                     return idx
             return 99
+
         g_data["subjects"].sort(key=_subj_sort_key)
 
     targets = list((await session.scalars(select(ExamTarget).order_by(ExamTarget.id))).all())
@@ -697,8 +764,12 @@ async def build_drilldown_conditions(
         if lesson_id and str(lesson_id).isdigit() and int(lesson_id) in cat_by_id:
             les_cat = cat_by_id[int(lesson_id)]
             ch_cat = cat_by_id.get(les_cat.parent_id) if les_cat.parent_id else None
-            root_cat = cat_by_id.get(ch_cat.parent_id) if ch_cat and ch_cat.parent_id else (cat_by_id.get(les_cat.root_id) if les_cat.root_id else None)  # noqa: E501
-            
+            root_cat = (
+                cat_by_id.get(ch_cat.parent_id)
+                if ch_cat and ch_cat.parent_id
+                else (cat_by_id.get(les_cat.root_id) if les_cat.root_id else None)
+            )  # noqa: E501
+
             conditions.append(
                 or_(
                     Question.category_id == les_cat.id,
@@ -757,8 +828,12 @@ async def build_drilldown_conditions(
         elif grade and str(grade).isdigit():
             g_num = int(grade)
             g_roots = [
-                c.id for c in all_categories
-                if c.parent_id is None and is_curriculum_root_name(c.name) and (m := re.search(r"\b(\d+)\b", c.name)) and int(m.group(1)) == g_num  # noqa: E501
+                c.id
+                for c in all_categories
+                if c.parent_id is None
+                and is_curriculum_root_name(c.name)
+                and (m := re.search(r"\b(\d+)\b", c.name))
+                and int(m.group(1)) == g_num  # noqa: E501
             ]
             conditions.append(Question.root_id.in_(g_roots))
             breadcrumb_parts.append(f"Lớp {g_num}")
@@ -793,8 +868,7 @@ async def build_drilldown_conditions(
             }.get(exam_subject.upper(), ())
             if subj_kw:
                 match_roots = [
-                    c.id for c in all_categories
-                    if c.parent_id is None and any(k in c.name.lower() for k in subj_kw)
+                    c.id for c in all_categories if c.parent_id is None and any(k in c.name.lower() for k in subj_kw)
                 ]
                 match_ku = select(KnowledgeUnit.id).where(
                     or_(*(KnowledgeUnit.subject.ilike(f"%{k}%") for k in subj_kw))
@@ -832,10 +906,7 @@ async def build_drilldown_conditions(
                 "DIA_LI": ("địa", "địa lí", "geography"),
             }.get(exam_subject.upper(), ())
             if subj_kw:
-                match_roots = [
-                    c.id for c in all_categories
-                    if any(k in c.name.lower() for k in subj_kw)
-                ]
+                match_roots = [c.id for c in all_categories if any(k in c.name.lower() for k in subj_kw)]
                 match_ku = select(KnowledgeUnit.id).where(
                     or_(*(KnowledgeUnit.subject.ilike(f"%{k}%") for k in subj_kw))
                 )

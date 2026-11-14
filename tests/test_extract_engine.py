@@ -17,6 +17,7 @@ def test_is_solution_name():
     assert not is_solution_name("ĐỀ CHÍNH THỨC LÝ 11 (HÙNG VƯƠNG - 2024).docx")
     assert not is_solution_name("02-DE1.pdf")
 
+
 def test_has_mathtype_ole(tmp_path):
     import zipfile
 
@@ -24,6 +25,7 @@ def test_has_mathtype_ole(tmp_path):
     with zipfile.ZipFile(docx, "w") as archive:
         archive.writestr("word/document.xml", "<w:object><o:OLEObject/></w:object>")
     assert has_mathtype_ole(docx)
+
 
 def test_pair_exam_and_solution():
     files = [
@@ -38,6 +40,7 @@ def test_pair_exam_and_solution():
     assert sol is not None
     assert sol.name == "02-DE1-DAP-AN.docx"
 
+
 def test_pair_exam_and_solution_handles_restarted_numbers():
     files = [
         Path("De thi Vat ly 11.docx"),
@@ -50,6 +53,7 @@ def test_pair_exam_and_solution_handles_restarted_numbers():
         ("De thi Vat ly 11", "Dap an Vat ly 11"),
         ("De thi Hoa hoc 11", "Huong dan cham Hoa hoc 11"),
     ]
+
 
 def test_split_and_pair_structured_questions():
     exam_text = """
@@ -65,7 +69,7 @@ Một khối khí lí tưởng thực hiện chu trình như Hình 2a.
     figure_map = {"Hình 1.1": b"fake_png_1", "Hình 2a": b"fake_png_2"}
     questions = split_into_structured_questions(exam_text, figure_map)
     assert len(questions) == 2
-    
+
     q1 = questions[0]
     assert q1.number == 1
     assert q1.total_points == 5.0
@@ -88,10 +92,12 @@ Bài 2. (5,0 điểm) – NHIỆT HỌC
     assert q1.sub_questions[1].short_answer_value == "15.7"
     assert questions[1].sub_questions[0].short_answer_value == "120"
 
+
 def test_structured_question_hash_ignores_formatting_noise():
     first = split_into_structured_questions("Bài 1. (1,0 điểm)\n  Nội dung   câu hỏi.\n")[0]
     second = split_into_structured_questions("Bài 1. (1,0 điểm)\nNội dung câu hỏi")[0]
     assert first.content_hash == second.content_hash
+
 
 def test_extract_short_answer_value():
     assert extract_short_answer_value("Đáp số: v = 29,83 m/s") == "29.83"

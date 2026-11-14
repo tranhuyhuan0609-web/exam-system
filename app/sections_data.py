@@ -121,7 +121,11 @@ SECTIONS = {
                         "topics": "Test năng lực · Study · Practice",
                         "badge": "Kanji & Kaiwa",
                         "tags": [
-                            {"name": "Test Kanji đầu vào", "link": "/grade/tieng-nhat/subject/kanji-kaiwa", "icon": "🎯"},
+                            {
+                                "name": "Test Kanji đầu vào",
+                                "link": "/grade/tieng-nhat/subject/kanji-kaiwa",
+                                "icon": "🎯",
+                            },
                             {"name": "2136 Joyo Kanji", "link": "/grade/tieng-nhat/subject/kanji-kaiwa", "icon": "🈹"},
                             {"name": "Hội thoại Kaiwa", "link": "/grade/tieng-nhat/subject/kanji-kaiwa", "icon": "🗣️"},
                         ],
@@ -536,10 +540,34 @@ SECTIONS = {
                         "pages": "25 trang PDF",
                         "desc": "Tài liệu bài giảng SGK mới Kết nối tri thức & Cánh diều môn Toán 1, Tiếng Việt 1, Tiếng Anh 1",
                         "subjects": [
-                            {"name": "Toán Lớp 1", "icon": "📐", "link": "/grade/lop-1/subject/toan-lop-1", "desc": "Cộng trừ trong phạm vi 100, so sánh số, hình học trực quan", "outline": "Chương 1: Các số đến 10; Chương 2: Phép cộng trừ phạm vi 10; Chương 3: Các số đến 100"},
-                            {"name": "Tiếng Việt Lớp 1", "icon": "📖", "link": "/grade/lop-1/subject/tieng-viet-lop-1", "desc": "Bảng chữ cái, tập đánh vần, quy tắc chính tả c/k, g/gh", "outline": "Chương 1: Âm chữ cái & Dấu thanh; Chương 2: Vần đơn & vần ghép; Chương 3: Luyện đọc đoạn văn"},
-                            {"name": "Tiếng Anh Lớp 1", "icon": "🌐", "link": "/grade/lop-1/subject/tieng-anh-lop-1", "desc": "Từ vựng màu sắc, số đếm, gia đình có phát âm", "outline": "Unit 1: Colors & Numbers; Unit 2: My Family; Unit 3: School Things"},
-                            {"name": "Tự Nhiên & Xã Hội 1", "icon": "🌱", "link": "/grade/lop-1/subject/tu-nhien-xa-hoi-1", "desc": "Sơ đồ tư duy bản thân, gia đình, thế giới tự nhiên", "outline": "Chủ đề 1: Gia đình; Chủ đề 2: Trường học; Chủ đề 3: Thực vật và động vật"},
+                            {
+                                "name": "Toán Lớp 1",
+                                "icon": "📐",
+                                "link": "/grade/lop-1/subject/toan-lop-1",
+                                "desc": "Cộng trừ trong phạm vi 100, so sánh số, hình học trực quan",
+                                "outline": "Chương 1: Các số đến 10; Chương 2: Phép cộng trừ phạm vi 10; Chương 3: Các số đến 100",
+                            },
+                            {
+                                "name": "Tiếng Việt Lớp 1",
+                                "icon": "📖",
+                                "link": "/grade/lop-1/subject/tieng-viet-lop-1",
+                                "desc": "Bảng chữ cái, tập đánh vần, quy tắc chính tả c/k, g/gh",
+                                "outline": "Chương 1: Âm chữ cái & Dấu thanh; Chương 2: Vần đơn & vần ghép; Chương 3: Luyện đọc đoạn văn",
+                            },
+                            {
+                                "name": "Tiếng Anh Lớp 1",
+                                "icon": "🌐",
+                                "link": "/grade/lop-1/subject/tieng-anh-lop-1",
+                                "desc": "Từ vựng màu sắc, số đếm, gia đình có phát âm",
+                                "outline": "Unit 1: Colors & Numbers; Unit 2: My Family; Unit 3: School Things",
+                            },
+                            {
+                                "name": "Tự Nhiên & Xã Hội 1",
+                                "icon": "🌱",
+                                "link": "/grade/lop-1/subject/tu-nhien-xa-hoi-1",
+                                "desc": "Sơ đồ tư duy bản thân, gia đình, thế giới tự nhiên",
+                                "outline": "Chủ đề 1: Gia đình; Chủ đề 2: Trường học; Chủ đề 3: Thực vật và động vật",
+                            },
                         ],
                     },
                     {
@@ -550,10 +578,34 @@ SECTIONS = {
                         "pages": "30 trang PDF",
                         "desc": "Bảng cửu chương 2, 5, cộng trừ có nhớ phạm vi 100, từ chỉ sự vật, hoạt động SGK mới",
                         "subjects": [
-                            {"name": "Toán Lớp 2", "icon": "📐", "link": "/grade/lop-2/subject/toan-lop-2", "desc": "Bảng cửu chương 2 và 5, phép cộng trừ có nhớ phạm vi 100", "outline": "Chương 1: Phép cộng trừ có nhớ; Chương 2: Bảng nhân 2 & 5; Chương 3: Độ dài & Khối lượng"},
-                            {"name": "Tiếng Việt Lớp 2", "icon": "📖", "link": "/grade/lop-2/subject/tieng-viet-lop-2", "desc": "Cẩm nang từ chỉ đặc điểm, câu Ai là gì, Ai làm gì, Ai thế nào", "outline": "Chương 1: Từ chỉ sự vật & hoạt động; Chương 2: Câu kể cơ bản; Chương 3: Viết đoạn văn ngắn"},
-                            {"name": "Tiếng Anh Lớp 2", "icon": "🌐", "link": "/grade/lop-2/subject/tieng-anh-lop-2", "desc": "Chủ đề đồ chơi, bộ phận cơ thể và hoạt động hàng ngày", "outline": "Unit 1: Toys; Unit 2: Body parts; Unit 3: Daily routines"},
-                            {"name": "Tự Nhiên & Xã Hội 2", "icon": "🌱", "link": "/grade/lop-2/subject/tu-nhien-xa-hoi-2", "desc": "Cơ quan vận động, hô hấp và an toàn giao thông", "outline": "Chủ đề 1: Cơ quan vận động; Chủ đề 2: Cộng đồng địa phương; Chủ đề 3: Thời tiết"},
+                            {
+                                "name": "Toán Lớp 2",
+                                "icon": "📐",
+                                "link": "/grade/lop-2/subject/toan-lop-2",
+                                "desc": "Bảng cửu chương 2 và 5, phép cộng trừ có nhớ phạm vi 100",
+                                "outline": "Chương 1: Phép cộng trừ có nhớ; Chương 2: Bảng nhân 2 & 5; Chương 3: Độ dài & Khối lượng",
+                            },
+                            {
+                                "name": "Tiếng Việt Lớp 2",
+                                "icon": "📖",
+                                "link": "/grade/lop-2/subject/tieng-viet-lop-2",
+                                "desc": "Cẩm nang từ chỉ đặc điểm, câu Ai là gì, Ai làm gì, Ai thế nào",
+                                "outline": "Chương 1: Từ chỉ sự vật & hoạt động; Chương 2: Câu kể cơ bản; Chương 3: Viết đoạn văn ngắn",
+                            },
+                            {
+                                "name": "Tiếng Anh Lớp 2",
+                                "icon": "🌐",
+                                "link": "/grade/lop-2/subject/tieng-anh-lop-2",
+                                "desc": "Chủ đề đồ chơi, bộ phận cơ thể và hoạt động hàng ngày",
+                                "outline": "Unit 1: Toys; Unit 2: Body parts; Unit 3: Daily routines",
+                            },
+                            {
+                                "name": "Tự Nhiên & Xã Hội 2",
+                                "icon": "🌱",
+                                "link": "/grade/lop-2/subject/tu-nhien-xa-hoi-2",
+                                "desc": "Cơ quan vận động, hô hấp và an toàn giao thông",
+                                "outline": "Chủ đề 1: Cơ quan vận động; Chủ đề 2: Cộng đồng địa phương; Chủ đề 3: Thời tiết",
+                            },
                         ],
                     },
                     {
@@ -564,10 +616,34 @@ SECTIONS = {
                         "pages": "35 trang PDF",
                         "desc": "Trọn bộ bảng nhân chia 3-9, công thức chu vi diện tích hình chữ nhật, hình vuông",
                         "subjects": [
-                            {"name": "Toán Lớp 3", "icon": "📐", "link": "/grade/lop-3/subject/toan-lop-3", "desc": "Bảng cửu chương 3-9, chu vi, diện tích hình chữ nhật, hình vuông", "outline": "Chương 1: Bảng nhân chia 3-9; Chương 2: Hình học phẳng & diện tích; Chương 3: Số có 4, 5 chữ số"},
-                            {"name": "Tiếng Việt Lớp 3", "icon": "📖", "link": "/grade/lop-3/subject/tieng-viet-lop-3", "desc": "Biện pháp so sánh, nhân hóa, mở rộng vốn từ theo chủ điểm", "outline": "Chương 1: Phép so sánh nghệ thuật; Chương 2: Biện pháp nhân hóa; Chương 3: Viết văn kể chuyện"},
-                            {"name": "Tiếng Anh Lớp 3", "icon": "🌐", "link": "/grade/lop-3/subject/tieng-anh-lop-3", "desc": "Ngữ pháp thì hiện tại đơn, danh từ số nhiều và giới từ", "outline": "Unit 1: At School; Unit 2: My House; Unit 3: Hobbies & Activities"},
-                            {"name": "Tin Học Lớp 3", "icon": "💻", "link": "/grade/lop-3/subject/tin-hoc-lop-3", "desc": "Làm quen với bàn phím, chuột máy tính và sơ đồ khối", "outline": "Chủ đề A: Máy tính và em; Chủ đề B: Mạng máy tính; Chủ đề E: Ứng dụng tin học"},
+                            {
+                                "name": "Toán Lớp 3",
+                                "icon": "📐",
+                                "link": "/grade/lop-3/subject/toan-lop-3",
+                                "desc": "Bảng cửu chương 3-9, chu vi, diện tích hình chữ nhật, hình vuông",
+                                "outline": "Chương 1: Bảng nhân chia 3-9; Chương 2: Hình học phẳng & diện tích; Chương 3: Số có 4, 5 chữ số",
+                            },
+                            {
+                                "name": "Tiếng Việt Lớp 3",
+                                "icon": "📖",
+                                "link": "/grade/lop-3/subject/tieng-viet-lop-3",
+                                "desc": "Biện pháp so sánh, nhân hóa, mở rộng vốn từ theo chủ điểm",
+                                "outline": "Chương 1: Phép so sánh nghệ thuật; Chương 2: Biện pháp nhân hóa; Chương 3: Viết văn kể chuyện",
+                            },
+                            {
+                                "name": "Tiếng Anh Lớp 3",
+                                "icon": "🌐",
+                                "link": "/grade/lop-3/subject/tieng-anh-lop-3",
+                                "desc": "Ngữ pháp thì hiện tại đơn, danh từ số nhiều và giới từ",
+                                "outline": "Unit 1: At School; Unit 2: My House; Unit 3: Hobbies & Activities",
+                            },
+                            {
+                                "name": "Tin Học Lớp 3",
+                                "icon": "💻",
+                                "link": "/grade/lop-3/subject/tin-hoc-lop-3",
+                                "desc": "Làm quen với bàn phím, chuột máy tính và sơ đồ khối",
+                                "outline": "Chủ đề A: Máy tính và em; Chủ đề B: Mạng máy tính; Chủ đề E: Ứng dụng tin học",
+                            },
                         ],
                     },
                     {
@@ -578,10 +654,34 @@ SECTIONS = {
                         "pages": "40 trang PDF",
                         "desc": "Cẩm nang quy tắc phân số, bảng đơn vị đo diện tích m2, dm2, danh từ - động từ - tính từ",
                         "subjects": [
-                            {"name": "Toán Lớp 4", "icon": "📐", "link": "/grade/lop-4/subject/toan-lop-4", "desc": "Số có nhiều chữ số, 4 phép tính với phân số, hình thoi, bình hành", "outline": "Chương 1: Số tự nhiên lớn; Chương 2: Phân số & các phép toán; Chương 3: Hình học & Thống kê"},
-                            {"name": "Tiếng Việt Lớp 4", "icon": "📖", "link": "/grade/lop-4/subject/tieng-viet-lop-4", "desc": "Từ loại (danh từ, động từ, tính từ), trạng ngữ và văn miêu tả", "outline": "Chương 1: Từ loại tiếng Việt; Chương 2: Thành phần trạng ngữ; Chương 3: Tập làm văn miêu tả"},
-                            {"name": "Tiếng Anh Lớp 4", "icon": "🌐", "link": "/grade/lop-4/subject/tieng-anh-lop-4", "desc": "Thì quá khứ đơn, hỏi đáp thời gian và địa điểm", "outline": "Unit 1: Time & Daily Routines; Unit 2: Places; Unit 3: Past Experiences"},
-                            {"name": "Khoa Học Lớp 4", "icon": "🔬", "link": "/grade/lop-4/subject/khoa-hoc-lop-4", "desc": "Nước, không khí, ánh sáng, nhiệt độ và dinh dưỡng con người", "outline": "Chủ đề 1: Chất; Chủ đề 2: Năng lượng; Chủ đề 3: Sinh vật và môi trường"},
+                            {
+                                "name": "Toán Lớp 4",
+                                "icon": "📐",
+                                "link": "/grade/lop-4/subject/toan-lop-4",
+                                "desc": "Số có nhiều chữ số, 4 phép tính với phân số, hình thoi, bình hành",
+                                "outline": "Chương 1: Số tự nhiên lớn; Chương 2: Phân số & các phép toán; Chương 3: Hình học & Thống kê",
+                            },
+                            {
+                                "name": "Tiếng Việt Lớp 4",
+                                "icon": "📖",
+                                "link": "/grade/lop-4/subject/tieng-viet-lop-4",
+                                "desc": "Từ loại (danh từ, động từ, tính từ), trạng ngữ và văn miêu tả",
+                                "outline": "Chương 1: Từ loại tiếng Việt; Chương 2: Thành phần trạng ngữ; Chương 3: Tập làm văn miêu tả",
+                            },
+                            {
+                                "name": "Tiếng Anh Lớp 4",
+                                "icon": "🌐",
+                                "link": "/grade/lop-4/subject/tieng-anh-lop-4",
+                                "desc": "Thì quá khứ đơn, hỏi đáp thời gian và địa điểm",
+                                "outline": "Unit 1: Time & Daily Routines; Unit 2: Places; Unit 3: Past Experiences",
+                            },
+                            {
+                                "name": "Khoa Học Lớp 4",
+                                "icon": "🔬",
+                                "link": "/grade/lop-4/subject/khoa-hoc-lop-4",
+                                "desc": "Nước, không khí, ánh sáng, nhiệt độ và dinh dưỡng con người",
+                                "outline": "Chủ đề 1: Chất; Chủ đề 2: Năng lượng; Chủ đề 3: Sinh vật và môi trường",
+                            },
                         ],
                     },
                     {
@@ -592,10 +692,34 @@ SECTIONS = {
                         "pages": "50 trang PDF",
                         "desc": "Cẩm nang số thập phân, toán chuyển động đều (v, s, t), thể tích và đề cương ôn thi vào 6 CLC",
                         "subjects": [
-                            {"name": "Toán Lớp 5", "icon": "📐", "link": "/grade/lop-5/subject/toan-lop-5", "desc": "Số thập phân, tỉ số phần trăm, thể tích hình lập phương, toán chuyển động", "outline": "Chương 1: Số thập phân; Chương 2: Tỉ số phần trăm & Chuyển động; Chương 3: Thể tích & Hình khối"},
-                            {"name": "Tiếng Việt Lớp 5", "icon": "📖", "link": "/grade/lop-5/subject/tieng-viet-lop-5", "desc": "Đại từ, quan hệ từ, liên kết câu và dàn ý văn tả người, cảnh vật", "outline": "Chương 1: Từ đồng nghĩa & trái nghĩa; Chương 2: Các biện pháp liên kết câu; Chương 3: Văn tả cảnh & người"},
-                            {"name": "Tiếng Anh Lớp 5", "icon": "🌐", "link": "/grade/lop-5/subject/tieng-anh-lop-5", "desc": "Tổng hợp thì hiện tại, quá khứ, tương lai đơn và câu điều kiện", "outline": "Unit 1: Summer Holidays; Unit 2: Future Plans; Unit 3: Directions & Seasons"},
-                            {"name": "Khoa Học Lớp 5", "icon": "🔬", "link": "/grade/lop-5/subject/khoa-hoc-lop-5", "desc": "Sự sinh sản của thực vật, động vật và bảo vệ môi trường", "outline": "Chủ đề 1: Con người và sức khỏe; Chủ đề 2: Vật chất và năng lượng; Chủ đề 3: Môi trường"},
+                            {
+                                "name": "Toán Lớp 5",
+                                "icon": "📐",
+                                "link": "/grade/lop-5/subject/toan-lop-5",
+                                "desc": "Số thập phân, tỉ số phần trăm, thể tích hình lập phương, toán chuyển động",
+                                "outline": "Chương 1: Số thập phân; Chương 2: Tỉ số phần trăm & Chuyển động; Chương 3: Thể tích & Hình khối",
+                            },
+                            {
+                                "name": "Tiếng Việt Lớp 5",
+                                "icon": "📖",
+                                "link": "/grade/lop-5/subject/tieng-viet-lop-5",
+                                "desc": "Đại từ, quan hệ từ, liên kết câu và dàn ý văn tả người, cảnh vật",
+                                "outline": "Chương 1: Từ đồng nghĩa & trái nghĩa; Chương 2: Các biện pháp liên kết câu; Chương 3: Văn tả cảnh & người",
+                            },
+                            {
+                                "name": "Tiếng Anh Lớp 5",
+                                "icon": "🌐",
+                                "link": "/grade/lop-5/subject/tieng-anh-lop-5",
+                                "desc": "Tổng hợp thì hiện tại, quá khứ, tương lai đơn và câu điều kiện",
+                                "outline": "Unit 1: Summer Holidays; Unit 2: Future Plans; Unit 3: Directions & Seasons",
+                            },
+                            {
+                                "name": "Khoa Học Lớp 5",
+                                "icon": "🔬",
+                                "link": "/grade/lop-5/subject/khoa-hoc-lop-5",
+                                "desc": "Sự sinh sản của thực vật, động vật và bảo vệ môi trường",
+                                "outline": "Chủ đề 1: Con người và sức khỏe; Chủ đề 2: Vật chất và năng lượng; Chủ đề 3: Môi trường",
+                            },
                         ],
                     },
                 ],
@@ -613,8 +737,8 @@ SECTIONS = {
                             "Trọn bộ công thức chu vi, diện tích hình chữ nhật, hình vuông, tam giác, hình thang",
                             "Quy tắc phân số: cộng, trừ, nhân, chia và so sánh phân số",
                             "Bảng đơn vị đo độ dài, khối lượng, diện tích chuẩn và bài tập quy đổi",
-                            "Quy tắc chính tả c/k, g/gh, ng/ngh và cách phân biệt từ đơn, từ phức"
-                        ]
+                            "Quy tắc chính tả c/k, g/gh, ng/ngh và cách phân biệt từ đơn, từ phức",
+                        ],
                     },
                     {
                         "title": "Sách tham khảo: 500 Bài toán phát triển tư duy & Nâng cao Tiểu học",
@@ -628,8 +752,8 @@ SECTIONS = {
                             "Dạng bài toán tính ngược từ cuối và sơ đồ đoạn thẳng",
                             "Toán chuyển động ngược chiều và cùng chiều có khoảng cách ban đầu",
                             "Bài toán tỉ lệ thuận, tỉ lệ nghịch và bài toán năng suất",
-                            "Các bài toán hình học cắt ghép diện tích nâng cao"
-                        ]
+                            "Các bài toán hình học cắt ghép diện tích nâng cao",
+                        ],
                     },
                     {
                         "title": "Tuyển tập 100 Bài văn miêu tả mẫu đạt điểm 9-10 (Lớp 2 - 5)",
@@ -643,8 +767,8 @@ SECTIONS = {
                             "30 Bài văn miêu tả người thân, thầy cô và bạn bè",
                             "35 Bài văn tả cảnh thiên nhiên 4 mùa và cảnh sinh hoạt",
                             "35 Bài văn tả cây cối cho hoa, quả và con vật nuôi trong nhà",
-                            "Cẩm nang biện pháp nghệ thuật so sánh, nhân hóa tạo cảm xúc"
-                        ]
+                            "Cẩm nang biện pháp nghệ thuật so sánh, nhân hóa tạo cảm xúc",
+                        ],
                     },
                     {
                         "title": "Sơ đồ tư duy Mindmap Tiếng Anh Tiểu học theo chủ đề",
@@ -658,9 +782,9 @@ SECTIONS = {
                             "Mindmap 20 chủ đề thông dụng: Family, School, Animals, Food, Weather",
                             "Sơ đồ cấu trúc câu hỏi Wh-questions và câu trả lời ngắn",
                             "Bảng so sánh thì hiện tại đơn và hiện tại tiếp diễn bằng hình ảnh",
-                            "Hệ thống số đếm, ngày tháng và giới từ chỉ vị trí trực quan"
-                        ]
-                    }
+                            "Hệ thống số đếm, ngày tháng và giới từ chỉ vị trí trực quan",
+                        ],
+                    },
                 ],
                 "reference_exams": [
                     {
@@ -670,7 +794,7 @@ SECTIONS = {
                         "duration": "45 phút",
                         "questions": "25 câu",
                         "attempts": "7.3k lượt",
-                        "practice_link": "/grade/lop-1/subject/toan-lop-1"
+                        "practice_link": "/grade/lop-1/subject/toan-lop-1",
                     },
                     {
                         "title": "Đề thi Khảo sát chất lượng đầu năm môn Toán & Tiếng Việt (Lớp 1 - 5)",
@@ -679,7 +803,7 @@ SECTIONS = {
                         "duration": "40 phút",
                         "questions": "20 câu",
                         "attempts": "4.8k lượt",
-                        "practice_link": "/grade/lop-2/subject/toan-lop-2"
+                        "practice_link": "/grade/lop-2/subject/toan-lop-2",
                     },
                     {
                         "title": "Bộ đề thi Cuối học kỳ 2 chính thức các trường điểm môn Toán - Tiếng Việt - Tiếng Anh",
@@ -688,7 +812,7 @@ SECTIONS = {
                         "duration": "45 phút",
                         "questions": "30 câu",
                         "attempts": "11.2k lượt",
-                        "practice_link": "/grade/lop-3/subject/toan-lop-3"
+                        "practice_link": "/grade/lop-3/subject/toan-lop-3",
                     },
                     {
                         "title": "Tuyển tập đề thi Giao lưu Học sinh giỏi Toán - Tiếng Việt Tiểu học (Cấp trường/Quận)",
@@ -697,8 +821,8 @@ SECTIONS = {
                         "duration": "60 phút",
                         "questions": "15 bài toán khó",
                         "attempts": "3.9k lượt",
-                        "practice_link": "/grade/lop-5/subject/toan-lop-5"
-                    }
+                        "practice_link": "/grade/lop-5/subject/toan-lop-5",
+                    },
                 ],
                 "sub_items": [
                     {
@@ -711,7 +835,11 @@ SECTIONS = {
                             {"name": "Toán Lớp 1", "link": "/grade/lop-1/subject/toan-lop-1", "icon": "📐"},
                             {"name": "Tiếng Việt Lớp 1", "link": "/grade/lop-1/subject/tieng-viet-lop-1", "icon": "📖"},
                             {"name": "Tiếng Anh Lớp 1", "link": "/grade/lop-1/subject/tieng-anh-lop-1", "icon": "🌐"},
-                            {"name": "Tự Nhiên & Xã Hội 1", "link": "/grade/lop-1/subject/tu-nhien-xa-hoi-1", "icon": "🌱"},
+                            {
+                                "name": "Tự Nhiên & Xã Hội 1",
+                                "link": "/grade/lop-1/subject/tu-nhien-xa-hoi-1",
+                                "icon": "🌱",
+                            },
                         ],
                     },
                     {
@@ -724,7 +852,11 @@ SECTIONS = {
                             {"name": "Toán Lớp 2", "link": "/grade/lop-2/subject/toan-lop-2", "icon": "📐"},
                             {"name": "Tiếng Việt Lớp 2", "link": "/grade/lop-2/subject/tieng-viet-lop-2", "icon": "📖"},
                             {"name": "Tiếng Anh Lớp 2", "link": "/grade/lop-2/subject/tieng-anh-lop-2", "icon": "🌐"},
-                            {"name": "Tự Nhiên & Xã Hội 2", "link": "/grade/lop-2/subject/tu-nhien-xa-hoi-2", "icon": "🌱"},
+                            {
+                                "name": "Tự Nhiên & Xã Hội 2",
+                                "link": "/grade/lop-2/subject/tu-nhien-xa-hoi-2",
+                                "icon": "🌱",
+                            },
                         ],
                     },
                     {
@@ -783,10 +915,34 @@ SECTIONS = {
                         "pages": "45 trang PDF",
                         "desc": "Tài liệu Toán 6, KHTN 6, Ngữ văn 6 và Tiếng Anh 6 theo chương trình SGK mới",
                         "subjects": [
-                            {"name": "Toán Lớp 6", "icon": "📐", "link": "/grade/lop-6/subject/toan-lop-6", "desc": "Tập hợp số tự nhiên, số nguyên, phân số và hình học trực quan", "outline": "Chương 1: Số tự nhiên; Chương 2: Số nguyên; Chương 3: Hình học trực quan"},
-                            {"name": "Ngữ Văn Lớp 6", "icon": "📖", "link": "/grade/lop-6/subject/ngu-van-lop-6", "desc": "Truyện truyền thuyết, cổ tích, thơ lục bát và thực hành tiếng Việt", "outline": "Bài 1: Lắng nghe lịch sử; Bài 2: Miền cổ tích; Bài 3: Vẻ đẹp quê hương"},
-                            {"name": "Tiếng Anh Lớp 6", "icon": "🌐", "link": "/grade/lop-6/subject/tieng-anh-lop-6", "desc": "My New School, My Home, My Friends, từ vựng và ngữ pháp", "outline": "Unit 1: My New School; Unit 2: My Home; Unit 3: My Friends"},
-                            {"name": "KHTN Lớp 6", "icon": "🔬", "link": "/grade/lop-6/subject/khtn-lop-6", "desc": "Các phép đo, chất và sự biến đổi của chất, tế bào học", "outline": "Chủ đề 1: Các phép đo; Chủ đề 2: Chất & Vật chất; Chủ đề 3: Tế bào đơn vị sự sống"},
+                            {
+                                "name": "Toán Lớp 6",
+                                "icon": "📐",
+                                "link": "/grade/lop-6/subject/toan-lop-6",
+                                "desc": "Tập hợp số tự nhiên, số nguyên, phân số và hình học trực quan",
+                                "outline": "Chương 1: Số tự nhiên; Chương 2: Số nguyên; Chương 3: Hình học trực quan",
+                            },
+                            {
+                                "name": "Ngữ Văn Lớp 6",
+                                "icon": "📖",
+                                "link": "/grade/lop-6/subject/ngu-van-lop-6",
+                                "desc": "Truyện truyền thuyết, cổ tích, thơ lục bát và thực hành tiếng Việt",
+                                "outline": "Bài 1: Lắng nghe lịch sử; Bài 2: Miền cổ tích; Bài 3: Vẻ đẹp quê hương",
+                            },
+                            {
+                                "name": "Tiếng Anh Lớp 6",
+                                "icon": "🌐",
+                                "link": "/grade/lop-6/subject/tieng-anh-lop-6",
+                                "desc": "My New School, My Home, My Friends, từ vựng và ngữ pháp",
+                                "outline": "Unit 1: My New School; Unit 2: My Home; Unit 3: My Friends",
+                            },
+                            {
+                                "name": "KHTN Lớp 6",
+                                "icon": "🔬",
+                                "link": "/grade/lop-6/subject/khtn-lop-6",
+                                "desc": "Các phép đo, chất và sự biến đổi của chất, tế bào học",
+                                "outline": "Chủ đề 1: Các phép đo; Chủ đề 2: Chất & Vật chất; Chủ đề 3: Tế bào đơn vị sự sống",
+                            },
                         ],
                     },
                     {
@@ -797,10 +953,34 @@ SECTIONS = {
                         "pages": "45 trang PDF",
                         "desc": "Hệ thống hóa công thức Toán 7, bảng nguyên tố KHTN 7 và đề cương ôn tập học kỳ",
                         "subjects": [
-                            {"name": "Toán Lớp 7", "icon": "📐", "link": "/grade/lop-7/subject/toan-lop-7", "desc": "Số hữu tỉ, số thực, góc và đường thẳng song song, tam giác bằng nhau", "outline": "Chương 1: Số hữu tỉ; Chương 2: Số thực; Chương 3: Góc & đường thẳng song song"},
-                            {"name": "Ngữ Văn Lớp 7", "icon": "📖", "link": "/grade/lop-7/subject/ngu-van-lop-7", "desc": "Tục ngữ, nghị luận xã hội, tùy bút và mở rộng thành phần câu", "outline": "Bài 1: Tiếng nói của vạn vật; Bài 2: Bài học cuộc sống; Bài 3: Những góc nhìn văn chương"},
-                            {"name": "Tiếng Anh Lớp 7", "icon": "🌐", "link": "/grade/lop-7/subject/tieng-anh-lop-7", "desc": "Hobbies, Healthy Living, Community Service, câu đơn và thì quá khứ", "outline": "Unit 1: Hobbies; Unit 2: Healthy Living; Unit 3: Community Service"},
-                            {"name": "KHTN Lớp 7", "icon": "🔬", "link": "/grade/lop-7/subject/khtn-lop-7", "desc": "Nguyên tử, bảng tuần hoàn các nguyên tố hóa học, tốc độ chuyển động", "outline": "Chủ đề 1: Nguyên tử & Phân tử; Chủ đề 2: Tốc độ; Chủ đề 3: Âm thanh & Ánh sáng"},
+                            {
+                                "name": "Toán Lớp 7",
+                                "icon": "📐",
+                                "link": "/grade/lop-7/subject/toan-lop-7",
+                                "desc": "Số hữu tỉ, số thực, góc và đường thẳng song song, tam giác bằng nhau",
+                                "outline": "Chương 1: Số hữu tỉ; Chương 2: Số thực; Chương 3: Góc & đường thẳng song song",
+                            },
+                            {
+                                "name": "Ngữ Văn Lớp 7",
+                                "icon": "📖",
+                                "link": "/grade/lop-7/subject/ngu-van-lop-7",
+                                "desc": "Tục ngữ, nghị luận xã hội, tùy bút và mở rộng thành phần câu",
+                                "outline": "Bài 1: Tiếng nói của vạn vật; Bài 2: Bài học cuộc sống; Bài 3: Những góc nhìn văn chương",
+                            },
+                            {
+                                "name": "Tiếng Anh Lớp 7",
+                                "icon": "🌐",
+                                "link": "/grade/lop-7/subject/tieng-anh-lop-7",
+                                "desc": "Hobbies, Healthy Living, Community Service, câu đơn và thì quá khứ",
+                                "outline": "Unit 1: Hobbies; Unit 2: Healthy Living; Unit 3: Community Service",
+                            },
+                            {
+                                "name": "KHTN Lớp 7",
+                                "icon": "🔬",
+                                "link": "/grade/lop-7/subject/khtn-lop-7",
+                                "desc": "Nguyên tử, bảng tuần hoàn các nguyên tố hóa học, tốc độ chuyển động",
+                                "outline": "Chủ đề 1: Nguyên tử & Phân tử; Chủ đề 2: Tốc độ; Chủ đề 3: Âm thanh & Ánh sáng",
+                            },
                         ],
                     },
                     {
@@ -811,10 +991,34 @@ SECTIONS = {
                         "pages": "50 trang PDF",
                         "desc": "Bảng 7 hằng đẳng thức đáng nhớ, định lý Thalès, bảng tính tan, axit, bazơ và sơ đồ Ngữ văn 8",
                         "subjects": [
-                            {"name": "Toán Lớp 8", "icon": "📐", "link": "/grade/lop-8/subject/toan-lop-8", "desc": "7 Hằng đẳng thức, phân thức đại số, định lý Thalès, tứ giác", "outline": "Chương 1: Đa thức; Chương 2: Hằng đẳng thức đáng nhớ; Chương 3: Định lý Thalès"},
-                            {"name": "Ngữ Văn Lớp 8", "icon": "📖", "link": "/grade/lop-8/subject/ngu-van-lop-8", "desc": "Văn bản thông tin, truyện lịch sử, thơ Đường luật và các biện pháp tu từ", "outline": "Bài 1: Vẻ đẹp cổ điển; Bài 2: Những mảnh ghép cuộc đời; Bài 3: Lời sông núi"},
-                            {"name": "Tiếng Anh Lớp 8", "icon": "🌐", "link": "/grade/lop-8/subject/tieng-anh-lop-8", "desc": "Life in the Countryside, Teen Stress, câu so sánh hơn và câu ghép", "outline": "Unit 1: Leisure Time; Unit 2: Life in the Countryside; Unit 3: Teenagers"},
-                            {"name": "KHTN Lớp 8", "icon": "🔬", "link": "/grade/lop-8/subject/khtn-lop-8", "desc": "Phản ứng hóa học, axit - bazơ - muối, khối lượng riêng và áp suất", "outline": "Chủ đề 1: Phản ứng hóa học; Chủ đề 2: Axit - Bazơ - Muối; Chủ đề 3: Áp suất"},
+                            {
+                                "name": "Toán Lớp 8",
+                                "icon": "📐",
+                                "link": "/grade/lop-8/subject/toan-lop-8",
+                                "desc": "7 Hằng đẳng thức, phân thức đại số, định lý Thalès, tứ giác",
+                                "outline": "Chương 1: Đa thức; Chương 2: Hằng đẳng thức đáng nhớ; Chương 3: Định lý Thalès",
+                            },
+                            {
+                                "name": "Ngữ Văn Lớp 8",
+                                "icon": "📖",
+                                "link": "/grade/lop-8/subject/ngu-van-lop-8",
+                                "desc": "Văn bản thông tin, truyện lịch sử, thơ Đường luật và các biện pháp tu từ",
+                                "outline": "Bài 1: Vẻ đẹp cổ điển; Bài 2: Những mảnh ghép cuộc đời; Bài 3: Lời sông núi",
+                            },
+                            {
+                                "name": "Tiếng Anh Lớp 8",
+                                "icon": "🌐",
+                                "link": "/grade/lop-8/subject/tieng-anh-lop-8",
+                                "desc": "Life in the Countryside, Teen Stress, câu so sánh hơn và câu ghép",
+                                "outline": "Unit 1: Leisure Time; Unit 2: Life in the Countryside; Unit 3: Teenagers",
+                            },
+                            {
+                                "name": "KHTN Lớp 8",
+                                "icon": "🔬",
+                                "link": "/grade/lop-8/subject/khtn-lop-8",
+                                "desc": "Phản ứng hóa học, axit - bazơ - muối, khối lượng riêng và áp suất",
+                                "outline": "Chủ đề 1: Phản ứng hóa học; Chủ đề 2: Axit - Bazơ - Muối; Chủ đề 3: Áp suất",
+                            },
                         ],
                     },
                     {
@@ -825,10 +1029,34 @@ SECTIONS = {
                         "pages": "60 trang PDF",
                         "desc": "Cẩm nang công thức Toán 9, hệ thức Vi-ét, phân tích tác phẩm văn học 9 và ngữ pháp thi vào 10",
                         "subjects": [
-                            {"name": "Toán Lớp 9", "icon": "📐", "link": "/grade/lop-9/subject/toan-lop-9", "desc": "Căn thức bậc hai, hàm số bậc nhất, hệ phương trình, hệ thức Vi-ét, đường tròn", "outline": "Chương 1: Căn bậc hai; Chương 2: Phương trình bậc hai & Vi-ét; Chương 3: Góc với đường tròn"},
-                            {"name": "Ngữ Văn Lớp 9", "icon": "📖", "link": "/grade/lop-9/subject/ngu-van-lop-9", "desc": "Truyện Kiều, thơ hiện đại kháng chiến, nghị luận văn học và xã hội", "outline": "Chuyên đề 1: Thơ hiện đại VN; Chuyên đề 2: Truyện ngắn hiện đại; Chuyên đề 3: Nghị luận XH"},
-                            {"name": "Tiếng Anh Lớp 9", "icon": "🌐", "link": "/grade/lop-9/subject/tieng-anh-lop-9", "desc": "Mệnh đề quan hệ, câu gián tiếp, câu bị động và từ vựng chuyên đề thi vào 10", "outline": "Unit 1: Local Environment; Unit 2: City Life; Unit 3: Teen Stress & Pressure"},
-                            {"name": "KHTN Lớp 9", "icon": "🔬", "link": "/grade/lop-9/subject/khtn-lop-9", "desc": "Hóa học hữu cơ, di truyền và biến dị, điện từ học và quang học", "outline": "Chủ đề 1: Điện từ học; Chủ đề 2: Hóa học hữu cơ; Chủ đề 3: Di truyền học"},
+                            {
+                                "name": "Toán Lớp 9",
+                                "icon": "📐",
+                                "link": "/grade/lop-9/subject/toan-lop-9",
+                                "desc": "Căn thức bậc hai, hàm số bậc nhất, hệ phương trình, hệ thức Vi-ét, đường tròn",
+                                "outline": "Chương 1: Căn bậc hai; Chương 2: Phương trình bậc hai & Vi-ét; Chương 3: Góc với đường tròn",
+                            },
+                            {
+                                "name": "Ngữ Văn Lớp 9",
+                                "icon": "📖",
+                                "link": "/grade/lop-9/subject/ngu-van-lop-9",
+                                "desc": "Truyện Kiều, thơ hiện đại kháng chiến, nghị luận văn học và xã hội",
+                                "outline": "Chuyên đề 1: Thơ hiện đại VN; Chuyên đề 2: Truyện ngắn hiện đại; Chuyên đề 3: Nghị luận XH",
+                            },
+                            {
+                                "name": "Tiếng Anh Lớp 9",
+                                "icon": "🌐",
+                                "link": "/grade/lop-9/subject/tieng-anh-lop-9",
+                                "desc": "Mệnh đề quan hệ, câu gián tiếp, câu bị động và từ vựng chuyên đề thi vào 10",
+                                "outline": "Unit 1: Local Environment; Unit 2: City Life; Unit 3: Teen Stress & Pressure",
+                            },
+                            {
+                                "name": "KHTN Lớp 9",
+                                "icon": "🔬",
+                                "link": "/grade/lop-9/subject/khtn-lop-9",
+                                "desc": "Hóa học hữu cơ, di truyền và biến dị, điện từ học và quang học",
+                                "outline": "Chủ đề 1: Điện từ học; Chủ đề 2: Hóa học hữu cơ; Chủ đề 3: Di truyền học",
+                            },
                         ],
                     },
                 ],
@@ -845,8 +1073,8 @@ SECTIONS = {
                             "Trọn bộ công thức Vật lí 6-9: Vận tốc, công, công suất, điện trở, định luật Ôm",
                             "Bảng tuần hoàn và bảng tính tan kèm mẹo nhớ phương trình hóa học",
                             "Sơ đồ cơ chế quang hợp, hô hấp tế bào và các quy luật di truyền sinh học",
-                            "Tổng hợp 150 câu hỏi trắc nghiệm định tính KHTN hay có bẫy thi vào 10"
-                        ]
+                            "Tổng hợp 150 câu hỏi trắc nghiệm định tính KHTN hay có bẫy thi vào 10",
+                        ],
                     },
                     {
                         "title": "Cẩm nang phương pháp phân tích tác phẩm Văn học THCS (Sơ đồ tư duy)",
@@ -860,8 +1088,8 @@ SECTIONS = {
                             "Dàn ý chi tiết và luận điểm chính của 15 tác phẩm văn học lớp 9 trọng tâm thi vào 10",
                             "Mẫu mở bài, kết bài sáng tạo và đoạn văn nghị luận xã hội 200 chữ điểm 9+",
                             "Hệ thống kiến thức tiếng Việt THCS: biện pháp tu từ, khởi ngữ, các thành phần biệt lập",
-                            "Kỹ năng phân tích nhân vật và cảm thụ thơ đoạn trích"
-                        ]
+                            "Kỹ năng phân tích nhân vật và cảm thụ thơ đoạn trích",
+                        ],
                     },
                     {
                         "title": "Sách bài tập nâng cao Toán THCS: Đại số & Hình học chọn lọc",
@@ -875,8 +1103,8 @@ SECTIONS = {
                             "Kỹ thuật biến đổi đại số và ứng dụng định lý Vi-ét trong toán thực tế",
                             "Phương pháp chứng minh tứ giác nội tiếp và các bổ đề hình học kinh điển",
                             "Tuyển tập 50 bài toán bất đẳng thức Cauchy - Schwarz có lời giải chi tiết",
-                            "Kỹ năng giải bài toán hình học bằng phương pháp dựng thêm đường phụ"
-                        ]
+                            "Kỹ năng giải bài toán hình học bằng phương pháp dựng thêm đường phụ",
+                        ],
                     },
                     {
                         "title": "Cẩm nang ngữ pháp Tiếng Anh THCS bứt phá điểm 9+ thi vào 10",
@@ -890,9 +1118,9 @@ SECTIONS = {
                             "25 Chuyên đề ngữ pháp chuẩn cấu trúc đề thi tuyển sinh vào 10 công lập",
                             "Bảng 150 Phrasal Verbs và Idioms có tần suất xuất hiện cao nhất trong đề thi",
                             "Phương pháp xử lý dạng bài tìm lỗi sai, viết lại câu và hoàn thành đoạn văn",
-                            "Tuyển tập 10 đề thi thử Tiếng Anh vào 10 có giải thích đáp án từng câu"
-                        ]
-                    }
+                            "Tuyển tập 10 đề thi thử Tiếng Anh vào 10 có giải thích đáp án từng câu",
+                        ],
+                    },
                 ],
                 "reference_exams": [
                     {
@@ -902,7 +1130,7 @@ SECTIONS = {
                         "duration": "90 - 120 phút",
                         "questions": "Trắc nghiệm & Tự luận",
                         "attempts": "24.5k lượt",
-                        "practice_link": "/grade/lop-9/subject/toan-lop-9"
+                        "practice_link": "/grade/lop-9/subject/toan-lop-9",
                     },
                     {
                         "title": "Đề kiểm tra định kỳ Giữa học kỳ 1 & Cuối học kỳ 1 các môn KHTN, Toán, Ngữ văn THCS",
@@ -911,7 +1139,7 @@ SECTIONS = {
                         "duration": "60 - 90 phút",
                         "questions": "35 - 40 câu",
                         "attempts": "18.2k lượt",
-                        "practice_link": "/grade/lop-8/subject/toan-lop-8"
+                        "practice_link": "/grade/lop-8/subject/toan-lop-8",
                     },
                     {
                         "title": "Tuyển tập đề thi Học sinh giỏi cấp Quận / Huyện môn Toán & KHTN THCS",
@@ -920,7 +1148,7 @@ SECTIONS = {
                         "duration": "120 phút",
                         "questions": "5 bài toán lớn",
                         "attempts": "6.1k lượt",
-                        "practice_link": "/grade/lop-9/subject/khtn-lop-9"
+                        "practice_link": "/grade/lop-9/subject/khtn-lop-9",
                     },
                     {
                         "title": "Bộ đề Khảo sát chất lượng đầu năm môn Toán & Tiếng Anh THCS (Lớp 6 - 9)",
@@ -929,8 +1157,8 @@ SECTIONS = {
                         "duration": "45 phút",
                         "questions": "30 câu",
                         "attempts": "10.4k lượt",
-                        "practice_link": "/grade/lop-6/subject/toan-lop-6"
-                    }
+                        "practice_link": "/grade/lop-6/subject/toan-lop-6",
+                    },
                 ],
                 "sub_items": [
                     {
@@ -1002,10 +1230,34 @@ SECTIONS = {
                         "pages": "50 trang PDF",
                         "desc": "Bảng công thức Toán 10 (Vector, lượng giác, tọa độ Oxy), sổ tay Vật lí 10 (chuyển động, lực) và bảng tuần hoàn Hóa học 10",
                         "subjects": [
-                            {"name": "Toán Lớp 10", "icon": "📐", "link": "/grade/lop-10/subject/toan-lop-10", "desc": "Mệnh đề, tập hợp, bất phương trình bậc hai, vector, tọa độ trong mặt phẳng", "outline": "Chương 1: Mệnh đề & Tập hợp; Chương 2: Bất phương trình; Chương 3: Vector"},
-                            {"name": "Vật Lí Lớp 10", "icon": "⚡", "link": "/grade/lop-10/subject/vat-li-lop-10", "desc": "Động học chuyển động, 3 định luật Newton, công và năng lượng cơ học", "outline": "Chương 1: Động học; Chương 2: Động lực học Newton; Chương 3: Năng lượng & Công"},
-                            {"name": "Hóa Học Lớp 10", "icon": "🧪", "link": "/grade/lop-10/subject/hoa-hoc-lop-10", "desc": "Cấu tạo nguyên tử, bảng tuần hoàn, liên kết hóa học và phản ứng oxi hóa - khử", "outline": "Chương 1: Cấu tạo nguyên tử; Chương 2: Bảng tuần hoàn; Chương 3: Liên kết hóa học"},
-                            {"name": "Tiếng Anh Lớp 10", "icon": "🌐", "link": "/grade/lop-10/subject/tieng-anh-lop-10", "desc": "Family Life, Humans and the Environment, thì hiện tại đơn, hoàn thành và bị động", "outline": "Unit 1: Family Life; Unit 2: Environment; Unit 3: Music"},
+                            {
+                                "name": "Toán Lớp 10",
+                                "icon": "📐",
+                                "link": "/grade/lop-10/subject/toan-lop-10",
+                                "desc": "Mệnh đề, tập hợp, bất phương trình bậc hai, vector, tọa độ trong mặt phẳng",
+                                "outline": "Chương 1: Mệnh đề & Tập hợp; Chương 2: Bất phương trình; Chương 3: Vector",
+                            },
+                            {
+                                "name": "Vật Lí Lớp 10",
+                                "icon": "⚡",
+                                "link": "/grade/lop-10/subject/vat-li-lop-10",
+                                "desc": "Động học chuyển động, 3 định luật Newton, công và năng lượng cơ học",
+                                "outline": "Chương 1: Động học; Chương 2: Động lực học Newton; Chương 3: Năng lượng & Công",
+                            },
+                            {
+                                "name": "Hóa Học Lớp 10",
+                                "icon": "🧪",
+                                "link": "/grade/lop-10/subject/hoa-hoc-lop-10",
+                                "desc": "Cấu tạo nguyên tử, bảng tuần hoàn, liên kết hóa học và phản ứng oxi hóa - khử",
+                                "outline": "Chương 1: Cấu tạo nguyên tử; Chương 2: Bảng tuần hoàn; Chương 3: Liên kết hóa học",
+                            },
+                            {
+                                "name": "Tiếng Anh Lớp 10",
+                                "icon": "🌐",
+                                "link": "/grade/lop-10/subject/tieng-anh-lop-10",
+                                "desc": "Family Life, Humans and the Environment, thì hiện tại đơn, hoàn thành và bị động",
+                                "outline": "Unit 1: Family Life; Unit 2: Environment; Unit 3: Music",
+                            },
                         ],
                     },
                     {
@@ -1016,10 +1268,34 @@ SECTIONS = {
                         "pages": "55 trang PDF",
                         "desc": "Sổ tay công thức Dao động cơ, Sóng cơ, Điện trường, bảng đạo hàm, lượng giác, cấp số cộng/nhân và hình học không gian 11",
                         "subjects": [
-                            {"name": "Toán Lớp 11", "icon": "📐", "link": "/grade/lop-11/subject/toan-lop-11", "desc": "Hàm số lượng giác, cấp số cộng/nhân, giới hạn, đạo hàm và hình học không gian", "outline": "Chương 1: Lượng giác; Chương 2: Dãy số & Cấp số; Chương 3: Hình không gian"},
-                            {"name": "Vật Lí Lớp 11", "icon": "⚡", "link": "/grade/lop-11/subject/vat-li-lop-11", "desc": "Dao động điều hòa, sóng cơ, sóng âm, điện trường, dòng điện không đổi", "outline": "Chương 1: Dao động cơ; Chương 2: Sóng cơ & sóng âm; Chương 3: Điện trường"},
-                            {"name": "Hóa Học Lớp 11", "icon": "🧪", "link": "/grade/lop-11/subject/hoa-hoc-lop-11", "desc": "Cân bằng hóa học, Nitơ - Lưu huỳnh, đại cương hóa học hữu cơ và Hydrocarbon", "outline": "Chương 1: Cân bằng hóa học; Chương 2: Nitơ & Lưu huỳnh; Chương 3: Hydrocarbon"},
-                            {"name": "Sinh Học Lớp 11", "icon": "🧬", "link": "/grade/lop-11/subject/sinh-hoc-lop-11", "desc": "Trao đổi chất và chuyển hóa năng lượng ở sinh vật, cảm ứng và sinh sản", "outline": "Chương 1: Trao đổi chất; Chương 2: Cảm ứng sinh vật; Chương 3: Sinh trưởng & Sinh sản"},
+                            {
+                                "name": "Toán Lớp 11",
+                                "icon": "📐",
+                                "link": "/grade/lop-11/subject/toan-lop-11",
+                                "desc": "Hàm số lượng giác, cấp số cộng/nhân, giới hạn, đạo hàm và hình học không gian",
+                                "outline": "Chương 1: Lượng giác; Chương 2: Dãy số & Cấp số; Chương 3: Hình không gian",
+                            },
+                            {
+                                "name": "Vật Lí Lớp 11",
+                                "icon": "⚡",
+                                "link": "/grade/lop-11/subject/vat-li-lop-11",
+                                "desc": "Dao động điều hòa, sóng cơ, sóng âm, điện trường, dòng điện không đổi",
+                                "outline": "Chương 1: Dao động cơ; Chương 2: Sóng cơ & sóng âm; Chương 3: Điện trường",
+                            },
+                            {
+                                "name": "Hóa Học Lớp 11",
+                                "icon": "🧪",
+                                "link": "/grade/lop-11/subject/hoa-hoc-lop-11",
+                                "desc": "Cân bằng hóa học, Nitơ - Lưu huỳnh, đại cương hóa học hữu cơ và Hydrocarbon",
+                                "outline": "Chương 1: Cân bằng hóa học; Chương 2: Nitơ & Lưu huỳnh; Chương 3: Hydrocarbon",
+                            },
+                            {
+                                "name": "Sinh Học Lớp 11",
+                                "icon": "🧬",
+                                "link": "/grade/lop-11/subject/sinh-hoc-lop-11",
+                                "desc": "Trao đổi chất và chuyển hóa năng lượng ở sinh vật, cảm ứng và sinh sản",
+                                "outline": "Chương 1: Trao đổi chất; Chương 2: Cảm ứng sinh vật; Chương 3: Sinh trưởng & Sinh sản",
+                            },
                         ],
                     },
                     {
@@ -1030,10 +1306,34 @@ SECTIONS = {
                         "pages": "65 trang PDF",
                         "desc": "Cẩm nang công thức Toán 12 (Khảo sát hàm số, Oxyz, Tích phân, Số phức), Vật lí 12, Hóa học 12 và kỹ thuật bấm máy Casio",
                         "subjects": [
-                            {"name": "Toán Lớp 12", "icon": "📐", "link": "/grade/lop-12/subject/toan-lop-12", "desc": "Ứng dụng đạo hàm khảo sát hàm số, nguyên hàm - tích phân, hình học Oxyz", "outline": "Chương 1: Khảo sát hàm số; Chương 2: Mũ & Logarit; Chương 3: Tích phân & Oxyz"},
-                            {"name": "Vật Lí Lớp 12", "icon": "⚡", "link": "/grade/lop-12/subject/vat-li-lop-12", "desc": "Vật lí nhiệt, khí lí tưởng, từ trường và vật lí hạt nhân nguyên tử chuẩn SGK mới", "outline": "Chương 1: Vật lí nhiệt; Chương 2: Khí lí tưởng; Chương 3: Từ trường & Hạt nhân"},
-                            {"name": "Hóa Học Lớp 12", "icon": "🧪", "link": "/grade/lop-12/subject/hoa-hoc-lop-12", "desc": "Ester - Lipid, Carbohydrate, Hợp chất chứa Nitơ, Polymer và Kim loại", "outline": "Chương 1: Ester - Lipid; Chương 2: Carbohydrate; Chương 3: Amin - Peptide"},
-                            {"name": "Tiếng Anh Lớp 12", "icon": "🌐", "link": "/grade/lop-12/subject/tieng-anh-lop-12", "desc": "Life Stories, Green Living, Urbanisation, kỹ thuật đọc hiểu chuyên sâu và bài luận", "outline": "Unit 1: Life Stories; Unit 2: Green Living; Unit 3: The Media"},
+                            {
+                                "name": "Toán Lớp 12",
+                                "icon": "📐",
+                                "link": "/grade/lop-12/subject/toan-lop-12",
+                                "desc": "Ứng dụng đạo hàm khảo sát hàm số, nguyên hàm - tích phân, hình học Oxyz",
+                                "outline": "Chương 1: Khảo sát hàm số; Chương 2: Mũ & Logarit; Chương 3: Tích phân & Oxyz",
+                            },
+                            {
+                                "name": "Vật Lí Lớp 12",
+                                "icon": "⚡",
+                                "link": "/grade/lop-12/subject/vat-li-lop-12",
+                                "desc": "Vật lí nhiệt, khí lí tưởng, từ trường và vật lí hạt nhân nguyên tử chuẩn SGK mới",
+                                "outline": "Chương 1: Vật lí nhiệt; Chương 2: Khí lí tưởng; Chương 3: Từ trường & Hạt nhân",
+                            },
+                            {
+                                "name": "Hóa Học Lớp 12",
+                                "icon": "🧪",
+                                "link": "/grade/lop-12/subject/hoa-hoc-lop-12",
+                                "desc": "Ester - Lipid, Carbohydrate, Hợp chất chứa Nitơ, Polymer và Kim loại",
+                                "outline": "Chương 1: Ester - Lipid; Chương 2: Carbohydrate; Chương 3: Amin - Peptide",
+                            },
+                            {
+                                "name": "Tiếng Anh Lớp 12",
+                                "icon": "🌐",
+                                "link": "/grade/lop-12/subject/tieng-anh-lop-12",
+                                "desc": "Life Stories, Green Living, Urbanisation, kỹ thuật đọc hiểu chuyên sâu và bài luận",
+                                "outline": "Unit 1: Life Stories; Unit 2: Green Living; Unit 3: The Media",
+                            },
                         ],
                     },
                     {
@@ -1044,10 +1344,34 @@ SECTIONS = {
                         "pages": "80 trang VIP",
                         "desc": "Trọn bộ công thức giải nhanh trắc nghiệm 3 năm THPT, sơ đồ tư duy Mindmap và cẩm nang mẹo làm bài thi quốc gia",
                         "subjects": [
-                            {"name": "TNTHPT Toán", "icon": "📐", "link": "/grade/tnthpt/subject/tnthpt-toan", "desc": "50 Dạng toán trọng tâm thi TNTHPT & phương pháp bấm máy Casio", "outline": "Chuyên đề 1: Hàm số & Đồ thị; Chuyên đề 2: Tích phân & Oxyz; Chuyên đề 3: Xác suất"},
-                            {"name": "TNTHPT Vật Lí", "icon": "⚡", "link": "/grade/tnthpt/subject/tnthpt-vat-li", "desc": "Trọn bộ công thức Vật lí 12 chuẩn cấu trúc đề minh họa mới nhất", "outline": "Chuyên đề 1: Nhiệt học; Chuyên đề 2: Khí lí tưởng; Chuyên đề 3: Từ trường & Hạt nhân"},
-                            {"name": "ĐGNL ĐHQG HN", "icon": "🧠", "link": "/grade/dgnl/subject/dgnl-dgtd-dhqg-ha-noi", "desc": "Tài liệu ôn thi Đánh giá năng lực HSA phần Định lượng và Định tính", "outline": "Phần 1: Tư duy định lượng; Phần 2: Tư duy định tính; Phần 3: Khoa học"},
-                            {"name": "ĐGNL ĐHQG TP.HCM", "icon": "🧠", "link": "/grade/dgnl/subject/dgnl-dgtd-dhqg-tp-hcm", "desc": "Cẩm nang ôn thi ĐGNL ĐHQG TP.HCM: Ngôn ngữ, Toán logic, Phân tích số liệu", "outline": "Phần 1: Sử dụng ngôn ngữ; Phần 2: Toán học & Logic; Phần 3: Giải quyết vấn đề"},
+                            {
+                                "name": "TNTHPT Toán",
+                                "icon": "📐",
+                                "link": "/grade/tnthpt/subject/tnthpt-toan",
+                                "desc": "50 Dạng toán trọng tâm thi TNTHPT & phương pháp bấm máy Casio",
+                                "outline": "Chuyên đề 1: Hàm số & Đồ thị; Chuyên đề 2: Tích phân & Oxyz; Chuyên đề 3: Xác suất",
+                            },
+                            {
+                                "name": "TNTHPT Vật Lí",
+                                "icon": "⚡",
+                                "link": "/grade/tnthpt/subject/tnthpt-vat-li",
+                                "desc": "Trọn bộ công thức Vật lí 12 chuẩn cấu trúc đề minh họa mới nhất",
+                                "outline": "Chuyên đề 1: Nhiệt học; Chuyên đề 2: Khí lí tưởng; Chuyên đề 3: Từ trường & Hạt nhân",
+                            },
+                            {
+                                "name": "ĐGNL ĐHQG HN",
+                                "icon": "🧠",
+                                "link": "/grade/dgnl/subject/dgnl-dgtd-dhqg-ha-noi",
+                                "desc": "Tài liệu ôn thi Đánh giá năng lực HSA phần Định lượng và Định tính",
+                                "outline": "Phần 1: Tư duy định lượng; Phần 2: Tư duy định tính; Phần 3: Khoa học",
+                            },
+                            {
+                                "name": "ĐGNL ĐHQG TP.HCM",
+                                "icon": "🧠",
+                                "link": "/grade/dgnl/subject/dgnl-dgtd-dhqg-tp-hcm",
+                                "desc": "Cẩm nang ôn thi ĐGNL ĐHQG TP.HCM: Ngôn ngữ, Toán logic, Phân tích số liệu",
+                                "outline": "Phần 1: Sử dụng ngôn ngữ; Phần 2: Toán học & Logic; Phần 3: Giải quyết vấn đề",
+                            },
                         ],
                     },
                 ],
@@ -1064,8 +1388,8 @@ SECTIONS = {
                             "Bảng công thức giải nhanh hàm số, tiếp tuyến, cực trị và tiệm cận",
                             "Thủ thuật Casio 580VNX giải phương trình lượng giác, đạo hàm và tích phân",
                             "Công thức tọa độ không gian Oxyz: khoảng cách, góc, mặt phẳng, mặt cầu",
-                            "Tổng hợp 300 câu hỏi trắc nghiệm điểm 8-9-10 phân loại cao"
-                        ]
+                            "Tổng hợp 300 câu hỏi trắc nghiệm điểm 8-9-10 phân loại cao",
+                        ],
                     },
                     {
                         "title": "Sổ tay thần tốc Vật lí 12 & Trọn bộ công thức giải nhanh trong 30 giây",
@@ -1079,8 +1403,8 @@ SECTIONS = {
                             "Trọn bộ công thức Nhiệt động lực học và Thuyết động học phân tử chất khí",
                             "Bảng so sánh các quá trình biến đổi trạng thái: đẳng nhiệt, đẳng tích, đẳng áp",
                             "Công thức cảm ứng điện từ, từ trường của dòng điện và lực từ",
-                            "Quy luật phóng xạ, năng lượng liên kết và phản ứng phân hạch, nhiệt hạch"
-                        ]
+                            "Quy luật phóng xạ, năng lượng liên kết và phản ứng phân hạch, nhiệt hạch",
+                        ],
                     },
                     {
                         "title": "Sơ đồ tư duy 12 tác phẩm văn học 12 trọng tâm thi TNTHPT",
@@ -1094,8 +1418,8 @@ SECTIONS = {
                             "Mindmap Người lái đò Sông Đà, Ai đã đặt tên cho dòng sông",
                             "Sơ đồ phân tích Vợ chồng A Phủ, Vợ nhặt và Chiếc thuyền ngoài xa",
                             "Bản đồ tư duy hình tượng Đất Nước, Tây Tiến và Sóng",
-                            "Hệ thống mở bài - kết bài mẫu sáng tạo và dẫn chứng lý luận văn học"
-                        ]
+                            "Hệ thống mở bài - kết bài mẫu sáng tạo và dẫn chứng lý luận văn học",
+                        ],
                     },
                     {
                         "title": "Tuyển tập 1000 câu hỏi trắc nghiệm Hóa học & Sinh học phân loại 8-9-10 điểm",
@@ -1109,9 +1433,9 @@ SECTIONS = {
                             "500 Câu trắc nghiệm Hóa học: Este - Lipit nâng cao, đồ thị kim loại và bài toán nhiệt nhôm",
                             "500 Câu trắc nghiệm Sinh học: Bài tập phả hệ, di truyền liên kết và quy luật tương tác gen",
                             "Phương pháp loại trừ đáp án nhanh và kỹ thuật giải bài toán bằng sơ đồ tư duy",
-                            "Bảng tổng hợp các lỗi sai phổ biến học sinh thường mất điểm đáng tiếc"
-                        ]
-                    }
+                            "Bảng tổng hợp các lỗi sai phổ biến học sinh thường mất điểm đáng tiếc",
+                        ],
+                    },
                 ],
                 "reference_exams": [
                     {
@@ -1121,7 +1445,7 @@ SECTIONS = {
                         "duration": "50 phút / môn",
                         "questions": "40 câu trắc nghiệm",
                         "attempts": "35.8k lượt",
-                        "practice_link": "/grade/tnthpt/subject/tnthpt-toan"
+                        "practice_link": "/grade/tnthpt/subject/tnthpt-toan",
                     },
                     {
                         "title": "Bộ đề thi Đánh giá năng lực ĐHQG Hà Nội (HSA) & ĐHQG TP.HCM (V-SAT)",
@@ -1130,7 +1454,7 @@ SECTIONS = {
                         "duration": "150 phút",
                         "questions": "150 câu",
                         "attempts": "28.3k lượt",
-                        "practice_link": "/grade/dgnl/subject/dgnl-dgtd-dhqg-ha-noi"
+                        "practice_link": "/grade/dgnl/subject/dgnl-dgtd-dhqg-ha-noi",
                     },
                     {
                         "title": "Bộ đề thi Đánh giá tư duy ĐH Bách Khoa Hà Nội (TSA)",
@@ -1139,7 +1463,7 @@ SECTIONS = {
                         "duration": "150 phút",
                         "questions": "100 câu trắc nghiệm",
                         "attempts": "16.4k lượt",
-                        "practice_link": "/grade/dgnl/subject/dgnl-dgtd-dh-bach-khoa-ha-noi"
+                        "practice_link": "/grade/dgnl/subject/dgnl-dgtd-dh-bach-khoa-ha-noi",
                     },
                     {
                         "title": "Đề kiểm tra Học kỳ 1 & Học kỳ 2 các trường chuyên có lời giải chi tiết",
@@ -1148,8 +1472,8 @@ SECTIONS = {
                         "duration": "90 phút",
                         "questions": "50 câu",
                         "attempts": "19.5k lượt",
-                        "practice_link": "/grade/lop-12/subject/toan-lop-12"
-                    }
+                        "practice_link": "/grade/lop-12/subject/toan-lop-12",
+                    },
                 ],
                 "sub_items": [
                     {
@@ -1162,7 +1486,11 @@ SECTIONS = {
                             {"name": "Toán Lớp 10", "link": "/grade/lop-10/subject/toan-lop-10", "icon": "📐"},
                             {"name": "Vật Lí Lớp 10", "link": "/grade/lop-10/subject/vat-li-lop-10", "icon": "⚡"},
                             {"name": "Hóa Học Lớp 10", "link": "/grade/lop-10/subject/hoa-hoc-lop-10", "icon": "🧪"},
-                            {"name": "Tiếng Anh Lớp 10", "link": "/grade/lop-10/subject/tieng-anh-lop-10", "icon": "🌐"},
+                            {
+                                "name": "Tiếng Anh Lớp 10",
+                                "link": "/grade/lop-10/subject/tieng-anh-lop-10",
+                                "icon": "🌐",
+                            },
                         ],
                     },
                     {
@@ -1189,7 +1517,11 @@ SECTIONS = {
                             {"name": "Toán Lớp 12", "link": "/grade/lop-12/subject/toan-lop-12", "icon": "📐"},
                             {"name": "Vật Lí Lớp 12", "link": "/grade/lop-12/subject/vat-li-lop-12", "icon": "⚡"},
                             {"name": "Hóa Học Lớp 12", "link": "/grade/lop-12/subject/hoa-hoc-lop-12", "icon": "🧪"},
-                            {"name": "Tiếng Anh Lớp 12", "link": "/grade/lop-12/subject/tieng-anh-lop-12", "icon": "🌐"},
+                            {
+                                "name": "Tiếng Anh Lớp 12",
+                                "link": "/grade/lop-12/subject/tieng-anh-lop-12",
+                                "icon": "🌐",
+                            },
                         ],
                     },
                     {
@@ -1203,7 +1535,11 @@ SECTIONS = {
                             {"name": "TNTHPT Toán", "link": "/grade/tnthpt/subject/tnthpt-toan", "icon": "📐"},
                             {"name": "TNTHPT Vật Lí", "link": "/grade/tnthpt/subject/tnthpt-vat-li", "icon": "⚡"},
                             {"name": "ĐGNL ĐHQG HN", "link": "/grade/dgnl/subject/dgnl-dgtd-dhqg-ha-noi", "icon": "🧠"},
-                            {"name": "ĐGNL ĐHQG TP.HCM", "link": "/grade/dgnl/subject/dgnl-dgtd-dhqg-tp-hcm", "icon": "🧠"},
+                            {
+                                "name": "ĐGNL ĐHQG TP.HCM",
+                                "link": "/grade/dgnl/subject/dgnl-dgtd-dhqg-tp-hcm",
+                                "icon": "🧠",
+                            },
                         ],
                     },
                 ],
@@ -1222,10 +1558,34 @@ SECTIONS = {
                         "pages": "55 trang PDF",
                         "desc": "Tóm tắt ngắn gọn các nguyên lý, quy luật, cặp phạm trù triết học giúp sinh viên ôn thi kết thúc học phần đạt điểm A",
                         "subjects": [
-                            {"name": "Triết Học Mác - Lênin", "icon": "🏛️", "link": "/grade/dai-hoc/subject/triet-hoc-mac-lenin", "desc": "Chủ nghĩa duy vật biện chứng, phép biện chứng, chủ nghĩa duy vật lịch sử", "outline": "Chương 1: Khái luận Triết học; Chương 2: Duy vật biện chứng; Chương 3: Duy vật lịch sử"},
-                            {"name": "Các cặp phạm trù", "icon": "📜", "link": "/grade/dai-hoc/subject/triet-hoc-mac-lenin", "desc": "Cái riêng - cái chung, nguyên nhân - kết quả, tất nhiên - ngẫu nhiên", "outline": "6 Cặp phạm trù triết học cơ bản kèm ví dụ thực tiễn đời sống"},
-                            {"name": "3 Quy luật cơ bản", "icon": "⚖️", "link": "/grade/dai-hoc/subject/triet-hoc-mac-lenin", "desc": "Quy luật lượng - chất, mâu thuẫn và phủ định của phủ định", "outline": "Nội dung, ý nghĩa phương pháp luận của 3 quy luật biện chứng duy vật"},
-                            {"name": "Hình thái kinh tế - XH", "icon": "🌍", "link": "/grade/dai-hoc/subject/triet-hoc-mac-lenin", "desc": "Lực lượng sản xuất, quan hệ sản xuất và cơ sở hạ tầng - kiến trúc thượng tầng", "outline": "Học thuyết hình thái kinh tế - xã hội và sự vận dụng ở Việt Nam"},
+                            {
+                                "name": "Triết Học Mác - Lênin",
+                                "icon": "🏛️",
+                                "link": "/grade/dai-hoc/subject/triet-hoc-mac-lenin",
+                                "desc": "Chủ nghĩa duy vật biện chứng, phép biện chứng, chủ nghĩa duy vật lịch sử",
+                                "outline": "Chương 1: Khái luận Triết học; Chương 2: Duy vật biện chứng; Chương 3: Duy vật lịch sử",
+                            },
+                            {
+                                "name": "Các cặp phạm trù",
+                                "icon": "📜",
+                                "link": "/grade/dai-hoc/subject/triet-hoc-mac-lenin",
+                                "desc": "Cái riêng - cái chung, nguyên nhân - kết quả, tất nhiên - ngẫu nhiên",
+                                "outline": "6 Cặp phạm trù triết học cơ bản kèm ví dụ thực tiễn đời sống",
+                            },
+                            {
+                                "name": "3 Quy luật cơ bản",
+                                "icon": "⚖️",
+                                "link": "/grade/dai-hoc/subject/triet-hoc-mac-lenin",
+                                "desc": "Quy luật lượng - chất, mâu thuẫn và phủ định của phủ định",
+                                "outline": "Nội dung, ý nghĩa phương pháp luận của 3 quy luật biện chứng duy vật",
+                            },
+                            {
+                                "name": "Hình thái kinh tế - XH",
+                                "icon": "🌍",
+                                "link": "/grade/dai-hoc/subject/triet-hoc-mac-lenin",
+                                "desc": "Lực lượng sản xuất, quan hệ sản xuất và cơ sở hạ tầng - kiến trúc thượng tầng",
+                                "outline": "Học thuyết hình thái kinh tế - xã hội và sự vận dụng ở Việt Nam",
+                            },
                         ],
                     },
                     {
@@ -1236,9 +1596,27 @@ SECTIONS = {
                         "pages": "50 trang PDF",
                         "desc": "Hệ thống câu hỏi lý thuyết và bài tập tự luận môn Kinh tế chính trị, Chủ nghĩa xã hội khoa học",
                         "subjects": [
-                            {"name": "Kinh Tế Chính Trị", "icon": "📊", "link": "/grade/dai-hoc/subject/kinh-te-chinh-tri-mac-lenin", "desc": "Hàng hóa, tiền tệ, giá trị thặng dư và tích lũy tư bản", "outline": "Chương 1: Đối tượng KTCT; Chương 2: Hàng hóa & Thị trường; Chương 3: Giá trị thặng dư"},
-                            {"name": "Chủ Nghĩa Xã Hội Khoa Học", "icon": "🚩", "link": "/grade/dai-hoc/subject/chu-nghia-xa-hoi-khoa-hoc", "desc": "Sứ mệnh lịch sử của giai cấp công nhân và thời kỳ quá độ lên CNXH", "outline": "Chương 1: Sứ mệnh giai cấp công nhân; Chương 2: Thời kỳ quá độ; Chương 3: Dân chủ XHCN"},
-                            {"name": "Kinh tế thị trường XHCN", "icon": "📈", "link": "/grade/dai-hoc/subject/kinh-te-chinh-tri-mac-lenin", "desc": "Thể chế kinh tế thị trường định hướng XHCN tại Việt Nam", "outline": "Đặc trưng, mô hình và giải pháp hoàn thiện thể chế kinh tế thị trường"},
+                            {
+                                "name": "Kinh Tế Chính Trị",
+                                "icon": "📊",
+                                "link": "/grade/dai-hoc/subject/kinh-te-chinh-tri-mac-lenin",
+                                "desc": "Hàng hóa, tiền tệ, giá trị thặng dư và tích lũy tư bản",
+                                "outline": "Chương 1: Đối tượng KTCT; Chương 2: Hàng hóa & Thị trường; Chương 3: Giá trị thặng dư",
+                            },
+                            {
+                                "name": "Chủ Nghĩa Xã Hội Khoa Học",
+                                "icon": "🚩",
+                                "link": "/grade/dai-hoc/subject/chu-nghia-xa-hoi-khoa-hoc",
+                                "desc": "Sứ mệnh lịch sử của giai cấp công nhân và thời kỳ quá độ lên CNXH",
+                                "outline": "Chương 1: Sứ mệnh giai cấp công nhân; Chương 2: Thời kỳ quá độ; Chương 3: Dân chủ XHCN",
+                            },
+                            {
+                                "name": "Kinh tế thị trường XHCN",
+                                "icon": "📈",
+                                "link": "/grade/dai-hoc/subject/kinh-te-chinh-tri-mac-lenin",
+                                "desc": "Thể chế kinh tế thị trường định hướng XHCN tại Việt Nam",
+                                "outline": "Đặc trưng, mô hình và giải pháp hoàn thiện thể chế kinh tế thị trường",
+                            },
                         ],
                     },
                     {
@@ -1249,9 +1627,27 @@ SECTIONS = {
                         "pages": "60 trang PDF",
                         "desc": "Tổng hợp công thức ma trận, định thức, hệ phương trình tuyến tính, tích phân suy rộng và biến ngẫu nhiên",
                         "subjects": [
-                            {"name": "Toán Cao Cấp", "icon": "📐", "link": "/grade/dai-hoc/subject/toan-cao-cap", "desc": "Đại số tuyến tính, ma trận nghịch đảo, giải tích hàm một và nhiều biến", "outline": "Chương 1: Ma trận & Định thức; Chương 2: Không gian vector; Chương 3: Tích phân suy rộng"},
-                            {"name": "Xác Suất Thống Kê", "icon": "🎲", "link": "/grade/dai-hoc/subject/xac-suat-thong-ke", "desc": "Công thức Bernoulli, phân phối chuẩn, nhị thức, ước lượng và kiểm định giả thuyết", "outline": "Chương 1: Biến cố & Xác suất; Chương 2: Biến ngẫu nhiên; Chương 3: Ước lượng & Kiểm định"},
-                            {"name": "Tin Học Đại Cương", "icon": "💻", "link": "/grade/dai-hoc/subject/tin-hoc-dai-cuong", "desc": "Thuật toán cơ bản, cấu trúc dữ liệu và lập trình C/C++/Python cơ sở", "outline": "Chương 1: Cấu trúc máy tính; Chương 2: Thuật toán & Sơ đồ khối; Chương 3: Lập trình cơ sở"},
+                            {
+                                "name": "Toán Cao Cấp",
+                                "icon": "📐",
+                                "link": "/grade/dai-hoc/subject/toan-cao-cap",
+                                "desc": "Đại số tuyến tính, ma trận nghịch đảo, giải tích hàm một và nhiều biến",
+                                "outline": "Chương 1: Ma trận & Định thức; Chương 2: Không gian vector; Chương 3: Tích phân suy rộng",
+                            },
+                            {
+                                "name": "Xác Suất Thống Kê",
+                                "icon": "🎲",
+                                "link": "/grade/dai-hoc/subject/xac-suat-thong-ke",
+                                "desc": "Công thức Bernoulli, phân phối chuẩn, nhị thức, ước lượng và kiểm định giả thuyết",
+                                "outline": "Chương 1: Biến cố & Xác suất; Chương 2: Biến ngẫu nhiên; Chương 3: Ước lượng & Kiểm định",
+                            },
+                            {
+                                "name": "Tin Học Đại Cương",
+                                "icon": "💻",
+                                "link": "/grade/dai-hoc/subject/tin-hoc-dai-cuong",
+                                "desc": "Thuật toán cơ bản, cấu trúc dữ liệu và lập trình C/C++/Python cơ sở",
+                                "outline": "Chương 1: Cấu trúc máy tính; Chương 2: Thuật toán & Sơ đồ khối; Chương 3: Lập trình cơ sở",
+                            },
                         ],
                     },
                     {
@@ -1262,9 +1658,27 @@ SECTIONS = {
                         "pages": "45 trang PDF",
                         "desc": "Cẩm nang ôn thi kết thúc học phần môn Tư tưởng Hồ Chí Minh, Lịch sử Đảng và Pháp luật đại cương",
                         "subjects": [
-                            {"name": "Tư Tưởng Hồ Chí Minh", "icon": "🏛️", "link": "/grade/dai-hoc/subject/tu-tuong-ho-chi-minh", "desc": "Nguồn gốc, quá trình hình thành và nội dung tư tưởng giải phóng dân tộc", "outline": "Chương 1: Nguồn gốc tư tưởng; Chương 2: Giải phóng dân tộc; Chương 3: Nhà nước của dân"},
-                            {"name": "Lịch Sử Đảng CSVN", "icon": "⭐", "link": "/grade/dai-hoc/subject/lich-su-dang-csvn", "desc": "Đảng Cộng sản Việt Nam ra đời và sự nghiệp đổi mới đất nước", "outline": "Chương 1: Thành lập Đảng (1930); Chương 2: Kháng chiến (1945-1975); Chương 3: Thời kỳ đổi mới"},
-                            {"name": "Pháp Luật Đại Cương", "icon": "⚖️", "link": "/grade/dai-hoc/subject/phap-luat-dai-cuong", "desc": "Nguồn gốc nhà nước và pháp luật, vi phạm pháp luật và trách nhiệm pháp lý", "outline": "Chương 1: Lý luận về Nhà nước; Chương 2: Lý luận về Pháp luật; Chương 3: Các ngành luật"},
+                            {
+                                "name": "Tư Tưởng Hồ Chí Minh",
+                                "icon": "🏛️",
+                                "link": "/grade/dai-hoc/subject/tu-tuong-ho-chi-minh",
+                                "desc": "Nguồn gốc, quá trình hình thành và nội dung tư tưởng giải phóng dân tộc",
+                                "outline": "Chương 1: Nguồn gốc tư tưởng; Chương 2: Giải phóng dân tộc; Chương 3: Nhà nước của dân",
+                            },
+                            {
+                                "name": "Lịch Sử Đảng CSVN",
+                                "icon": "⭐",
+                                "link": "/grade/dai-hoc/subject/lich-su-dang-csvn",
+                                "desc": "Đảng Cộng sản Việt Nam ra đời và sự nghiệp đổi mới đất nước",
+                                "outline": "Chương 1: Thành lập Đảng (1930); Chương 2: Kháng chiến (1945-1975); Chương 3: Thời kỳ đổi mới",
+                            },
+                            {
+                                "name": "Pháp Luật Đại Cương",
+                                "icon": "⚖️",
+                                "link": "/grade/dai-hoc/subject/phap-luat-dai-cuong",
+                                "desc": "Nguồn gốc nhà nước và pháp luật, vi phạm pháp luật và trách nhiệm pháp lý",
+                                "outline": "Chương 1: Lý luận về Nhà nước; Chương 2: Lý luận về Pháp luật; Chương 3: Các ngành luật",
+                            },
                         ],
                     },
                 ],
@@ -1281,8 +1695,8 @@ SECTIONS = {
                             "Vấn đề cơ bản của triết học và các hình thức của chủ nghĩa duy vật",
                             "Nội dung và ý nghĩa 2 nguyên lý, 3 quy luật, 6 cặp phạm trù",
                             "Biện chứng giữa cơ sở hạ tầng và kiến trúc thượng tầng trong thời kỳ quá độ",
-                            "Quan điểm của chủ nghĩa Mác - Lênin về con người và vai trò quần chúng nhân dân"
-                        ]
+                            "Quan điểm của chủ nghĩa Mác - Lênin về con người và vai trò quần chúng nhân dân",
+                        ],
                     },
                     {
                         "title": "Sơ đồ tư duy các cặp phạm trù và quy luật Triết học Mác - Lênin",
@@ -1296,8 +1710,8 @@ SECTIONS = {
                             "Sơ đồ tư duy tổng quát toàn bộ học phần Triết học Mác - Lênin",
                             "Bản đồ liên kết 6 cặp phạm trù kèm ví dụ minh họa kinh tế - xã hội",
                             "Mô hình hóa 3 quy luật: Lượng - Chất, Mâu thuẫn, Phủ định của phủ định",
-                            "Bảng so sánh Chủ nghĩa duy vật biện chứng và Chủ nghĩa duy vật lịch sử"
-                        ]
+                            "Bảng so sánh Chủ nghĩa duy vật biện chứng và Chủ nghĩa duy vật lịch sử",
+                        ],
                     },
                     {
                         "title": "Cẩm nang công thức và dạng bài tập Xác suất thống kê & Toán cao cấp ĐH",
@@ -1311,8 +1725,8 @@ SECTIONS = {
                             "Phương pháp tính định thức, ma trận nghịch đảo và giải hệ phương trình Cramer",
                             "Các dạng bài tích phân suy rộng và khai triển chuỗi Taylor, Maclaurin",
                             "Công thức xác suất toàn phần, công thức Bayes và phân phối nhị thức, Poisson, chuẩn",
-                            "Bài toán kiểm định giả thuyết thống kê (Z-test, T-test) và hồi quy tuyến tính"
-                        ]
+                            "Bài toán kiểm định giả thuyết thống kê (Z-test, T-test) và hồi quy tuyến tính",
+                        ],
                     },
                     {
                         "title": "Tài liệu hướng dẫn viết tiểu luận môn Lý luận chính trị đạt điểm 9.5",
@@ -1326,9 +1740,9 @@ SECTIONS = {
                             "Quy chuẩn trình bày tiểu luận học thuật: font chữ, lề, mục lục, trích dẫn chuẩn",
                             "Cách viết lời mở đầu thuyết phục và phương pháp nghiên cứu đề tài",
                             "Mẫu cấu trúc 3 chương chuẩn của một bài tiểu luận triết học, kinh tế chính trị",
-                            "Tuyển tập 5 bài tiểu luận mẫu đạt điểm 9.5 - 10 của sinh viên các trường top"
-                        ]
-                    }
+                            "Tuyển tập 5 bài tiểu luận mẫu đạt điểm 9.5 - 10 của sinh viên các trường top",
+                        ],
+                    },
                 ],
                 "reference_exams": [
                     {
@@ -1338,7 +1752,7 @@ SECTIONS = {
                         "duration": "60 phút",
                         "questions": "50 câu trắc nghiệm",
                         "attempts": "21.5k lượt",
-                        "practice_link": "/grade/dai-hoc/subject/triet-hoc-mac-lenin"
+                        "practice_link": "/grade/dai-hoc/subject/triet-hoc-mac-lenin",
                     },
                     {
                         "title": "Bộ đề thi tự luận Kinh tế chính trị Mác - Lênin & CNXHKH (Có barem điểm chi tiết)",
@@ -1347,7 +1761,7 @@ SECTIONS = {
                         "duration": "90 phút",
                         "questions": "3 câu tự luận",
                         "attempts": "15.3k lượt",
-                        "practice_link": "/grade/dai-hoc/subject/kinh-te-chinh-tri-mac-lenin"
+                        "practice_link": "/grade/dai-hoc/subject/kinh-te-chinh-tri-mac-lenin",
                     },
                     {
                         "title": "Đề thi kết thúc học phần Xác suất thống kê & Toán cao cấp ĐH Bách Khoa & ĐHQG",
@@ -1356,7 +1770,7 @@ SECTIONS = {
                         "duration": "90 phút",
                         "questions": "40 câu trắc nghiệm & 2 bài tự luận",
                         "attempts": "12.8k lượt",
-                        "practice_link": "/grade/dai-hoc/subject/xac-suat-thong-ke"
+                        "practice_link": "/grade/dai-hoc/subject/xac-suat-thong-ke",
                     },
                     {
                         "title": "Bộ đề thi trắc nghiệm Pháp luật đại cương (Có giải thích căn cứ luật mới nhất)",
@@ -1365,8 +1779,8 @@ SECTIONS = {
                         "duration": "45 phút",
                         "questions": "40 câu",
                         "attempts": "14.2k lượt",
-                        "practice_link": "/grade/dai-hoc/subject/phap-luat-dai-cuong"
-                    }
+                        "practice_link": "/grade/dai-hoc/subject/phap-luat-dai-cuong",
+                    },
                 ],
                 "sub_items": [
                     {
@@ -1377,8 +1791,16 @@ SECTIONS = {
                         "badge": "Triết học ĐH",
                         "highlight": True,
                         "tags": [
-                            {"name": "Triết Học Mác - Lênin", "link": "/grade/dai-hoc/subject/triet-hoc-mac-lenin", "icon": "🏛️"},
-                            {"name": "Duy vật biện chứng", "link": "/grade/dai-hoc/subject/triet-hoc-mac-lenin", "icon": "📜"},
+                            {
+                                "name": "Triết Học Mác - Lênin",
+                                "link": "/grade/dai-hoc/subject/triet-hoc-mac-lenin",
+                                "icon": "🏛️",
+                            },
+                            {
+                                "name": "Duy vật biện chứng",
+                                "link": "/grade/dai-hoc/subject/triet-hoc-mac-lenin",
+                                "icon": "📜",
+                            },
                         ],
                     },
                     {
@@ -1388,7 +1810,11 @@ SECTIONS = {
                         "topics": "Tài liệu ôn thi học kỳ",
                         "badge": "Kinh tế chính trị",
                         "tags": [
-                            {"name": "Kinh Tế Chính Trị", "link": "/grade/dai-hoc/subject/kinh-te-chinh-tri-mac-lenin", "icon": "📊"},
+                            {
+                                "name": "Kinh Tế Chính Trị",
+                                "link": "/grade/dai-hoc/subject/kinh-te-chinh-tri-mac-lenin",
+                                "icon": "📊",
+                            },
                         ],
                     },
                     {
@@ -1399,7 +1825,11 @@ SECTIONS = {
                         "badge": "Toán đại cương",
                         "tags": [
                             {"name": "Toán Cao Cấp", "link": "/grade/dai-hoc/subject/toan-cao-cap", "icon": "📐"},
-                            {"name": "Xác Suất Thống Kê", "link": "/grade/dai-hoc/subject/xac-suat-thong-ke", "icon": "🎲"},
+                            {
+                                "name": "Xác Suất Thống Kê",
+                                "link": "/grade/dai-hoc/subject/xac-suat-thong-ke",
+                                "icon": "🎲",
+                            },
                         ],
                     },
                     {
@@ -1409,7 +1839,11 @@ SECTIONS = {
                         "topics": "Đề cương ôn thi kết thúc môn",
                         "badge": "Lý luận chính trị",
                         "tags": [
-                            {"name": "Tư Tưởng Hồ Chí Minh", "link": "/grade/dai-hoc/subject/tu-tuong-ho-chi-minh", "icon": "🏛️"},
+                            {
+                                "name": "Tư Tưởng Hồ Chí Minh",
+                                "link": "/grade/dai-hoc/subject/tu-tuong-ho-chi-minh",
+                                "icon": "🏛️",
+                            },
                             {"name": "Lịch Sử Đảng", "link": "/grade/dai-hoc/subject/lich-su-dang-csvn", "icon": "⭐"},
                         ],
                     },

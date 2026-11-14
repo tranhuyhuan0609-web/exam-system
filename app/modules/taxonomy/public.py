@@ -28,4 +28,3 @@ __all__ = [
     "normalize_alias",
     "normalize_ltree_label",
 ]
-

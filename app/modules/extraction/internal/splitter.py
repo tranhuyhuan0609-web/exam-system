@@ -246,8 +246,6 @@ def split_study_guide_mixed(
         question_candidates=tuple(questions),
         unassigned_exercise_text=tuple(orphan_lines),
         warnings=(
-            (f"{len(orphan_lines)} exercise line(s) appear before the first question label",)
-            if orphan_lines
-            else ()
+            (f"{len(orphan_lines)} exercise line(s) appear before the first question label",) if orphan_lines else ()
         ),
     )

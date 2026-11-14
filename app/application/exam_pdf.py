@@ -81,7 +81,9 @@ def rebrand_pdf_preserve_exam_title(
                 right_limit = ky_thi_rects[0].x0 - 8 if ky_thi_rects else 220
                 cx = (30 + right_limit) / 2
                 if logo_path and os.path.exists(str(logo_path)):
-                    page.insert_image(fitz.Rect(cx - 30, 35, cx + 30, 95), filename=str(logo_path), keep_proportion=True)  # noqa: E501
+                    page.insert_image(
+                        fitz.Rect(cx - 30, 35, cx + 30, 95), filename=str(logo_path), keep_proportion=True
+                    )  # noqa: E501
                 dst.insert_pdf(src, from_page=0, to_page=0)
             else:
                 # Phiếu bài tập không có Header -> Tạo trang cao hơn 70pt và dịch nội dung xuống
@@ -106,6 +108,7 @@ def rebrand_pdf_preserve_exam_title(
     dst.close()
     src.close()
     return str(output_pdf)
+
 
 PART_TITLES = {
     QuestionType.MULTIPLE_CHOICE: "Câu trắc nghiệm nhiều phương án lựa chọn",

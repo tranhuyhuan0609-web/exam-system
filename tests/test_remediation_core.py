@@ -52,9 +52,7 @@ def test_handles_cycles_self_loops_and_duplicate_edges_deterministically():
     assert len(p1) == 3
     assert {step.node_id for step in p1} == {n1, n2, n3}
     assert all(
-        step.reason_code == "WEAK_TARGET" and step.dependent_node_id is None
-        for step in p1
-        if step.node_id in {n1, n3}
+        step.reason_code == "WEAK_TARGET" and step.dependent_node_id is None for step in p1 if step.node_id in {n1, n3}
     )
 
 
@@ -76,17 +74,13 @@ def test_configurable_prerequisite_mastery_threshold():
 
     # Default 0.60 includes prereq (< 0.60); threshold 0.50 omits prereq (>= 0.50).
     plan_default = resolve_prerequisite_remediation_order([target], edges, mastery)
-    plan_50 = resolve_prerequisite_remediation_order(
-        [target], edges, mastery, prerequisite_mastery_threshold=0.50
-    )
+    plan_50 = resolve_prerequisite_remediation_order([target], edges, mastery, prerequisite_mastery_threshold=0.50)
 
     assert [s.node_id for s in plan_default] == [prereq, target]
     assert [s.node_id for s in plan_50] == [target]
 
     with pytest.raises(ValueError):
-        resolve_prerequisite_remediation_order(
-            [target], edges, mastery, prerequisite_mastery_threshold=1.5
-        )
+        resolve_prerequisite_remediation_order([target], edges, mastery, prerequisite_mastery_threshold=1.5)
 
 
 def test_preserves_caller_weak_priority_order_and_marks_dual_role_as_weak_target():

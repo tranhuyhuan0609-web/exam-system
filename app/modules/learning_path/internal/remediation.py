@@ -55,8 +55,7 @@ def resolve_prerequisite_remediation_order(
             parents_by_node.setdefault(edge.dependent_id, set()).add(edge.prerequisite_id)
 
     sorted_parents: dict[UUID, tuple[UUID, ...]] = {
-        node_id: tuple(sorted(parents))
-        for node_id, parents in parents_by_node.items()
+        node_id: tuple(sorted(parents)) for node_id, parents in parents_by_node.items()
     }
 
     ordered_weak_ids = tuple(dict.fromkeys(weak_node_ids))
@@ -70,9 +69,7 @@ def resolve_prerequisite_remediation_order(
             continue
 
         # Stack entries: (node_id, reason_code, dependent_node_id, entering)
-        stack: list[tuple[UUID, ReasonCode, UUID | None, bool]] = [
-            (weak_id, "WEAK_TARGET", None, True)
-        ]
+        stack: list[tuple[UUID, ReasonCode, UUID | None, bool]] = [(weak_id, "WEAK_TARGET", None, True)]
 
         while stack:
             node_id, reason_code, dependent_id, entering = stack.pop()

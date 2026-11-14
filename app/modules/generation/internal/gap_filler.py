@@ -108,17 +108,13 @@ def create_gap_fill_request(
     for anchor in anchors:
         if anchor.owner_tenant_id is not None and anchor.owner_tenant_id != tenant_id.strip():
             # Never reveal whether a foreign anchor exists: same error as an unusable anchor.
-            raise GenerationPolicyError(
-                f"anchor {anchor.anchor_id!r} does not belong to tenant {tenant_id.strip()!r}"
-            )
+            raise GenerationPolicyError(f"anchor {anchor.anchor_id!r} does not belong to tenant {tenant_id.strip()!r}")
         if anchor.publication_status != PublicationStatus.PUBLISHED:
             raise GenerationPolicyError(
                 f"anchor {anchor.anchor_id!r} must be PUBLISHED (got {anchor.publication_status})"
             )
         if anchor.rights_status not in ALLOWED_ANCHOR_RIGHTS:
-            raise GenerationPolicyError(
-                f"anchor {anchor.anchor_id!r} has non-permissive rights {anchor.rights_status}"
-            )
+            raise GenerationPolicyError(f"anchor {anchor.anchor_id!r} has non-permissive rights {anchor.rights_status}")
         if not isinstance(anchor.excerpt, str) or not anchor.excerpt.strip():
             raise GenerationPolicyError(f"anchor {anchor.anchor_id!r} has empty excerpt")
 

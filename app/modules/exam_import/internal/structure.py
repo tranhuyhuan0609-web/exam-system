@@ -13,9 +13,7 @@ from app.contracts.enums import RightsStatus
 
 HEADER_PROXIMITY_THRESHOLD_PT = 120.0
 HEADER_EXPANSION_PT = 70.0
-BRANDED_PDF_ALLOWED_RIGHTS: frozenset[RightsStatus] = frozenset(
-    {RightsStatus.OWNED, RightsStatus.ALLOWED_DERIVATIVE}
-)
+BRANDED_PDF_ALLOWED_RIGHTS: frozenset[RightsStatus] = frozenset({RightsStatus.OWNED, RightsStatus.ALLOWED_DERIVATIVE})
 
 
 class ExamImportStatus(StrEnum):
@@ -182,9 +180,7 @@ def validate_exam_import_structure(
         and session.expected_total_points is not None
         and abs(rounded_total - session.expected_total_points) > 1e-4
     ):
-        errors.append(
-            f"total points {rounded_total} != expected {session.expected_total_points}"
-        )
+        errors.append(f"total points {rounded_total} != expected {session.expected_total_points}")
 
     return StructureValidationReport(
         valid=not errors,

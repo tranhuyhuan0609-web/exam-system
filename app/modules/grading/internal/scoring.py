@@ -196,9 +196,7 @@ def grade_item(item: GradingItemInput) -> ItemGradeResult:
         correct_map = item.answer_key.sub_items
         student_map = item.student_response.sub_answers
         match_count = sum(
-            1
-            for k in _VALID_TF_KEYS
-            if k in student_map and k in correct_map and student_map[k] == correct_map[k]
+            1 for k in _VALID_TF_KEYS if k in student_map and k in correct_map and student_map[k] == correct_map[k]
         )
         raw_pts = TF4_SCORING_MAP.get(match_count, Decimal("0.00"))
         earned = (raw_pts * item.max_points).quantize(Decimal("0.01"))
@@ -262,4 +260,3 @@ def grade_assessment(items: Sequence[GradingItemInput]) -> AssessmentGradeResult
         max_score=max_score,
         item_results=results,
     )
-

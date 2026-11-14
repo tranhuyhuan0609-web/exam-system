@@ -183,9 +183,7 @@ def extract_zip_safely(
                 while chunk := src_stream.read(65536):
                     total_written += len(chunk)
                     if total_written > policy.max_total_uncompressed_bytes:
-                        raise ArchiveSecurityViolationError(
-                            "ZIP_TOTAL_SIZE_EXCEEDED: actual stream exceeds limit"
-                        )
+                        raise ArchiveSecurityViolationError("ZIP_TOTAL_SIZE_EXCEEDED: actual stream exceeds limit")
                     dst_file.write(chunk)
             extracted.append(dest_path)
 

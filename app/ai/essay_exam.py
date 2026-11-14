@@ -797,26 +797,6 @@ class _WatermarkRedactor:
             self._doc = None
 
 
-_ROW_TOLERANCE = 5  # thousandths of the page height: fragments this close at the top share a visual row
-
-
-def _in_reading_order(lines: list[PdfLine]) -> list[PdfLine]:
-    """Rows top to bottom, each row left to right.
-
-    A row is anchored on its first (topmost) fragment, so two fragments of one visual row are never split
-    by where a fixed bucket boundary happens to fall, and rows do not drift down the page by chaining.
-    """
-    ordered: list[PdfLine] = []
-    row: list[PdfLine] = []
-    for ln in sorted(lines, key=lambda item: (item.ymin, item.xmin)):
-        if row and ln.ymin - row[0].ymin > _ROW_TOLERANCE:
-            ordered.extend(sorted(row, key=lambda item: item.xmin))
-            row = []
-        row.append(ln)
-    ordered.extend(sorted(row, key=lambda item: item.xmin))
-    return ordered
-
-
 def _extract_pdf_lines(reader: PDFEngineAdapter) -> tuple[list[PdfLine], list[PageGeometry]]:
     """Step 1: Use the adapter's `rich_lines` to collect positioned lines in reading order,
     stripping headers, footers, and light watermarks."""
@@ -858,7 +838,8 @@ def _extract_pdf_lines(reader: PDFEngineAdapter) -> tuple[list[PdfLine], list[Pa
                 )
             )
 
-        page_lines = _in_reading_order(page_lines)
+        # Sort by vertical position (bucketed by 6 units ~ 0.6% page height) then horizontal position
+        page_lines.sort(key=lambda l: (l.ymin // 6, l.xmin))  # noqa: E741
 
         # Merge horizontally adjacent fragments on the same visual line
         merged: list[PdfLine] = []

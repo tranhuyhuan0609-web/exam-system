@@ -77,9 +77,7 @@ def rank_next_step_recommendations(
         if node.taxonomy_node_id in dismissed_node_ids:
             continue
 
-        weak_prereqs = tuple(
-            pid for pid in node.prerequisite_ids if mastery_by_id.get(pid, 1.0) < 0.60
-        )
+        weak_prereqs = tuple(pid for pid in node.prerequisite_ids if mastery_by_id.get(pid, 1.0) < 0.60)
         mastery_deficit = max(0.0, 1.0 - max(0.0, min(1.0, node.mastery_estimate)))
         error_count = len(node.unresolved_question_ids)
 

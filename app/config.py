@@ -85,10 +85,14 @@ class Settings(BaseSettings):
     # AI import (Gemini). Supports multiple keys for rotation (comma/semicolon/newline-separated).
     gemini_api_key: str = ""
     gemini_api_keys: str = ""
-    gemini_models: str = "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.5-flash,gemini-3.6-flash,gemini-3.8-flash"  # noqa: E501
+    gemini_models: str = (
+        "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.5-flash,gemini-3.6-flash,gemini-3.8-flash"  # noqa: E501
+    )
     # Reading exam pages (transcription): cheaper models first. Free quotas are per model, so several also
     # mean more free requests a day. Thinking is billed as output: little of it for transcription.
-    gemini_extract_models: str = "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.5-flash,gemini-3.6-flash,gemini-3.8-flash"  # noqa: E501
+    gemini_extract_models: str = (
+        "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.5-flash,gemini-3.6-flash,gemini-3.8-flash"  # noqa: E501
+    )
     gemini_extract_thinking: str = ""
     # LibreOffice binary used to turn .docx (MathType, Word shapes) into PDF.
     soffice_path: str = "soffice"
@@ -96,6 +100,7 @@ class Settings(BaseSettings):
     @property
     def effective_soffice_path(self) -> str:
         from app.ai.extract_engine import find_soffice
+
         return find_soffice(self.soffice_path)
 
     @model_validator(mode="after")
@@ -119,6 +124,7 @@ class Settings(BaseSettings):
             if not self.session_https_only:
                 self.session_https_only = True
         return self
+
     tessdata_dir: str = ""  # Tesseract language data (vie): enables OCR of scanned library PDFs
 
     # Question crawler (app/pipeline): Kafka carries raw pages, MongoDB keeps them (Bronze).

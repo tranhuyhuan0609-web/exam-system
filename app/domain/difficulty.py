@@ -110,4 +110,3 @@ def classify_difficulty(
         return "UNDERSTANDING"
 
     return "RECOGNITION"
-

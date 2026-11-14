@@ -133,6 +133,10 @@ def test_generated_files_and_k6_script_do_not_leak_defaults() -> None:
     assert "data/" in ignore and "sessions.json" in ignore
     k6 = (load_dir / "k6_exam_5000ccu.js").read_text(encoding="utf-8")
     assert "staging-api" not in k6 and "https://" not in k6.split("API_BASE_URL is required")[0]
-    assert "dev-load-test-secret" not in (load_dir / "seed_attempts.py").read_text(encoding="utf-8").split(
-        "_RETIRED_DEFAULT_SECRET = ", 1
-    )[1].split("\n", 1)[1]
+    assert (
+        "dev-load-test-secret"
+        not in (load_dir / "seed_attempts.py")
+        .read_text(encoding="utf-8")
+        .split("_RETIRED_DEFAULT_SECRET = ", 1)[1]
+        .split("\n", 1)[1]
+    )

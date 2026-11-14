@@ -67,6 +67,7 @@ def parse(html: str, url: str) -> ParsedPage:
         else:
             # Multiple Choice: 4 options
             all_opts = [correct_ans, *incorrect_answers]
+
             # Deterministic pseudo-random shuffle based on question hash so order is stable
             def opt_rank(opt: str) -> str:
                 return hashlib.sha256(f"{question_text}:{opt}".encode()).hexdigest()  # noqa: B023
@@ -76,11 +77,13 @@ def parse(html: str, url: str) -> ParsedPage:
             choices = []
             for i, opt in enumerate(sorted_opts):
                 letter = letters[i] if i < len(letters) else str(i)
-                choices.append({
-                    "id": letter,
-                    "content": opt,
-                    "is_correct": opt == correct_ans,
-                })
+                choices.append(
+                    {
+                        "id": letter,
+                        "content": opt,
+                        "is_correct": opt == correct_ans,
+                    }
+                )
             q_type = "MULTIPLE_CHOICE"
 
         stable_id = f"opentdb-{hashlib.sha1(f'{category}:{question_text}'.encode()).hexdigest()[:14]}"

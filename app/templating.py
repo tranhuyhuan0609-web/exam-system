@@ -82,6 +82,7 @@ def _format_q_content(content: str) -> str:
     if not content:
         return ""
     import html
+
     lines = content.splitlines()
     out = []
     table_lines = []

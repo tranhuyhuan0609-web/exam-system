@@ -34,9 +34,7 @@ def split_study_guide_and_questions(full_text: str) -> dict[str, Any]:
         q_raw = full_text
 
     # 2. Tách phần "Đáp án / Hướng dẫn chấm" nếu nằm chung ở cuối file (như HSG-29-2.pdf)
-    ans_split = re.split(
-        r"\n\s*(?:ĐÁP ÁN|HƯỚNG DẪN CHẤM|BÀI GIẢI)\s*\n", q_raw, maxsplit=1, flags=re.IGNORECASE
-    )
+    ans_split = re.split(r"\n\s*(?:ĐÁP ÁN|HƯỚNG DẪN CHẤM|BÀI GIẢI)\s*\n", q_raw, maxsplit=1, flags=re.IGNORECASE)
     exam_part = ans_split[0].strip()
     sol_part = ans_split[1].strip() if len(ans_split) > 1 else ""
     inline_solutions = _map_solutions_by_number(sol_part) if sol_part else {}
@@ -69,13 +67,15 @@ def _parse_general_questions(text: str, solutions_map: dict[str, str]) -> list[d
     for i in range(1, len(parts), 3):
         header, q_num, body = parts[i].strip(), parts[i + 1].strip(), parts[i + 2].strip()
         body = re.split(r"[-—_]*\s*HẾT\s*[-—_]*|Họ và tên thí sinh", body, flags=re.I)[0].strip()
-        items.append({
-            "number": q_num,
-            "question_type": "ESSAY",
-            "header": header,
-            "content": body,
-            "solution": solutions_map.get(q_num, ""),
-        })
+        items.append(
+            {
+                "number": q_num,
+                "question_type": "ESSAY",
+                "header": header,
+                "content": body,
+                "solution": solutions_map.get(q_num, ""),
+            }
+        )
     return items
 
 
@@ -97,4 +97,3 @@ def _parse_gdpt2018_sections(text: str) -> list[dict[str, Any]]:
     for m in re.finditer(r"Câu\s+(\d+)\s*:\s*(.*?)(?=\n\s*Câu\s+\d+\s*:|-*HẾT-*|$)", sa_raw, re.S):
         items.append({"question_type": "SHORT_ANSWER", "number": m.group(1), "content": m.group(2).strip()})
     return items
-

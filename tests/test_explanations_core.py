@@ -325,7 +325,8 @@ def test_katex_guard_fails_closed_on_non_strings(bad: object) -> None:
 
 def test_solution_draft_checks_order_empty_steps_and_final_answer() -> None:
     swapped = StepByStepSolutionDraft(
-        "r", "q",
+        "r",
+        "q",
         (
             SolutionStep(SolutionSectionKind.TRANSFORM, "a"),
             SolutionStep(SolutionSectionKind.METHOD, "b"),

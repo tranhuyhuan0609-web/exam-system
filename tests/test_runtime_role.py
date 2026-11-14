@@ -14,7 +14,7 @@ from app.platform.runtime_login import ensure_runtime_login
 from app.platform.tenancy import DbRole
 
 TEST_LOGIN = "ulp_api_pytest"
-TEST_PASSWORD = "p'ss \"quoted\" $1"  # quoting must survive the role DDL
+TEST_PASSWORD = 'p\'ss "quoted" $1'  # quoting must survive the role DDL
 
 
 def run(coro):
@@ -78,7 +78,10 @@ def runtime_login():
 async def _drop_login(url: str) -> None:
     parsed = make_url(url)
     conn = await asyncpg.connect(
-        user=parsed.username, password=parsed.password, host=parsed.host, port=parsed.port or 5432,
+        user=parsed.username,
+        password=parsed.password,
+        host=parsed.host,
+        port=parsed.port or 5432,
         database=parsed.database,
     )
     try:
@@ -91,7 +94,11 @@ async def _drop_login(url: str) -> None:
 def test_runtime_login_is_unprivileged_and_inherits_only_the_api_role(runtime_login):
     row = run(_attributes())
     assert (row["rolcanlogin"], row["rolsuper"], row["rolbypassrls"], row["rolcreaterole"], row["rolcreatedb"]) == (
-        True, False, False, False, False,
+        True,
+        False,
+        False,
+        False,
+        False,
     )
     memberships = run(_memberships())
     assert memberships == {role.value: (role is DbRole.APP_RW) for role in DbRole}, "inherit ulp_app_rw only"
@@ -118,7 +125,10 @@ async def _memberships() -> dict[str, bool]:
 def test_runtime_login_connects_and_is_confined(runtime_login):
     async def scenario():
         conn = await asyncpg.connect(
-            user=TEST_LOGIN, password=TEST_PASSWORD, host=runtime_login.host, port=runtime_login.port or 5432,
+            user=TEST_LOGIN,
+            password=TEST_PASSWORD,
+            host=runtime_login.host,
+            port=runtime_login.port or 5432,
             database=runtime_login.database,
         )
         try:

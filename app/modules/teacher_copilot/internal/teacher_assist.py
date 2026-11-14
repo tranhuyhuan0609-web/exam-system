@@ -106,9 +106,7 @@ def generate_class_copilot_summary(
             if opt:
                 distractor_counts[opt] = distractor_counts.get(opt, 0) + 1
         top_distractor = (
-            min(distractor_counts.items(), key=lambda kv: (-kv[1], kv[0]))[0]
-            if distractor_counts
-            else None
+            min(distractor_counts.items(), key=lambda kv: (-kv[1], kv[0]))[0] if distractor_counts else None
         )
         summary = (
             f"Chủ đề {tax_id}: {len(students)} học sinh sai ({len(items)} lượt), "

@@ -216,9 +216,7 @@ def validate_solution_draft(draft: StepByStepSolutionDraft) -> SolutionValidatio
         SolutionSectionKind.CONCLUSION,
     ]
     if kinds_present != expected_order:
-        errors.append(
-            "steps must appear cleanly in order METHOD -> TRANSFORM -> SUBSTITUTION -> CONCLUSION"
-        )
+        errors.append("steps must appear cleanly in order METHOD -> TRANSFORM -> SUBSTITUTION -> CONCLUSION")
 
     for step in draft.steps:
         if not isinstance(step.body, str) or not step.body.strip():

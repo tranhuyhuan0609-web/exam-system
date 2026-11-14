@@ -332,9 +332,7 @@ def test_admin_upload_pro_toggle_tags_job_questions_and_exam_as_pro_original(adm
             }
         ]
         questions = await publish_drafts(s, job, [0], verified=True)
-        exam = await create_exam(
-            s, job, questions, title="Đề Độc Quyền 01", minutes=50, published=True, user_id=None
-        )
+        exam = await create_exam(s, job, questions, title="Đề Độc Quyền 01", minutes=50, published=True, user_id=None)
         return questions[0].id, exam.id
 
     qid, eid = db(_publish)
@@ -346,4 +344,3 @@ def test_admin_upload_pro_toggle_tags_job_questions_and_exam_as_pro_original(adm
         ExamOriginType.ORIGINAL,
         5,
     )
-

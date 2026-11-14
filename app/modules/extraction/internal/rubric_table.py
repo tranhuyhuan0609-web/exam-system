@@ -146,8 +146,6 @@ def parse_three_column_rubric(
 
     total = sum((it.points for it in items), Decimal("0"))
     if expected_total_points is not None and total != expected_total_points:
-        warnings.append(
-            f"Rubric points sum to {total}, expected {expected_total_points}"
-        )
+        warnings.append(f"Rubric points sum to {total}, expected {expected_total_points}")
 
     return RubricParseReport(rows=tuple(items), total_points=total, warnings=tuple(warnings))

@@ -2769,6 +2769,7 @@ class QuestionItemType(str, Enum):
 
 class NumericParsePolicy(BaseModel):
     """Chính sách đọc câu trả lời ngắn (Phần III THPTQG 2025+) chống nhầm dấu chấm phân cách hàng nghìn."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     decimal_sep: Literal["COMMA_OR_DOT", "COMMA_ONLY", "DOT_ONLY"] = "COMMA_OR_DOT"
@@ -2791,6 +2792,7 @@ class ProvenanceContract(BaseModel):
     - Nếu từ DOCUMENT_IMPORT / DRIVE_SYNC: bắt buộc có document_version_id, page_no, bbox.
     - Nếu từ WEB_CRAWL: bắt buộc có source_url và raw_html_sha256.
     """
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     document_version_id: Optional[UUID] = None
@@ -2812,6 +2814,7 @@ class QuestionOptionContract(BaseModel):
 
 class QuestionCandidateContract(BaseModel):
     """Hợp đồng đầu ra thống nhất cho mọi bộ Parser (A02 Web Crawler, A03 Drive, A07 Exam Extractor)."""
+
     model_config = ConfigDict(extra="forbid")
 
     tenant_id: UUID
@@ -2844,6 +2847,7 @@ class QuestionCandidateContract(BaseModel):
 
 class AssessmentSnapshotPublicItem(BaseModel):
     """Cấu trúc câu hỏi trong Snapshot công khai (TUYỆT ĐỐI KHÔNG CHỨA ĐÁP ÁN)."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     question_version_id: UUID
@@ -2856,6 +2860,7 @@ class AssessmentSnapshotPublicItem(BaseModel):
 
 class AssessmentSnapshotPublicContract(BaseModel):
     """Đóng băng vào assessment_versions.structure_snapshot_json (ADR-005)."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     assessment_version_id: UUID
@@ -2868,6 +2873,7 @@ class AssessmentSnapshotPublicContract(BaseModel):
 
 class TelemetryCorrelationContract(BaseModel):
     """Ngữ cảnh quan sát xuyên module chuẩn W3C Trace Context (Khắc phục AUD-014)."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     correlation_id: str = Field(min_length=8, max_length=100)
@@ -2882,6 +2888,7 @@ class TelemetryCorrelationContract(BaseModel):
 
 class AutosaveRequestContract(BaseModel):
     """Canonical Autosave Contract có Optimistic Concurrency & Payload Hash (Khắc phục AUD-010)."""
+
     model_config = ConfigDict(extra="forbid")
 
     client_sequence: int = Field(ge=1)
@@ -2973,9 +2980,7 @@ class BBoxRect:
         return BBoxRect(self.x0 - pad, self.y0 - pad, self.x1 + pad, self.y1 + pad)
 
     def intersects(self, other: "BBoxRect") -> bool:
-        return not (
-            self.x1 < other.x0 or self.x0 > other.x1 or self.y1 < other.y0 or self.y0 > other.y1
-        )
+        return not (self.x1 < other.x0 or self.x0 > other.x1 or self.y1 < other.y0 or self.y0 > other.y1)
 
     def overlap_ratio(self, other: "BBoxRect") -> float:
         if not self.intersects(other) or self.area <= 0:
@@ -3167,7 +3172,8 @@ class VietnameseExamDocumentProcessor:
                     raw_drawing_rects, pad=config.cluster_padding_pt
                 )
                 figure_boxes = [
-                    b for b in merged_candidates
+                    b
+                    for b in merged_candidates
                     if b.width >= config.min_figure_width
                     and b.height >= config.min_figure_height
                     and not is_inside_any_table(b)
@@ -3308,9 +3314,7 @@ class ThreeTierDeduplicationAndPairingEngine:
         return replaced.lower()
 
     @classmethod
-    def compute_content_and_structural_hashes(
-        cls, stem_md: str, options_md: List[str]
-    ) -> Tuple[str, str]:
+    def compute_content_and_structural_hashes(cls, stem_md: str, options_md: List[str]) -> Tuple[str, str]:
         norm_stem = cls.normalize_vn_text(stem_md)
         norm_opts = sorted(cls.normalize_vn_text(opt) for opt in options_md)
         canonical_full = f"{norm_stem}||{'|'.join(norm_opts)}"
@@ -3372,8 +3376,29 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 ALLOWED_SYMPY_NAMES = {
-    "sqrt", "sin", "cos", "tan", "asin", "acos", "atan", "log", "ln", "exp",
-    "Abs", "pi", "E", "Rational", "x", "y", "z", "t", "n", "a", "b", "c", "k",
+    "sqrt",
+    "sin",
+    "cos",
+    "tan",
+    "asin",
+    "acos",
+    "atan",
+    "log",
+    "ln",
+    "exp",
+    "Abs",
+    "pi",
+    "E",
+    "Rational",
+    "x",
+    "y",
+    "z",
+    "t",
+    "n",
+    "a",
+    "b",
+    "c",
+    "k",
 }
 MAX_EXPR_LEN = 500
 IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z_0-9]*")
@@ -3407,8 +3432,10 @@ class SymPySandboxWorker:
             return {"ok": False, "error": err_code}
 
         import sympy as sp
+
         try:
             from sympy.parsing.sympy_parser import parse_expr, standard_transformations
+
             glob: Dict[str, Any] = {}
             exec("from sympy import *", glob)
             glob["__builtins__"] = {}
@@ -3768,25 +3795,25 @@ class FSRSState:
 class AdaptiveMasteryFSRSAndIRTEngine:
     # Đầy đủ 19 trọng số chuẩn của FSRS v5 (W[0] .. W[18])
     W: Tuple[float, ...] = (
-        0.40255,   # w0: S0(Again)
-        1.18385,   # w1: S0(Hard)
-        3.17300,   # w2: S0(Good)
+        0.40255,  # w0: S0(Again)
+        1.18385,  # w1: S0(Hard)
+        3.17300,  # w2: S0(Good)
         15.69105,  # w3: S0(Easy)
-        7.19490,   # w4: D0 base
-        0.53450,   # w5: D0 exponent
-        1.46040,   # w6: D delta
-        0.00460,   # w7: D mean reversion weight
-        1.54575,   # w8: Recall stability base
-        0.11920,   # w9: Recall stability S power
-        1.01925,   # w10: Recall stability R factor
-        1.93950,   # w11: Forget stability base
-        0.11000,   # w12: Forget stability D power
-        0.29605,   # w13: Forget stability S power
-        2.26980,   # w14: Forget stability R factor
-        0.23150,   # w15: Hard penalty
-        2.98980,   # w16: Easy bonus
-        0.51655,   # w17: Short-term stability factor
-        0.66210,   # w18: Short-term stability offset
+        7.19490,  # w4: D0 base
+        0.53450,  # w5: D0 exponent
+        1.46040,  # w6: D delta
+        0.00460,  # w7: D mean reversion weight
+        1.54575,  # w8: Recall stability base
+        0.11920,  # w9: Recall stability S power
+        1.01925,  # w10: Recall stability R factor
+        1.93950,  # w11: Forget stability base
+        0.11000,  # w12: Forget stability D power
+        0.29605,  # w13: Forget stability S power
+        2.26980,  # w14: Forget stability R factor
+        0.23150,  # w15: Hard penalty
+        2.98980,  # w16: Easy bonus
+        0.51655,  # w17: Short-term stability factor
+        0.66210,  # w18: Short-term stability offset
     )
     DECAY: float = -0.5
     FACTOR: float = 19.0 / 81.0  # Đảm bảo R(t=S, S) = 0.90
@@ -3845,7 +3872,9 @@ class AdaptiveMasteryFSRSAndIRTEngine:
             s_short = prev_s * math.exp(cls.W[17] * (rating - 3 + cls.W[18]))
             new_s = max(0.1, s_short)
             lapses = state.lapses + (1 if rating == 1 else 0)
-            return FSRSState(round(new_s, 4), round(new_d, 4), state.reps + 1, lapses), cls.next_interval_days(new_s, request_retention)
+            return FSRSState(round(new_s, 4), round(new_d, 4), state.reps + 1, lapses), cls.next_interval_days(
+                new_s, request_retention
+            )
 
         r = cls.compute_retrievability(elapsed_days, prev_s)
 
@@ -4078,6 +4107,7 @@ class PermittedWebCrawlerEngine:
         nhưng ở tầng TLS vẫn truyền `server_hostname=hostname` để xác thực chứng chỉ SSL và SNI chuẩn xác.
         """
         import ssl
+
         raw_sock = socket.create_connection((pinned_ip, port), timeout=timeout_sec)
         if not use_tls:
             return raw_sock
@@ -4342,8 +4372,16 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 class PIICryptoShreddingService:
     SENSITIVE_AUDIT_KEYS = {
-        "email", "raw_email", "plaintext_email", "guardian_email",
-        "password", "phone", "phone_number", "full_name", "display_name", "cccd"
+        "email",
+        "raw_email",
+        "plaintext_email",
+        "guardian_email",
+        "password",
+        "phone",
+        "phone_number",
+        "full_name",
+        "display_name",
+        "cccd",
     }
 
     @staticmethod
@@ -4384,7 +4422,9 @@ class PIICryptoShreddingService:
         return nonce + aesgcm.encrypt(nonce, user_dek, aad)
 
     @staticmethod
-    def unwrap_dek_with_tenant_kek(tenant_kek: bytes, wrapped_dek_blob: Optional[bytes], user_id: UUID) -> Optional[bytes]:
+    def unwrap_dek_with_tenant_kek(
+        tenant_kek: bytes, wrapped_dek_blob: Optional[bytes], user_id: UUID
+    ) -> Optional[bytes]:
         if wrapped_dek_blob is None:
             return None
         aesgcm = AESGCM(tenant_kek)

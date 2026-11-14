@@ -373,6 +373,7 @@ DANH SÁCH CÂU HỎI CẦN QUÉT:
 # 1. BỘ CHUẨN HÓA ĐÁP ÁN ĐỂ SO SÁNH ĐỒNG THUẬN 2 LẦN AI GIẢI (DOUBLE-BLIND)
 # =====================================================================
 
+
 def canonicalize_answer(raw_ans: str | None, q_type: str | Any) -> str:
     """Chuẩn hóa đáp án từ các định dạng văn bản tự do về định dạng so sánh chuẩn."""
     if not raw_ans:
@@ -466,6 +467,7 @@ def evaluate_double_blind_consensus(
 # 2. ANTI-EXPLOSION TOPIC GUARDRAIL & AUTO-ATTACH HELPER
 # =====================================================================
 
+
 async def get_or_create_subcategory(session: AsyncSession, parent_id: int, name: str) -> Any:
     """Anti-Explosion Guardrail:
     Khi AI đề xuất tên chủ đề mới, so khớp mờ (similarity >= 0.85) với các chủ đề hiện có
@@ -478,9 +480,7 @@ async def get_or_create_subcategory(session: AsyncSession, parent_id: int, name:
     name_lower = name_clean.lower()
 
     # 1. Lấy tất cả chủ đề con hiện tại dưới parent_id
-    existing_all = list((await session.scalars(
-        select(Category).where(Category.parent_id == parent_id)
-    )).all())
+    existing_all = list((await session.scalars(select(Category).where(Category.parent_id == parent_id))).all())
 
     # 2. So khớp chính xác
     for cat in existing_all:
@@ -491,7 +491,9 @@ async def get_or_create_subcategory(session: AsyncSession, parent_id: int, name:
     for cat in existing_all:
         ratio = difflib.SequenceMatcher(None, cat.name.strip().lower(), name_lower).ratio()
         if ratio >= 0.85:
-            log.info("Anti-explosion: Gộp chủ đề mới '%s' vào nhánh có sẵn '%s' (độ khớp: %.2f)", name_clean, cat.name, ratio)  # noqa: E501
+            log.info(
+                "Anti-explosion: Gộp chủ đề mới '%s' vào nhánh có sẵn '%s' (độ khớp: %.2f)", name_clean, cat.name, ratio
+            )  # noqa: E501
             return cat
 
     # 4. Tạo chủ đề con mới an toàn

@@ -89,9 +89,7 @@ class TaxonomyNode(Base):
         nullable=False,
         server_default=SYSTEM_PUBLIC_TENANT_ID_SQL,
     )
-    visibility_scope: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="SYSTEM_PUBLIC"
-    )
+    visibility_scope: Mapped[str] = mapped_column(String(20), nullable=False, server_default="SYSTEM_PUBLIC")
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("taxonomy_nodes.id", ondelete="RESTRICT"), nullable=True
     )
@@ -150,4 +148,3 @@ class TaxonomyAlias(Base):
     taxonomy_node_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     alias_name: Mapped[str] = mapped_column(String(255), nullable=False)
     normalized_alias: Mapped[str] = mapped_column(String(255), nullable=False)
-

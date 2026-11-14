@@ -31,4 +31,3 @@ __all__ = [
     "map_curriculum_to_taxonomy",
     "seed_kntt_math_physics",
 ]
-

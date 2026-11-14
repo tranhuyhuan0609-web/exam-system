@@ -102,7 +102,10 @@ def test_empty_event_id_is_rejected() -> None:
 def test_no_events_gives_zero_rates_without_division_errors() -> None:
     rollup = _rollup([])
     assert (rollup.dau_count, rollup.pipeline_yield_rate, rollup.manual_edit_rate, rollup.avg_mastery_gain) == (
-        0, 0.0, 0.0, 0.0,
+        0,
+        0.0,
+        0.0,
+        0.0,
     )
 
 

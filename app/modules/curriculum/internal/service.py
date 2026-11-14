@@ -227,4 +227,3 @@ async def list_curriculum_nodes(
     )
     rows = (await session.scalars(stmt)).all()
     return [_to_node_record(r) for r in rows]
-

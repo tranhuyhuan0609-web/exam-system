@@ -225,9 +225,7 @@ def finalize_upload_session(
 
     norm_mime = _normalize_mime(observed_mime_type)
     if norm_mime != session.declared_mime_type:
-        raise UploadValidationError(
-            f"observed mime {norm_mime} mismatches declared {session.declared_mime_type}"
-        )
+        raise UploadValidationError(f"observed mime {norm_mime} mismatches declared {session.declared_mime_type}")
 
     if isinstance(observed_size_bytes, bool) or not isinstance(observed_size_bytes, int):
         raise UploadValidationError("observed size must be an integer")

@@ -81,6 +81,7 @@ class QuestionItemType(str, Enum):
 
 class NumericParsePolicy(BaseModel):
     """Chính sách đọc câu trả lời ngắn (Phần III THPTQG 2025+) chống nhầm dấu chấm phân cách hàng nghìn."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     decimal_sep: Literal["COMMA_OR_DOT", "COMMA_ONLY", "DOT_ONLY"] = "COMMA_OR_DOT"
@@ -103,6 +104,7 @@ class ProvenanceContract(BaseModel):
     - Nếu từ DOCUMENT_IMPORT / DRIVE_SYNC: bắt buộc có document_version_id, page_no, bbox.
     - Nếu từ WEB_CRAWL: bắt buộc có source_url và raw_html_sha256.
     """
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     document_version_id: Optional[UUID] = None
@@ -124,6 +126,7 @@ class QuestionOptionContract(BaseModel):
 
 class QuestionCandidateContract(BaseModel):
     """Hợp đồng đầu ra thống nhất cho mọi bộ Parser (A02 Web Crawler, A03 Drive, A07 Exam Extractor)."""
+
     model_config = ConfigDict(extra="forbid")
 
     tenant_id: UUID
@@ -156,6 +159,7 @@ class QuestionCandidateContract(BaseModel):
 
 class AssessmentSnapshotPublicItem(BaseModel):
     """Cấu trúc câu hỏi trong Snapshot công khai (TUYỆT ĐỐI KHÔNG CHỨA ĐÁP ÁN)."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     question_version_id: UUID
@@ -168,6 +172,7 @@ class AssessmentSnapshotPublicItem(BaseModel):
 
 class AssessmentSnapshotPublicContract(BaseModel):
     """Đóng băng vào assessment_versions.structure_snapshot_json (ADR-005)."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     assessment_version_id: UUID
@@ -180,6 +185,7 @@ class AssessmentSnapshotPublicContract(BaseModel):
 
 class TelemetryCorrelationContract(BaseModel):
     """Ngữ cảnh quan sát xuyên module chuẩn W3C Trace Context (Khắc phục AUD-014)."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     correlation_id: str = Field(min_length=8, max_length=100)
@@ -194,6 +200,7 @@ class TelemetryCorrelationContract(BaseModel):
 
 class AutosaveRequestContract(BaseModel):
     """Canonical Autosave Contract có Optimistic Concurrency & Payload Hash (Khắc phục AUD-010)."""
+
     model_config = ConfigDict(extra="forbid")
 
     client_sequence: int = Field(ge=1)

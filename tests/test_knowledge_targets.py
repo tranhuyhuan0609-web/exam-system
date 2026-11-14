@@ -50,9 +50,7 @@ def test_single_source_of_truth_inheritance_and_hsg_isolation(db):
     async def _run(session):
         root = await create_category(session, "Vật lí 12", slug="lop-12_vat-li-lop-12")
         await seed_knowledge_architecture(session)
-        unit = await session.scalar(
-            select(KnowledgeUnit).where(KnowledgeUnit.code == "PHY12-KNTT-C1-B2")
-        )
+        unit = await session.scalar(select(KnowledgeUnit).where(KnowledgeUnit.code == "PHY12-KNTT-C1-B2"))
         assert unit is not None
 
         before_count = await session.scalar(select(func.count()).select_from(Question))
@@ -102,33 +100,25 @@ def test_single_source_of_truth_inheritance_and_hsg_isolation(db):
         assert after_count == before_count + 2  # Zero duplication
 
         # Check SGK_KNTT view for chapter PHY12-KNTT-C1 (parent chapter expands to child lesson PHY12-KNTT-C1-B2)
-        sgk_qs = await questions_for_target(
-            session, "SGK_KNTT", knowledge_unit_code="PHY12-KNTT-C1"
-        )
+        sgk_qs = await questions_for_target(session, "SGK_KNTT", knowledge_unit_code="PHY12-KNTT-C1")
         sgk_ids = {q.id for q in sgk_qs}
         assert q_multi.id in sgk_ids
         assert q_hsg.id not in sgk_ids  # HSG excluded from standard SGK practice
 
         # Check THPTQG view: automatically inherits q_multi from PHY12-KNTT-C1-B2, excludes q_hsg
-        thpt_qs = await questions_for_target(
-            session, "THPTQG", knowledge_unit_code="PHY12-KNTT-C1"
-        )
+        thpt_qs = await questions_for_target(session, "THPTQG", knowledge_unit_code="PHY12-KNTT-C1")
         thpt_ids = {q.id for q in thpt_qs}
         assert q_multi.id in thpt_ids
         assert q_hsg.id not in thpt_ids
 
         # Check DGTD_TSA view: includes q_multi via is_thinking_skill=True
-        tsa_qs = await questions_for_target(
-            session, "DGTD_TSA", knowledge_unit_code="PHY12-KNTT-C1"
-        )
+        tsa_qs = await questions_for_target(session, "DGTD_TSA", knowledge_unit_code="PHY12-KNTT-C1")
         tsa_ids = {q.id for q in tsa_qs}
         assert q_multi.id in tsa_ids
         assert q_hsg.id not in tsa_ids
 
         # Check HSG_TINH & chapter HSG helper: includes q_hsg and q_multi (since HSG now includes VD + VDC)
-        hsg_qs = await hsg_questions_for_unit(
-            session, knowledge_unit_code="PHY12-KNTT-C1"
-        )
+        hsg_qs = await hsg_questions_for_unit(session, knowledge_unit_code="PHY12-KNTT-C1")
         hsg_ids = {q.id for q in hsg_qs}
         assert q_hsg.id in hsg_ids
         assert q_multi.id in hsg_ids
@@ -186,9 +176,7 @@ def test_ai_publish_drafts_populates_2d_coordinates_and_target_tags(db):
         assert len(published) == 2
         q1, q2 = published[0], published[1]
 
-        unit = await session.scalar(
-            select(KnowledgeUnit).where(KnowledgeUnit.code == "PHY12-KNTT-C1-B2")
-        )
+        unit = await session.scalar(select(KnowledgeUnit).where(KnowledgeUnit.code == "PHY12-KNTT-C1-B2"))
         assert q1.knowledge_unit_id == unit.id
         assert q1.is_thinking_skill is True
         assert q1.access_tier == AccessTier.FREE
@@ -213,9 +201,7 @@ def test_question_bank_is_admin_only(db, make_user):
     async def _setup(session):
         root = await create_category(session, "Vật lí 12", slug="vat-li-12-bank")
         await seed_knowledge_architecture(session)
-        unit = await session.scalar(
-            select(KnowledgeUnit).where(KnowledgeUnit.code == "PHY12-KNTT-C1-B2")
-        )
+        unit = await session.scalar(select(KnowledgeUnit).where(KnowledgeUnit.code == "PHY12-KNTT-C1-B2"))
         session.add(
             Question(
                 root_id=root.id,
@@ -345,5 +331,3 @@ def test_admin_question_bank_3_part_toc_and_target_filter(db, make_user):
     assert "Phần 2: Kỳ thi quan trọng" in resp.text
     assert "Phần 3: Bồi dưỡng Học sinh giỏi" in resp.text
     assert "target:THPTQG" in resp.text
-
-

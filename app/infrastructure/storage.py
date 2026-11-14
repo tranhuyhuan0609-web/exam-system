@@ -98,9 +98,7 @@ class LocalStorage:
     def public_url(self, key: str) -> str:
         return "/media/" + _check_key(key)
 
-    def presigned_url(
-        self, key: str, expires_seconds: int = 60, download_filename: str | None = None
-    ) -> str | None:
+    def presigned_url(self, key: str, expires_seconds: int = 60, download_filename: str | None = None) -> str | None:
         return None
 
     def iter_keys(self):
@@ -171,6 +169,7 @@ class S3Storage:
 
     async def iter_stream(self, key: str, chunk_size: int = 64 * 1024):
         from minio.error import S3Error
+
         self._ensure_bucket()
         try:
             response = self.client.get_object(self.bucket, _check_key(key))
@@ -213,9 +212,7 @@ class S3Storage:
     def public_url(self, key: str) -> str:
         return f"{self.public_base}/{self.bucket}/{_check_key(key)}"
 
-    def presigned_url(
-        self, key: str, expires_seconds: int = 60, download_filename: str | None = None
-    ) -> str | None:
+    def presigned_url(self, key: str, expires_seconds: int = 60, download_filename: str | None = None) -> str | None:
         """Short-lived (default 60s) presigned S3 GET URL for private vault objects (exam-pro-vault / bronze-raw)."""
         self._ensure_bucket()
         headers = {}

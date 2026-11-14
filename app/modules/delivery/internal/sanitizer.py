@@ -116,9 +116,7 @@ def _sanitize_options(
         for display_idx, canonical_key in enumerate(opt_perm):
             matched = by_canonical_key.get(canonical_key.upper())
             if matched is None:
-                raise ValueError(
-                    f"Option key {canonical_key!r} referenced by permutation missing on question {q_id}"
-                )
+                raise ValueError(f"Option key {canonical_key!r} referenced by permutation missing on question {q_id}")
             content_raw = matched.get("content_json") if "content_json" in matched else matched
             sanitized.append(
                 SanitizedOptionContract(
@@ -158,12 +156,8 @@ def _sanitize_options(
     )
     return tuple(
         SanitizedOptionContract(
-            display_label=(
-                _DISPLAY_CHOICE_LABELS[idx] if idx < len(_DISPLAY_CHOICE_LABELS) else str(idx + 1)
-            ),
-            content_json=_sanitize_content_dict(
-                opt.get("content_json") if "content_json" in opt else opt
-            ),
+            display_label=(_DISPLAY_CHOICE_LABELS[idx] if idx < len(_DISPLAY_CHOICE_LABELS) else str(idx + 1)),
+            content_json=_sanitize_content_dict(opt.get("content_json") if "content_json" in opt else opt),
         )
         for idx, opt in enumerate(ordered_multi)
     )
