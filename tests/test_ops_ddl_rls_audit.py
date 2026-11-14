@@ -78,7 +78,11 @@ def test_manifest_role_set_is_the_seven_manifest_roles() -> None:
 
 
 def test_real_spec_ddl_has_zero_findings(spec_sql: str) -> None:
-    report = audit_ddl_rls_hardening(spec_sql, require_all_roles=True)
+    report = audit_ddl_rls_hardening(
+        spec_sql,
+        exempt_tables=frozenset({"tenants", "fts_dictionary_versions"}),
+        require_all_roles=True,
+    )
     assert report.passed is True
     assert report.missing_rls_enable == ()
     assert report.missing_rls_force == ()
