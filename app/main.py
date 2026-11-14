@@ -16,6 +16,7 @@ from app.db import SessionLocal
 from app.deps import LoginRequired, SessionDep, get_current_user
 from app.modules.access.router import router as access_router
 from app.modules.assets.router import router as assets_router
+from app.modules.authoring.router import router as authoring_router
 from app.modules.config.router import router as config_router
 from app.modules.content.router import router as content_router
 from app.modules.curriculum.router import router as curriculum_router
@@ -118,6 +119,7 @@ for _module_router in (
     access_router,
     privacy_router,
     content_router,
+    authoring_router,
 ):
     app.include_router(_module_router)
 

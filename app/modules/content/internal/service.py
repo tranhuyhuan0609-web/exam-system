@@ -310,6 +310,37 @@ async def create_next_version(
     return _version(row)
 
 
+async def set_draft_version_blocks(
+    session: AsyncSession,
+    version_id: uuid.UUID,
+    blocks: Sequence[ContentBlockDraft],
+    *,
+    title: str | None = None,
+    summary_md: str | None = None,
+) -> ContentVersionRecord:
+    """Replace the content of an editable DRAFT version; any other status is a conflict (fork instead)."""
+    version = await session.scalar(select(ContentVersion).where(ContentVersion.id == version_id).with_for_update())
+    if version is None:
+        raise ContentNotFoundError("content version not found")
+    item = await session.scalar(select(ContentItem).where(ContentItem.id == version.content_item_id))
+    if item is None:
+        raise ContentNotFoundError("content item not found")
+    try:
+        edited = edit_draft_blocks(_state(version, item), title=title, summary_md=summary_md, blocks=tuple(blocks))
+    except ContentStudioError as exc:
+        raise ContentConflictError(exc.code, str(exc)) from exc
+    row = (
+        await session.execute(
+            update(ContentVersion)
+            .where(ContentVersion.id == version_id)
+            .values(title=edited.title, summary_md=edited.summary_md or None, blocks_json=blocks_to_json(edited.blocks))
+            .returning(ContentVersion)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    return _version(row)
+
+
 def gate_reasons(item: ContentItem) -> list[str]:
     """Why `item` cannot be PUBLISHED yet (empty: the gate is met)."""
     reasons = []

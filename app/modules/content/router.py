@@ -18,7 +18,12 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import get_settings
-from app.modules.authoring.public import collect_asset_references, load_asset_catalog, validate_content_version
+from app.modules.authoring.public import (
+    collect_asset_references,
+    load_asset_catalog,
+    materialize_version_blocks,
+    validate_content_version,
+)
 from app.modules.content.internal.service import (
     ContentConflictError,
     ContentItemRecord,
@@ -298,6 +303,13 @@ async def post_publish_content_version(
                 validator=validator,
                 own_asset_ids=own,
                 correlation_id=correlation_id,
+            )
+            # The published blocks as rows (B02), in the same transaction as the freeze.
+            await materialize_version_blocks(
+                session,
+                tenant_id=actor.tenant_id,
+                version_id=result.version.id,
+                blocks=blocks_from_json(result.version.blocks),
             )
     except ContentNotFoundError as exc:
         return _problem(PlatformErrorCode.NOT_FOUND, str(exc), request, correlation_id)

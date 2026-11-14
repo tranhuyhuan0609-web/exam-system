@@ -18,6 +18,7 @@ from app.modules.content.internal.service import (
     get_content_version,
     list_content_versions,
     publish_version,
+    set_draft_version_blocks,
 )
 from app.modules.content.internal.versioning import (
     AssetCatalogEntry,
@@ -64,4 +65,5 @@ __all__ = [
     "list_content_versions",
     "publish_content_version",
     "publish_version",
+    "set_draft_version_blocks",
 ]
