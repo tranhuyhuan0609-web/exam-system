@@ -9,13 +9,19 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-import pymupdf
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.contracts.events import EventEnvelopeContract
-from app.infrastructure.pdf_engine import PDFEngineAdapter, PDFEngineError
+from app.infrastructure.pdf_engine import (
+    PDFEngineAdapter,
+    PDFEngineError,
+    Rect,
+    TextStamp,
+    slice_pdf,
+    stamp_pages,
+)
 from app.infrastructure.storage import Storage, get_bronze_storage
 from app.modules.assets.internal.access import (
     MAX_SIGNED_URL_TTL_SECONDS,
@@ -206,25 +212,26 @@ def _slice_pdf_preview_bytes(pdf_bytes: bytes, max_pages: int = PREVIEW_MAX_PAGE
         raise UploadValidationError("PDF must contain at least 1 page")
 
     take = min(max(1, max_pages), total_pages)
-    with pymupdf.open(stream=pdf_bytes, filetype="pdf") as src:
-        with pymupdf.open() as preview:
-            preview.insert_pdf(src, from_page=0, to_page=take - 1)
-            for idx, page in enumerate(preview, start=1):
-                rect = page.rect
-                banner = (
-                    f"PREVIEW ({idx}/{take} of {total_pages} pages) · "
-                    "Upgrade to PRO to unlock full document"
-                )
-                footer_rect = pymupdf.Rect(16, max(4, rect.height - 22), max(40, rect.width - 16), rect.height - 4)
-                page.draw_rect(footer_rect, color=(0.95, 0.96, 0.98), fill=(0.95, 0.96, 0.98))
-                page.insert_textbox(
-                    footer_rect,
-                    banner,
-                    fontsize=8.5,
-                    color=(0.45, 0.18, 0.05),
-                    align=pymupdf.TEXT_ALIGN_CENTER,
-                )
-            return preview.tobytes(garbage=3, deflate=True), total_pages
+    sliced = slice_pdf(pdf_bytes, 0, take - 1)
+
+    def _banner(index: int, width: float, height: float) -> list[TextStamp]:
+        banner = (
+            f"PREVIEW ({index + 1}/{take} of {total_pages} pages) · "
+            "Upgrade to PRO to unlock full document"
+        )
+        footer_rect = Rect(16, max(4, height - 22), max(40, width - 16), height - 4)
+        return [
+            TextStamp(
+                banner,
+                footer_rect,
+                8.5,
+                (0.45, 0.18, 0.05),
+                "center",
+                background=(0.95, 0.96, 0.98),
+            )
+        ]
+
+    return stamp_pages(sliced, _banner), total_pages
 
 
 def _verify_bytes_against_mime(*, raw_bytes: bytes, filename: str, expected_mime: str) -> None:

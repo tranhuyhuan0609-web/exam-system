@@ -8,7 +8,6 @@ import hashlib
 import time
 import uuid
 
-import pymupdf
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -22,6 +21,7 @@ from app.modules.outbox.internal.models import OutboxEvent
 from app.platform.auth_context import mint_hs256_token
 from app.platform.models import SYSTEM_PUBLIC_TENANT_ID, Tenant
 from app.platform.tenancy import DbRole, tenant_transaction
+from tests.pdf_fixtures import PdfSketch
 
 
 def run(coro):
@@ -29,11 +29,11 @@ def run(coro):
 
 
 def _make_pdf_bytes(num_pages: int = 5) -> bytes:
-    with pymupdf.open() as doc:
-        for idx in range(num_pages):
-            page = doc.new_page(width=400, height=600)
-            page.insert_text((50, 100), f"Exam Page {idx + 1} - Secret Solution Content")
-        return doc.tobytes()
+    sketch = PdfSketch()
+    for idx in range(num_pages):
+        page = sketch.new_page(width=400, height=600)
+        page.text(50, 100, f"Exam Page {idx + 1} - Secret Solution Content")
+    return sketch.tobytes()
 
 
 def _api_client() -> TestClient:

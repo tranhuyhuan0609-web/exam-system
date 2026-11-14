@@ -10,7 +10,6 @@ import time
 import uuid
 import zipfile
 
-import pymupdf
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -30,6 +29,7 @@ from app.modules.outbox.internal.models import OutboxEvent
 from app.platform.auth_context import mint_hs256_token
 from app.platform.models import Tenant
 from app.platform.tenancy import DbRole, tenant_transaction
+from tests.pdf_fixtures import PdfSketch
 
 
 def run(coro):
@@ -37,11 +37,11 @@ def run(coro):
 
 
 def _make_pdf_bytes(label: str = "Sample Exam", num_pages: int = 3) -> bytes:
-    with pymupdf.open() as doc:
-        for i in range(num_pages):
-            page = doc.new_page(width=400, height=600)
-            page.insert_text((50, 100), f"{label} - Page {i + 1}")
-        return doc.tobytes()
+    sketch = PdfSketch()
+    for i in range(num_pages):
+        page = sketch.new_page(width=400, height=600)
+        page.text(50, 100, f"{label} - Page {i + 1}")
+    return sketch.tobytes()
 
 
 def _make_xxe_docx_bytes() -> bytes:
