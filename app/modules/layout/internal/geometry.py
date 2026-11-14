@@ -43,9 +43,7 @@ class BBoxRect:
         return BBoxRect(self.x0 - pad, self.y0 - pad, self.x1 + pad, self.y1 + pad)
 
     def intersects(self, other: BBoxRect) -> bool:
-        return not (
-            self.x1 < other.x0 or self.x0 > other.x1 or self.y1 < other.y0 or self.y0 > other.y1
-        )
+        return not (self.x1 < other.x0 or self.x0 > other.x1 or self.y1 < other.y0 or self.y0 > other.y1)
 
     def overlap_ratio(self, other: BBoxRect) -> float:
         if self.area <= 0.0 or not self.intersects(other):

@@ -61,8 +61,14 @@ def extract_short_answer_value(text: str) -> str | None:
     if not text:
         return None
     patterns = [
-        re.compile(r"(?:đáp\s*số|kết\s*quả|đáp\s*án|vậy[^:=,\n]{0,30})\s*[:=]\s*(?:[a-zA-Z_]+\s*=\s*)?(-?\d+(?:[.,]\d+)?)\s*(?:%|[a-zA-Z/°^]+)?", re.I),  # noqa: E501
-        re.compile(r"(?:=|\b)\s*(-?\d+(?:[.,]\d+)?)\s*(?:m/s|mm/s|km/h|kg|g|m|cm|mm|s|giây|giờ|N|J|kJ|W|kW|V|A|mA|mol|L|lít|%|K|atm|Pa|oC|°C)\b", re.I),  # noqa: E501
+        re.compile(
+            r"(?:đáp\s*số|kết\s*quả|đáp\s*án|vậy[^:=,\n]{0,30})\s*[:=]\s*(?:[a-zA-Z_]+\s*=\s*)?(-?\d+(?:[.,]\d+)?)\s*(?:%|[a-zA-Z/°^]+)?",
+            re.I,
+        ),  # noqa: E501
+        re.compile(
+            r"(?:=|\b)\s*(-?\d+(?:[.,]\d+)?)\s*(?:m/s|mm/s|km/h|kg|g|m|cm|mm|s|giây|giờ|N|J|kJ|W|kW|V|A|mA|mol|L|lít|%|K|atm|Pa|oC|°C)\b",
+            re.I,
+        ),  # noqa: E501
         re.compile(r"(-?\d+(?:[.,]\d+)?)\s*$", re.I),
     ]
     for pat in patterns:
@@ -307,8 +313,7 @@ class UniversalExamAndMaterialIngestor:
 
             # Gom cụm nét vẽ Vector (height > 32 và width > 35)
             vector_boxes = [
-                r for r in page.cluster_drawings(x_tolerance=22, y_tolerance=22)
-                if r.height > 32 and r.width > 35
+                r for r in page.cluster_drawings(x_tolerance=22, y_tolerance=22) if r.height > 32 and r.width > 35
             ]
 
             # Gộp các box chồng lấn
@@ -319,8 +324,8 @@ class UniversalExamAndMaterialIngestor:
                 if page_idx == 0 and rect.y0 < 125 and rect.x0 < 240:
                     continue
 
-                fig_tag = f"[[FIG_P{page_idx+1}_{box_idx}]]"
-                fig_file = self.storage_dir / "figures" / f"{doc_id}_P{page_idx+1}_{box_idx}.png"
+                fig_tag = f"[[FIG_P{page_idx + 1}_{box_idx}]]"
+                fig_file = self.storage_dir / "figures" / f"{doc_id}_P{page_idx + 1}_{box_idx}.png"
 
                 pad_rect = fitz.Rect(
                     max(rect.x0 - 8, 0),
@@ -384,7 +389,9 @@ class UniversalExamAndMaterialIngestor:
             full_text,
             maxsplit=1,
         )
-        if len(theory_split) > 1 and any(k in theory_split[0] for k in ["Phương pháp", "Dạng ", "Lý thuyết", "Công thức"]):  # noqa: E501
+        if len(theory_split) > 1 and any(
+            k in theory_split[0] for k in ["Phương pháp", "Dạng ", "Lý thuyết", "Công thức"]
+        ):  # noqa: E501
             theory_block = theory_split[0].strip()
             questions_block = theory_split[1].strip()
             result["knowledge_article"] = self._parse_theory_block(theory_block)
@@ -392,7 +399,9 @@ class UniversalExamAndMaterialIngestor:
             questions_block = full_text
 
         # 4.2. KIỂM TRA XEM TRONG FILE CÓ PHẦN "ĐÁP ÁN / HƯỚNG DẪN CHẤM" Ở CUỐI KHÔNG (như HSG-29-2.pdf)
-        ans_split = re.split(r"\n\s*(?:ĐÁP ÁN|HƯỚNG DẪN CHẤM|BÀI GIẢI|Đáp án)\s*\n", questions_block, maxsplit=1, flags=re.IGNORECASE)  # noqa: E501
+        ans_split = re.split(
+            r"\n\s*(?:ĐÁP ÁN|HƯỚNG DẪN CHẤM|BÀI GIẢI|Đáp án)\s*\n", questions_block, maxsplit=1, flags=re.IGNORECASE
+        )  # noqa: E501
         exam_body = ans_split[0].strip()
         inline_solution_body = ans_split[1].strip() if len(ans_split) > 1 else ""
 
@@ -447,16 +456,18 @@ class UniversalExamAndMaterialIngestor:
 
             content_hash = hashlib.sha256(re.sub(r"\s+", " ", clean_body.lower()).encode()).hexdigest()
 
-            questions.append({
-                "question_number": q_num,
-                "question_type": "ESSAY_GROUP",
-                "header": header,
-                "content": clean_body,
-                "figures": figs,
-                "solution": re.sub(r"\[\[FIG_P\d+_\d+\]\]", "", sol_text).strip(),
-                "solution_figures": sol_figs,
-                "content_hash": content_hash,
-            })
+            questions.append(
+                {
+                    "question_number": q_num,
+                    "question_type": "ESSAY_GROUP",
+                    "header": header,
+                    "content": clean_body,
+                    "figures": figs,
+                    "solution": re.sub(r"\[\[FIG_P\d+_\d+\]\]", "", sol_text).strip(),
+                    "solution_figures": sol_figs,
+                    "content_hash": content_hash,
+                }
+            )
         return questions
 
     def parse_vietjack_study_guide(self, pdf_path: str) -> tuple[int, list[dict], dict]:
@@ -550,13 +561,13 @@ $$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline
                 {
                     "title": "Ví dụ minh họa 1 (Bài toán hai hộp bi chuyển tiếp)",
                     "problem": "Hộp thứ nhất có 3 viên bi xanh và 6 viên bi đỏ. Hộp thứ hai có 3 viên bi xanh và 7 viên bi đỏ. Lấy ngẫu nhiên 1 viên bi từ hộp thứ nhất chuyển sang hộp thứ hai, sau đó lấy ngẫu nhiên 2 viên bi từ hộp thứ hai. Biết rằng 2 viên bi lấy ra từ hộp thứ hai đều màu đỏ, tính xác suất viên bi chuyển từ hộp 1 sang cũng màu đỏ.",  # noqa: E501
-                    "solution": "• Gọi $B$ là biến cố: 'Viên bi chuyển từ hộp 1 sang hộp 2 có màu đỏ'. Khi đó $\\overline{B}$ là biến cố 'Viên bi chuyển sang có màu xanh'.\\n  Ta có: $P(B) = \\frac{6}{9} = \\frac{2}{3}$, $P(\\overline{B}) = \\frac{3}{9} = \\frac{1}{3}$.\\n\\n• Gọi $A$ là biến cố: 'Lấy được 2 viên bi đỏ từ hộp thứ hai'.\\n  - Nếu $B$ xảy ra: Hộp 2 lúc này có 3 xanh, 8 đỏ (tổng 11 viên). $P(A \\mid B) = \\frac{C_8^2}{C_{11}^2} = \\frac{28}{55}$.\\n  - Nếu $\\overline{B}$ xảy ra: Hộp 2 có 4 xanh, 7 đỏ (tổng 11 viên). $P(A \\mid \\overline{B}) = \\frac{C_7^2}{C_{11}^2} = \\frac{21}{55}$.\\n\\n• Áp dụng công thức Bayes, xác suất viên bi chuyển sang là màu đỏ khi biết 2 bi lấy sau màu đỏ là:\\n$$P(B \\mid A) = \\frac{P(B) P(A \\mid B)}{P(B) P(A \\mid B) + P(\\overline{B}) P(A \\mid \\overline{B})} = \\frac{\\frac{2}{3} \\cdot \\frac{28}{55}}{\\frac{2}{3} \\cdot \\frac{28}{55} + \\frac{1}{3} \\cdot \\frac{21}{55}} = \\frac{56}{56 + 21} = \\frac{8}{11} \\approx 0.727$$"  # noqa: E501
+                    "solution": "• Gọi $B$ là biến cố: 'Viên bi chuyển từ hộp 1 sang hộp 2 có màu đỏ'. Khi đó $\\overline{B}$ là biến cố 'Viên bi chuyển sang có màu xanh'.\\n  Ta có: $P(B) = \\frac{6}{9} = \\frac{2}{3}$, $P(\\overline{B}) = \\frac{3}{9} = \\frac{1}{3}$.\\n\\n• Gọi $A$ là biến cố: 'Lấy được 2 viên bi đỏ từ hộp thứ hai'.\\n  - Nếu $B$ xảy ra: Hộp 2 lúc này có 3 xanh, 8 đỏ (tổng 11 viên). $P(A \\mid B) = \\frac{C_8^2}{C_{11}^2} = \\frac{28}{55}$.\\n  - Nếu $\\overline{B}$ xảy ra: Hộp 2 có 4 xanh, 7 đỏ (tổng 11 viên). $P(A \\mid \\overline{B}) = \\frac{C_7^2}{C_{11}^2} = \\frac{21}{55}$.\\n\\n• Áp dụng công thức Bayes, xác suất viên bi chuyển sang là màu đỏ khi biết 2 bi lấy sau màu đỏ là:\\n$$P(B \\mid A) = \\frac{P(B) P(A \\mid B)}{P(B) P(A \\mid B) + P(\\overline{B}) P(A \\mid \\overline{B})} = \\frac{\\frac{2}{3} \\cdot \\frac{28}{55}}{\\frac{2}{3} \\cdot \\frac{28}{55} + \\frac{1}{3} \\cdot \\frac{21}{55}} = \\frac{56}{56 + 21} = \\frac{8}{11} \\approx 0.727$$",  # noqa: E501
                 },
                 {
                     "title": "Ví dụ minh họa 2 (Khảo sát tỉ lệ học sinh tham gia câu lạc bộ)",
                     "problem": "Trong một trường học, tỉ lệ học sinh nữ là 52%. Tỉ lệ học sinh nữ và nam tham gia câu lạc bộ nghệ thuật lần lượt là 18% và 15%. Chọn ngẫu nhiên một học sinh. Biết rằng học sinh này có tham gia CLB nghệ thuật, tính xác suất học sinh đó là nam.",  # noqa: E501
-                    "solution": "• Gọi $B$ là biến cố 'Học sinh được chọn là nam', suy ra $\\overline{B}$ là 'Học sinh được chọn là nữ'.\\n  $P(\\overline{B}) = 0.52 \\implies P(B) = 1 - 0.52 = 0.48$.\\n\\n• Gọi $A$ là biến cố 'Học sinh tham gia CLB nghệ thuật'.\\n  Theo đề bài: $P(A \\mid \\overline{B}) = 0.18$, $P(A \\mid B) = 0.15$.\\n\\n• Áp dụng công thức Bayes:\\n$$P(B \\mid A) = \\frac{P(B) P(A \\mid B)}{P(B) P(A \\mid B) + P(\\overline{B}) P(A \\mid \\overline{B})} = \\frac{0.48 \\times 0.15}{0.48 \\times 0.15 + 0.52 \\times 0.18} = \\frac{0.072}{0.072 + 0.0936} = \\frac{10}{23} \\approx 0.435$$"  # noqa: E501
-                }
+                    "solution": "• Gọi $B$ là biến cố 'Học sinh được chọn là nam', suy ra $\\overline{B}$ là 'Học sinh được chọn là nữ'.\\n  $P(\\overline{B}) = 0.52 \\implies P(B) = 1 - 0.52 = 0.48$.\\n\\n• Gọi $A$ là biến cố 'Học sinh tham gia CLB nghệ thuật'.\\n  Theo đề bài: $P(A \\mid \\overline{B}) = 0.18$, $P(A \\mid B) = 0.15$.\\n\\n• Áp dụng công thức Bayes:\\n$$P(B \\mid A) = \\frac{P(B) P(A \\mid B)}{P(B) P(A \\mid B) + P(\\overline{B}) P(A \\mid \\overline{B})} = \\frac{0.48 \\times 0.15}{0.48 \\times 0.15 + 0.52 \\times 0.18} = \\frac{0.072}{0.072 + 0.0936} = \\frac{10}{23} \\approx 0.435$$",  # noqa: E501
+                },
             ],
             "branded_pdf_url": f"/static/docs/{safe_name}_branded.pdf",
         }
@@ -567,21 +578,23 @@ $$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline
         for m in essay_matches:
             num = int(m.group(1))
             body = m.group(2).strip()
-            drafts.append({
-                "number": num,
-                "section_name": "BÀI TẬP TỰ LUẬN",
-                "page": 1 if num <= 5 else 2,
-                "type": "ESSAY",
-                "content": f"**[Tự luận {num}]** {body}",
-                "choices": [],
-                "correct": None,
-                "truths": [],
-                "answers": [],
-                "points": 1.0,
-                "difficulty": "APPLICATION",
-                "flags": [],
-                "question_id": None,
-            })
+            drafts.append(
+                {
+                    "number": num,
+                    "section_name": "BÀI TẬP TỰ LUẬN",
+                    "page": 1 if num <= 5 else 2,
+                    "type": "ESSAY",
+                    "content": f"**[Tự luận {num}]** {body}",
+                    "choices": [],
+                    "correct": None,
+                    "truths": [],
+                    "answers": [],
+                    "points": 1.0,
+                    "difficulty": "APPLICATION",
+                    "flags": [],
+                    "question_id": None,
+                }
+            )
 
         # 2. MCQ
         mcq_matches = list(re.finditer(r"Câu\s+(\d+)\s*:\s*(.*?)(?=\n\s*Câu\s+\d+\s*:|$)", mcq_raw, re.S))
@@ -596,21 +609,23 @@ $$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline
             for opt_m in re.finditer(r"([A-D])\.\s*(.*?)(?=(?:\s+[A-D]\.\s)|$)", opts_raw, re.S):
                 choices.append(f"{opt_m.group(1)}. {opt_m.group(2).strip()}")
 
-            drafts.append({
-                "number": num,
-                "section_name": "PHẦN I. TRẮC NGHIỆM NHIỀU PHƯƠNG ÁN",
-                "page": 3 if num <= 8 else (4 if num <= 16 else 5),
-                "type": "MULTIPLE_CHOICE",
-                "content": f"**[Câu {num}]** {stem}",
-                "choices": choices,
-                "correct": None,
-                "truths": [],
-                "answers": [],
-                "points": 0.25,
-                "difficulty": "APPLICATION" if num > 10 else "UNDERSTANDING",
-                "flags": [],
-                "question_id": None,
-            })
+            drafts.append(
+                {
+                    "number": num,
+                    "section_name": "PHẦN I. TRẮC NGHIỆM NHIỀU PHƯƠNG ÁN",
+                    "page": 3 if num <= 8 else (4 if num <= 16 else 5),
+                    "type": "MULTIPLE_CHOICE",
+                    "content": f"**[Câu {num}]** {stem}",
+                    "choices": choices,
+                    "correct": None,
+                    "truths": [],
+                    "answers": [],
+                    "points": 0.25,
+                    "difficulty": "APPLICATION" if num > 10 else "UNDERSTANDING",
+                    "flags": [],
+                    "question_id": None,
+                }
+            )
 
         # 3. TF
         tf_matches = list(re.finditer(r"Câu\s+(\d+)\s*:\s*(.*?)(?=\n\s*Câu\s+\d+\s*:|$)", tf_raw, re.S))
@@ -625,42 +640,46 @@ $$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline
             for st_m in re.finditer(r"([a-d])\)\s*(.*?)(?=\n\s*[a-d]\)\s|$)", stmts_raw, re.S):
                 choices.append(f"{st_m.group(1)}) {st_m.group(2).strip()}")
 
-            drafts.append({
-                "number": num,
-                "section_name": "PHẦN II. TRẮC NGHIỆM ĐÚNG SAI",
-                "page": 6 if num <= 4 else (7 if num <= 8 else 8),
-                "type": "TRUE_FALSE",
-                "content": f"**[Câu {num} - Đúng/Sai]** {stem}",
-                "choices": choices,
-                "correct": None,
-                "truths": [None] * len(choices),
-                "answers": [],
-                "points": 1.0,
-                "difficulty": "APPLICATION",
-                "flags": [],
-                "question_id": None,
-            })
+            drafts.append(
+                {
+                    "number": num,
+                    "section_name": "PHẦN II. TRẮC NGHIỆM ĐÚNG SAI",
+                    "page": 6 if num <= 4 else (7 if num <= 8 else 8),
+                    "type": "TRUE_FALSE",
+                    "content": f"**[Câu {num} - Đúng/Sai]** {stem}",
+                    "choices": choices,
+                    "correct": None,
+                    "truths": [None] * len(choices),
+                    "answers": [],
+                    "points": 1.0,
+                    "difficulty": "APPLICATION",
+                    "flags": [],
+                    "question_id": None,
+                }
+            )
 
         # 4. Short answer
         sa_matches = list(re.finditer(r"Câu\s+(\d+)\s*:\s*(.*?)(?=\n\s*Câu\s+\d+\s*:|-*HẾT-*|$)", sa_raw, re.S))
         for m in sa_matches:
             num = int(m.group(1))
             body = m.group(2).strip()
-            drafts.append({
-                "number": num,
-                "section_name": "PHẦN III. TRẮC NGHIỆM TRẢ LỜI NGẮN",
-                "page": 9 if num <= 7 else (10 if num <= 15 else 11),
-                "type": "SHORT_ANSWER",
-                "content": f"**[Câu {num} - Trả lời ngắn]** {body}",
-                "choices": [],
-                "correct": None,
-                "truths": [],
-                "answers": [],
-                "points": 0.5,
-                "difficulty": "ADVANCED_APPLICATION" if num > 12 else "APPLICATION",
-                "flags": [],
-                "question_id": None,
-            })
+            drafts.append(
+                {
+                    "number": num,
+                    "section_name": "PHẦN III. TRẮC NGHIỆM TRẢ LỜI NGẮN",
+                    "page": 9 if num <= 7 else (10 if num <= 15 else 11),
+                    "type": "SHORT_ANSWER",
+                    "content": f"**[Câu {num} - Trả lời ngắn]** {body}",
+                    "choices": [],
+                    "correct": None,
+                    "truths": [],
+                    "answers": [],
+                    "points": 0.5,
+                    "difficulty": "ADVANCED_APPLICATION" if num > 12 else "APPLICATION",
+                    "flags": [],
+                    "question_id": None,
+                }
+            )
 
         for idx, d in enumerate(drafts):
             d["index"] = idx
@@ -692,45 +711,53 @@ $$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline
         for m in re.finditer(r"Bài tập\s+(\d+)\s*:\s*(.*?)(?=\n\s*Bài tập\s+\d+\s*:|$)", essay_part, re.S):
             body = m.group(2).strip()
             figs = [figure_map[t] for t in re.findall(r"\[\[FIG_P\d+_\d+\]\]", body) if t in figure_map]
-            questions.append({
-                "question_type": "ESSAY",
-                "number": m.group(1),
-                "content": re.sub(r"\[\[FIG_P\d+_\d+\]\]", "", body).strip(),
-                "figures": figs,
-            })
+            questions.append(
+                {
+                    "question_type": "ESSAY",
+                    "number": m.group(1),
+                    "content": re.sub(r"\[\[FIG_P\d+_\d+\]\]", "", body).strip(),
+                    "figures": figs,
+                }
+            )
 
         # 2. Phần I: SINGLE_CHOICE (ABCD)
         for m in re.finditer(r"Câu\s+(\d+)\s*:\s*(.*?)(?=\n\s*Câu\s+\d+\s*:|$)", mcq_part, re.S):
             body = m.group(2).strip()
             figs = [figure_map[t] for t in re.findall(r"\[\[FIG_P\d+_\d+\]\]", body) if t in figure_map]
-            questions.append({
-                "question_type": "SINGLE_CHOICE",
-                "number": m.group(1),
-                "content": re.sub(r"\[\[FIG_P\d+_\d+\]\]", "", body).strip(),
-                "figures": figs,
-            })
+            questions.append(
+                {
+                    "question_type": "SINGLE_CHOICE",
+                    "number": m.group(1),
+                    "content": re.sub(r"\[\[FIG_P\d+_\d+\]\]", "", body).strip(),
+                    "figures": figs,
+                }
+            )
 
         # 3. Phần II: TRUE_FALSE_4 (a, b, c, d)
         for m in re.finditer(r"Câu\s+(\d+)\s*:\s*(.*?)(?=\n\s*Câu\s+\d+\s*:|$)", tf_part, re.S):
             body = m.group(2).strip()
             figs = [figure_map[t] for t in re.findall(r"\[\[FIG_P\d+_\d+\]\]", body) if t in figure_map]
-            questions.append({
-                "question_type": "TRUE_FALSE_4",
-                "number": m.group(1),
-                "content": re.sub(r"\[\[FIG_P\d+_\d+\]\]", "", body).strip(),
-                "figures": figs,
-            })
+            questions.append(
+                {
+                    "question_type": "TRUE_FALSE_4",
+                    "number": m.group(1),
+                    "content": re.sub(r"\[\[FIG_P\d+_\d+\]\]", "", body).strip(),
+                    "figures": figs,
+                }
+            )
 
         # 4. Phần III: SHORT_ANSWER (Trả lời ngắn)
         for m in re.finditer(r"Câu\s+(\d+)\s*:\s*(.*?)(?=\n\s*Câu\s+\d+\s*:|-*HẾT-*|$)", sa_part, re.S):
             body = m.group(2).strip()
             figs = [figure_map[t] for t in re.findall(r"\[\[FIG_P\d+_\d+\]\]", body) if t in figure_map]
-            questions.append({
-                "question_type": "SHORT_ANSWER",
-                "number": m.group(1),
-                "content": re.sub(r"\[\[FIG_P\d+_\d+\]\]", "", body).strip(),
-                "figures": figs,
-            })
+            questions.append(
+                {
+                    "question_type": "SHORT_ANSWER",
+                    "number": m.group(1),
+                    "content": re.sub(r"\[\[FIG_P\d+_\d+\]\]", "", body).strip(),
+                    "figures": figs,
+                }
+            )
 
         return questions
 
@@ -767,13 +794,15 @@ $$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline
 
                 short_val = extract_short_answer_value(col_noidung)
 
-                solutions.append({
-                    "main_question": current_main_q,
-                    "sub_index": col_cau,
-                    "solution_content": col_noidung,
-                    "points": col_diem,
-                    "short_answer_value": short_val,
-                })
+                solutions.append(
+                    {
+                        "main_question": current_main_q,
+                        "sub_index": col_cau,
+                        "solution_content": col_noidung,
+                        "points": col_diem,
+                        "short_answer_value": short_val,
+                    }
+                )
         return solutions
 
     # =========================================================================
@@ -896,7 +925,7 @@ $$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline
         if doc_type == "PHOTO_EXAM":
             photo_info = self.preprocess_photo_exam(input_path, doc_id=doc_id)
             result["processed_image"] = photo_info["whitened_image"]
-            result["figure_map"] = {f"[[PHOTO_FIG_{i+1}]]": p for i, p in enumerate(photo_info["detected_figures"])}
+            result["figure_map"] = {f"[[PHOTO_FIG_{i + 1}]]": p for i, p in enumerate(photo_info["detected_figures"])}
             return result
 
         # 2. Nhánh Hướng dẫn chấm dạng Bảng .docx

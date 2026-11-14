@@ -50,7 +50,7 @@ def test_slo_evaluator_passes_within_budget_and_flags_breaches() -> None:
 # --- regression + boundary tests --------------------------------------------------------------
 
 import math  # noqa: E402
-from datetime import date, datetime, timezone  # noqa: E402
+from datetime import UTC, date, datetime  # noqa: E402
 from decimal import Decimal  # noqa: E402
 
 import pytest  # noqa: E402
@@ -67,9 +67,24 @@ from app.platform.telemetry import (  # noqa: E402
 @pytest.mark.parametrize(
     "key",
     [
-        "access_token", "refreshToken", "accessToken", "session_id", "sessionId", "Authorization",
-        "X-Api-Key", "apiKey", "client_secret", "password_hash", "Set-Cookie", "private_key",
-        "full_name", "fullName", "student_name", "id_token", "user_email", "mobile_phone",
+        "access_token",
+        "refreshToken",
+        "accessToken",
+        "session_id",
+        "sessionId",
+        "Authorization",
+        "X-Api-Key",
+        "apiKey",
+        "client_secret",
+        "password_hash",
+        "Set-Cookie",
+        "private_key",
+        "full_name",
+        "fullName",
+        "student_name",
+        "id_token",
+        "user_email",
+        "mobile_phone",
     ],
 )
 def test_secret_like_keys_are_redacted_regardless_of_case_and_shape(key: str) -> None:
@@ -123,7 +138,7 @@ def test_datetime_decimal_and_object_attributes_do_not_break_the_logger() -> Non
         event="x.y",
         correlation_id="corr-12345678",
         attributes={
-            "at": datetime(2026, 11, 13, tzinfo=timezone.utc),
+            "at": datetime(2026, 11, 13, tzinfo=UTC),
             "day": date(2026, 11, 13),
             "amount": Decimal("1.5"),
             "obj": Weird(),

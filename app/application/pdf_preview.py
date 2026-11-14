@@ -102,4 +102,3 @@ async def ensure_document_preview(
         doc.preview_storage_key = key
         await session.commit()
     return preview_bytes, total_pages
-

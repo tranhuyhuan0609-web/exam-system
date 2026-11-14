@@ -124,5 +124,3 @@ def _regular_grid(read: list[_Page], total: int) -> list[dict] | None:
         {"first": k * length, "mark": str(base + k).zfill(width), "solution": False, "restarted": False}
         for k in range(total // length)
     ]
-
-

@@ -73,7 +73,9 @@ from app.platform.storage_objects import (  # noqa: E402
 _T = uuid.UUID("abcdef12-1234-5678-9abc-def123456789")
 
 
-@pytest.mark.parametrize("job_id", [".", "..", "...", " . ", "a..b", "", "   ", "a/b", "a\\b", "a b", "\u00e9", "x" * 129])
+@pytest.mark.parametrize(
+    "job_id", [".", "..", "...", " . ", "a..b", "", "   ", "a/b", "a\\b", "a b", "\u00e9", "x" * 129]
+)
 def test_quarantine_job_id_rejects_navigation_and_unsafe_segments(job_id: str) -> None:
     with pytest.raises(StorageKeyError):
         quarantine_object_key(tenant_id=_T, job_id=job_id, sha256=_SHA)
@@ -86,8 +88,22 @@ def test_quarantine_key_accepts_normal_job_ids_and_boundary_length() -> None:
 
 @pytest.mark.parametrize(
     "mime",
-    ["text/html\r\nSet-Cookie: a=b", "text/html\nX: y", "text/html; charset=utf-8", "", "   ", "texthtml",
-     "text/", "/html", "te xt/html", "text/ht\u00e9ml", "a/b/c", None, 5, "text/html\x00"],
+    [
+        "text/html\r\nSet-Cookie: a=b",
+        "text/html\nX: y",
+        "text/html; charset=utf-8",
+        "",
+        "   ",
+        "texthtml",
+        "text/",
+        "/html",
+        "te xt/html",
+        "text/ht\u00e9ml",
+        "a/b/c",
+        None,
+        5,
+        "text/html\x00",
+    ],
 )
 def test_mime_type_with_crlf_or_junk_is_rejected(mime) -> None:
     with pytest.raises(StorageKeyError):
@@ -135,9 +151,24 @@ def test_non_canonical_tenant_uuid_forms_are_rejected(variant) -> None:
 @pytest.mark.parametrize(
     "key",
     [
-        "", "bronze", "bronze/x", f"bronze/{_T}", f"/bronze/{_T}/a", f"bronze/{_T}/a/", f"bronze//{_T}/a",
-        f"bronze/{_T}/./a", f"bronze/{_T}/../a", f"bronze/{_T}/a\\b", f"bronze/{_T}/a\x00b", f"bronze/{_T}/a b",
-        f"evil/{_T}/a", f"BRONZE/{_T}/a", f"bronze/{_T}/\u00e9", "bronze/not-a-uuid/a", None, 5,
+        "",
+        "bronze",
+        "bronze/x",
+        f"bronze/{_T}",
+        f"/bronze/{_T}/a",
+        f"bronze/{_T}/a/",
+        f"bronze//{_T}/a",
+        f"bronze/{_T}/./a",
+        f"bronze/{_T}/../a",
+        f"bronze/{_T}/a\\b",
+        f"bronze/{_T}/a\x00b",
+        f"bronze/{_T}/a b",
+        f"evil/{_T}/a",
+        f"BRONZE/{_T}/a",
+        f"bronze/{_T}/\u00e9",
+        "bronze/not-a-uuid/a",
+        None,
+        5,
         "bronze/" + str(_T) + "/" + "a/" * 600 + "b",
     ],
 )
@@ -165,7 +196,9 @@ def test_every_builder_output_verifies_for_its_tenant() -> None:
             verify_object_key_tenant_ownership(object_key=key, expected_tenant_id=uuid.uuid4())
 
 
-@pytest.mark.parametrize("digest", ["", "g" * 64, "a" * 63, "a" * 65, "a" * 32 + "\n" + "a" * 32,"\u00e9" * 64, None, 5])
+@pytest.mark.parametrize(
+    "digest", ["", "g" * 64, "a" * 63, "a" * 65, "a" * 32 + "\n" + "a" * 32, "\u00e9" * 64, None, 5]
+)
 def test_sha256_must_be_64_hex(digest) -> None:
     with pytest.raises(StorageKeyError):
         bronze_object_key(tenant_id=_T, sha256=digest)

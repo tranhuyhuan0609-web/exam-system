@@ -90,7 +90,7 @@ from app.platform.seo_schema import SeoSchemaError, serialize_jsonld_safe  # noq
 def test_non_latin_titles_get_distinct_stable_slugs() -> None:
     cjk = to_vietnamese_slug("数学试题")
     cyr = to_vietnamese_slug("Математика")
-    emoji = to_vietnamese_slug("\U0001F4DA\U0001F4DA")
+    emoji = to_vietnamese_slug("\U0001f4da\U0001f4da")
     assert len({cjk, cyr, emoji}) == 3
     assert cjk == to_vietnamese_slug("数学试题")  # stable
     for slug in (cjk, cyr, emoji):
@@ -152,21 +152,26 @@ def test_canonical_url_rejects_unsafe_parts(kwargs) -> None:
 
 def test_canonical_url_with_empty_prefix_and_nested_prefix() -> None:
     assert build_canonical_url(base_url="https://h2edu.vn/", route_prefix="", slug="a") == "https://h2edu.vn/a"
-    assert build_canonical_url(base_url="https://h2edu.vn", route_prefix="/a/b/", slug="/c/") == "https://h2edu.vn/a/b/c"
+    assert (
+        build_canonical_url(base_url="https://h2edu.vn", route_prefix="/a/b/", slug="/c/") == "https://h2edu.vn/a/b/c"
+    )
 
 
-@pytest.mark.parametrize("visibility,publication,rights", [
-    ("SYSTEM_PUBLIC", "DRAFT", "LICENSED"),
-    ("SYSTEM_PUBLIC", "ARCHIVED", "OWNED"),
-    ("SYSTEM_PUBLIC", "PUBLISHED", "TAKEDOWN"),
-    ("SYSTEM_PUBLIC", "PUBLISHED", "DISPUTED"),
-    ("SYSTEM_PUBLIC", "PUBLISHED", ""),
-    ("SYSTEM_PUBLIC", "PUBLISHED", None),
-    ("system_public", "PUBLISHED", "OWNED"),
-    ("SYSTEM_PUBLIC", "published", "OWNED"),
-    ("SYSTEM_PUBLIC", "PUBLISHED", "licensed"),
-    (None, None, None),
-])
+@pytest.mark.parametrize(
+    "visibility,publication,rights",
+    [
+        ("SYSTEM_PUBLIC", "DRAFT", "LICENSED"),
+        ("SYSTEM_PUBLIC", "ARCHIVED", "OWNED"),
+        ("SYSTEM_PUBLIC", "PUBLISHED", "TAKEDOWN"),
+        ("SYSTEM_PUBLIC", "PUBLISHED", "DISPUTED"),
+        ("SYSTEM_PUBLIC", "PUBLISHED", ""),
+        ("SYSTEM_PUBLIC", "PUBLISHED", None),
+        ("system_public", "PUBLISHED", "OWNED"),
+        ("SYSTEM_PUBLIC", "published", "OWNED"),
+        ("SYSTEM_PUBLIC", "PUBLISHED", "licensed"),
+        (None, None, None),
+    ],
+)
 def test_sitemap_policy_fails_closed(visibility, publication, rights) -> None:
     assert not is_indexable_in_sitemap(
         visibility_scope=visibility, publication_status=publication, rights_status=rights

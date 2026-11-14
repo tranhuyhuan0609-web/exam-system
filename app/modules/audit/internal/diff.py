@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 SENSITIVE_AUDIT_ACTIONS: frozenset[str] = frozenset(
@@ -94,7 +94,7 @@ def _require_state(label: str, state: Any) -> dict[str, Any]:
 
 
 def monthly_audit_partition_name(ts: datetime) -> str:
-    utc_ts = ts.replace(tzinfo=timezone.utc) if ts.tzinfo is None else ts.astimezone(timezone.utc)
+    utc_ts = ts.replace(tzinfo=UTC) if ts.tzinfo is None else ts.astimezone(UTC)
     return f"audit_events_y{utc_ts.year:04d}m{utc_ts.month:02d}"
 
 
@@ -130,9 +130,7 @@ def build_audit_event_record(
     if not norm_reason:
         raise AuditDiffError("reason must not be empty")
     if norm_action in SENSITIVE_AUDIT_ACTIONS and len(norm_reason) < MIN_SENSITIVE_REASON_LEN:
-        raise AuditDiffError(
-            f"action {norm_action} requires audit reason >= {MIN_SENSITIVE_REASON_LEN} characters"
-        )
+        raise AuditDiffError(f"action {norm_action} requires audit reason >= {MIN_SENSITIVE_REASON_LEN} characters")
 
     before_raw = _require_state("before_state", before_state)
     after_raw = _require_state("after_state", after_state)
@@ -144,7 +142,7 @@ def build_audit_event_record(
     changed = tuple(k for k in all_keys if before_raw.get(k, missing) != after_raw.get(k, missing))
     before_clean = _redact_snapshot(before_raw)
     after_clean = _redact_snapshot(after_raw)
-    ts = datetime.now(timezone.utc) if occurred_at is None else occurred_at
+    ts = datetime.now(UTC) if occurred_at is None else occurred_at
 
     return AuditEventSpec(
         tenant_id=tenant_id.strip(),

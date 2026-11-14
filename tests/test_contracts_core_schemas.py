@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
-import uuid
 
 import pytest
 from pydantic import ValidationError
 
 from app.contracts.autosave import (
     AutosaveRequestContract as CanonicalAutosaveReq,
+)
+from app.contracts.autosave import (
     AutosaveResponseContract as CanonicalAutosaveRes,
 )
 from app.contracts.core_schemas import (
@@ -120,7 +122,7 @@ def test_assessment_snapshot_rejects_answer_leak_fields_and_autosave_contract_va
 
     # Non-finite bbox, missing bbox on DOCUMENT_IMPORT, or duplicate sequence_order rejected
     with pytest.raises(ValidationError):
-        ProvenanceContract(document_version_id= uuid.uuid4(), page_no=1, bbox=(float("nan"), 0.0, 10.0, 10.0))
+        ProvenanceContract(document_version_id=uuid.uuid4(), page_no=1, bbox=(float("nan"), 0.0, 10.0, 10.0))
     with pytest.raises(ValidationError):
         QuestionCandidateContract(
             tenant_id=uuid.uuid4(),

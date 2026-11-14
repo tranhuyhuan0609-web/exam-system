@@ -10,12 +10,7 @@ import pytest
 from app.contracts.autosave import canonical_json, compute_payload_hash
 
 _VECTOR_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "frontend"
-    / "src"
-    / "lib"
-    / "__fixtures__"
-    / "payload-hash-vectors.json"
+    Path(__file__).resolve().parent.parent / "frontend" / "src" / "lib" / "__fixtures__" / "payload-hash-vectors.json"
 )
 _VECTORS = json.loads(_VECTOR_PATH.read_text(encoding="utf-8"))
 
@@ -29,4 +24,3 @@ def test_python_canonical_json_and_hash_match_shared_vectors(vector: dict) -> No
     payload = vector["payload"]
     assert canonical_json(payload) == vector["expected_canonical_json"]
     assert compute_payload_hash(payload) == vector["expected_sha256"]
-

@@ -46,7 +46,12 @@ CANONICAL_RELEASE_GATES: tuple[GateDefinition, ...] = (
     GateDefinition("GATE-07", "Deterministic Grading & Option Permutation Gate", 6),
     GateDefinition("GATE-08", "AI Safety, Exam Lock, Subprocess SymPy >= 95% & FSRS-5 Reference Vectors Gate", 9),
     GateDefinition("GATE-09", "Legal DPIA/DPA, Vault Transit Erasure, OSS SBOM & External Pentest Gate", 14),
-    GateDefinition("GATE-10", "Disaster Recovery, Patroni Strict Quorum & Post-PITR Tombstone Drill Gate", 14, requires_rpo_zero=True),
+    GateDefinition(
+        "GATE-10",
+        "Disaster Recovery, Patroni Strict Quorum & Post-PITR Tombstone Drill Gate",
+        14,
+        requires_rpo_zero=True,
+    ),
 )
 
 _GATE_MAP: dict[str, GateDefinition] = {g.gate_id: g for g in CANONICAL_RELEASE_GATES}

@@ -13,9 +13,7 @@ class SeoSchemaError(ValueError):
     """Raised when SEO inputs (slug, base URL, route prefix) are unsafe."""
 
 
-_ALLOWED_INDEX_RIGHTS: frozenset[str] = frozenset(
-    {"OWNED", "LICENSED", "ALLOWED_DERIVATIVE"}
-)
+_ALLOWED_INDEX_RIGHTS: frozenset[str] = frozenset({"OWNED", "LICENSED", "ALLOWED_DERIVATIVE"})
 _NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
 _BASE_URL_RE = re.compile(r"https?://[A-Za-z0-9.-]+(?::\d{1,5})?", re.ASCII)
 _PATH_SEGMENT_RE = re.compile(r"[A-Za-z0-9._~-]+", re.ASCII)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -32,7 +32,7 @@ def test_all_14_canonical_runbooks_present_and_sla_enforced() -> None:
 
 
 def test_rb05_deadline_extension_and_rb14_72h_pdp_window() -> None:
-    dl = datetime(2026, 11, 13, 14, 0, 0, tzinfo=timezone.utc)
+    dl = datetime(2026, 11, 13, 14, 0, 0, tzinfo=UTC)
     no_ext = compute_rb05_deadline_compensation(current_deadline=dl, outage_duration_seconds=45)
     assert no_ext.apply_extension is False
     assert no_ext.new_deadline == dl
@@ -46,7 +46,7 @@ def test_rb05_deadline_extension_and_rb14_72h_pdp_window() -> None:
     assert with_ext.extension_seconds == 150
     assert with_ext.new_deadline == dl + timedelta(seconds=150)
 
-    detected = datetime(2026, 11, 13, 10, 0, 0, tzinfo=timezone.utc)
+    detected = datetime(2026, 11, 13, 10, 0, 0, tzinfo=UTC)
     on_time = evaluate_rb14_breach_notification_window(
         breach_detected_at=detected,
         current_or_notified_at=detected + timedelta(hours=70),

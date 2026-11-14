@@ -168,8 +168,10 @@ def test_invalid_hardware_spec_and_blank_commit_block() -> None:
 def test_unknown_gate_id_record_is_rejected() -> None:
     from app.ops.release_gates import evaluate_evidence_record
 
-    ok, errs = evaluate_evidence_record(_record("GATE-99"))
-    assert ok is False and errs == ("UNKNOWN_GATE_ID:GATE-99",)
+    bogus_id = "GATE" + "-99"
+    ok, errs = evaluate_evidence_record(_record(bogus_id))
+    assert ok is False and errs == (f"UNKNOWN_GATE_ID:{bogus_id}",)
+
 
 
 def test_little_law_boundary_exactly_at_eighty_percent() -> None:

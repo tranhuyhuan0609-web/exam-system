@@ -124,9 +124,11 @@ async def seed_full_k12_curriculum(session: AsyncSession) -> dict[str, int]:
                 # If this is periodic exams, reparent any legacy direct exam categories under it
                 if ch.get("is_exam_group"):
                     for (p_id, c_name), legacy_cat in list(cats_by_parent_name.items()):
-                        if p_id == root.id and any(
-                            kw in c_name for kw in ("đề thi giữa", "đề thi học kì", "đề kiểm tra")
-                        ) and legacy_cat.id != ch_cat.id:
+                        if (
+                            p_id == root.id
+                            and any(kw in c_name for kw in ("đề thi giữa", "đề thi học kì", "đề kiểm tra"))
+                            and legacy_cat.id != ch_cat.id
+                        ):
                             legacy_cat.parent_id = ch_cat.id
 
                 for l_pos, les in enumerate(ch.get("lessons", []), start=1):  # noqa: B007
@@ -172,9 +174,11 @@ async def seed_full_k12_curriculum(session: AsyncSession) -> dict[str, int]:
 
         # Reparent any legacy direct exam categories under this chapter
         for (p_id, c_name), legacy_cat in list(cats_by_parent_name.items()):
-            if p_id == root.id and any(
-                kw in c_name for kw in ("đề thi giữa", "đề thi học kì", "đề kiểm tra")
-            ) and legacy_cat.id != p_ch.id:
+            if (
+                p_id == root.id
+                and any(kw in c_name for kw in ("đề thi giữa", "đề thi học kì", "đề kiểm tra"))
+                and legacy_cat.id != p_ch.id
+            ):
                 legacy_cat.parent_id = p_ch.id
                 cats_by_parent_name[(p_ch.id, c_name)] = legacy_cat
 

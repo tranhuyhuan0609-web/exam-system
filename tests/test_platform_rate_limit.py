@@ -225,20 +225,31 @@ def test_expired_records_are_evicted_without_looking_the_same_key_up_again() -> 
     guard = IdempotencyGuard(ttl_seconds=10.0)
     for i in range(50):
         guard.store(
-            tenant_id="t", actor_id="u", idempotency_key=f"idem-key-{i:04d}", fingerprint="fp",
-            status_code=200, response_body={}, now_seconds=0.0,
+            tenant_id="t",
+            actor_id="u",
+            idempotency_key=f"idem-key-{i:04d}",
+            fingerprint="fp",
+            status_code=200,
+            response_body={},
+            now_seconds=0.0,
         )
     assert len(guard) == 50
-    guard.check_or_replay(tenant_id="t", actor_id="u", idempotency_key="idem-key-9999", fingerprint="fp", now_seconds=11.0)
+    guard.check_or_replay(
+        tenant_id="t", actor_id="u", idempotency_key="idem-key-9999", fingerprint="fp", now_seconds=11.0
+    )
     assert len(guard) == 1
 
 
 def test_registry_capacity_is_bounded() -> None:
     guard = IdempotencyGuard(max_records=2)
     for i in range(2):
-        guard.check_or_replay(tenant_id="t", actor_id="u", idempotency_key=f"idem-key-{i:04d}", fingerprint="fp", now_seconds=0.0)
+        guard.check_or_replay(
+            tenant_id="t", actor_id="u", idempotency_key=f"idem-key-{i:04d}", fingerprint="fp", now_seconds=0.0
+        )
     with pytest.raises(IdempotencyError, match="full"):
-        guard.check_or_replay(tenant_id="t", actor_id="u", idempotency_key="idem-key-0003", fingerprint="fp", now_seconds=0.0)
+        guard.check_or_replay(
+            tenant_id="t", actor_id="u", idempotency_key="idem-key-0003", fingerprint="fp", now_seconds=0.0
+        )
 
 
 def test_scope_with_colons_cannot_collide_across_tenants() -> None:
@@ -251,8 +262,12 @@ def test_scope_with_colons_cannot_collide_across_tenants() -> None:
 
 def test_tenants_do_not_share_keys() -> None:
     guard = IdempotencyGuard()
-    guard.check_or_replay(tenant_id="t1", actor_id="u", idempotency_key="idem-key-0001", fingerprint="fp", now_seconds=0.0)
-    other = guard.check_or_replay(tenant_id="t2", actor_id="u", idempotency_key="idem-key-0001", fingerprint="fp", now_seconds=0.0)
+    guard.check_or_replay(
+        tenant_id="t1", actor_id="u", idempotency_key="idem-key-0001", fingerprint="fp", now_seconds=0.0
+    )
+    other = guard.check_or_replay(
+        tenant_id="t2", actor_id="u", idempotency_key="idem-key-0001", fingerprint="fp", now_seconds=0.0
+    )
     assert other[0] == IdempotencyOutcome.EXECUTE_NEW
 
 
@@ -267,7 +282,18 @@ def test_mismatch_error_does_not_echo_the_key() -> None:
 def test_idempotency_key_validation_boundaries() -> None:
     assert validate_idempotency_key("a" * 8) == "a" * 8
     assert validate_idempotency_key(" " + "a" * 128 + " ") == "a" * 128
-    for bad in (None, "", "   ", "a" * 7, "a" * 129, "has space1", "new\nline-key", "keyékey1234", "a;b;c;d;e;f", 12345678):
+    for bad in (
+        None,
+        "",
+        "   ",
+        "a" * 7,
+        "a" * 129,
+        "has space1",
+        "new\nline-key",
+        "keyékey1234",
+        "a;b;c;d;e;f",
+        12345678,
+    ):
         with pytest.raises(IdempotencyError):
             validate_idempotency_key(bad)  # type: ignore[arg-type]
 
@@ -275,11 +301,17 @@ def test_idempotency_key_validation_boundaries() -> None:
 def test_guard_rejects_bad_ids_fingerprints_clock_and_status() -> None:
     guard = IdempotencyGuard()
     with pytest.raises(IdempotencyError):
-        guard.check_or_replay(tenant_id="", actor_id="u", idempotency_key="idem-key-0001", fingerprint="fp", now_seconds=0.0)
+        guard.check_or_replay(
+            tenant_id="", actor_id="u", idempotency_key="idem-key-0001", fingerprint="fp", now_seconds=0.0
+        )
     with pytest.raises(IdempotencyError):
-        guard.check_or_replay(tenant_id="t", actor_id="u", idempotency_key="idem-key-0001", fingerprint="", now_seconds=0.0)
+        guard.check_or_replay(
+            tenant_id="t", actor_id="u", idempotency_key="idem-key-0001", fingerprint="", now_seconds=0.0
+        )
     with pytest.raises(IdempotencyError):
-        guard.check_or_replay(tenant_id="t", actor_id="u", idempotency_key="idem-key-0001", fingerprint="fp", now_seconds=math.nan)
+        guard.check_or_replay(
+            tenant_id="t", actor_id="u", idempotency_key="idem-key-0001", fingerprint="fp", now_seconds=math.nan
+        )
     with pytest.raises(IdempotencyError):
         guard.store(status_code=42, response_body={}, fingerprint="fp", now_seconds=0.0, **_IDEM)
     for ttl in (0, -1, math.nan, math.inf):
@@ -301,7 +333,9 @@ def test_fingerprint_is_stable_and_sensitive_to_method_path_payload() -> None:
     assert base != compute_request_fingerprint(method="PUT", path="/a", payload={"x": 1})
     assert base != compute_request_fingerprint(method="POST", path="/b", payload={"x": 1})
     assert base != compute_request_fingerprint(method="POST", path="/a", payload={"x": 2})
-    assert compute_request_fingerprint(method="GET", path="/a") == compute_request_fingerprint(method="GET", path="/a", payload=None)
+    assert compute_request_fingerprint(method="GET", path="/a") == compute_request_fingerprint(
+        method="GET", path="/a", payload=None
+    )
 
 
 def test_fingerprint_rejects_non_canonical_payloads() -> None:

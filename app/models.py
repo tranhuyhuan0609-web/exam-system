@@ -284,7 +284,9 @@ class QuestionCategory(Base):
     __tablename__ = "question_categories"
 
     question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True)
-    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True, index=True)  # noqa: E501
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True, index=True
+    )  # noqa: E501
 
 
 class Exam(TimestampMixin, UpdatedAtMixin, Base):
@@ -418,7 +420,9 @@ class ImportJob(Base):
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     original_filename: Mapped[str] = mapped_column(String(300))
     stored_path: Mapped[str] = mapped_column(String(300))  # relative to data_dir
-    solution_stored_path: Mapped[str | None] = mapped_column(String(300), nullable=True)  # optional answer/marking scheme file  # noqa: E501
+    solution_stored_path: Mapped[str | None] = mapped_column(
+        String(300), nullable=True
+    )  # optional answer/marking scheme file  # noqa: E501
     status: Mapped[JobStatus] = mapped_column(_enum(JobStatus, "job_status"), default=JobStatus.QUEUED)
     stage: Mapped[str | None] = mapped_column(String(200))  # human-readable progress, e.g. "Đang giải câu 6–10"
     progress_done: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
@@ -696,8 +700,12 @@ class KnowledgeArticle(Base):
     __tablename__ = "knowledge_articles"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    knowledge_unit_id: Mapped[int | None] = mapped_column(ForeignKey("knowledge_units.id", ondelete="CASCADE"), index=True, default=None)  # noqa: E501
-    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"), index=True, default=None)  # noqa: E501
+    knowledge_unit_id: Mapped[int | None] = mapped_column(
+        ForeignKey("knowledge_units.id", ondelete="CASCADE"), index=True, default=None
+    )  # noqa: E501
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="CASCADE"), index=True, default=None
+    )  # noqa: E501
     title: Mapped[str] = mapped_column(String(255))
     summary_formulas_md: Mapped[str | None] = mapped_column(Text)
     method_guide_md: Mapped[str | None] = mapped_column(Text)
@@ -718,9 +726,7 @@ class ExamTarget(Base):
     code: Mapped[str] = mapped_column(
         String(30), unique=True, index=True
     )  # 'SGK_KNTT', 'THPTQG', 'DGTD_TSA', 'DGNL_HSA', 'VAO_10', 'HSG_TINH', 'HSG_QG'
-    group_category: Mapped[str] = mapped_column(
-        String(30), index=True
-    )  # 'CURRICULUM' | 'MAJOR_EXAM' | 'OLYMPIAD'
+    group_category: Mapped[str] = mapped_column(String(30), index=True)  # 'CURRICULUM' | 'MAJOR_EXAM' | 'OLYMPIAD'
     name: Mapped[str] = mapped_column(String(255))
     access_tier: Mapped[AccessTier] = mapped_column(
         _enum(AccessTier, "target_access_tier"), default=AccessTier.FREE, server_default=AccessTier.FREE.value

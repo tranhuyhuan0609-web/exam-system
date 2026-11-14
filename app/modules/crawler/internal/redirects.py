@@ -15,9 +15,7 @@ from enum import StrEnum
 
 from app.modules.crawler.internal.ssrf import SSRFCheckResult, check_resolved_addresses
 
-ALLOWED_RIGHTS_STATUSES: frozenset[str] = frozenset(
-    {"OWNED", "LICENSED", "ALLOWED_DERIVATIVE"}
-)
+ALLOWED_RIGHTS_STATUSES: frozenset[str] = frozenset({"OWNED", "LICENSED", "ALLOWED_DERIVATIVE"})
 DEFAULT_ALLOWED_SCHEMES: frozenset[str] = frozenset({"https"})
 DEFAULT_ALLOWED_PORTS: frozenset[int] = frozenset({443})
 DEFAULT_ALLOWED_PATH_PREFIXES: tuple[str, ...] = ("/",)
@@ -146,10 +144,7 @@ def _matches_allowed_prefix(path_segments: tuple[str, ...], prefix: str) -> bool
     prefix_segments = tuple(seg for seg in prefix_raw if seg and seg != ".")
     if not prefix_segments:
         return True
-    return (
-        len(path_segments) >= len(prefix_segments)
-        and path_segments[: len(prefix_segments)] == prefix_segments
-    )
+    return len(path_segments) >= len(prefix_segments) and path_segments[: len(prefix_segments)] == prefix_segments
 
 
 def _is_bare_ip_host(hostname: str) -> bool:

@@ -86,17 +86,28 @@ def test_invalid_remote_addr_raises(remote) -> None:
 
 
 def test_forged_xff_entry_on_the_right_falls_back_to_the_peer() -> None:
-    assert extract_client_ip(remote_addr="10.0.0.1", x_forwarded_for="1.2.3.4, evil", trusted_proxy_cidrs=_TRUSTED) == "10.0.0.1"
+    assert (
+        extract_client_ip(remote_addr="10.0.0.1", x_forwarded_for="1.2.3.4, evil", trusted_proxy_cidrs=_TRUSTED)
+        == "10.0.0.1"
+    )
 
 
 def test_xff_empty_none_and_blank_entries() -> None:
     for xff in (None, "", "   ", ",,,"):
-        assert extract_client_ip(remote_addr="10.0.0.1", x_forwarded_for=xff, trusted_proxy_cidrs=_TRUSTED) == "10.0.0.1"
-    assert extract_client_ip(remote_addr="10.0.0.1", x_forwarded_for=" , 203.0.113.9 ,", trusted_proxy_cidrs=_TRUSTED) == "203.0.113.9"
+        assert (
+            extract_client_ip(remote_addr="10.0.0.1", x_forwarded_for=xff, trusted_proxy_cidrs=_TRUSTED) == "10.0.0.1"
+        )
+    assert (
+        extract_client_ip(remote_addr="10.0.0.1", x_forwarded_for=" , 203.0.113.9 ,", trusted_proxy_cidrs=_TRUSTED)
+        == "203.0.113.9"
+    )
 
 
 def test_all_hops_trusted_returns_the_leftmost() -> None:
-    assert extract_client_ip(remote_addr="10.0.0.1", x_forwarded_for="10.9.9.9, 10.1.1.1", trusted_proxy_cidrs=_TRUSTED) == "10.9.9.9"
+    assert (
+        extract_client_ip(remote_addr="10.0.0.1", x_forwarded_for="10.9.9.9, 10.1.1.1", trusted_proxy_cidrs=_TRUSTED)
+        == "10.9.9.9"
+    )
 
 
 def test_multiple_trusted_proxy_hops_in_the_middle_of_the_chain() -> None:
@@ -120,14 +131,22 @@ def test_ipv6_clients_and_trusted_ipv6_proxies() -> None:
 
 
 def test_zone_id_in_xff_is_treated_as_forged() -> None:
-    assert extract_client_ip(remote_addr="10.0.0.1", x_forwarded_for="fe80::1%eth0", trusted_proxy_cidrs=_TRUSTED) == "10.0.0.1"
+    assert (
+        extract_client_ip(remote_addr="10.0.0.1", x_forwarded_for="fe80::1%eth0", trusted_proxy_cidrs=_TRUSTED)
+        == "10.0.0.1"
+    )
 
 
 def test_oversized_or_overlong_xff_is_ignored() -> None:
     long_header = ", ".join(["1.1.1.1"] * 400)
-    assert extract_client_ip(remote_addr="10.0.0.1", x_forwarded_for=long_header, trusted_proxy_cidrs=_TRUSTED) == "10.0.0.1"
+    assert (
+        extract_client_ip(remote_addr="10.0.0.1", x_forwarded_for=long_header, trusted_proxy_cidrs=_TRUSTED)
+        == "10.0.0.1"
+    )
     many_hops = ", ".join(["1.1.1.1"] * 60)
-    assert extract_client_ip(remote_addr="10.0.0.1", x_forwarded_for=many_hops, trusted_proxy_cidrs=_TRUSTED) == "10.0.0.1"
+    assert (
+        extract_client_ip(remote_addr="10.0.0.1", x_forwarded_for=many_hops, trusted_proxy_cidrs=_TRUSTED) == "10.0.0.1"
+    )
 
 
 def test_error_messages_do_not_echo_input() -> None:
@@ -142,10 +161,24 @@ def test_error_messages_do_not_echo_input() -> None:
 @pytest.mark.parametrize(
     "origin",
     [
-        "https://exam.edu.vn/path", "ftp://exam.edu.vn", "exam.edu.vn", "https://", "https://exam edu.vn",
-        "https://exam.edu.vn:99999", "https://.exam.edu.vn", "https://exam..edu.vn", "https://-a.com",
-        "https://exam.edu.vn?x=1", "https://exam.edu.vn#frag", "https://user@exam.edu.vn", "javascript:alert(1)",
-        "https://tést.vn", "", "   ", "https://exam.edu.vn\nX: y", "https://" + "a" * 64 + ".vn",
+        "https://exam.edu.vn/path",
+        "ftp://exam.edu.vn",
+        "exam.edu.vn",
+        "https://",
+        "https://exam edu.vn",
+        "https://exam.edu.vn:99999",
+        "https://.exam.edu.vn",
+        "https://exam..edu.vn",
+        "https://-a.com",
+        "https://exam.edu.vn?x=1",
+        "https://exam.edu.vn#frag",
+        "https://user@exam.edu.vn",
+        "javascript:alert(1)",
+        "https://tést.vn",
+        "",
+        "   ",
+        "https://exam.edu.vn\nX: y",
+        "https://" + "a" * 64 + ".vn",
     ],
 )
 def test_malformed_cors_origins_are_rejected(origin: str) -> None:

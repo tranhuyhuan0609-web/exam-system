@@ -80,15 +80,11 @@ def test_hybrid_rls_system_public_vs_tenant_private_runtime_role():
             )
 
         async with tenant_transaction(tenant_b, role=DbRole.APP_RW) as session:
-            visible_codes = (
-                await session.scalars(text("SELECT code FROM taxonomy_nodes ORDER BY code"))
-            ).all()
+            visible_codes = (await session.scalars(text("SELECT code FROM taxonomy_nodes ORDER BY code"))).all()
             visible_versions = (
                 await session.scalars(text("SELECT name FROM taxonomy_node_versions ORDER BY name"))
             ).all()
-            visible_aliases = (
-                await session.scalars(text("SELECT normalized_alias FROM taxonomy_aliases"))
-            ).all()
+            visible_aliases = (await session.scalars(text("SELECT normalized_alias FROM taxonomy_aliases"))).all()
             updated_pub = (
                 await session.execute(
                     text("UPDATE taxonomy_nodes SET is_active = false WHERE id = :id"),
@@ -237,4 +233,3 @@ def test_ltree_subtree_query_returns_exact_descendants():
     assert with_root == ["math.algebra", "math.algebra.quadratic_eq"]
     assert strict_desc == ["math.algebra.quadratic_eq"]
     assert all_math == ["math", "math.algebra", "math.algebra.quadratic_eq", "math.geometry"]
-

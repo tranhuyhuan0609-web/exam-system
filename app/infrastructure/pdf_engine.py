@@ -321,8 +321,11 @@ def _path_drawing(obj: Any, matrix: Matrix, height: float) -> tuple[Drawing, tup
 
 def _complementary(first: Drawing, second: Drawing) -> bool:
     """One is only filled and the other only stroked."""
-    return first.fill != second.fill and first.stroke != second.stroke and (first.fill or first.stroke) and (
-        second.fill or second.stroke
+    return (
+        first.fill != second.fill
+        and first.stroke != second.stroke
+        and (first.fill or first.stroke)
+        and (second.fill or second.stroke)
     )
 
 
@@ -475,9 +478,9 @@ def merge_intersecting_rects_union_find(rects: Iterable[Rect], pad: float = 10.0
 class PDFEngineAdapter:
     """Read-only PDF access. Use as a context manager so both engines are closed deterministically.
 
-        with PDFEngineAdapter.open(pdf_bytes) as pdf:
-            for i in range(pdf.page_count):
-                words = pdf.words(i)
+    with PDFEngineAdapter.open(pdf_bytes) as pdf:
+        for i in range(pdf.page_count):
+            words = pdf.words(i)
     """
 
     # The spec's name, usable as ``PDFEngineAdapter.merge_intersecting_rects_union_find(rects, pad)``.
@@ -735,9 +738,7 @@ class PDFEngineAdapter:
 
     # -- structure and geometry --------------------------------------------------------------
 
-    def tables(
-        self, index: int, *, min_cells: int = 2, table_settings: dict[str, Any] | None = None
-    ) -> list[Table]:
+    def tables(self, index: int, *, min_cells: int = 2, table_settings: dict[str, Any] | None = None) -> list[Table]:
         """Ruled tables (pdfplumber ``find_tables``), top to bottom.
 
         Candidates with fewer than ``min_cells`` cells are dropped. Caveat: pdfplumber derives tables from

@@ -15,7 +15,7 @@ import re
 import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
+from typing import Any, TypeVar
 
 from app.platform.b64url import Base64UrlError, b64url_decode_strict, b64url_encode
 
@@ -43,7 +43,7 @@ class DecodedCursor:
 
 
 @dataclass(frozen=True)
-class CursorPage(Generic[T]):
+class CursorPage[T]:
     items: tuple[T, ...]
     next_cursor: str | None
     has_more: bool
@@ -200,7 +200,7 @@ def decode_cursor(
     )
 
 
-def build_cursor_page(
+def build_cursor_page[T](
     rows_plus_one: Sequence[T],
     *,
     limit: int,

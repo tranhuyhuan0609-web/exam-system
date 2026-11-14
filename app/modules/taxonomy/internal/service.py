@@ -114,9 +114,7 @@ async def create_taxonomy_node(
         leaf_source = code.rsplit(".", 1)[-1]
         leaf = normalize_ltree_label(leaf_source)
         if parent_id is not None:
-            parent_path = await session.scalar(
-                select(TaxonomyNode.code_path).where(TaxonomyNode.id == parent_id)
-            )
+            parent_path = await session.scalar(select(TaxonomyNode.code_path).where(TaxonomyNode.id == parent_id))
             if parent_path is None:
                 raise LookupError(f"parent taxonomy node {parent_id} not found")
             resolved_path = f"{parent_path}.{leaf}"
@@ -160,11 +158,7 @@ async def create_node_version(
     created_by: uuid.UUID | None = None,
 ) -> tuple[TaxonomyNodeRecord, TaxonomyNodeVersionRecord]:
     """Append version N+1 to an existing node without mutating node.id or node.code_path."""
-    stmt = (
-        select(TaxonomyNode)
-        .where(TaxonomyNode.id == taxonomy_node_id)
-        .with_for_update()
-    )
+    stmt = select(TaxonomyNode).where(TaxonomyNode.id == taxonomy_node_id).with_for_update()
     node = await session.scalar(stmt)
     if node is None:
         raise LookupError(f"taxonomy node {taxonomy_node_id} not found")
@@ -249,4 +243,3 @@ async def add_taxonomy_alias(
     session.add(alias)
     await session.flush()
     return alias.id
-

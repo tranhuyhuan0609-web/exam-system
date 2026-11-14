@@ -29,8 +29,13 @@ _FIELDS = frozenset({"updated_at", "created_at"})
 
 def _encode(**kw) -> str:
     args = dict(
-        sort_field="updated_at", sort_value="2026-11-13T09:00:00Z", tie_id="q-2", direction="desc",
-        secret=_SECRET, now_epoch=_NOW, **_CTX,
+        sort_field="updated_at",
+        sort_value="2026-11-13T09:00:00Z",
+        tie_id="q-2",
+        direction="desc",
+        secret=_SECRET,
+        now_epoch=_NOW,
+        **_CTX,
     )
     args.update(kw)
     return encode_cursor(**args)
@@ -38,8 +43,12 @@ def _encode(**kw) -> str:
 
 def _decode(cursor, **kw):
     args = dict(
-        secret=_SECRET, allowed_sort_fields=_FIELDS, expected_sort_field="updated_at",
-        expected_direction="desc", now_epoch=_NOW + 10, **_CTX,
+        secret=_SECRET,
+        allowed_sort_fields=_FIELDS,
+        expected_sort_field="updated_at",
+        expected_direction="desc",
+        now_epoch=_NOW + 10,
+        **_CTX,
     )
     args.update(kw)
     return decode_cursor(cursor, **args)
@@ -180,8 +189,17 @@ def test_validly_signed_but_malformed_payloads_are_rejected() -> None:
     good = {"f": "updated_at", "v": 1, "id": "x", "d": "desc", "exp": _NOW + 100}
     assert _decode(_forge(good)).tie_id == "x"
     for mutation in (
-        {"f": 5}, {"f": None}, {"d": "sideways"}, {"d": None}, {"id": ""}, {"id": 5}, {"exp": "soon"},
-        {"exp": True}, {"exp": None}, {"v": {"a": 1}}, {"v": [1]},
+        {"f": 5},
+        {"f": None},
+        {"d": "sideways"},
+        {"d": None},
+        {"id": ""},
+        {"id": 5},
+        {"exp": "soon"},
+        {"exp": True},
+        {"exp": None},
+        {"v": {"a": 1}},
+        {"v": [1]},
     ):
         with pytest.raises(CursorError):
             _decode(_forge({**good, **mutation}))
@@ -197,9 +215,19 @@ def test_cursor_without_expiry_is_rejected() -> None:
 
 def test_encode_validates_its_inputs() -> None:
     for kwargs in (
-        dict(secret=""), dict(secret=None), dict(direction="up"), dict(direction=None), dict(sort_field=""),
-        dict(sort_value={"a": 1}), dict(sort_value=math.nan), dict(sort_value=math.inf), dict(tenant_id=""),
-        dict(tenant_id=None), dict(route="bad\nroute"), dict(ttl_seconds=0), dict(ttl_seconds=True),
+        dict(secret=""),
+        dict(secret=None),
+        dict(direction="up"),
+        dict(direction=None),
+        dict(sort_field=""),
+        dict(sort_value={"a": 1}),
+        dict(sort_value=math.nan),
+        dict(sort_value=math.inf),
+        dict(tenant_id=""),
+        dict(tenant_id=None),
+        dict(route="bad\nroute"),
+        dict(ttl_seconds=0),
+        dict(ttl_seconds=True),
         dict(now_epoch="x"),
     ):
         with pytest.raises(CursorError):
@@ -223,9 +251,7 @@ def test_unicode_sort_values_round_trip() -> None:
 
 
 def test_page_boundaries_exact_limit_and_empty() -> None:
-    kw = dict(
-        sort_field="updated_at", key_extractor=lambda r: (r, str(r)), secret=_SECRET, now_epoch=_NOW, **_CTX
-    )
+    kw = dict(sort_field="updated_at", key_extractor=lambda r: (r, str(r)), secret=_SECRET, now_epoch=_NOW, **_CTX)
     exact = build_cursor_page([1, 2], limit=2, **kw)
     assert exact.has_more is False and exact.next_cursor is None and exact.items == (1, 2)
     empty = build_cursor_page([], limit=2, **kw)
@@ -252,10 +278,10 @@ def test_correlation_id_boundaries_and_injection_attempts() -> None:
     assert resolve_correlation_id(ok8) == ok8
     assert resolve_correlation_id(ok100) == ok100
     assert resolve_correlation_id(" " + ok8 + " ") == ok8
-    for bad in ("a" * 7, "a" * 101, "id with spaces","abc\r\nSet-Cookie: x=y", "éééééééé", "", None, 12345678):
+    for bad in ("a" * 7, "a" * 101, "id with spaces", "abc\r\nSet-Cookie: x=y", "éééééééé", "", None, 12345678):
         out = resolve_correlation_id(bad)  # type: ignore[arg-type]
         assert out.startswith("corr-") and "\n" not in out
-    assert resolve_correlation_id("valid-id-1234\n") =="valid-id-1234"  # surrounding whitespace is stripped
+    assert resolve_correlation_id("valid-id-1234\n") == "valid-id-1234"  # surrounding whitespace is stripped
     assert resolve_correlation_id(None) != resolve_correlation_id(None)
 
 

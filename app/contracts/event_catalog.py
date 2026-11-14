@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from decimal import Decimal
-import math
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -234,9 +234,7 @@ EVENT_CATALOG: dict[tuple[str, int], EventCatalogEntry] = {
     ("drive.file.discovered", 1): EventCatalogEntry(
         "drive.file.discovered", 1, "A03", ("A01", "A03"), DriveFileDiscoveredPayload
     ),
-    ("document.uploaded", 1): EventCatalogEntry(
-        "document.uploaded", 1, "A01", ("A05", "A06"), DocumentUploadedPayload
-    ),
+    ("document.uploaded", 1): EventCatalogEntry("document.uploaded", 1, "A01", ("A05", "A06"), DocumentUploadedPayload),
     ("document.extraction.completed", 1): EventCatalogEntry(
         "document.extraction.completed", 1, "A05/A06", ("A04", "A07"), DocumentExtractionCompletedPayload
     ),
@@ -249,24 +247,14 @@ EVENT_CATALOG: dict[tuple[str, int], EventCatalogEntry] = {
     ("question.version.published", 1): EventCatalogEntry(
         "question.version.published", 1, "C01/A09", ("B07", "C04"), QuestionVersionPublishedPayload
     ),
-    ("content.published", 1): EventCatalogEntry(
-        "content.published", 1, "B01", ("B07", "D02"), ContentPublishedPayload
-    ),
+    ("content.published", 1): EventCatalogEntry("content.published", 1, "B01", ("B07", "D02"), ContentPublishedPayload),
     ("assessment.published", 1): EventCatalogEntry(
         "assessment.published", 1, "C04", ("C05",), AssessmentPublishedPayload
     ),
-    ("attempt.submitted", 1): EventCatalogEntry(
-        "attempt.submitted", 1, "C05/C06", ("C07",), AttemptSubmittedPayload
-    ),
-    ("attempt.expired", 1): EventCatalogEntry(
-        "attempt.expired", 1, "C05", ("C06", "C07"), AttemptExpiredPayload
-    ),
-    ("attempt.graded", 1): EventCatalogEntry(
-        "attempt.graded", 1, "C07", ("D05", "D06", "F03"), AttemptGradedPayload
-    ),
-    ("grade.released", 1): EventCatalogEntry(
-        "grade.released", 1, "C07/F02", ("F06", "D01"), GradeReleasedPayload
-    ),
+    ("attempt.submitted", 1): EventCatalogEntry("attempt.submitted", 1, "C05/C06", ("C07",), AttemptSubmittedPayload),
+    ("attempt.expired", 1): EventCatalogEntry("attempt.expired", 1, "C05", ("C06", "C07"), AttemptExpiredPayload),
+    ("attempt.graded", 1): EventCatalogEntry("attempt.graded", 1, "C07", ("D05", "D06", "F03"), AttemptGradedPayload),
+    ("grade.released", 1): EventCatalogEntry("grade.released", 1, "C07/F02", ("F06", "D01"), GradeReleasedPayload),
     ("rights.takedown.executed", 1): EventCatalogEntry(
         "rights.takedown.executed", 1, "G02", ("A09", "B01", "C01", "B07", "C05"), RightsTakedownExecutedPayload
     ),
@@ -314,7 +302,7 @@ def build_catalog_envelope(
         raise TypeError(
             f"{event_type} v{schema_version} expects {spec.payload_model.__name__}, got {type(payload).__name__}"
         )
-    tenant_id = getattr(payload, "tenant_id")
+    tenant_id = payload.tenant_id
     return EventEnvelopeContract(
         event_type=event_type,
         schema_version=schema_version,

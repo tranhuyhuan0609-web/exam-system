@@ -175,9 +175,7 @@ def test_reorders_options_by_p8_permutation_relabels_ad_and_strips_identity_and_
     expected_perm = perm.option_permutations[str(Q1)]
     text_by_canon = {"A": "3", "B": "5", "C": "6", "D": "4"}
     assert [opt.display_label for opt in q1_out.options] == ["A", "B", "C", "D"]
-    assert [opt.content_json["text"] for opt in q1_out.options] == [
-        text_by_canon[k] for k in expected_perm
-    ]
+    assert [opt.content_json["text"] for opt in q1_out.options] == [text_by_canon[k] for k in expected_perm]
 
     q2_out = paper.questions[1]
     assert [opt.display_label for opt in q2_out.options] == ["a", "b"]

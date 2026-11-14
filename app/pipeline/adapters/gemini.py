@@ -127,9 +127,7 @@ class GeminiEmbedder:
                 except errors.APIError as exc:
                     last_err = exc
                     if exc.code == 429:
-                        await self._pool.mark_exhausted(
-                            current_key, cooldown_minutes=60, reason=str(exc.message)[:100]
-                        )
+                        await self._pool.mark_exhausted(current_key, cooldown_minutes=60, reason=str(exc.message)[:100])
                         continue
                     raise
 

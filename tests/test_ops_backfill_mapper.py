@@ -92,9 +92,10 @@ def test_reconciliation_detects_missing_or_duplicate_rows_and_second_pass_violat
 
 # --- regression + boundary tests --------------------------------------------------------------
 
+from typing import get_args  # noqa: E402
+
 from app.contracts import enums as contract_enums  # noqa: E402
 from app.contracts.blueprints import CognitiveLevel  # noqa: E402
-from typing import get_args  # noqa: E402
 
 
 def _report(source, migrated, skipped=None, second=0):
@@ -220,12 +221,21 @@ def test_origin_is_case_and_whitespace_insensitive() -> None:
     state = resolve_legacy_five_axis_state(
         origin_type=" authored ", audit_status="verified_by_human", legacy_is_verified=False, has_answer_source=False
     )
-    assert (state.rights_status, state.verification_status, state.publication_status) == ("OWNED", "VERIFIED", "PUBLISHED")
+    assert (state.rights_status, state.verification_status, state.publication_status) == (
+        "OWNED",
+        "VERIFIED",
+        "PUBLISHED",
+    )
 
 
 @pytest.mark.parametrize(
     "verified,has_source,expected",
-    [(True, True, "AUTO_VERIFIED"), (True, False, "UNCHECKED"), (False, True, "UNCHECKED"), (False, False, "UNCHECKED")],
+    [
+        (True, True, "AUTO_VERIFIED"),
+        (True, False, "UNCHECKED"),
+        (False, True, "UNCHECKED"),
+        (False, False, "UNCHECKED"),
+    ],
 )
 def test_legacy_is_verified_alone_never_verifies(verified, has_source, expected) -> None:
     state = resolve_legacy_five_axis_state(
@@ -237,7 +247,10 @@ def test_legacy_is_verified_alone_never_verifies(verified, has_source, expected)
 
 def test_truthy_non_bool_flags_do_not_count_as_verification_evidence() -> None:
     state = resolve_legacy_five_axis_state(
-        origin_type="AUTHORED", audit_status=None, legacy_is_verified=1, has_answer_source="yes"  # type: ignore[arg-type]
+        origin_type="AUTHORED",
+        audit_status=None,
+        legacy_is_verified=1,
+        has_answer_source="yes",  # type: ignore[arg-type]
     )
     assert state.verification_status == "UNCHECKED"
 
@@ -247,14 +260,23 @@ def test_unknown_audit_status_is_not_verification_and_visibility_is_validated() 
         origin_type="AUTHORED", audit_status="VERIFIED_MAYBE", legacy_is_verified=False, has_answer_source=False
     )
     assert state.verification_status == "UNCHECKED"
-    assert resolve_legacy_five_axis_state(
-        origin_type=None, audit_status=None, legacy_is_verified=False, has_answer_source=False,
-        visibility_scope="TENANT_PRIVATE",
-    ).visibility_scope == "TENANT_PRIVATE"
+    assert (
+        resolve_legacy_five_axis_state(
+            origin_type=None,
+            audit_status=None,
+            legacy_is_verified=False,
+            has_answer_source=False,
+            visibility_scope="TENANT_PRIVATE",
+        ).visibility_scope
+        == "TENANT_PRIVATE"
+    )
     for bad in ("PUBLIC", "", None, "system_public"):
         with pytest.raises(BackfillMappingError):
             resolve_legacy_five_axis_state(
-                origin_type=None, audit_status=None, legacy_is_verified=False, has_answer_source=False,
+                origin_type=None,
+                audit_status=None,
+                legacy_is_verified=False,
+                has_answer_source=False,
                 visibility_scope=bad,  # type: ignore[arg-type]
             )
 

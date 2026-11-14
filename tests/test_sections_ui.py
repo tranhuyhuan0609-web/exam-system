@@ -119,7 +119,11 @@ def test_all_four_sections_have_separated_individual_grades(client):
     assert "VSTEP" in res_nn.text
     assert "HSK" in res_nn.text
     assert "JLPT" in res_nn.text
-    assert "Vào học ngay Luyện thi TOEIC" in res_nn.text or "Vào luyện đề & học bài →" in res_nn.text or "Vào mục Tiếng Anh" in res_nn.text  # noqa: E501
+    assert (
+        "Vào học ngay Luyện thi TOEIC" in res_nn.text
+        or "Vào luyện đề & học bài →" in res_nn.text
+        or "Vào mục Tiếng Anh" in res_nn.text
+    )  # noqa: E501
 
 
 def test_sections_have_dedicated_hot_blocks(client):
@@ -275,17 +279,17 @@ def test_foreign_languages_portal_and_sub_pages(client):
     assert "Reading" in res_jlpt.text or "読解" in res_jlpt.text
 
     # 9. Kiểm tra trang Study và Practice riêng biệt của TOEIC
-    res_toeic_study = client.get('/grade/tieng-anh/subject/toeic/study')
+    res_toeic_study = client.get("/grade/tieng-anh/subject/toeic/study")
     assert res_toeic_study.status_code == 200
-    assert 'PHẦN STUDY' in res_toeic_study.text
-    assert '/grade/tieng-anh/subject/toeic' in res_toeic_study.text
-    assert 'Chuyển sang phần Practice' in res_toeic_study.text
+    assert "PHẦN STUDY" in res_toeic_study.text
+    assert "/grade/tieng-anh/subject/toeic" in res_toeic_study.text
+    assert "Chuyển sang phần Practice" in res_toeic_study.text
 
-    res_toeic_practice = client.get('/grade/tieng-anh/subject/toeic/practice')
+    res_toeic_practice = client.get("/grade/tieng-anh/subject/toeic/practice")
     assert res_toeic_practice.status_code == 200
-    assert 'PHẦN PRACTICE' in res_toeic_practice.text
-    assert '/grade/tieng-anh/subject/toeic' in res_toeic_practice.text
-    assert 'Chuyển sang phần Study' in res_toeic_practice.text
+    assert "PHẦN PRACTICE" in res_toeic_practice.text
+    assert "/grade/tieng-anh/subject/toeic" in res_toeic_practice.text
+    assert "Chuyển sang phần Study" in res_toeic_practice.text
 
 
 def test_materials_three_parts_and_class_curriculum_pages(client):
@@ -351,27 +355,29 @@ def test_crawler_pipeline_open_apis():
     assert "opentrivia_quiz" in parsers
 
     # 2. Test opentrivia parser logic with sample JSON payload
-    sample_json = json.dumps({
-        "response_code": 0,
-        "results": [
-            {
-                "type": "multiple",
-                "difficulty": "medium",
-                "category": "Science: Mathematics",
-                "question": "What is the square root of 64?",
-                "correct_answer": "8",
-                "incorrect_answers": ["6", "7", "9"]
-            },
-            {
-                "type": "boolean",
-                "difficulty": "easy",
-                "category": "Science: Computers",
-                "question": "HTML stands for HyperText Markup Language.",
-                "correct_answer": "True",
-                "incorrect_answers": ["False"]
-            }
-        ]
-    })
+    sample_json = json.dumps(
+        {
+            "response_code": 0,
+            "results": [
+                {
+                    "type": "multiple",
+                    "difficulty": "medium",
+                    "category": "Science: Mathematics",
+                    "question": "What is the square root of 64?",
+                    "correct_answer": "8",
+                    "incorrect_answers": ["6", "7", "9"],
+                },
+                {
+                    "type": "boolean",
+                    "difficulty": "easy",
+                    "category": "Science: Computers",
+                    "question": "HTML stands for HyperText Markup Language.",
+                    "correct_answer": "True",
+                    "incorrect_answers": ["False"],
+                },
+            ],
+        }
+    )
     parser_fn = parsers["opentrivia_quiz"]
     page: ParsedPage = parser_fn(sample_json, "https://opentdb.com/api.php?amount=2")
     assert len(page.questions) == 2
@@ -394,4 +400,3 @@ def test_crawler_pipeline_open_apis():
     correct_tf = [c for c in q2.choices if c["is_correct"]]
     assert len(correct_tf) == 1
     assert correct_tf[0]["content"] == "True"
-

@@ -273,13 +273,7 @@ def resolve_library_folder_hierarchy(
             else (
                 "ĐHBK Hà Nội (TSA)"
                 if "tsa" in p
-                else (
-                    "Bộ Công An"
-                    if "cong an" in p
-                    else "ĐHQG TP.HCM (APT)"
-                    if "apt" in p
-                    else "ĐGTD & ĐGNL Khác"
-                )
+                else ("Bộ Công An" if "cong an" in p else "ĐHQG TP.HCM (APT)" if "apt" in p else "ĐGTD & ĐGNL Khác")
             )
         )
         return ["ĐGTD & ĐGNL", exam_name], LibraryKind.EXAM, AccessTier.FREE
@@ -462,7 +456,7 @@ async def ensure_job_library_document(
     doc = await library_document(session, job)
     category = await session.get(Category, job.category_id) if job.category_id else None
     ancestors = [c.name for c in await _ancestors(session, category)] if category else []
-    
+
     clean_title = (title.strip() or PurePath(job.original_filename or "").stem or f"Đề nhập #{job.id}")[:300]
     folder_path, kind, tier = resolve_library_folder_hierarchy(
         filename=job.original_filename or "",

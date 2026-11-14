@@ -1355,10 +1355,30 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🎧",
                 "desc": "Phương pháp luyện nghe bắt từ khóa, phân tích bẫy phát âm và phản xạ hội thoại Part 1 - Part 4",
                 "lessons": [
-                    {"title": "Unit 1: Mô tả tranh (Part 1) & Kỹ thuật nhận diện bẫy thì, bẫy vị trí", "badge": "Photographs", "duration": "30 phút", "topics": "Audio mẹo Part 1"},
-                    {"title": "Unit 2: Hỏi & Đáp (Part 2) - Bắt nhanh Wh-questions và câu trả lời gián tiếp", "badge": "Q&A Tricks", "duration": "45 phút", "topics": "60 Mẫu câu hỏi đáp"},
-                    {"title": "Unit 3: Đoạn hội thoại (Part 3) - Phân tích câu hỏi suy luận & Ngụ ý", "badge": "Conversations", "duration": "45 phút", "topics": "Nghe 3 người đối thoại"},
-                    {"title": "Unit 4: Bài nói chuyện (Part 4) - Độc thoại thông báo, tin tức và thuyết trình", "badge": "Short Talks", "duration": "40 phút", "topics": "Chiến lược Skimming"},
+                    {
+                        "title": "Unit 1: Mô tả tranh (Part 1) & Kỹ thuật nhận diện bẫy thì, bẫy vị trí",
+                        "badge": "Photographs",
+                        "duration": "30 phút",
+                        "topics": "Audio mẹo Part 1",
+                    },
+                    {
+                        "title": "Unit 2: Hỏi & Đáp (Part 2) - Bắt nhanh Wh-questions và câu trả lời gián tiếp",
+                        "badge": "Q&A Tricks",
+                        "duration": "45 phút",
+                        "topics": "60 Mẫu câu hỏi đáp",
+                    },
+                    {
+                        "title": "Unit 3: Đoạn hội thoại (Part 3) - Phân tích câu hỏi suy luận & Ngụ ý",
+                        "badge": "Conversations",
+                        "duration": "45 phút",
+                        "topics": "Nghe 3 người đối thoại",
+                    },
+                    {
+                        "title": "Unit 4: Bài nói chuyện (Part 4) - Độc thoại thông báo, tin tức và thuyết trình",
+                        "badge": "Short Talks",
+                        "duration": "40 phút",
+                        "topics": "Chiến lược Skimming",
+                    },
                 ],
             },
             {
@@ -1367,10 +1387,30 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "📖",
                 "desc": "Trọng điểm ngữ pháp Part 5, điền từ vào đoạn văn Part 6 và kỹ thuật đọc hiểu văn bản Part 7",
                 "lessons": [
-                    {"title": "Unit 1: 10 Dạng từ loại & Ngữ pháp trọng điểm cốt lõi Part 5", "badge": "Grammar Core", "duration": "45 phút", "topics": "Quy tắc vị trí từ loại"},
-                    {"title": "Unit 2: Hoàn thành đoạn văn (Part 6) - Phương pháp điền câu & Liên từ liên kết", "badge": "Text Completion", "duration": "35 phút", "topics": "Liên kết ngữ cảnh"},
-                    {"title": "Unit 3: Đọc hiểu đoạn đơn (Part 7) - Kỹ thuật Skimming & Scanning văn bản thực tế", "badge": "Single Passage", "duration": "50 phút", "topics": "Email, hóa đơn, bài báo"},
-                    {"title": "Unit 4: Đọc hiểu đoạn kép & đoạn ba (Part 7) - Xử lý câu hỏi xâu chuỗi thông tin", "badge": "Multiple Passages", "duration": "50 phút", "topics": "So sánh thông tin"},
+                    {
+                        "title": "Unit 1: 10 Dạng từ loại & Ngữ pháp trọng điểm cốt lõi Part 5",
+                        "badge": "Grammar Core",
+                        "duration": "45 phút",
+                        "topics": "Quy tắc vị trí từ loại",
+                    },
+                    {
+                        "title": "Unit 2: Hoàn thành đoạn văn (Part 6) - Phương pháp điền câu & Liên từ liên kết",
+                        "badge": "Text Completion",
+                        "duration": "35 phút",
+                        "topics": "Liên kết ngữ cảnh",
+                    },
+                    {
+                        "title": "Unit 3: Đọc hiểu đoạn đơn (Part 7) - Kỹ thuật Skimming & Scanning văn bản thực tế",
+                        "badge": "Single Passage",
+                        "duration": "50 phút",
+                        "topics": "Email, hóa đơn, bài báo",
+                    },
+                    {
+                        "title": "Unit 4: Đọc hiểu đoạn kép & đoạn ba (Part 7) - Xử lý câu hỏi xâu chuỗi thông tin",
+                        "badge": "Multiple Passages",
+                        "duration": "50 phút",
+                        "topics": "So sánh thông tin",
+                    },
                 ],
             },
             {
@@ -1379,9 +1419,24 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "✍️",
                 "desc": "Cấu trúc viết câu mô tả tranh, viết Email phản hồi công việc và bài luận nêu quan điểm",
                 "lessons": [
-                    {"title": "Unit 1: Kỹ thuật viết câu chuẩn ngữ pháp dựa trên 2 từ cho trước (Q1 - Q5)", "badge": "Sentence Building", "duration": "40 phút", "topics": "Ngữ pháp câu phức"},
-                    {"title": "Unit 2: Mẫu viết Email hỏi đáp, yêu cầu thông tin và khiếu nại (Q6 - Q7)", "badge": "Business Email", "duration": "45 phút", "topics": "Barem chấm điểm ETS"},
-                    {"title": "Unit 3: Cấu trúc 4 đoạn cho bài luận nghị luận quan điểm cá nhân (Q8)", "badge": "Opinion Essay", "duration": "60 phút", "topics": "Dàn ý chuẩn Band cao"},
+                    {
+                        "title": "Unit 1: Kỹ thuật viết câu chuẩn ngữ pháp dựa trên 2 từ cho trước (Q1 - Q5)",
+                        "badge": "Sentence Building",
+                        "duration": "40 phút",
+                        "topics": "Ngữ pháp câu phức",
+                    },
+                    {
+                        "title": "Unit 2: Mẫu viết Email hỏi đáp, yêu cầu thông tin và khiếu nại (Q6 - Q7)",
+                        "badge": "Business Email",
+                        "duration": "45 phút",
+                        "topics": "Barem chấm điểm ETS",
+                    },
+                    {
+                        "title": "Unit 3: Cấu trúc 4 đoạn cho bài luận nghị luận quan điểm cá nhân (Q8)",
+                        "badge": "Opinion Essay",
+                        "duration": "60 phút",
+                        "topics": "Dàn ý chuẩn Band cao",
+                    },
                 ],
             },
             {
@@ -1390,10 +1445,30 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🗣️",
                 "desc": "Chuẩn hóa phát âm IPA, ngữ điệu đọc đoạn văn, mô tả tranh và phản xạ giao tiếp công sở",
                 "lessons": [
-                    {"title": "Unit 1: Đọc to đoạn văn với phát âm chuẩn, trọng âm từ và ngữ điệu câu", "badge": "Read Aloud", "duration": "30 phút", "topics": "Ngữ âm & Nối âm"},
-                    {"title": "Unit 2: Kỹ năng mô tả tranh chi tiết trong 45 giây (Bối cảnh, hành động, vị trí)", "badge": "Describe a Picture", "duration": "35 phút", "topics": "Từ vựng miêu tả"},
-                    {"title": "Unit 3: Trả lời câu hỏi phỏng vấn & Xử lý tình huống thông tin cho sẵn", "badge": "Respond to Questions", "duration": "40 phút", "topics": "Phản xạ nhanh"},
-                    {"title": "Unit 4: Đề xuất giải pháp và trình bày quan điểm thuyết phục", "badge": "Express Opinion", "duration": "45 phút", "topics": "Công thức AREA"},
+                    {
+                        "title": "Unit 1: Đọc to đoạn văn với phát âm chuẩn, trọng âm từ và ngữ điệu câu",
+                        "badge": "Read Aloud",
+                        "duration": "30 phút",
+                        "topics": "Ngữ âm & Nối âm",
+                    },
+                    {
+                        "title": "Unit 2: Kỹ năng mô tả tranh chi tiết trong 45 giây (Bối cảnh, hành động, vị trí)",
+                        "badge": "Describe a Picture",
+                        "duration": "35 phút",
+                        "topics": "Từ vựng miêu tả",
+                    },
+                    {
+                        "title": "Unit 3: Trả lời câu hỏi phỏng vấn & Xử lý tình huống thông tin cho sẵn",
+                        "badge": "Respond to Questions",
+                        "duration": "40 phút",
+                        "topics": "Phản xạ nhanh",
+                    },
+                    {
+                        "title": "Unit 4: Đề xuất giải pháp và trình bày quan điểm thuyết phục",
+                        "badge": "Express Opinion",
+                        "duration": "45 phút",
+                        "topics": "Công thức AREA",
+                    },
                 ],
             },
         ],
@@ -1404,11 +1479,37 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🎧",
                 "desc": "Ngân hàng bài tập nghe trắc nghiệm có audio, transcript và lời giải chi tiết",
                 "exercises": [
-                    {"title": "Luyện đề Part 1: 50 Câu hỏi mô tả tranh chọn lọc format ETS", "questions_count": 50, "duration": "25 phút", "badge": "Part 1 Practice"},
-                    {"title": "Luyện đề Part 2: 60 Câu hỏi đáp né bẫy phát âm & từ đồng âm", "questions_count": 60, "duration": "30 phút", "badge": "Part 2 Practice"},
-                    {"title": "Luyện đề Part 3: 15 Đoạn hội thoại đa chủ đề có giải thích bẫy", "questions_count": 45, "duration": "35 phút", "badge": "Part 3 Practice"},
-                    {"title": "Luyện đề Part 4: 10 Bài nói chuyện độc thoại có biểu đồ kèm theo", "questions_count": 30, "duration": "25 phút", "badge": "Part 4 Practice"},
-                    {"title": "Đề thi thử TOEIC Listening Full 100 câu (Format ETS mới nhất)", "questions_count": 100, "duration": "45 phút", "badge": "Full Listening", "highlight": True},
+                    {
+                        "title": "Luyện đề Part 1: 50 Câu hỏi mô tả tranh chọn lọc format ETS",
+                        "questions_count": 50,
+                        "duration": "25 phút",
+                        "badge": "Part 1 Practice",
+                    },
+                    {
+                        "title": "Luyện đề Part 2: 60 Câu hỏi đáp né bẫy phát âm & từ đồng âm",
+                        "questions_count": 60,
+                        "duration": "30 phút",
+                        "badge": "Part 2 Practice",
+                    },
+                    {
+                        "title": "Luyện đề Part 3: 15 Đoạn hội thoại đa chủ đề có giải thích bẫy",
+                        "questions_count": 45,
+                        "duration": "35 phút",
+                        "badge": "Part 3 Practice",
+                    },
+                    {
+                        "title": "Luyện đề Part 4: 10 Bài nói chuyện độc thoại có biểu đồ kèm theo",
+                        "questions_count": 30,
+                        "duration": "25 phút",
+                        "badge": "Part 4 Practice",
+                    },
+                    {
+                        "title": "Đề thi thử TOEIC Listening Full 100 câu (Format ETS mới nhất)",
+                        "questions_count": 100,
+                        "duration": "45 phút",
+                        "badge": "Full Listening",
+                        "highlight": True,
+                    },
                 ],
             },
             {
@@ -1417,10 +1518,31 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "📖",
                 "desc": "Kho đề thi trắc nghiệm đọc hiểu bấm giờ chấm điểm tự động",
                 "exercises": [
-                    {"title": "Luyện đề Part 5: 100 Câu trắc nghiệm ngữ pháp & từ vựng chọn lọc", "questions_count": 100, "duration": "40 phút", "badge": "Part 5 Practice"},
-                    {"title": "Luyện đề Part 6: 40 Câu điền từ hoàn thành đoạn văn công sở", "questions_count": 40, "duration": "30 phút", "badge": "Part 6 Practice"},
-                    {"title": "Luyện đề Part 7: 54 Câu đọc hiểu đoạn đơn, đoạn kép, đoạn ba", "questions_count": 54, "duration": "55 phút", "badge": "Part 7 Practice"},
-                    {"title": "Đề thi thử TOEIC Reading Full 100 câu (Chuẩn cấu trúc ETS)", "questions_count": 100, "duration": "75 phút", "badge": "Full Reading", "highlight": True},
+                    {
+                        "title": "Luyện đề Part 5: 100 Câu trắc nghiệm ngữ pháp & từ vựng chọn lọc",
+                        "questions_count": 100,
+                        "duration": "40 phút",
+                        "badge": "Part 5 Practice",
+                    },
+                    {
+                        "title": "Luyện đề Part 6: 40 Câu điền từ hoàn thành đoạn văn công sở",
+                        "questions_count": 40,
+                        "duration": "30 phút",
+                        "badge": "Part 6 Practice",
+                    },
+                    {
+                        "title": "Luyện đề Part 7: 54 Câu đọc hiểu đoạn đơn, đoạn kép, đoạn ba",
+                        "questions_count": 54,
+                        "duration": "55 phút",
+                        "badge": "Part 7 Practice",
+                    },
+                    {
+                        "title": "Đề thi thử TOEIC Reading Full 100 câu (Chuẩn cấu trúc ETS)",
+                        "questions_count": 100,
+                        "duration": "75 phút",
+                        "badge": "Full Reading",
+                        "highlight": True,
+                    },
                 ],
             },
             {
@@ -1429,9 +1551,25 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "✍️",
                 "desc": "Đề bài luyện viết thực tế kèm bài mẫu tham khảo điểm tối đa",
                 "exercises": [
-                    {"title": "Luyện viết câu miêu tả 20 bức tranh thực tế (Kèm câu mẫu)", "questions_count": 20, "duration": "30 phút", "badge": "Sentence Practice"},
-                    {"title": "Thực hành phản hồi 5 tình huống Email công việc thực tế", "questions_count": 5, "duration": "40 phút", "badge": "Email Practice"},
-                    {"title": "Đề luyện viết bài luận hoàn chỉnh kèm Sample Band 200/200", "questions_count": 3, "duration": "60 phút", "badge": "Essay Sample", "highlight": True},
+                    {
+                        "title": "Luyện viết câu miêu tả 20 bức tranh thực tế (Kèm câu mẫu)",
+                        "questions_count": 20,
+                        "duration": "30 phút",
+                        "badge": "Sentence Practice",
+                    },
+                    {
+                        "title": "Thực hành phản hồi 5 tình huống Email công việc thực tế",
+                        "questions_count": 5,
+                        "duration": "40 phút",
+                        "badge": "Email Practice",
+                    },
+                    {
+                        "title": "Đề luyện viết bài luận hoàn chỉnh kèm Sample Band 200/200",
+                        "questions_count": 3,
+                        "duration": "60 phút",
+                        "badge": "Essay Sample",
+                        "highlight": True,
+                    },
                 ],
             },
             {
@@ -1440,20 +1578,50 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🗣️",
                 "desc": "Phòng luyện nói tương tác có đồng hồ đếm ngược và câu trả lời mẫu",
                 "exercises": [
-                    {"title": "Luyện đọc to 15 đoạn văn bản thông báo & quảng cáo", "questions_count": 15, "duration": "20 phút", "badge": "Read Aloud"},
-                    {"title": "Luyện mô tả 10 tranh với đồng hồ đếm ngược 45 giây", "questions_count": 10, "duration": "25 phút", "badge": "Describe Picture"},
-                    {"title": "Bộ 20 câu hỏi phỏng vấn phản xạ trực tiếp có audio mẫu", "questions_count": 20, "duration": "30 phút", "badge": "Q&A Response"},
-                    {"title": "Thi thử TOEIC Speaking Full Test (11 câu hỏi mô phỏng thi thật)", "questions_count": 11, "duration": "20 phút", "badge": "Full Speaking Test", "highlight": True},
+                    {
+                        "title": "Luyện đọc to 15 đoạn văn bản thông báo & quảng cáo",
+                        "questions_count": 15,
+                        "duration": "20 phút",
+                        "badge": "Read Aloud",
+                    },
+                    {
+                        "title": "Luyện mô tả 10 tranh với đồng hồ đếm ngược 45 giây",
+                        "questions_count": 10,
+                        "duration": "25 phút",
+                        "badge": "Describe Picture",
+                    },
+                    {
+                        "title": "Bộ 20 câu hỏi phỏng vấn phản xạ trực tiếp có audio mẫu",
+                        "questions_count": 20,
+                        "duration": "30 phút",
+                        "badge": "Q&A Response",
+                    },
+                    {
+                        "title": "Thi thử TOEIC Speaking Full Test (11 câu hỏi mô phỏng thi thật)",
+                        "questions_count": 11,
+                        "duration": "20 phút",
+                        "badge": "Full Speaking Test",
+                        "highlight": True,
+                    },
                 ],
             },
         ],
         "full_tests": [
-            {"title": "Đề thi thử TOEIC Full Test 01 (Format ETS Mới Nhất - 200 Câu / 120 Phút)", "duration": "120 phút", "questions_count": 200, "badge": "Full Mock Test"},
-            {"title": "Đề thi thử TOEIC Full Test 02 (Bản quyền đề thi thử có chấm điểm tự động)", "duration": "120 phút", "questions_count": 200, "badge": "Full Mock Test"},
+            {
+                "title": "Đề thi thử TOEIC Full Test 01 (Format ETS Mới Nhất - 200 Câu / 120 Phút)",
+                "duration": "120 phút",
+                "questions_count": 200,
+                "badge": "Full Mock Test",
+            },
+            {
+                "title": "Đề thi thử TOEIC Full Test 02 (Bản quyền đề thi thử có chấm điểm tự động)",
+                "duration": "120 phút",
+                "questions_count": 200,
+                "badge": "Full Mock Test",
+            },
         ],
         "chapters": [],
     },
-
     # ==================== CẤU TRÚC CHUYÊN BIỆT TIẾNG ANH: IELTS ====================
     "tieng-anh_ielts": {
         "is_language": True,
@@ -1478,10 +1646,26 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🎧",
                 "desc": "Chiến thuật nghe bắt từ khóa Section 1 đến Section 4, tránh bẫy chính tả và số từ cho phép",
                 "lessons": [
-                    {"title": "Unit 1: Section 1 - Form/Note Completion (Bắt tên, số điện thoại, ngày tháng)", "badge": "Form Completion", "duration": "35 phút"},
-                    {"title": "Unit 2: Section 2 - Map & Plan Labelling (Kỹ thuật định hướng bản đồ)", "badge": "Map Labelling", "duration": "40 phút"},
-                    {"title": "Unit 3: Section 3 - Multiple Choice & Matching (Hội thoại học thuật 2-3 người)", "badge": "Multiple Choice", "duration": "45 phút"},
-                    {"title": "Unit 4: Section 4 - Academic Lecture (Nghe bài giảng đại học không ngừng nghỉ)", "badge": "Lecture Summary", "duration": "45 phút"},
+                    {
+                        "title": "Unit 1: Section 1 - Form/Note Completion (Bắt tên, số điện thoại, ngày tháng)",
+                        "badge": "Form Completion",
+                        "duration": "35 phút",
+                    },
+                    {
+                        "title": "Unit 2: Section 2 - Map & Plan Labelling (Kỹ thuật định hướng bản đồ)",
+                        "badge": "Map Labelling",
+                        "duration": "40 phút",
+                    },
+                    {
+                        "title": "Unit 3: Section 3 - Multiple Choice & Matching (Hội thoại học thuật 2-3 người)",
+                        "badge": "Multiple Choice",
+                        "duration": "45 phút",
+                    },
+                    {
+                        "title": "Unit 4: Section 4 - Academic Lecture (Nghe bài giảng đại học không ngừng nghỉ)",
+                        "badge": "Lecture Summary",
+                        "duration": "45 phút",
+                    },
                 ],
             },
             {
@@ -1490,10 +1674,26 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "📖",
                 "desc": "Kỹ thuật Skimming/Scanning và phương pháp giải quyết 10 dạng câu hỏi IELTS Reading",
                 "lessons": [
-                    {"title": "Unit 1: True / False / Not Given & Yes / No / Not Given phân biệt triệt để", "badge": "T/F/NG Master", "duration": "45 phút"},
-                    {"title": "Unit 2: Matching Headings (Kỹ thuật tìm câu chủ đề và nối tiêu đề đoạn văn)", "badge": "Headings Match", "duration": "45 phút"},
-                    {"title": "Unit 3: Summary Completion & Sentence Completion (Bắt từ khóa trong bài đọc)", "badge": "Summary Fill", "duration": "40 phút"},
-                    {"title": "Unit 4: Matching Features & Information (Nối quan điểm chuyên gia và sự kiện)", "badge": "Matching Features", "duration": "40 phút"},
+                    {
+                        "title": "Unit 1: True / False / Not Given & Yes / No / Not Given phân biệt triệt để",
+                        "badge": "T/F/NG Master",
+                        "duration": "45 phút",
+                    },
+                    {
+                        "title": "Unit 2: Matching Headings (Kỹ thuật tìm câu chủ đề và nối tiêu đề đoạn văn)",
+                        "badge": "Headings Match",
+                        "duration": "45 phút",
+                    },
+                    {
+                        "title": "Unit 3: Summary Completion & Sentence Completion (Bắt từ khóa trong bài đọc)",
+                        "badge": "Summary Fill",
+                        "duration": "40 phút",
+                    },
+                    {
+                        "title": "Unit 4: Matching Features & Information (Nối quan điểm chuyên gia và sự kiện)",
+                        "badge": "Matching Features",
+                        "duration": "40 phút",
+                    },
                 ],
             },
             {
@@ -1502,10 +1702,26 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "✍️",
                 "desc": "Phương pháp viết Task 1 mô tả biểu đồ và Task 2 bài luận nghị luận xã hội",
                 "lessons": [
-                    {"title": "Unit 1: Task 1 - Biểu đồ xu hướng (Line Graph, Bar Chart) & Từ vựng thay đổi", "badge": "Task 1 Trends", "duration": "50 phút"},
-                    {"title": "Unit 2: Task 1 - Biểu đồ so sánh (Pie Chart, Table) và Bản đồ / Quy trình (Map/Process)", "badge": "Task 1 Process", "duration": "50 phút"},
-                    {"title": "Unit 3: Task 2 - Cấu trúc 4 đoạn mở bài, thân bài, kết luận cho bài luận Argument", "badge": "Task 2 Essay", "duration": "60 phút"},
-                    {"title": "Unit 4: Nâng cấp Lexical Resource & Cohesion: Sử dụng Collocations và từ nối", "badge": "Band 7.0+ Vocab", "duration": "45 phút"},
+                    {
+                        "title": "Unit 1: Task 1 - Biểu đồ xu hướng (Line Graph, Bar Chart) & Từ vựng thay đổi",
+                        "badge": "Task 1 Trends",
+                        "duration": "50 phút",
+                    },
+                    {
+                        "title": "Unit 2: Task 1 - Biểu đồ so sánh (Pie Chart, Table) và Bản đồ / Quy trình (Map/Process)",
+                        "badge": "Task 1 Process",
+                        "duration": "50 phút",
+                    },
+                    {
+                        "title": "Unit 3: Task 2 - Cấu trúc 4 đoạn mở bài, thân bài, kết luận cho bài luận Argument",
+                        "badge": "Task 2 Essay",
+                        "duration": "60 phút",
+                    },
+                    {
+                        "title": "Unit 4: Nâng cấp Lexical Resource & Cohesion: Sử dụng Collocations và từ nối",
+                        "badge": "Band 7.0+ Vocab",
+                        "duration": "45 phút",
+                    },
                 ],
             },
             {
@@ -1514,10 +1730,26 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🗣️",
                 "desc": "Chiến thuật trả lời Part 1 cá nhân, Part 2 độc thoại 2 phút và Part 3 thảo luận chuyên sâu",
                 "lessons": [
-                    {"title": "Unit 1: Part 1 - Chiến thuật trả lời câu hỏi quen thuộc theo công thức 2-3 câu", "badge": "Part 1 Fluency", "duration": "35 phút"},
-                    {"title": "Unit 2: Part 2 - Kỹ thuật lập dàn ý trong 1 phút và nói liên tục 2 phút", "badge": "Part 2 Cue Card", "duration": "45 phút"},
-                    {"title": "Unit 3: Part 3 - Thảo luận trừu tượng, so sánh quá khứ/tương lai, phân tích 2 mặt", "badge": "Part 3 Deep Talk", "duration": "45 phút"},
-                    {"title": "Unit 4: Pronunciation & Lexical Resource: Ngữ điệu tự nhiên và Idioms đắt giá", "badge": "Speaking Band 8", "duration": "40 phút"},
+                    {
+                        "title": "Unit 1: Part 1 - Chiến thuật trả lời câu hỏi quen thuộc theo công thức 2-3 câu",
+                        "badge": "Part 1 Fluency",
+                        "duration": "35 phút",
+                    },
+                    {
+                        "title": "Unit 2: Part 2 - Kỹ thuật lập dàn ý trong 1 phút và nói liên tục 2 phút",
+                        "badge": "Part 2 Cue Card",
+                        "duration": "45 phút",
+                    },
+                    {
+                        "title": "Unit 3: Part 3 - Thảo luận trừu tượng, so sánh quá khứ/tương lai, phân tích 2 mặt",
+                        "badge": "Part 3 Deep Talk",
+                        "duration": "45 phút",
+                    },
+                    {
+                        "title": "Unit 4: Pronunciation & Lexical Resource: Ngữ điệu tự nhiên và Idioms đắt giá",
+                        "badge": "Speaking Band 8",
+                        "duration": "40 phút",
+                    },
                 ],
             },
         ],
@@ -1528,10 +1760,31 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🎧",
                 "desc": "Kho đề luyện nghe IELTS trích từ bộ đề Cambridge có audio và đáp án",
                 "exercises": [
-                    {"title": "Luyện nghe Section 1: 10 Bài điền thông tin form đặt dịch vụ", "questions_count": 40, "duration": "30 phút", "badge": "Section 1 Set"},
-                    {"title": "Luyện nghe Section 2: 8 Bài bản đồ định vị khu bảo tồn, trường học", "questions_count": 35, "duration": "30 phút", "badge": "Section 2 Set"},
-                    {"title": "Luyện nghe Section 3 & 4: 10 Bài thảo luận nghiên cứu khoa học", "questions_count": 40, "duration": "35 phút", "badge": "Section 3-4 Set"},
-                    {"title": "Đề thi thử IELTS Listening Full Test (40 câu - 40 phút)", "questions_count": 40, "duration": "40 phút", "badge": "Full Listening", "highlight": True},
+                    {
+                        "title": "Luyện nghe Section 1: 10 Bài điền thông tin form đặt dịch vụ",
+                        "questions_count": 40,
+                        "duration": "30 phút",
+                        "badge": "Section 1 Set",
+                    },
+                    {
+                        "title": "Luyện nghe Section 2: 8 Bài bản đồ định vị khu bảo tồn, trường học",
+                        "questions_count": 35,
+                        "duration": "30 phút",
+                        "badge": "Section 2 Set",
+                    },
+                    {
+                        "title": "Luyện nghe Section 3 & 4: 10 Bài thảo luận nghiên cứu khoa học",
+                        "questions_count": 40,
+                        "duration": "35 phút",
+                        "badge": "Section 3-4 Set",
+                    },
+                    {
+                        "title": "Đề thi thử IELTS Listening Full Test (40 câu - 40 phút)",
+                        "questions_count": 40,
+                        "duration": "40 phút",
+                        "badge": "Full Listening",
+                        "highlight": True,
+                    },
                 ],
             },
             {
@@ -1540,9 +1793,25 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "📖",
                 "desc": "Tuyển tập các bài đọc Academic chuẩn Cambridge bấm giờ chấm điểm",
                 "exercises": [
-                    {"title": "Chuyên đề luyện đọc: 20 Bài đọc True / False / Not Given", "questions_count": 40, "duration": "45 phút", "badge": "T/F/NG Practice"},
-                    {"title": "Chuyên đề luyện đọc: 15 Bài đọc nối tiêu đề Matching Headings", "questions_count": 35, "duration": "45 phút", "badge": "Headings Practice"},
-                    {"title": "Bộ đề thi thử IELTS Reading Full Passage (3 Bài đọc - 40 câu / 60 phút)", "questions_count": 40, "duration": "60 phút", "badge": "Full Reading", "highlight": True},
+                    {
+                        "title": "Chuyên đề luyện đọc: 20 Bài đọc True / False / Not Given",
+                        "questions_count": 40,
+                        "duration": "45 phút",
+                        "badge": "T/F/NG Practice",
+                    },
+                    {
+                        "title": "Chuyên đề luyện đọc: 15 Bài đọc nối tiêu đề Matching Headings",
+                        "questions_count": 35,
+                        "duration": "45 phút",
+                        "badge": "Headings Practice",
+                    },
+                    {
+                        "title": "Bộ đề thi thử IELTS Reading Full Passage (3 Bài đọc - 40 câu / 60 phút)",
+                        "questions_count": 40,
+                        "duration": "60 phút",
+                        "badge": "Full Reading",
+                        "highlight": True,
+                    },
                 ],
             },
             {
@@ -1551,9 +1820,25 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "✍️",
                 "desc": "Kho đề thi viết cập nhật theo quý có bài mẫu Sample Band 8.0+",
                 "exercises": [
-                    {"title": "Thực hành viết 10 đề Task 1 Biểu đồ xu hướng (Kèm Sample 8.0)", "questions_count": 10, "duration": "40 phút", "badge": "Task 1 Practice"},
-                    {"title": "Thực hành viết 5 đề Task 1 Bản đồ và Quy trình sản xuất", "questions_count": 5, "duration": "40 phút", "badge": "Task 1 Process"},
-                    {"title": "Thực hành viết 10 đề Task 2 các chủ đề nóng: AI, Môi trường, Giáo dục", "questions_count": 10, "duration": "60 phút", "badge": "Task 2 Practice", "highlight": True},
+                    {
+                        "title": "Thực hành viết 10 đề Task 1 Biểu đồ xu hướng (Kèm Sample 8.0)",
+                        "questions_count": 10,
+                        "duration": "40 phút",
+                        "badge": "Task 1 Practice",
+                    },
+                    {
+                        "title": "Thực hành viết 5 đề Task 1 Bản đồ và Quy trình sản xuất",
+                        "questions_count": 5,
+                        "duration": "40 phút",
+                        "badge": "Task 1 Process",
+                    },
+                    {
+                        "title": "Thực hành viết 10 đề Task 2 các chủ đề nóng: AI, Môi trường, Giáo dục",
+                        "questions_count": 10,
+                        "duration": "60 phút",
+                        "badge": "Task 2 Practice",
+                        "highlight": True,
+                    },
                 ],
             },
             {
@@ -1562,19 +1847,43 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🗣️",
                 "desc": "Ngân hàng câu hỏi Speaking cập nhật theo quý có gợi ý ý tưởng",
                 "exercises": [
-                    {"title": "Bộ đề dự đoán Speaking Part 1 (30 Chủ đề thường gặp nhất)", "questions_count": 30, "duration": "25 phút", "badge": "Part 1 Bank"},
-                    {"title": "Bộ đề dự đoán Speaking Part 2 (50 Cue Cards kèm dàn ý mẫu)", "questions_count": 20, "duration": "40 phút", "badge": "Part 2 Bank"},
-                    {"title": "Luyện phản xạ Speaking Part 3: Câu hỏi thảo luận chuyên sâu", "questions_count": 25, "duration": "35 phút", "badge": "Part 3 Bank"},
+                    {
+                        "title": "Bộ đề dự đoán Speaking Part 1 (30 Chủ đề thường gặp nhất)",
+                        "questions_count": 30,
+                        "duration": "25 phút",
+                        "badge": "Part 1 Bank",
+                    },
+                    {
+                        "title": "Bộ đề dự đoán Speaking Part 2 (50 Cue Cards kèm dàn ý mẫu)",
+                        "questions_count": 20,
+                        "duration": "40 phút",
+                        "badge": "Part 2 Bank",
+                    },
+                    {
+                        "title": "Luyện phản xạ Speaking Part 3: Câu hỏi thảo luận chuyên sâu",
+                        "questions_count": 25,
+                        "duration": "35 phút",
+                        "badge": "Part 3 Bank",
+                    },
                 ],
             },
         ],
         "full_tests": [
-            {"title": "Đề thi thử IELTS Full Mock Test 01 (Academic 4 Kỹ Năng)", "duration": "165 phút", "questions_count": 82, "badge": "Full Academic Test"},
-            {"title": "Đề thi thử IELTS Full Mock Test 02 (Chuẩn format IDP / BC)", "duration": "165 phút", "questions_count": 82, "badge": "Full Academic Test"},
+            {
+                "title": "Đề thi thử IELTS Full Mock Test 01 (Academic 4 Kỹ Năng)",
+                "duration": "165 phút",
+                "questions_count": 82,
+                "badge": "Full Academic Test",
+            },
+            {
+                "title": "Đề thi thử IELTS Full Mock Test 02 (Chuẩn format IDP / BC)",
+                "duration": "165 phút",
+                "questions_count": 82,
+                "badge": "Full Academic Test",
+            },
         ],
         "chapters": [],
     },
-
     # ==================== CẤU TRÚC CHUYÊN BIỆT TIẾNG ANH: VSTEP ====================
     "tieng-anh_vstep": {
         "is_language": True,
@@ -1599,10 +1908,30 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🎧",
                 "desc": "Chiến thuật nghe 3 phần: Part 1 Thông báo & Hướng dẫn ngắn, Part 2 Hội thoại 2-3 người, Part 3 Thuyết trình học thuật",
                 "lessons": [
-                    {"title": "Unit 1: Part 1 - 8 Hướng dẫn & Thông báo đời sống hàng ngày", "badge": "Part 1 Announcements", "duration": "35 phút", "topics": "Nghe số, thời gian, địa điểm"},
-                    {"title": "Unit 2: Part 2 - 3 Cuộc hội thoại và bẫy thông tin gây nhiễu", "badge": "Part 2 Conversations", "duration": "45 phút", "topics": "Phân tích câu hỏi ngụ ý"},
-                    {"title": "Unit 3: Part 3 - 3 Bài giảng học thuật & Bắt từ khóa chuyên ngành", "badge": "Part 3 Lectures", "duration": "50 phút", "topics": "Ghi chú nhanh khi nghe"},
-                    {"title": "Unit 4: Tổng ôn mẹo tránh bẫy phát âm nối âm & Giảm âm trong đề thi VSTEP", "badge": "Mẹo Nghe VSTEP", "duration": "40 phút", "topics": "Ngữ điệu và trọng âm"},
+                    {
+                        "title": "Unit 1: Part 1 - 8 Hướng dẫn & Thông báo đời sống hàng ngày",
+                        "badge": "Part 1 Announcements",
+                        "duration": "35 phút",
+                        "topics": "Nghe số, thời gian, địa điểm",
+                    },
+                    {
+                        "title": "Unit 2: Part 2 - 3 Cuộc hội thoại và bẫy thông tin gây nhiễu",
+                        "badge": "Part 2 Conversations",
+                        "duration": "45 phút",
+                        "topics": "Phân tích câu hỏi ngụ ý",
+                    },
+                    {
+                        "title": "Unit 3: Part 3 - 3 Bài giảng học thuật & Bắt từ khóa chuyên ngành",
+                        "badge": "Part 3 Lectures",
+                        "duration": "50 phút",
+                        "topics": "Ghi chú nhanh khi nghe",
+                    },
+                    {
+                        "title": "Unit 4: Tổng ôn mẹo tránh bẫy phát âm nối âm & Giảm âm trong đề thi VSTEP",
+                        "badge": "Mẹo Nghe VSTEP",
+                        "duration": "40 phút",
+                        "topics": "Ngữ điệu và trọng âm",
+                    },
                 ],
             },
             {
@@ -1611,10 +1940,30 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "📖",
                 "desc": "Kỹ thuật giải quyết 4 bài đọc hiểu 40 câu hỏi từ dễ đến khó (B1 đến C1)",
                 "lessons": [
-                    {"title": "Unit 1: Passage 1 - Đọc hiểu thư từ, email và thông báo công sở (Cấp độ B1)", "badge": "Passage 1 (B1)", "duration": "40 phút", "topics": "Câu hỏi tìm thông tin trực tiếp"},
-                    {"title": "Unit 2: Passage 2 - Bài báo khoa học phổ thông & Giải thích từ theo ngữ cảnh", "badge": "Passage 2 (B2)", "duration": "45 phút", "topics": "Đoán nghĩa từ vựng mới"},
-                    {"title": "Unit 3: Passage 3 - Văn bản phân tích lịch sử, văn hóa & Xác định ý chính", "badge": "Passage 3 (B2-C1)", "duration": "50 phút", "topics": "Kỹ thuật Skimming & Scanning"},
-                    {"title": "Unit 4: Passage 4 - Bài nghiên cứu học thuật chuyên sâu & Câu hỏi suy luận ngụ ý", "badge": "Passage 4 (C1)", "duration": "55 phút", "topics": "Thái độ tác giả & Đại từ thay thế"},
+                    {
+                        "title": "Unit 1: Passage 1 - Đọc hiểu thư từ, email và thông báo công sở (Cấp độ B1)",
+                        "badge": "Passage 1 (B1)",
+                        "duration": "40 phút",
+                        "topics": "Câu hỏi tìm thông tin trực tiếp",
+                    },
+                    {
+                        "title": "Unit 2: Passage 2 - Bài báo khoa học phổ thông & Giải thích từ theo ngữ cảnh",
+                        "badge": "Passage 2 (B2)",
+                        "duration": "45 phút",
+                        "topics": "Đoán nghĩa từ vựng mới",
+                    },
+                    {
+                        "title": "Unit 3: Passage 3 - Văn bản phân tích lịch sử, văn hóa & Xác định ý chính",
+                        "badge": "Passage 3 (B2-C1)",
+                        "duration": "50 phút",
+                        "topics": "Kỹ thuật Skimming & Scanning",
+                    },
+                    {
+                        "title": "Unit 4: Passage 4 - Bài nghiên cứu học thuật chuyên sâu & Câu hỏi suy luận ngụ ý",
+                        "badge": "Passage 4 (C1)",
+                        "duration": "55 phút",
+                        "topics": "Thái độ tác giả & Đại từ thay thế",
+                    },
                 ],
             },
             {
@@ -1623,10 +1972,30 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "✍️",
                 "desc": "Phương pháp viết Task 1 Thư/Email tương tác và Task 2 Bài luận tranh luận 250 từ",
                 "lessons": [
-                    {"title": "Unit 1: Task 1 - Viết thư thân mật (Informal Letter) cảm ơn, xin lỗi, mời bạn", "badge": "Task 1 Informal", "duration": "40 phút", "topics": "Cấu trúc thư 120 từ chuẩn B1"},
-                    {"title": "Unit 2: Task 1 - Viết thư trang trọng (Formal Letter/Email) phàn nàn, xin việc, hỏi thông tin", "badge": "Task 1 Formal", "duration": "45 phút", "topics": "Văn phong học thuật chuẩn B2"},
-                    {"title": "Unit 3: Task 2 - Dạng bài Opinion Essay (Đồng ý hay không đồng ý)", "badge": "Task 2 Opinion", "duration": "50 phút", "topics": "Dàn ý mở bài - thân bài - kết bài"},
-                    {"title": "Unit 4: Task 2 - Dạng bài Problem & Solution, Discussion Essay & Bộ từ vựng liên kết C1", "badge": "Task 2 Essay C1", "duration": "55 phút", "topics": "Từ nối Cohesive Devices"},
+                    {
+                        "title": "Unit 1: Task 1 - Viết thư thân mật (Informal Letter) cảm ơn, xin lỗi, mời bạn",
+                        "badge": "Task 1 Informal",
+                        "duration": "40 phút",
+                        "topics": "Cấu trúc thư 120 từ chuẩn B1",
+                    },
+                    {
+                        "title": "Unit 2: Task 1 - Viết thư trang trọng (Formal Letter/Email) phàn nàn, xin việc, hỏi thông tin",
+                        "badge": "Task 1 Formal",
+                        "duration": "45 phút",
+                        "topics": "Văn phong học thuật chuẩn B2",
+                    },
+                    {
+                        "title": "Unit 3: Task 2 - Dạng bài Opinion Essay (Đồng ý hay không đồng ý)",
+                        "badge": "Task 2 Opinion",
+                        "duration": "50 phút",
+                        "topics": "Dàn ý mở bài - thân bài - kết bài",
+                    },
+                    {
+                        "title": "Unit 4: Task 2 - Dạng bài Problem & Solution, Discussion Essay & Bộ từ vựng liên kết C1",
+                        "badge": "Task 2 Essay C1",
+                        "duration": "55 phút",
+                        "topics": "Từ nối Cohesive Devices",
+                    },
                 ],
             },
             {
@@ -1635,10 +2004,30 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🗣️",
                 "desc": "Luyện 3 phần thi nói trên máy tính: Tương tác xã hội, Thảo luận giải pháp và Phát triển chủ đề",
                 "lessons": [
-                    {"title": "Unit 1: Part 1 - Social Interaction: Phản xạ trả lời 3-6 câu hỏi đời sống quen thuộc", "badge": "Part 1 Interaction", "duration": "35 phút", "topics": "Sở thích, gia đình, công việc"},
-                    {"title": "Unit 2: Part 2 - Solution Discussion: So sánh 3 lựa chọn và bảo vệ quan điểm", "badge": "Part 2 Discussion", "duration": "45 phút", "topics": "Cấu trúc so sánh & Lập luận"},
-                    {"title": "Unit 3: Part 3 - Topic Development: Phát triển sơ đồ tư duy (Mindmap) và phản biện", "badge": "Part 3 Topic Dev", "duration": "50 phút", "topics": "Mở rộng ý tưởng logic"},
-                    {"title": "Unit 4: Chiến thuật quản lý thời gian thi nói trên máy tính và phát âm chuẩn tự nhiên", "badge": "Phản xạ trên máy", "duration": "40 phút", "topics": "Ngữ điệu & Giữ nhịp nói"},
+                    {
+                        "title": "Unit 1: Part 1 - Social Interaction: Phản xạ trả lời 3-6 câu hỏi đời sống quen thuộc",
+                        "badge": "Part 1 Interaction",
+                        "duration": "35 phút",
+                        "topics": "Sở thích, gia đình, công việc",
+                    },
+                    {
+                        "title": "Unit 2: Part 2 - Solution Discussion: So sánh 3 lựa chọn và bảo vệ quan điểm",
+                        "badge": "Part 2 Discussion",
+                        "duration": "45 phút",
+                        "topics": "Cấu trúc so sánh & Lập luận",
+                    },
+                    {
+                        "title": "Unit 3: Part 3 - Topic Development: Phát triển sơ đồ tư duy (Mindmap) và phản biện",
+                        "badge": "Part 3 Topic Dev",
+                        "duration": "50 phút",
+                        "topics": "Mở rộng ý tưởng logic",
+                    },
+                    {
+                        "title": "Unit 4: Chiến thuật quản lý thời gian thi nói trên máy tính và phát âm chuẩn tự nhiên",
+                        "badge": "Phản xạ trên máy",
+                        "duration": "40 phút",
+                        "topics": "Ngữ điệu & Giữ nhịp nói",
+                    },
                 ],
             },
         ],
@@ -1649,10 +2038,31 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🎧",
                 "desc": "Ngân hàng đề thi Nghe VSTEP 3 Parts có audio chất lượng cao và lời giải chi tiết",
                 "exercises": [
-                    {"title": "Luyện đề Part 1: Bộ 8 câu hỏi thông báo trạm xe, sân bay, cửa hàng", "questions_count": 8, "duration": "10 phút", "badge": "Part 1 Drill"},
-                    {"title": "Luyện đề Part 2: 3 Bài hội thoại công sở và phỏng vấn du lịch", "questions_count": 12, "duration": "15 phút", "badge": "Part 2 Drill"},
-                    {"title": "Luyện đề Part 3: 3 Bài thuyết trình học thuật chuyên đề kinh tế, môi trường", "questions_count": 15, "duration": "20 phút", "badge": "Part 3 Drill"},
-                    {"title": "Đề thi thử VSTEP Listening Full 35 câu (Thời gian làm bài 40 phút)", "questions_count": 35, "duration": "40 phút", "badge": "Full Listening", "highlight": True},
+                    {
+                        "title": "Luyện đề Part 1: Bộ 8 câu hỏi thông báo trạm xe, sân bay, cửa hàng",
+                        "questions_count": 8,
+                        "duration": "10 phút",
+                        "badge": "Part 1 Drill",
+                    },
+                    {
+                        "title": "Luyện đề Part 2: 3 Bài hội thoại công sở và phỏng vấn du lịch",
+                        "questions_count": 12,
+                        "duration": "15 phút",
+                        "badge": "Part 2 Drill",
+                    },
+                    {
+                        "title": "Luyện đề Part 3: 3 Bài thuyết trình học thuật chuyên đề kinh tế, môi trường",
+                        "questions_count": 15,
+                        "duration": "20 phút",
+                        "badge": "Part 3 Drill",
+                    },
+                    {
+                        "title": "Đề thi thử VSTEP Listening Full 35 câu (Thời gian làm bài 40 phút)",
+                        "questions_count": 35,
+                        "duration": "40 phút",
+                        "badge": "Full Listening",
+                        "highlight": True,
+                    },
                 ],
             },
             {
@@ -1661,10 +2071,31 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "📖",
                 "desc": "Bộ đề thi Đọc VSTEP 40 câu hỏi phân cấp độ rõ ràng từ B1 đến C1",
                 "exercises": [
-                    {"title": "Luyện đề Passage 1: Đọc hiểu 10 câu chủ đề đời sống & công việc", "questions_count": 10, "duration": "15 phút", "badge": "Passage 1"},
-                    {"title": "Luyện đề Passage 2: Đọc hiểu 10 câu chủ đề tiến bộ công nghệ", "questions_count": 10, "duration": "15 phút", "badge": "Passage 2"},
-                    {"title": "Luyện đề Passage 3: Đọc hiểu 10 câu phân tích giáo dục & tâm lý", "questions_count": 10, "duration": "15 phút", "badge": "Passage 3"},
-                    {"title": "Đề thi thử VSTEP Reading Full 40 câu (Thời gian làm bài 60 phút)", "questions_count": 40, "duration": "60 phút", "badge": "Full Reading", "highlight": True},
+                    {
+                        "title": "Luyện đề Passage 1: Đọc hiểu 10 câu chủ đề đời sống & công việc",
+                        "questions_count": 10,
+                        "duration": "15 phút",
+                        "badge": "Passage 1",
+                    },
+                    {
+                        "title": "Luyện đề Passage 2: Đọc hiểu 10 câu chủ đề tiến bộ công nghệ",
+                        "questions_count": 10,
+                        "duration": "15 phút",
+                        "badge": "Passage 2",
+                    },
+                    {
+                        "title": "Luyện đề Passage 3: Đọc hiểu 10 câu phân tích giáo dục & tâm lý",
+                        "questions_count": 10,
+                        "duration": "15 phút",
+                        "badge": "Passage 3",
+                    },
+                    {
+                        "title": "Đề thi thử VSTEP Reading Full 40 câu (Thời gian làm bài 60 phút)",
+                        "questions_count": 40,
+                        "duration": "60 phút",
+                        "badge": "Full Reading",
+                        "highlight": True,
+                    },
                 ],
             },
             {
@@ -1673,10 +2104,31 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "✍️",
                 "desc": "Bộ đề thi Viết VSTEP Task 1 & Task 2 kèm bài viết mẫu điểm cao",
                 "exercises": [
-                    {"title": "Luyện đề Task 1: Viết email cho đồng nghiệp thảo luận dự án (120 từ)", "questions_count": 1, "duration": "20 phút", "badge": "Email Practice"},
-                    {"title": "Luyện đề Task 1: Viết thư phàn nàn dịch vụ khách hàng (120 từ)", "questions_count": 1, "duration": "20 phút", "badge": "Complaint Letter"},
-                    {"title": "Luyện đề Task 2: Bài luận tác động của mạng xã hội đến giới trẻ (250 từ)", "questions_count": 1, "duration": "40 phút", "badge": "Essay Task 2"},
-                    {"title": "Đề thi thử VSTEP Writing Full (Task 1 + Task 2 - 60 phút)", "questions_count": 2, "duration": "60 phút", "badge": "Full Writing", "highlight": True},
+                    {
+                        "title": "Luyện đề Task 1: Viết email cho đồng nghiệp thảo luận dự án (120 từ)",
+                        "questions_count": 1,
+                        "duration": "20 phút",
+                        "badge": "Email Practice",
+                    },
+                    {
+                        "title": "Luyện đề Task 1: Viết thư phàn nàn dịch vụ khách hàng (120 từ)",
+                        "questions_count": 1,
+                        "duration": "20 phút",
+                        "badge": "Complaint Letter",
+                    },
+                    {
+                        "title": "Luyện đề Task 2: Bài luận tác động của mạng xã hội đến giới trẻ (250 từ)",
+                        "questions_count": 1,
+                        "duration": "40 phút",
+                        "badge": "Essay Task 2",
+                    },
+                    {
+                        "title": "Đề thi thử VSTEP Writing Full (Task 1 + Task 2 - 60 phút)",
+                        "questions_count": 2,
+                        "duration": "60 phút",
+                        "badge": "Full Writing",
+                        "highlight": True,
+                    },
                 ],
             },
             {
@@ -1685,20 +2137,50 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🗣️",
                 "desc": "Phần mềm mô phỏng thi Nói VSTEP trên máy tính có đồng hồ đếm ngược và câu trả lời mẫu",
                 "exercises": [
-                    {"title": "Luyện đề Part 1: Bộ 6 câu hỏi chủ đề Thói quen đọc sách & Du lịch", "questions_count": 6, "duration": "3 phút", "badge": "Part 1 Practice"},
-                    {"title": "Luyện đề Part 2: Thảo luận chọn địa điểm tổ chức sự kiện cho công ty", "questions_count": 1, "duration": "4 phút", "badge": "Part 2 Practice"},
-                    {"title": "Luyện đề Part 3: Thuyết trình về lợi ích của làm việc từ xa (Remote Work)", "questions_count": 1, "duration": "5 phút", "badge": "Part 3 Practice"},
-                    {"title": "Thi thử VSTEP Speaking Full Test 3 phần (Thời gian thi 12 phút)", "questions_count": 3, "duration": "12 phút", "badge": "Full Speaking Test", "highlight": True},
+                    {
+                        "title": "Luyện đề Part 1: Bộ 6 câu hỏi chủ đề Thói quen đọc sách & Du lịch",
+                        "questions_count": 6,
+                        "duration": "3 phút",
+                        "badge": "Part 1 Practice",
+                    },
+                    {
+                        "title": "Luyện đề Part 2: Thảo luận chọn địa điểm tổ chức sự kiện cho công ty",
+                        "questions_count": 1,
+                        "duration": "4 phút",
+                        "badge": "Part 2 Practice",
+                    },
+                    {
+                        "title": "Luyện đề Part 3: Thuyết trình về lợi ích của làm việc từ xa (Remote Work)",
+                        "questions_count": 1,
+                        "duration": "5 phút",
+                        "badge": "Part 3 Practice",
+                    },
+                    {
+                        "title": "Thi thử VSTEP Speaking Full Test 3 phần (Thời gian thi 12 phút)",
+                        "questions_count": 3,
+                        "duration": "12 phút",
+                        "badge": "Full Speaking Test",
+                        "highlight": True,
+                    },
                 ],
             },
         ],
         "full_tests": [
-            {"title": "Đề thi thử VSTEP B1-B2 Full Test 01 (Chuẩn cấu trúc 4 kỹ năng Bộ GD&ĐT)", "duration": "172 phút", "questions_count": 80, "badge": "VSTEP B1-B2"},
-            {"title": "Đề thi thử VSTEP B2-C1 Full Test 02 (Đề thi mẫu chuẩn hóa các trường ĐH Trọng điểm)", "duration": "172 phút", "questions_count": 80, "badge": "VSTEP B2-C1"},
+            {
+                "title": "Đề thi thử VSTEP B1-B2 Full Test 01 (Chuẩn cấu trúc 4 kỹ năng Bộ GD&ĐT)",
+                "duration": "172 phút",
+                "questions_count": 80,
+                "badge": "VSTEP B1-B2",
+            },
+            {
+                "title": "Đề thi thử VSTEP B2-C1 Full Test 02 (Đề thi mẫu chuẩn hóa các trường ĐH Trọng điểm)",
+                "duration": "172 phút",
+                "questions_count": 80,
+                "badge": "VSTEP B2-C1",
+            },
         ],
         "chapters": [],
     },
-
     # ==================== CẤU TRÚC CHUYÊN BIỆT TIẾNG TRUNG: HSK ====================
     "tieng-trung_hsk": {
         "is_language": True,
@@ -1724,10 +2206,26 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🎧",
                 "desc": "Rèn luyện kỹ năng nghe nhận biết ngữ âm Pinyin, hội thoại ngắn và đoạn văn dài",
                 "lessons": [
-                    {"title": "Unit 1: Nghe phân biệt thanh mẫu, vận mẫu và biến điệu thanh 3 (变调)", "badge": "Pinyin Hearing", "duration": "30 phút"},
-                    {"title": "Unit 2: Kỹ thuật nghe bắt từ khóa trong câu hỏi đúng sai (判断对错)", "badge": "True / False", "duration": "35 phút"},
-                    {"title": "Unit 3: Chiến thuật nghe đoạn hội thoại 2 lượt và bắt chi tiết số liệu, địa điểm", "badge": "Short Dialogue", "duration": "40 phút"},
-                    {"title": "Unit 4: Nghe đoạn văn dài độc thoại và xử lý chuỗi câu hỏi liên tiếp", "badge": "Monologue", "duration": "45 phút"},
+                    {
+                        "title": "Unit 1: Nghe phân biệt thanh mẫu, vận mẫu và biến điệu thanh 3 (变调)",
+                        "badge": "Pinyin Hearing",
+                        "duration": "30 phút",
+                    },
+                    {
+                        "title": "Unit 2: Kỹ thuật nghe bắt từ khóa trong câu hỏi đúng sai (判断对错)",
+                        "badge": "True / False",
+                        "duration": "35 phút",
+                    },
+                    {
+                        "title": "Unit 3: Chiến thuật nghe đoạn hội thoại 2 lượt và bắt chi tiết số liệu, địa điểm",
+                        "badge": "Short Dialogue",
+                        "duration": "40 phút",
+                    },
+                    {
+                        "title": "Unit 4: Nghe đoạn văn dài độc thoại và xử lý chuỗi câu hỏi liên tiếp",
+                        "badge": "Monologue",
+                        "duration": "45 phút",
+                    },
                 ],
             },
             {
@@ -1736,10 +2234,26 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "📖",
                 "desc": "Hệ thống từ vựng HSK 3.0, ngữ pháp câu chữ 把, 被, câu so sánh và đọc hiểu đoạn văn",
                 "lessons": [
-                    {"title": "Unit 1: Quy tắc thứ tự các nét chữ Hán & Nhận diện 100 bộ thủ cốt lõi", "badge": "Chữ Hán & Bộ thủ", "duration": "40 phút"},
-                    {"title": "Unit 2: 1200 Từ vựng trọng điểm phân chia theo chủ đề HSK 3.0", "badge": "Từ vựng HSK", "duration": "45 phút"},
-                    {"title": "Unit 3: Cấu trúc ngữ pháp quan trọng: Câu chữ 把, câu bị động 被, câu so sánh 比", "badge": "Ngữ pháp cốt lõi", "duration": "50 phút"},
-                    {"title": "Unit 4: Kỹ thuật đọc lướt tìm ý chính và phương pháp chọn từ điền vào chỗ trống", "badge": "Đọc hiểu nhanh", "duration": "45 phút"},
+                    {
+                        "title": "Unit 1: Quy tắc thứ tự các nét chữ Hán & Nhận diện 100 bộ thủ cốt lõi",
+                        "badge": "Chữ Hán & Bộ thủ",
+                        "duration": "40 phút",
+                    },
+                    {
+                        "title": "Unit 2: 1200 Từ vựng trọng điểm phân chia theo chủ đề HSK 3.0",
+                        "badge": "Từ vựng HSK",
+                        "duration": "45 phút",
+                    },
+                    {
+                        "title": "Unit 3: Cấu trúc ngữ pháp quan trọng: Câu chữ 把, câu bị động 被, câu so sánh 比",
+                        "badge": "Ngữ pháp cốt lõi",
+                        "duration": "50 phút",
+                    },
+                    {
+                        "title": "Unit 4: Kỹ thuật đọc lướt tìm ý chính và phương pháp chọn từ điền vào chỗ trống",
+                        "badge": "Đọc hiểu nhanh",
+                        "duration": "45 phút",
+                    },
                 ],
             },
             {
@@ -1748,10 +2262,26 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "✍️",
                 "desc": "Quy tắc sắp xếp trật tự từ trong câu tiếng Trung, viết chữ Hán và đặt câu theo tranh",
                 "lessons": [
-                    {"title": "Unit 1: Trật tự từ trong câu tiếng Trung: Chủ - Trạng - Động - Bổ - Tân", "badge": "Trật tự từ", "duration": "40 phút"},
-                    {"title": "Unit 2: Kỹ năng sắp xếp các cụm từ xáo trộn thành câu hoàn chỉnh (连词成句)", "badge": "Xếp câu HSK", "duration": "45 phút"},
-                    {"title": "Unit 3: Phương pháp đặt câu mô tả bức tranh có sử dụng từ khóa cho trước", "badge": "Viết theo tranh", "duration": "45 phút"},
-                    {"title": "Unit 4: Viết bài văn ngắn 80-100 chữ cho đề thi HSK 5 (Kể chuyện & Nghị luận)", "badge": "Viết đoạn văn", "duration": "50 phút"},
+                    {
+                        "title": "Unit 1: Trật tự từ trong câu tiếng Trung: Chủ - Trạng - Động - Bổ - Tân",
+                        "badge": "Trật tự từ",
+                        "duration": "40 phút",
+                    },
+                    {
+                        "title": "Unit 2: Kỹ năng sắp xếp các cụm từ xáo trộn thành câu hoàn chỉnh (连词成句)",
+                        "badge": "Xếp câu HSK",
+                        "duration": "45 phút",
+                    },
+                    {
+                        "title": "Unit 3: Phương pháp đặt câu mô tả bức tranh có sử dụng từ khóa cho trước",
+                        "badge": "Viết theo tranh",
+                        "duration": "45 phút",
+                    },
+                    {
+                        "title": "Unit 4: Viết bài văn ngắn 80-100 chữ cho đề thi HSK 5 (Kể chuyện & Nghị luận)",
+                        "badge": "Viết đoạn văn",
+                        "duration": "50 phút",
+                    },
                 ],
             },
             {
@@ -1760,10 +2290,26 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🗣️",
                 "desc": "Luyện phát âm chuẩn giọng Bắc Kinh, các mẫu câu giao tiếp và thi nói HSKK",
                 "lessons": [
-                    {"title": "Unit 1: Luyện phát âm chuẩn âm cuốn lưỡi er, âm bật hơi và thanh nhẹ", "badge": "Chuẩn âm Pinyin", "duration": "30 phút"},
-                    {"title": "Unit 2: Các mẫu câu giao tiếp hàng ngày: Mua sắm, hỏi đường, đặt phòng", "badge": "Giao tiếp đời sống", "duration": "35 phút"},
-                    {"title": "Unit 3: Kỹ năng nghe và lặp lại câu trong bài thi HSKK (听后重复)", "badge": "HSKK Sơ cấp", "duration": "40 phút"},
-                    {"title": "Unit 4: Thuyết trình theo chủ đề và trả lời câu hỏi phỏng vấn HSKK Trung/Cao cấp", "badge": "HSKK Trung cấp", "duration": "45 phút"},
+                    {
+                        "title": "Unit 1: Luyện phát âm chuẩn âm cuốn lưỡi er, âm bật hơi và thanh nhẹ",
+                        "badge": "Chuẩn âm Pinyin",
+                        "duration": "30 phút",
+                    },
+                    {
+                        "title": "Unit 2: Các mẫu câu giao tiếp hàng ngày: Mua sắm, hỏi đường, đặt phòng",
+                        "badge": "Giao tiếp đời sống",
+                        "duration": "35 phút",
+                    },
+                    {
+                        "title": "Unit 3: Kỹ năng nghe và lặp lại câu trong bài thi HSKK (听后重复)",
+                        "badge": "HSKK Sơ cấp",
+                        "duration": "40 phút",
+                    },
+                    {
+                        "title": "Unit 4: Thuyết trình theo chủ đề và trả lời câu hỏi phỏng vấn HSKK Trung/Cao cấp",
+                        "badge": "HSKK Trung cấp",
+                        "duration": "45 phút",
+                    },
                 ],
             },
         ],
@@ -1774,9 +2320,25 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🎧",
                 "desc": "Bộ đề luyện nghe có audio tiếng phổ thông chuẩn và chấm điểm tức thì",
                 "exercises": [
-                    {"title": "Luyện nghe HSK: 40 Câu hỏi đúng sai chọn tranh (Có Audio)", "questions_count": 40, "duration": "25 phút", "badge": "Nghe tranh HSK"},
-                    {"title": "Luyện nghe HSK: 30 Đoạn hội thoại 2 câu có giải thích từ khóa", "questions_count": 30, "duration": "25 phút", "badge": "Nghe hội thoại"},
-                    {"title": "Đề thi thử HSK Nghe hiểu trọn vẹn (Chuẩn cấu trúc Hanban)", "questions_count": 45, "duration": "35 phút", "badge": "Full Nghe HSK", "highlight": True},
+                    {
+                        "title": "Luyện nghe HSK: 40 Câu hỏi đúng sai chọn tranh (Có Audio)",
+                        "questions_count": 40,
+                        "duration": "25 phút",
+                        "badge": "Nghe tranh HSK",
+                    },
+                    {
+                        "title": "Luyện nghe HSK: 30 Đoạn hội thoại 2 câu có giải thích từ khóa",
+                        "questions_count": 30,
+                        "duration": "25 phút",
+                        "badge": "Nghe hội thoại",
+                    },
+                    {
+                        "title": "Đề thi thử HSK Nghe hiểu trọn vẹn (Chuẩn cấu trúc Hanban)",
+                        "questions_count": 45,
+                        "duration": "35 phút",
+                        "badge": "Full Nghe HSK",
+                        "highlight": True,
+                    },
                 ],
             },
             {
@@ -1785,9 +2347,25 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "📖",
                 "desc": "Ngân hàng bài tập đọc hiểu trắc nghiệm chọn từ điền chỗ trống và đọc đoạn văn",
                 "exercises": [
-                    {"title": "Luyện đọc: 50 Câu chọn từ thích hợp điền vào chỗ trống", "questions_count": 50, "duration": "30 phút", "badge": "Điền từ HSK"},
-                    {"title": "Luyện đọc: 30 Bài đọc hiểu đoạn văn ngắn chọn đáp án đúng", "questions_count": 30, "duration": "35 phút", "badge": "Đọc hiểu HSK"},
-                    {"title": "Đề thi thử HSK Đọc hiểu Full (40 câu / 40 phút)", "questions_count": 40, "duration": "40 phút", "badge": "Full Đọc HSK", "highlight": True},
+                    {
+                        "title": "Luyện đọc: 50 Câu chọn từ thích hợp điền vào chỗ trống",
+                        "questions_count": 50,
+                        "duration": "30 phút",
+                        "badge": "Điền từ HSK",
+                    },
+                    {
+                        "title": "Luyện đọc: 30 Bài đọc hiểu đoạn văn ngắn chọn đáp án đúng",
+                        "questions_count": 30,
+                        "duration": "35 phút",
+                        "badge": "Đọc hiểu HSK",
+                    },
+                    {
+                        "title": "Đề thi thử HSK Đọc hiểu Full (40 câu / 40 phút)",
+                        "questions_count": 40,
+                        "duration": "40 phút",
+                        "badge": "Full Đọc HSK",
+                        "highlight": True,
+                    },
                 ],
             },
             {
@@ -1796,8 +2374,18 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "✍️",
                 "desc": "Luyện xếp câu và đặt câu theo tranh có đáp án gợi ý và mẫu câu chuẩn",
                 "exercises": [
-                    {"title": "Luyện tập: 30 Câu xếp cụm từ thành câu hoàn chỉnh (連詞成句)", "questions_count": 30, "duration": "30 phút", "badge": "Xếp câu"},
-                    {"title": "Luyện tập: 15 Bài đặt câu theo tranh có cho trước từ gợi ý", "questions_count": 15, "duration": "30 phút", "badge": "Đặt câu theo tranh"},
+                    {
+                        "title": "Luyện tập: 30 Câu xếp cụm từ thành câu hoàn chỉnh (連詞成句)",
+                        "questions_count": 30,
+                        "duration": "30 phút",
+                        "badge": "Xếp câu",
+                    },
+                    {
+                        "title": "Luyện tập: 15 Bài đặt câu theo tranh có cho trước từ gợi ý",
+                        "questions_count": 15,
+                        "duration": "30 phút",
+                        "badge": "Đặt câu theo tranh",
+                    },
                 ],
             },
             {
@@ -1806,18 +2394,37 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🗣️",
                 "desc": "Phòng luyện nói tương tác có audio mẫu và hướng dẫn phát âm",
                 "exercises": [
-                    {"title": "Luyện nghe và nhắc lại 20 câu khẩu ngữ thông dụng (听后重复)", "questions_count": 20, "duration": "20 phút", "badge": "Luyện nhắc lại"},
-                    {"title": "Luyện trả lời 10 câu hỏi giao tiếp đời sống và công việc", "questions_count": 10, "duration": "25 phút", "badge": "Hỏi đáp HSKK"},
+                    {
+                        "title": "Luyện nghe và nhắc lại 20 câu khẩu ngữ thông dụng (听后重复)",
+                        "questions_count": 20,
+                        "duration": "20 phút",
+                        "badge": "Luyện nhắc lại",
+                    },
+                    {
+                        "title": "Luyện trả lời 10 câu hỏi giao tiếp đời sống và công việc",
+                        "questions_count": 10,
+                        "duration": "25 phút",
+                        "badge": "Hỏi đáp HSKK",
+                    },
                 ],
             },
         ],
         "full_tests": [
-            {"title": "Đề thi thử HSK 3 Full Test (Nghe - Đọc - Viết có Audio)", "duration": "90 phút", "questions_count": 80, "badge": "HSK 3 Mock Test"},
-            {"title": "Đề thi thử HSK 4 Full Test (Chuẩn cấu trúc Hanban mới nhất)", "duration": "105 phút", "questions_count": 100, "badge": "HSK 4 Mock Test"},
+            {
+                "title": "Đề thi thử HSK 3 Full Test (Nghe - Đọc - Viết có Audio)",
+                "duration": "90 phút",
+                "questions_count": 80,
+                "badge": "HSK 3 Mock Test",
+            },
+            {
+                "title": "Đề thi thử HSK 4 Full Test (Chuẩn cấu trúc Hanban mới nhất)",
+                "duration": "105 phút",
+                "questions_count": 100,
+                "badge": "HSK 4 Mock Test",
+            },
         ],
         "chapters": [],
     },
-
     # ==================== CẤU TRÚC CHUYÊN BIỆT TIẾNG NHẬT: JLPT ====================
     "tieng-nhat_jlpt": {
         "is_language": True,
@@ -1843,10 +2450,26 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🎧",
                 "desc": "Luyện phản xạ nghe Choukai, bắt từ nối, ngữ điệu và các mẫu câu hội thoại thường ngày",
                 "lessons": [
-                    {"title": "Unit 1: Luyện nghe hiểu chủ đề (課題理解) - Xác định hành động tiếp theo của nhân vật", "badge": "Choukai N3-N2", "duration": "35 phút"},
-                    {"title": "Unit 2: Luyện nghe nắm bắt điểm cốt lõi (ポイント理解) - Lọc thông tin cần thiết", "badge": "Key Points", "duration": "40 phút"},
-                    {"title": "Unit 3: Kỹ thuật làm bài nghe hiểu khái quát (概要理解) - Bắt ý kiến chung của người nói", "badge": "General Idea", "duration": "40 phút"},
-                    {"title": "Unit 4: Luyện phản xạ nhanh câu hỏi ứng đáp tức thì (即時応答)", "badge": "Quick Response", "duration": "35 phút"},
+                    {
+                        "title": "Unit 1: Luyện nghe hiểu chủ đề (課題理解) - Xác định hành động tiếp theo của nhân vật",
+                        "badge": "Choukai N3-N2",
+                        "duration": "35 phút",
+                    },
+                    {
+                        "title": "Unit 2: Luyện nghe nắm bắt điểm cốt lõi (ポイント理解) - Lọc thông tin cần thiết",
+                        "badge": "Key Points",
+                        "duration": "40 phút",
+                    },
+                    {
+                        "title": "Unit 3: Kỹ thuật làm bài nghe hiểu khái quát (概要理解) - Bắt ý kiến chung của người nói",
+                        "badge": "General Idea",
+                        "duration": "40 phút",
+                    },
+                    {
+                        "title": "Unit 4: Luyện phản xạ nhanh câu hỏi ứng đáp tức thì (即時応答)",
+                        "badge": "Quick Response",
+                        "duration": "35 phút",
+                    },
                 ],
             },
             {
@@ -1855,10 +2478,26 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "📖",
                 "desc": "Kỹ thuật đọc đoản văn, trung văn, trường văn và bài tìm kiếm thông tin tra cứu",
                 "lessons": [
-                    {"title": "Unit 1: Đọc hiểu đoản văn (短文) - Kỹ thuật bắt từ khóa và câu chủ đề đoạn văn", "badge": "Short Reading", "duration": "40 phút"},
-                    {"title": "Unit 2: Đọc hiểu trung văn (中文) - Phân tích mối quan hệ nguyên nhân kết quả", "badge": "Medium Reading", "duration": "45 phút"},
-                    {"title": "Unit 3: Đọc hiểu trường văn nghị luận (長文) - Nắm bắt quan điểm của tác giả", "badge": "Long Reading", "duration": "50 phút"},
-                    {"title": "Unit 4: Kỹ thuật tra cứu thông tin (情報検索) - Đọc lướt tờ rơi, thông báo, bảng giá", "badge": "Info Search", "duration": "35 phút"},
+                    {
+                        "title": "Unit 1: Đọc hiểu đoản văn (短文) - Kỹ thuật bắt từ khóa và câu chủ đề đoạn văn",
+                        "badge": "Short Reading",
+                        "duration": "40 phút",
+                    },
+                    {
+                        "title": "Unit 2: Đọc hiểu trung văn (中文) - Phân tích mối quan hệ nguyên nhân kết quả",
+                        "badge": "Medium Reading",
+                        "duration": "45 phút",
+                    },
+                    {
+                        "title": "Unit 3: Đọc hiểu trường văn nghị luận (長文) - Nắm bắt quan điểm của tác giả",
+                        "badge": "Long Reading",
+                        "duration": "50 phút",
+                    },
+                    {
+                        "title": "Unit 4: Kỹ thuật tra cứu thông tin (情報検索) - Đọc lướt tờ rơi, thông báo, bảng giá",
+                        "badge": "Info Search",
+                        "duration": "35 phút",
+                    },
                 ],
             },
             {
@@ -1867,10 +2506,26 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🈴",
                 "desc": "Chinh phục 2136 chữ Hán Joyo Kanji, âm On, âm Kun, từ đồng nghĩa và từ ghép",
                 "lessons": [
-                    {"title": "Unit 1: 300 Kanji N5-N4 căn bản & Mẹo ghi nhớ chữ Hán qua hình ảnh bộ thủ", "badge": "Kanji Sơ cấp", "duration": "45 phút"},
-                    {"title": "Unit 2: 650 Kanji N3 trọng điểm & Các cặp từ ghép dễ gây nhầm lẫn", "badge": "Kanji Trung cấp", "duration": "50 phút"},
-                    {"title": "Unit 3: Từ đồng nghĩa, từ trái nghĩa và từ vựng biến đổi theo ngữ cảnh", "badge": "Từ vựng JLPT", "duration": "40 phút"},
-                    {"title": "Unit 4: Hệ thống từ tượng thanh, từ tượng hình (Gitaigo / Giongo) trong văn nói", "badge": "Từ tượng hình", "duration": "35 phút"},
+                    {
+                        "title": "Unit 1: 300 Kanji N5-N4 căn bản & Mẹo ghi nhớ chữ Hán qua hình ảnh bộ thủ",
+                        "badge": "Kanji Sơ cấp",
+                        "duration": "45 phút",
+                    },
+                    {
+                        "title": "Unit 2: 650 Kanji N3 trọng điểm & Các cặp từ ghép dễ gây nhầm lẫn",
+                        "badge": "Kanji Trung cấp",
+                        "duration": "50 phút",
+                    },
+                    {
+                        "title": "Unit 3: Từ đồng nghĩa, từ trái nghĩa và từ vựng biến đổi theo ngữ cảnh",
+                        "badge": "Từ vựng JLPT",
+                        "duration": "40 phút",
+                    },
+                    {
+                        "title": "Unit 4: Hệ thống từ tượng thanh, từ tượng hình (Gitaigo / Giongo) trong văn nói",
+                        "badge": "Từ tượng hình",
+                        "duration": "35 phút",
+                    },
                 ],
             },
             {
@@ -1879,10 +2534,26 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🗣️",
                 "desc": "150 mẫu ngữ pháp Soumatome, kính ngữ Sonkeigo, Kenjougo và hội thoại Kaiwa",
                 "lessons": [
-                    {"title": "Unit 1: 50 Mẫu ngữ pháp chỉ lý do, điều kiện và nhượng bộ: わけ, ため, から", "badge": "Ngữ pháp trọng điểm", "duration": "45 phút"},
-                    {"title": "Unit 2: Kính ngữ chuẩn công sở: Tôn kính ngữ (尊敬語) & Khiêm nhường ngữ (謙譲語)", "badge": "Kính ngữ Keigo", "duration": "45 phút"},
-                    {"title": "Unit 3: Kỹ thuật làm bài sắp xếp dấu sao (★の文法) hoàn chỉnh câu", "badge": "Ngữ pháp dấu sao", "duration": "40 phút"},
-                    {"title": "Unit 4: Các mẫu câu giao tiếp Kaiwa tự nhiên của người bản xứ Nhật Bản", "badge": "Kaiwa Giao tiếp", "duration": "40 phút"},
+                    {
+                        "title": "Unit 1: 50 Mẫu ngữ pháp chỉ lý do, điều kiện và nhượng bộ: わけ, ため, から",
+                        "badge": "Ngữ pháp trọng điểm",
+                        "duration": "45 phút",
+                    },
+                    {
+                        "title": "Unit 2: Kính ngữ chuẩn công sở: Tôn kính ngữ (尊敬語) & Khiêm nhường ngữ (謙譲語)",
+                        "badge": "Kính ngữ Keigo",
+                        "duration": "45 phút",
+                    },
+                    {
+                        "title": "Unit 3: Kỹ thuật làm bài sắp xếp dấu sao (★の文法) hoàn chỉnh câu",
+                        "badge": "Ngữ pháp dấu sao",
+                        "duration": "40 phút",
+                    },
+                    {
+                        "title": "Unit 4: Các mẫu câu giao tiếp Kaiwa tự nhiên của người bản xứ Nhật Bản",
+                        "badge": "Kaiwa Giao tiếp",
+                        "duration": "40 phút",
+                    },
                 ],
             },
         ],
@@ -1893,9 +2564,25 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🎧",
                 "desc": "Kho đề thi Choukai có audio giọng đọc chuẩn kỳ thi JLPT các năm",
                 "exercises": [
-                    {"title": "Luyện nghe: 20 Bài nghe hiểu chủ đề có tranh minh họa", "questions_count": 20, "duration": "25 phút", "badge": "Choukai có tranh"},
-                    {"title": "Luyện nghe: 20 Bài câu hỏi phản xạ ứng đáp tức thì", "questions_count": 20, "duration": "20 phút", "badge": "Phản xạ tức thì"},
-                    {"title": "Đề thi thử JLPT Choukai trọn bộ (Có audio & Tapescript)", "questions_count": 32, "duration": "40 phút", "badge": "Full Choukai", "highlight": True},
+                    {
+                        "title": "Luyện nghe: 20 Bài nghe hiểu chủ đề có tranh minh họa",
+                        "questions_count": 20,
+                        "duration": "25 phút",
+                        "badge": "Choukai có tranh",
+                    },
+                    {
+                        "title": "Luyện nghe: 20 Bài câu hỏi phản xạ ứng đáp tức thì",
+                        "questions_count": 20,
+                        "duration": "20 phút",
+                        "badge": "Phản xạ tức thì",
+                    },
+                    {
+                        "title": "Đề thi thử JLPT Choukai trọn bộ (Có audio & Tapescript)",
+                        "questions_count": 32,
+                        "duration": "40 phút",
+                        "badge": "Full Choukai",
+                        "highlight": True,
+                    },
                 ],
             },
             {
@@ -1904,9 +2591,25 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "📖",
                 "desc": "Bộ bài tập luyện đọc đoản văn, trung văn và bài tra cứu thông tin",
                 "exercises": [
-                    {"title": "Luyện đọc: 15 Bài đoản văn rèn kỹ năng bắt từ nối (Nhưng, Vì vậy...)", "questions_count": 15, "duration": "30 phút", "badge": "Dokkai Đoản văn"},
-                    {"title": "Luyện đọc: 10 Bài trung văn và trường văn nghị luận xã hội", "questions_count": 20, "duration": "45 phút", "badge": "Dokkai Trung văn"},
-                    {"title": "Đề thi thử JLPT Đọc hiểu Full (16 câu đọc hiểu / 60 phút)", "questions_count": 16, "duration": "60 phút", "badge": "Full Dokkai", "highlight": True},
+                    {
+                        "title": "Luyện đọc: 15 Bài đoản văn rèn kỹ năng bắt từ nối (Nhưng, Vì vậy...)",
+                        "questions_count": 15,
+                        "duration": "30 phút",
+                        "badge": "Dokkai Đoản văn",
+                    },
+                    {
+                        "title": "Luyện đọc: 10 Bài trung văn và trường văn nghị luận xã hội",
+                        "questions_count": 20,
+                        "duration": "45 phút",
+                        "badge": "Dokkai Trung văn",
+                    },
+                    {
+                        "title": "Đề thi thử JLPT Đọc hiểu Full (16 câu đọc hiểu / 60 phút)",
+                        "questions_count": 16,
+                        "duration": "60 phút",
+                        "badge": "Full Dokkai",
+                        "highlight": True,
+                    },
                 ],
             },
             {
@@ -1915,9 +2618,24 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🈴",
                 "desc": "Kho câu hỏi trắc nghiệm cách đọc Kanji, chọn chữ Hán và cách dùng từ",
                 "exercises": [
-                    {"title": "Luyện đề: 50 Câu trắc nghiệm cách đọc chữ Hán (漢字読み)", "questions_count": 50, "duration": "25 phút", "badge": "Cách đọc Kanji"},
-                    {"title": "Luyện đề: 40 Câu chọn chữ Hán thích hợp điền vào câu", "questions_count": 40, "duration": "25 phút", "badge": "Chọn Kanji"},
-                    {"title": "Luyện đề: 30 Câu cách dùng từ đúng trong ngữ cảnh (文脈規定)", "questions_count": 30, "duration": "25 phút", "badge": "Cách dùng từ"},
+                    {
+                        "title": "Luyện đề: 50 Câu trắc nghiệm cách đọc chữ Hán (漢字読み)",
+                        "questions_count": 50,
+                        "duration": "25 phút",
+                        "badge": "Cách đọc Kanji",
+                    },
+                    {
+                        "title": "Luyện đề: 40 Câu chọn chữ Hán thích hợp điền vào câu",
+                        "questions_count": 40,
+                        "duration": "25 phút",
+                        "badge": "Chọn Kanji",
+                    },
+                    {
+                        "title": "Luyện đề: 30 Câu cách dùng từ đúng trong ngữ cảnh (文脈規定)",
+                        "questions_count": 30,
+                        "duration": "25 phút",
+                        "badge": "Cách dùng từ",
+                    },
                 ],
             },
             {
@@ -1926,14 +2644,34 @@ CURRICULUM_DATA: dict[str, dict[str, Any]] = {
                 "icon": "🗣️",
                 "desc": "Chuyên đề bài tập chọn dạng ngữ pháp đúng và sắp xếp câu dấu sao",
                 "exercises": [
-                    {"title": "Luyện đề: 50 Câu chọn mẫu ngữ pháp thích hợp điền vào câu", "questions_count": 50, "duration": "30 phút", "badge": "Ngữ pháp chọn"},
-                    {"title": "Luyện đề: 25 Bài sắp xếp trật tự từ có dấu sao (★の文法)", "questions_count": 25, "duration": "30 phút", "badge": "Dấu sao ★"},
+                    {
+                        "title": "Luyện đề: 50 Câu chọn mẫu ngữ pháp thích hợp điền vào câu",
+                        "questions_count": 50,
+                        "duration": "30 phút",
+                        "badge": "Ngữ pháp chọn",
+                    },
+                    {
+                        "title": "Luyện đề: 25 Bài sắp xếp trật tự từ có dấu sao (★の文法)",
+                        "questions_count": 25,
+                        "duration": "30 phút",
+                        "badge": "Dấu sao ★",
+                    },
                 ],
             },
         ],
         "full_tests": [
-            {"title": "Đề thi thử JLPT N3 Full Test (Từ vựng/Kanji - Ngữ pháp/Đọc hiểu - Nghe hiểu)", "duration": "140 phút", "questions_count": 95, "badge": "JLPT N3 Mock"},
-            {"title": "Đề thi thử JLPT N2 Full Test (Bám sát đề thi thật các năm)", "duration": "155 phút", "questions_count": 105, "badge": "JLPT N2 Mock"},
+            {
+                "title": "Đề thi thử JLPT N3 Full Test (Từ vựng/Kanji - Ngữ pháp/Đọc hiểu - Nghe hiểu)",
+                "duration": "140 phút",
+                "questions_count": 95,
+                "badge": "JLPT N3 Mock",
+            },
+            {
+                "title": "Đề thi thử JLPT N2 Full Test (Bám sát đề thi thật các năm)",
+                "duration": "155 phút",
+                "questions_count": 105,
+                "badge": "JLPT N2 Mock",
+            },
         ],
         "chapters": [],
     },
@@ -2091,7 +2829,6 @@ def generate_default_curriculum(grade_id: str, grade_name: str, subject_name: st
         "color": "#1e40af",
         "description": f"Chương trình môn {subject_name} {grade_name} chuẩn SGK Kết nối tri thức, gồm các chương bài chi tiết, tóm tắt lý thuyết và ngân hàng câu hỏi tự luyện.",
         "chapters": chapters,
-    
     }
 
 
@@ -2103,14 +2840,15 @@ def ensure_chapter_exams(curriculum: dict[str, Any]) -> dict[str, Any]:
         # Look for existing review or exam lesson
         exam_les = next(
             (
-                l for l in lessons  # noqa: E741
+                l
+                for l in lessons  # noqa: E741
                 if l.get("is_exam")
                 or "ôn tập" in l.get("title", "").lower()
                 or "tự luyện" in l.get("title", "").lower()
                 or "thi thử" in l.get("title", "").lower()
                 or "kiểm tra" in l.get("title", "").lower()
             ),
-            None
+            None,
         )
         if exam_les:
             exam_les["is_exam"] = True
@@ -2119,14 +2857,16 @@ def ensure_chapter_exams(curriculum: dict[str, Any]) -> dict[str, Any]:
             exam_les.setdefault("badge", "Đề tự luyện")
             exam_les.setdefault("questions_count", 40)
         else:
-            lessons.append({
-                "id": f"{ch.get('id', f'c{idx}')}-ot",
-                "title": f"Ôn tập & Đề thi tự luyện {ch_title}",
-                "badge": "Đề tự luyện",
-                "is_exam": True,
-                "questions_count": 40,
-                "db_cat_id": ch.get("db_cat_id"),
-            })
+            lessons.append(
+                {
+                    "id": f"{ch.get('id', f'c{idx}')}-ot",
+                    "title": f"Ôn tập & Đề thi tự luyện {ch_title}",
+                    "badge": "Đề tự luyện",
+                    "is_exam": True,
+                    "questions_count": 40,
+                    "db_cat_id": ch.get("db_cat_id"),
+                }
+            )
     return curriculum
 
 
@@ -2142,7 +2882,9 @@ def get_curriculum(grade_id: str, grade_name: str, subject_name: str, subject_sl
         result = CURRICULUM_DATA[key]
     elif clean_grade == "tieng-trung" and ("hsk" in clean_subj_slug):
         result = CURRICULUM_DATA.get("tieng-trung_hsk") or CURRICULUM_DATA.get("tieng-trung_hsk-3-4")
-    elif clean_grade == "tieng-nhat" and ("jlpt" in clean_subj_slug or "kanji" in clean_subj_slug or "kaiwa" in clean_subj_slug):
+    elif clean_grade == "tieng-nhat" and (
+        "jlpt" in clean_subj_slug or "kanji" in clean_subj_slug or "kaiwa" in clean_subj_slug
+    ):
         result = CURRICULUM_DATA.get("tieng-nhat_jlpt") or CURRICULUM_DATA.get("tieng-nhat_jlpt-n3")
     elif clean_grade == "tieng-anh" and ("toeic" in clean_subj_slug):
         result = CURRICULUM_DATA.get("tieng-anh_toeic")

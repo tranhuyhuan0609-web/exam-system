@@ -1,1 +1,1 @@
-"""G02 immutable audit trail pure core module."""
+"""G02 Legal Takedown and immutable audit trail pure core module."""

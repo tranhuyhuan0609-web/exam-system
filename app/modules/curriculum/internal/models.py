@@ -49,9 +49,7 @@ class CurriculumVersion(Base):
         nullable=False,
         server_default=SYSTEM_PUBLIC_TENANT_ID_SQL,
     )
-    visibility_scope: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="SYSTEM_PUBLIC"
-    )
+    visibility_scope: Mapped[str] = mapped_column(String(20), nullable=False, server_default="SYSTEM_PUBLIC")
     code: Mapped[str] = mapped_column(String(80), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     subject_code: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -97,9 +95,7 @@ class TaxonomyMapping(Base):
 
     __tablename__ = "taxonomy_mappings"
     __table_args__ = (
-        UniqueConstraint(
-            "curriculum_node_id", "taxonomy_node_id", name="uq_taxonomy_mappings_curriculum_taxonomy"
-        ),
+        UniqueConstraint("curriculum_node_id", "taxonomy_node_id", name="uq_taxonomy_mappings_curriculum_taxonomy"),
         ForeignKeyConstraint(
             ["curriculum_node_id", "tenant_id"],
             ["curriculum_nodes.id", "curriculum_nodes.tenant_id"],
@@ -115,4 +111,3 @@ class TaxonomyMapping(Base):
         UUID(as_uuid=True), ForeignKey("taxonomy_nodes.id", ondelete="CASCADE"), nullable=False
     )
     mapping_weight: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=False, server_default="1.00")
-

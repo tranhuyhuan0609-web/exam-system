@@ -56,9 +56,7 @@ def apply_attempt(
         next_consecutive = state.consecutive_correct_count + 1
         if next_consecutive >= REQUIRED_CONSECUTIVE_CORRECT:
             resolved_timestamp = (
-                state.resolved_at
-                if state.status == "RESOLVED" and state.resolved_at is not None
-                else at
+                state.resolved_at if state.status == "RESOLVED" and state.resolved_at is not None else at
             )
             return ErrorNoteState(
                 status="RESOLVED",

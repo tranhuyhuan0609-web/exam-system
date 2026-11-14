@@ -78,9 +78,7 @@ def check_resolved_addresses(host: str, addresses: Sequence[str]) -> SSRFCheckRe
     for raw_ip in addresses:
         clean_ip = (raw_ip or "").strip()
         if not is_public_address(clean_ip):
-            raise SSRFDNSRebindingError(
-                f"SSRF_BLOCKED: host {clean_host} resolved to disallowed address {raw_ip!r}"
-            )
+            raise SSRFDNSRebindingError(f"SSRF_BLOCKED: host {clean_host} resolved to disallowed address {raw_ip!r}")
         verified.append(str(ipaddress.ip_address(clean_ip)))
 
     return SSRFCheckResult(

@@ -45,7 +45,7 @@ def test_union_find_merge_is_order_independent_and_scales_past_2000_rects():
         BBoxRect(100.0, 100.0, 130.0, 120.0),
         BBoxRect(135.0, 105.0, 160.0, 125.0),  # merges with first under pad=10
         BBoxRect(10.0, 10.0, 40.0, 30.0),
-        BBoxRect(15.0, 25.0, 45.0, 55.0),     # merges with third
+        BBoxRect(15.0, 25.0, 45.0, 55.0),  # merges with third
         BBoxRect(300.0, 300.0, 340.0, 320.0),
     ]
     baseline = merge_intersecting_rects_union_find(boxes, pad=10.0)
@@ -59,9 +59,7 @@ def test_union_find_merge_is_order_independent_and_scales_past_2000_rects():
 
     # 2,000 scattered small rectangles -> must finish well under 1.0s.
     grid_rects = [
-        BBoxRect(col * 30.0, row * 30.0, col * 30.0 + 10.0, row * 30.0 + 10.0)
-        for row in range(45)
-        for col in range(45)
+        BBoxRect(col * 30.0, row * 30.0, col * 30.0 + 10.0, row * 30.0 + 10.0) for row in range(45) for col in range(45)
     ][:2000]
     t0 = time.perf_counter()
     merged = merge_intersecting_rects_union_find(grid_rects, pad=2.0)
@@ -94,9 +92,7 @@ def test_detect_repeating_headers_footers_watermarks_and_single_page_noop():
             PageTextLine(f"Cau {p + 1}: Tim x", BBoxRect(40.0, 200.0 + p * 30, 300.0, 220.0 + p * 30)),
             PageTextLine(f"Trang {p + 1}/4", BBoxRect(260.0, 765.0, 340.0, 785.0)),
         )
-        pages.append(
-            PageLayoutInput(page_index=p, page_width=600.0, page_height=800.0, lines=lines)
-        )
+        pages.append(PageLayoutInput(page_index=p, page_width=600.0, page_height=800.0, lines=lines))
 
     res = detect_dynamic_repeating_margins(pages, LayoutProfileConfig())
     assert res.header_patterns == frozenset({"SO GD&DT HA NOI"})

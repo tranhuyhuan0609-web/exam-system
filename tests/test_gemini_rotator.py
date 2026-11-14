@@ -100,4 +100,3 @@ def test_openai_compat_multi_key_rotation():
     )
     assert len(enricher._keys) == 3
     assert enricher._keys == ["gsk_key1", "gsk_key2", "gsk_key3"]
-

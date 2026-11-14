@@ -19,7 +19,10 @@ def _exams(db, n):
             category_id=subject.id,
             difficulty=Difficulty.RECOGNITION,
             content="Câu hỏi $x$",
-            choices=[{"id": "a", "content": "Đúng", "is_correct": True}, {"id": "b", "content": "Sai", "is_correct": False}],  # noqa: E501
+            choices=[
+                {"id": "a", "content": "Đúng", "is_correct": True},
+                {"id": "b", "content": "Sai", "is_correct": False},
+            ],  # noqa: E501
         )
         s.add(question)
         exams = [

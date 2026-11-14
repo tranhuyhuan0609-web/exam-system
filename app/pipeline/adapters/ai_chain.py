@@ -178,9 +178,7 @@ class GeminiChainMember:
         from app.pipeline.adapters.gemini import GeminiEnricher
 
         settings = get_settings()
-        provider = GeminiProvider(
-            settings.gemini_api_key_list, settings.gemini_model_list, max_rounds=1, base_delay=1
-        )
+        provider = GeminiProvider(settings.gemini_api_key_list, settings.gemini_model_list, max_rounds=1, base_delay=1)
         self._inner = GeminiEnricher(provider)
         self.name, self.vision = "gemini", True
 
@@ -266,9 +264,7 @@ def build_chain():
         groq_limit = limits.get("groq", 0) * len(settings.groq_api_key_list)
         members.append(
             (
-                OpenAICompatEnricher(
-                    "groq", settings.groq_base_url, settings.groq_api_key_list, settings.groq_model
-                ),
+                OpenAICompatEnricher("groq", settings.groq_base_url, settings.groq_api_key_list, settings.groq_model),
                 groq_limit,
                 sizes.get("groq", 6),
             )

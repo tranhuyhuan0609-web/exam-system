@@ -53,8 +53,13 @@ _SPEC_SQL = (
     Path(__file__).resolve().parents[1] / "docs" / "architecture" / "chapters" / "04_postgresql_ddl_rls_grants.sql"
 )
 _SEVEN_ROLES = {
-    "ulp_migrator", "ulp_app_rw", "ulp_exam_session_rw", "ulp_worker_ingestion",
-    "ulp_worker_grading", "ulp_system_scheduler", "ulp_analytics_ro",
+    "ulp_migrator",
+    "ulp_app_rw",
+    "ulp_exam_session_rw",
+    "ulp_worker_ingestion",
+    "ulp_worker_grading",
+    "ulp_system_scheduler",
+    "ulp_analytics_ro",
 }
 
 
@@ -86,7 +91,9 @@ def test_real_spec_ddl_has_zero_findings(spec_sql: str) -> None:
     # global catalogs are surfaced for review instead of being silently skipped
     assert "permissions" in report.tenantless_tables and "ai_models" in report.tenantless_tables
     # partitions are covered through secure_partition(), not through the parent
-    assert {"audit_events_2026_11", "audit_events_default", "response_revisions_default"} <= set(report.discovered_tables)
+    assert {"audit_events_2026_11", "audit_events_default", "response_revisions_default"} <= set(
+        report.discovered_tables
+    )
     assert not {"audit_events_2026_11", "audit_events_default"} & set(report.missing_rls_enable)
     # the spec creates ulp_migrator without writing NOBYPASSRLS (PostgreSQL default); advisory only
     assert report.roles_without_explicit_nobypassrls == ("ulp_migrator",)
@@ -101,7 +108,9 @@ def test_spec_without_the_role_block_fails_when_all_roles_are_required(spec_sql:
 
 
 def test_broken_copy_table_dropped_from_the_strict_array(spec_sql: str) -> None:
-    report = _audit_spec_variant(spec_sql, "'assessment_assignments', 'attempts', 'responses',", "'assessment_assignments', 'responses',")
+    report = _audit_spec_variant(
+        spec_sql, "'assessment_assignments', 'attempts', 'responses',", "'assessment_assignments', 'responses',"
+    )
     assert report.passed is False
     assert "attempts" in report.missing_rls_enable
     assert "attempts" in report.missing_rls_force
@@ -117,8 +126,16 @@ def test_broken_copy_force_rls_removed_from_the_strict_loop(spec_sql: str) -> No
 
 
 def test_broken_copy_policy_creation_removed_from_the_loop(spec_sql: str) -> None:
-    old = "EXECUTE format('DROP POLICY IF EXISTS tenant_isolation_policy ON %I;', t);\n        EXECUTE format(\n            'CREATE POLICY tenant_isolation_policy ON %I"
-    new = "EXECUTE format('DROP POLICY IF EXISTS tenant_isolation_policy ON %I;', t);\n        EXECUTE format(\n            'SELECT 1 -- %I"
+    old = (
+        "EXECUTE format('DROP POLICY IF EXISTS tenant_isolation_policy ON %I;', t);\n"
+        "        EXECUTE format(\n"
+        "            'CREATE POLICY tenant_isolation_policy ON %I"
+    )
+    new = (
+        "EXECUTE format('DROP POLICY IF EXISTS tenant_isolation_policy ON %I;', t);\n"
+        "        EXECUTE format(\n"
+        "            'SELECT 1 -- %I"
+    )
     report = _audit_spec_variant(spec_sql, old, new)
     assert report.passed is False
     assert "memberships" in report.missing_rls_policy
@@ -131,41 +148,67 @@ def test_broken_copy_migrator_granted_bypassrls(spec_sql: str) -> None:
 
 
 def test_broken_copy_runtime_role_created_with_bypassrls(spec_sql: str) -> None:
-    report = _audit_spec_variant(spec_sql, "CREATE ROLE ulp_app_rw NOLOGIN NOBYPASSRLS;", "CREATE ROLE ulp_app_rw NOLOGIN BYPASSRLS;")
+    report = _audit_spec_variant(
+        spec_sql, "CREATE ROLE ulp_app_rw NOLOGIN NOBYPASSRLS;", "CREATE ROLE ulp_app_rw NOLOGIN BYPASSRLS;"
+    )
     assert report.privileged_role_violations == ("ulp_app_rw: granted BYPASSRLS",)
 
 
 def test_broken_copy_bare_tenant_function_in_a_hybrid_policy(spec_sql: str) -> None:
-    old = "CREATE POLICY hybrid_read_policy ON content_items FOR SELECT USING (\n    tenant_id = (SELECT current_app_tenant_id())"
-    new = "CREATE POLICY hybrid_read_policy ON content_items FOR SELECT USING (\n    tenant_id = current_app_tenant_id()"
+    old = (
+        "CREATE POLICY hybrid_read_policy ON content_items FOR SELECT USING (\n"
+        "    tenant_id = (SELECT current_app_tenant_id())"
+    )
+    new = (
+        "CREATE POLICY hybrid_read_policy ON content_items FOR SELECT USING (\n    tenant_id = current_app_tenant_id()"
+    )
     report = _audit_spec_variant(spec_sql, old, new)
     assert report.passed is False
     assert any("content_items" in v and "InitPlan" in v for v in report.policy_violations)
 
 
 def test_broken_copy_hybrid_parent_without_published_gate(spec_sql: str) -> None:
-    old = "CREATE POLICY hybrid_read_policy ON questions FOR SELECT USING (\n    tenant_id = (SELECT current_app_tenant_id())\n    OR (tenant_id = system_public_tenant_id()\n        AND visibility_scope = 'SYSTEM_PUBLIC'\n        AND publication_status = 'PUBLISHED'\n"
-    new = "CREATE POLICY hybrid_read_policy ON questions FOR SELECT USING (\n    tenant_id = (SELECT current_app_tenant_id())\n    OR (tenant_id = system_public_tenant_id()\n        AND visibility_scope = 'SYSTEM_PUBLIC'\n"
+    old = (
+        "CREATE POLICY hybrid_read_policy ON questions FOR SELECT USING (\n"
+        "    tenant_id = (SELECT current_app_tenant_id())\n"
+        "    OR (tenant_id = system_public_tenant_id()\n"
+        "        AND visibility_scope = 'SYSTEM_PUBLIC'\n"
+        "        AND publication_status = 'PUBLISHED'\n"
+    )
+    new = (
+        "CREATE POLICY hybrid_read_policy ON questions FOR SELECT USING (\n"
+        "    tenant_id = (SELECT current_app_tenant_id())\n"
+        "    OR (tenant_id = system_public_tenant_id()\n"
+        "        AND visibility_scope = 'SYSTEM_PUBLIC'\n"
+    )
     report = _audit_spec_variant(spec_sql, old, new)
     assert any("questions" in v and "PUBLISHED" in v for v in report.policy_violations)
 
 
 def test_broken_copy_knowledge_edges_checks_only_one_endpoint(spec_sql: str) -> None:
-    old = "AND EXISTS (SELECT 1 FROM taxonomy_nodes t WHERE t.id = knowledge_edges.target_node_id AND t.is_active IS TRUE))"
+    old = (
+        "AND EXISTS (SELECT 1 FROM taxonomy_nodes t "
+        "WHERE t.id = knowledge_edges.target_node_id AND t.is_active IS TRUE))"
+    )
     report = _audit_spec_variant(spec_sql, old, ")")
     assert any("knowledge_edges" in v and "target_node_id" in v for v in report.policy_violations)
 
 
+
 def test_broken_copy_hybrid_read_policy_removed(spec_sql: str) -> None:
     old = "CREATE POLICY hybrid_read_policy ON search_documents FOR SELECT USING ("
-    report = _audit_spec_variant(spec_sql, old, "CREATE POLICY hybrid_read_policy_x ON search_documents FOR SELECT USING (")
+    report = _audit_spec_variant(
+        spec_sql, old, "CREATE POLICY hybrid_read_policy_x ON search_documents FOR SELECT USING ("
+    )
     assert "hybrid_read_policy missing on search_documents" in report.policy_violations
 
 
 def test_broken_copy_partition_sweep_removed(spec_sql: str) -> None:
     report = _audit_spec_variant(spec_sql, "PERFORM secure_partition(p::text);", "NULL;")
     assert report.passed is False
-    assert {"audit_events_default", "audit_events_2026_11", "response_revisions_default"} <= set(report.missing_rls_enable)
+    assert {"audit_events_default", "audit_events_2026_11", "response_revisions_default"} <= set(
+        report.missing_rls_enable
+    )
 
 
 def test_broken_copy_secure_partition_without_force(spec_sql: str) -> None:
@@ -183,9 +226,14 @@ def test_broken_copy_answer_keys_regranted_to_exam_session_role(spec_sql: str) -
 
 
 def test_broken_copy_answer_key_revoke_removed(spec_sql: str) -> None:
-    old = "REVOKE ALL ON question_version_answers, assessment_answer_keys FROM PUBLIC, ulp_exam_session_rw, ulp_worker_ingestion, ulp_system_scheduler, ulp_analytics_ro;"
+    old = (
+        "REVOKE ALL ON question_version_answers, assessment_answer_keys "
+        "FROM PUBLIC, ulp_exam_session_rw, ulp_worker_ingestion, ulp_system_scheduler, ulp_analytics_ro;"
+    )
     report = _audit_spec_variant(spec_sql, old, "")
-    assert any("ulp_worker_ingestion: no explicit REVOKE ALL on question_version_answers" == v for v in report.grant_violations)
+    assert any(
+        "ulp_worker_ingestion: no explicit REVOKE ALL on question_version_answers" == v for v in report.grant_violations
+    )
 
 
 def test_broken_copy_grading_policy_removed(spec_sql: str) -> None:
@@ -194,7 +242,10 @@ def test_broken_copy_grading_policy_removed(spec_sql: str) -> None:
 
 
 def test_broken_copy_system_job_policy_without_initplan(spec_sql: str) -> None:
-    old = "USING ((SELECT app_system_job()) = 'outbox_relay')\n    WITH CHECK ((SELECT app_system_job()) = 'outbox_relay');"
+    old = (
+        "USING ((SELECT app_system_job()) = 'outbox_relay')\n"
+        "    WITH CHECK ((SELECT app_system_job()) = 'outbox_relay');"
+    )
     report = _audit_spec_variant(spec_sql, old, "USING (true)\n    WITH CHECK (true);")
     assert any("sys_outbox_relay" in v for v in report.policy_violations)
 
@@ -233,12 +284,15 @@ def test_loop_over_a_different_array_does_not_cover_the_other_array() -> None:
         FOREACH t IN ARRAY first_tables LOOP
             EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY;', t);
             EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY;', t);
-            EXECUTE format('CREATE POLICY tenant_isolation_policy ON %I USING (tenant_id = (SELECT current_app_tenant_id()));', t);
+            EXECUTE format(
+                'CREATE POLICY tenant_isolation_policy ON %I USING (tenant_id = (SELECT current_app_tenant_id()));', t
+            );
         END LOOP;
     END $$;
     """
     report = audit_ddl_rls_hardening(sql)
     assert report.missing_rls_enable == ("b_tbl",)
+
 
 
 def test_loop_policy_without_initplan_is_flagged() -> None:
@@ -291,11 +345,14 @@ def test_partition_without_own_security_is_flagged_and_secured_one_is_not() -> N
     assert report.missing_rls_enable == ("ev_default",)
     assert report.passed is False
 
-    secured = sql + """
+    secured = (
+        sql
+        + """
     ALTER TABLE ev_default ENABLE ROW LEVEL SECURITY;
     ALTER TABLE ev_default FORCE ROW LEVEL SECURITY;
     CREATE POLICY p ON ev_default USING (tenant_id = (SELECT current_app_tenant_id()));
     """
+    )
     assert audit_ddl_rls_hardening(secured).passed is True
 
 

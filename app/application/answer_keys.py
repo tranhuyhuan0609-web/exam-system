@@ -51,8 +51,7 @@ def document_pages(data: bytes, mime: str) -> list[PageImage]:
     if mime == "application/pdf":
         with PDFEngineAdapter.open(data) as pdf:
             return [
-                PageImage(number=i + 1, png=pdf.render_png(i, dpi=150))
-                for i in range(min(pdf.page_count, MAX_PAGES))
+                PageImage(number=i + 1, png=pdf.render_png(i, dpi=150)) for i in range(min(pdf.page_count, MAX_PAGES))
             ]
     with Image.open(io.BytesIO(data)) as picture:  # JPEG or PNG
         if picture.mode not in ("RGB", "RGBA", "L"):

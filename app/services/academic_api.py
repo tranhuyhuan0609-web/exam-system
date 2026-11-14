@@ -52,7 +52,7 @@ def search_research_papers(query: str, limit: int = 10, page: int = 1) -> list[d
                 for auth in item.get("authorships", [])[:4]
                 if auth.get("author", {}).get("display_name")
             ]
-            
+
             # Abstract inverted index decoding if available
             abstract = ""
             inv_idx = item.get("abstract_inverted_index")
@@ -70,18 +70,21 @@ def search_research_papers(query: str, limit: int = 10, page: int = 1) -> list[d
             pdf_url = open_access.get("oa_url") or item.get("primary_location", {}).get("pdf_url")
             landing_url = item.get("doi") or item.get("id")
 
-            results.append({
-                "id": item.get("id", ""),
-                "title": item.get("display_name") or item.get("title") or "Nghiên cứu học thuật",
-                "authors": ", ".join(authors) if authors else "Nhiều tác giả",
-                "year": item.get("publication_year") or 2024,
-                "abstract": abstract or "Tài liệu học thuật toàn văn, bao quát các nghiên cứu và thực nghiệm chuyên sâu.",  # noqa: E501
-                "pdf_url": pdf_url,
-                "doi": item.get("doi"),
-                "landing_url": landing_url,
-                "citations": item.get("cited_by_count", 0),
-                "source": "OpenAlex / Academic Repositories",
-            })
+            results.append(
+                {
+                    "id": item.get("id", ""),
+                    "title": item.get("display_name") or item.get("title") or "Nghiên cứu học thuật",
+                    "authors": ", ".join(authors) if authors else "Nhiều tác giả",
+                    "year": item.get("publication_year") or 2024,
+                    "abstract": abstract
+                    or "Tài liệu học thuật toàn văn, bao quát các nghiên cứu và thực nghiệm chuyên sâu.",  # noqa: E501
+                    "pdf_url": pdf_url,
+                    "doi": item.get("doi"),
+                    "landing_url": landing_url,
+                    "citations": item.get("cited_by_count", 0),
+                    "source": "OpenAlex / Academic Repositories",
+                }
+            )
 
     # 2. Fallback / supplementary: Semantic Scholar
     if not results:
@@ -91,17 +94,19 @@ def search_research_papers(query: str, limit: int = 10, page: int = 1) -> list[d
             for item in ss_data.get("data", []):
                 authors = [a.get("name") for a in item.get("authors", []) if a.get("name")]
                 pdf_info = item.get("openAccessPdf") or {}
-                results.append({
-                    "id": item.get("paperId", ""),
-                    "title": item.get("title") or "Bài báo khoa học",
-                    "authors": ", ".join(authors) if authors else "Tác giả học thuật",
-                    "year": item.get("year") or 2024,
-                    "abstract": item.get("abstract") or "Tóm tắt nghiên cứu khoa học chuyên đề.",
-                    "pdf_url": pdf_info.get("url"),
-                    "landing_url": f"https://www.semanticscholar.org/paper/{item.get('paperId')}",
-                    "citations": item.get("citationCount", 0),
-                    "source": "Semantic Scholar (Allen AI)",
-                })
+                results.append(
+                    {
+                        "id": item.get("paperId", ""),
+                        "title": item.get("title") or "Bài báo khoa học",
+                        "authors": ", ".join(authors) if authors else "Tác giả học thuật",
+                        "year": item.get("year") or 2024,
+                        "abstract": item.get("abstract") or "Tóm tắt nghiên cứu khoa học chuyên đề.",
+                        "pdf_url": pdf_info.get("url"),
+                        "landing_url": f"https://www.semanticscholar.org/paper/{item.get('paperId')}",
+                        "citations": item.get("citationCount", 0),
+                        "source": "Semantic Scholar (Allen AI)",
+                    }
+                )
 
     return results
 
@@ -123,21 +128,24 @@ def search_books(query: str, limit: int = 12, page: int = 1) -> list[dict[str, A
             cover_url = f"https://covers.openlibrary.org/b/id/{cover_i}-M.jpg" if cover_i else None
             key = doc.get("key", "")
             read_url = f"https://openlibrary.org{key}" if key else None
-            
+
             authors = doc.get("author_name", [])
             publishers = doc.get("publisher", [])
 
-            results.append({
-                "title": doc.get("title") or "Sách giáo trình điện tử",
-                "author": ", ".join(authors[:2]) if authors else "Nhiều tác giả",
-                "year": doc.get("first_publish_year") or (doc.get("publish_year", [2022])[0] if doc.get("publish_year") else 2022),  # noqa: E501
-                "cover_url": cover_url,
-                "read_url": read_url,
-                "publisher": publishers[0] if publishers else "NXB Giáo Dục / Quốc Tế",
-                "subjects": ", ".join(doc.get("subject", [])[:3]),
-                "editions_count": doc.get("edition_count", 1),
-                "source": "Open Library (Internet Archive)",
-            })
+            results.append(
+                {
+                    "title": doc.get("title") or "Sách giáo trình điện tử",
+                    "author": ", ".join(authors[:2]) if authors else "Nhiều tác giả",
+                    "year": doc.get("first_publish_year")
+                    or (doc.get("publish_year", [2022])[0] if doc.get("publish_year") else 2022),  # noqa: E501
+                    "cover_url": cover_url,
+                    "read_url": read_url,
+                    "publisher": publishers[0] if publishers else "NXB Giáo Dục / Quốc Tế",
+                    "subjects": ", ".join(doc.get("subject", [])[:3]),
+                    "editions_count": doc.get("edition_count", 1),
+                    "source": "Open Library (Internet Archive)",
+                }
+            )
 
     return results
 
@@ -170,24 +178,26 @@ def get_open_trivia_quizzes(amount: int = 10, category_id: int = 0, difficulty: 
             question_text = html.unescape(item.get("question", ""))
             correct = html.unescape(item.get("correct_answer", ""))
             incorrects = [html.unescape(inc) for inc in item.get("incorrect_answers", [])]
-            
+
             all_choices = incorrects + [correct]
             random.shuffle(all_choices)
 
             letters = ["A", "B", "C", "D"]
             correct_letter = letters[all_choices.index(correct)] if correct in all_choices else "A"
 
-            results.append({
-                "number": idx,
-                "category": html.unescape(item.get("category", "General")),
-                "difficulty": item.get("difficulty", "medium").capitalize(),
-                "question": question_text,
-                "choices": [
-                    {"letter": letters[i], "text": all_choices[i]}
-                    for i in range(min(len(letters), len(all_choices)))
-                ],
-                "correct_letter": correct_letter,
-                "correct_answer": correct,
-            })
+            results.append(
+                {
+                    "number": idx,
+                    "category": html.unescape(item.get("category", "General")),
+                    "difficulty": item.get("difficulty", "medium").capitalize(),
+                    "question": question_text,
+                    "choices": [
+                        {"letter": letters[i], "text": all_choices[i]}
+                        for i in range(min(len(letters), len(all_choices)))
+                    ],
+                    "correct_letter": correct_letter,
+                    "correct_answer": correct,
+                }
+            )
 
     return results

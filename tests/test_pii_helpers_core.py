@@ -20,7 +20,7 @@ PEPPER = b"super-secret-cluster-pepper-32b!"
 
 def test_email_blind_index_normalizes_nfkc_whitespace_case_and_rejects_short_pepper():
     # Fullwidth Latin NFKC letters + internal/outer whitespace + mixed case
-    raw = " \uFF21lice.\uFF2E\uFF47uyen @Example.EDU.vn \n"
+    raw = " \uff21lice.\uff2e\uff47uyen @Example.EDU.vn \n"
     canonical = "alice.nguyen@example.edu.vn"
 
     d1 = compute_email_blind_index(raw, PEPPER)
@@ -125,10 +125,7 @@ def test_scrub_free_text_pii_records_is_pure_and_returns_counts():
     assert res.counts.appeals == 1
     assert res.counts.comment_threads == 3
     assert res.counts.total == 6
-    assert all(
-        m["message_md"] == REDACTED_TEXT_MARKER and m["citations_json"] == []
-        for m in res.tutor_messages
-    )
+    assert all(m["message_md"] == REDACTED_TEXT_MARKER and m["citations_json"] == [] for m in res.tutor_messages)
     assert res.appeals[0]["reason_text"] == REDACTED_TEXT_MARKER
     assert res.appeals[0]["resolution_note"] is None
     assert all(c["body_text"] == REDACTED_TEXT_MARKER for c in res.comment_threads)

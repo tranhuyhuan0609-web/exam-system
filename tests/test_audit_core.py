@@ -1,20 +1,28 @@
-"""Tests for G02/RB-10 immutable audit_events builder and rollback diff (P63)."""
+"""Tests for G02 Legal Takedown and immutable audit_events builder/rollback diff (module audit)."""
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
 from app.modules.audit.public import (
     AuditDiffError,
+    TakedownCaseState,
+    TakedownEntityType,
+    TakedownStatus,
     build_audit_event_record,
     compute_rollback_patch,
+    execute_takedown,
+    monthly_audit_partition_name,
+    reject_takedown,
 )
+from app.modules.review.public import GovernancePolicyError, PublicationStatus, RightsStatus
 
 
 def test_build_audit_event_redacts_secrets_and_derives_partition_and_rollback() -> None:
-    ts = datetime(2026, 11, 13, 13, 30, tzinfo=timezone.utc)
+    ts = datetime(2026, 11, 13, 13, 30, tzinfo=UTC)
     spec = build_audit_event_record(
         tenant_id="tenant-1",
         actor_id="admin-9",
@@ -68,9 +76,7 @@ def test_sensitive_action_rejects_short_reason_and_missing_correlation() -> None
 
 # --- regression + boundary tests --------------------------------------------------------------
 
-from app.modules.audit.public import monthly_audit_partition_name  # noqa: E402
-
-_TS = datetime(2026, 11, 13, 13, 30, tzinfo=timezone.utc)
+_TS = datetime(2026, 11, 13, 13, 30, tzinfo=UTC)
 
 
 def _build(**overrides):
@@ -175,8 +181,6 @@ def test_sensitive_reason_boundary_and_action_normalisation() -> None:
 def test_partition_name_handles_naive_and_offset_timestamps() -> None:
     assert monthly_audit_partition_name(datetime(2026, 1, 31, 23, 59, 59)) == "audit_events_y2026m01"
     # 2026-12-31 20:00 UTC-5 is already January 2027 in UTC.
-    from datetime import timedelta
-
     tz = timezone(timedelta(hours=-5))
     assert monthly_audit_partition_name(datetime(2026, 12, 31, 20, 0, tzinfo=tz)) == "audit_events_y2027m01"
 
@@ -193,3 +197,104 @@ def test_rollback_skips_fields_absent_from_before_and_deep_copies() -> None:
     assert plan.restore_fields == {"cfg": {"a": [1]}}
     plan.restore_fields["cfg"]["a"].append(9)
     assert spec.before_json["cfg"]["a"] == [1]
+
+
+def test_takedown_enums_match_postgresql_ddl_check_constraints() -> None:
+    ddl = Path("docs/architecture/chapters/04_postgresql_ddl_rls_grants.sql").read_text(encoding="utf-8")
+    for enum_cls in (TakedownEntityType, TakedownStatus):
+        for member in enum_cls:
+            assert f"'{member.value}'" in ddl
+
+
+def test_takedown_execution_produces_event_and_immutable_audit_delta() -> None:
+    case = TakedownCaseState(
+        case_id="td-100",
+        tenant_id="tenant-1",
+        complainant_name="Publisher X",
+        target_entity_type=TakedownEntityType.QUESTION,
+        target_entity_id="q-999",
+        legal_reason="Copyright notice #2026-11",
+    )
+    outcome = execute_takedown(
+        case,
+        executor_id="admin-1",
+        previous_rights_status=RightsStatus.LICENSED,
+        previous_publication_status=PublicationStatus.PUBLISHED,
+    )
+    assert outcome.case_state.status == TakedownStatus.EXECUTED
+    assert outcome.forced_rights_status == RightsStatus.TAKEDOWN
+    assert outcome.forced_publication_status == PublicationStatus.TAKEN_DOWN
+    assert outcome.outbox_event_type == "rights.takedown.executed"
+    assert outcome.outbox_payload["target_entity_id"] == "q-999"
+    assert outcome.audit_before_json["publication_status"] == "PUBLISHED"
+    assert outcome.audit_after_json["publication_status"] == "TAKEN_DOWN"
+
+    # Cannot execute or reject after EXECUTED
+    with pytest.raises(GovernancePolicyError) as exc:
+        reject_takedown(outcome.case_state, reviewer_id="admin-2")
+    assert exc.value.code == "TAKEDOWN_NOT_OPEN"
+
+
+def _case(**kw: object) -> TakedownCaseState:
+    base: dict[str, object] = {
+        "case_id": "td-1",
+        "tenant_id": "tenant-1",
+        "complainant_name": "Publisher",
+        "target_entity_type": TakedownEntityType.CONTENT_ITEM,
+        "target_entity_id": "c-1",
+        "legal_reason": "notice",
+    }
+    base.update(kw)
+    return TakedownCaseState(**base)  # type: ignore[arg-type]
+
+
+def _execute(state: TakedownCaseState, **kw: object):
+    args: dict[str, object] = {
+        "executor_id": "admin",
+        "previous_rights_status": RightsStatus.OWNED,
+        "previous_publication_status": PublicationStatus.PUBLISHED,
+    }
+    args.update(kw)
+    return execute_takedown(state, **args)  # type: ignore[arg-type]
+
+
+def test_execute_requires_open_case_and_non_blank_executor() -> None:
+    for executor in ("", "   ", None):
+        with pytest.raises(GovernancePolicyError) as exc:
+            _execute(_case(), executor_id=executor)
+        assert exc.value.code == "MISSING_EXECUTOR_ID"
+    done = _execute(_case()).case_state
+    for state_change in (done, _case(status=TakedownStatus.REJECTED)):
+        with pytest.raises(GovernancePolicyError) as exc:
+            _execute(state_change)
+        assert exc.value.code == "TAKEDOWN_NOT_OPEN"
+
+
+def test_unknown_case_status_is_not_executable() -> None:
+    with pytest.raises(GovernancePolicyError) as exc:
+        _execute(_case(status="open"))
+    assert exc.value.code == "TAKEDOWN_NOT_OPEN"
+
+
+def test_execution_does_not_mutate_input_and_records_actor() -> None:
+    case = _case()
+    result = _execute(case, executor_id="admin-7")
+    assert case.status == TakedownStatus.OPEN and case.executed_by is None
+    assert result.case_state.executed_by == "admin-7"
+    assert result.outbox_payload["tenant_id"] == "tenant-1"
+    assert result.outbox_payload["rights_status"] == "TAKEDOWN"
+    assert result.audit_before_json["case_status"] == "OPEN"
+    assert result.audit_after_json["case_status"] == "EXECUTED"
+
+
+def test_reject_open_case_and_guards() -> None:
+    rejected = reject_takedown(_case(), reviewer_id="admin")
+    assert rejected.status == TakedownStatus.REJECTED and rejected.executed_by == "admin"
+    with pytest.raises(GovernancePolicyError) as blank:
+        reject_takedown(_case(), reviewer_id=" ")
+    assert blank.value.code == "MISSING_EXECUTOR_ID"
+    with pytest.raises(GovernancePolicyError) as again:
+        reject_takedown(rejected, reviewer_id="admin")
+    assert again.value.code == "TAKEDOWN_NOT_OPEN"
+    with pytest.raises(GovernancePolicyError):
+        _execute(rejected)

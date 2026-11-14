@@ -120,4 +120,3 @@ def test_structural_normalize_35_cases(text_a: str, text_b: str, same_structural
 
 def test_normalize_text_collapses_whitespace_and_case() -> None:
     assert normalize_text("  Cho   H₂O   và\n\tFe₃O₄  ") == "cho h2o và fe3o4"
-

@@ -70,21 +70,15 @@ def test_standard_natural_science_frameworks_are_valid_and_total_10_decimal(
 
 
 def test_validate_blueprint_unknown_framework_and_subject() -> None:
-    bp_fw = _blueprint_from_framework(THPTQG_2025_MATH_FRAMEWORK).model_copy(
-        update={"framework_code": "UNKNOWN_FW"}
-    )
+    bp_fw = _blueprint_from_framework(THPTQG_2025_MATH_FRAMEWORK).model_copy(update={"framework_code": "UNKNOWN_FW"})
     assert [e.code for e in validate_blueprint(bp_fw)] == ["UNKNOWN_FRAMEWORK"]
 
-    bp_subj = _blueprint_from_framework(THPTQG_2025_MATH_FRAMEWORK).model_copy(
-        update={"subject_code": "HISTORY"}
-    )
+    bp_subj = _blueprint_from_framework(THPTQG_2025_MATH_FRAMEWORK).model_copy(update={"subject_code": "HISTORY"})
     assert [e.code for e in validate_blueprint(bp_subj)] == ["UNKNOWN_SUBJECT"]
 
 
 def test_validate_blueprint_wrong_duration() -> None:
-    bp = _blueprint_from_framework(THPTQG_2025_MATH_FRAMEWORK).model_copy(
-        update={"duration_seconds": 3000}
-    )
+    bp = _blueprint_from_framework(THPTQG_2025_MATH_FRAMEWORK).model_copy(update={"duration_seconds": 3000})
     codes = {e.code for e in validate_blueprint(bp)}
     assert codes == {"INVALID_DURATION"}
 
@@ -92,9 +86,7 @@ def test_validate_blueprint_wrong_duration() -> None:
 def test_validate_blueprint_wrong_section_count_and_total_questions() -> None:
     sections = list(THPTQG_2025_MATH_FRAMEWORK.sections)
     sections[0] = sections[0].model_copy(update={"question_count": 10})
-    bp = _blueprint_from_framework(THPTQG_2025_MATH_FRAMEWORK).model_copy(
-        update={"sections": tuple(sections)}
-    )
+    bp = _blueprint_from_framework(THPTQG_2025_MATH_FRAMEWORK).model_copy(update={"sections": tuple(sections)})
     codes = {e.code for e in validate_blueprint(bp)}
     assert "INVALID_SECTION_QUESTION_COUNT" in codes
     assert "INVALID_TOTAL_QUESTIONS" in codes
@@ -104,18 +96,14 @@ def test_validate_blueprint_wrong_section_count_and_total_questions() -> None:
 def test_validate_blueprint_wrong_section_points() -> None:
     sections = list(THPTQG_2025_PHYSICS_FRAMEWORK.sections)
     sections[2] = sections[2].model_copy(update={"points_per_question": Decimal("0.50")})
-    bp = _blueprint_from_framework(THPTQG_2025_PHYSICS_FRAMEWORK).model_copy(
-        update={"sections": tuple(sections)}
-    )
+    bp = _blueprint_from_framework(THPTQG_2025_PHYSICS_FRAMEWORK).model_copy(update={"sections": tuple(sections)})
     codes = {e.code for e in validate_blueprint(bp)}
     assert "INVALID_SECTION_POINTS" in codes
     assert "INVALID_TOTAL_POINTS" in codes
 
 
 def test_validate_blueprint_wrong_declared_total_points() -> None:
-    bp = _blueprint_from_framework(THPTQG_2025_MATH_FRAMEWORK).model_copy(
-        update={"total_points": Decimal("12.00")}
-    )
+    bp = _blueprint_from_framework(THPTQG_2025_MATH_FRAMEWORK).model_copy(update={"total_points": Decimal("12.00")})
     codes = {e.code for e in validate_blueprint(bp)}
     assert codes == {"INVALID_TOTAL_POINTS"}
 
@@ -123,9 +111,7 @@ def test_validate_blueprint_wrong_declared_total_points() -> None:
 def test_validate_blueprint_wrong_section_item_type() -> None:
     sections = list(THPTQG_2025_MATH_FRAMEWORK.sections)
     sections[0] = sections[0].model_copy(update={"item_type": QuestionItemType.ESSAY})
-    bp = _blueprint_from_framework(THPTQG_2025_MATH_FRAMEWORK).model_copy(
-        update={"sections": tuple(sections)}
-    )
+    bp = _blueprint_from_framework(THPTQG_2025_MATH_FRAMEWORK).model_copy(update={"sections": tuple(sections)})
     codes = {e.code for e in validate_blueprint(bp)}
     assert codes == {"INVALID_SECTION_ITEM_TYPE"}
 
@@ -138,9 +124,7 @@ def test_validate_blueprint_missing_duplicate_and_unexpected_sections() -> None:
         question_count=1,
         points_per_question=Decimal("1.00"),
     )
-    bp = _blueprint_from_framework(THPTQG_2025_MATH_FRAMEWORK).model_copy(
-        update={"sections": (s0, s0, s1, extra)}
-    )
+    bp = _blueprint_from_framework(THPTQG_2025_MATH_FRAMEWORK).model_copy(update={"sections": (s0, s0, s1, extra)})
     codes = {e.code for e in validate_blueprint(bp)}
     assert "DUPLICATE_SECTION" in codes
     assert "MISSING_SECTION" in codes

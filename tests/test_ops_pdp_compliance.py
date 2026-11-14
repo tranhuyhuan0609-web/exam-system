@@ -52,8 +52,7 @@ def test_under_16_parental_and_b2b_consent_enforcement() -> None:
 
 def test_vault_secret_ref_blocks_plaintext_keys() -> None:
     assert (
-        validate_vault_secret_ref("vault://transit/keys/tenant-a-user-dek")
-        == "vault://transit/keys/tenant-a-user-dek"
+        validate_vault_secret_ref("vault://transit/keys/tenant-a-user-dek") == "vault://transit/keys/tenant-a-user-dek"
     )
     with pytest.raises(PdpComplianceError, match="plaintext"):
         validate_vault_secret_ref("sk-abcdefghijklmnopqrstuvwxyz123456")

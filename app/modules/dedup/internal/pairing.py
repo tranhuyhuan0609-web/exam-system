@@ -30,12 +30,8 @@ DEFAULT_AUTO_CONFIRM_THRESHOLD = Decimal("0.85")
 DEFAULT_PROPOSE_THRESHOLD = Decimal("0.60")
 
 _UNICODE_TOKEN_RE = re.compile(r"[^\W_]+")
-_SOLUTION_MARKER_RE = re.compile(
-    r"\b(?:hdc|huong dan cham|dap an|loi giai)\b"
-)
-_NOISE_PHRASE_RE = re.compile(
-    r"\b(?:huong dan cham|giai chi tiet|dap an|loi giai|chi tiet|chinh thuc|hdc|de)\b"
-)
+_SOLUTION_MARKER_RE = re.compile(r"\b(?:hdc|huong dan cham|dap an|loi giai)\b")
+_NOISE_PHRASE_RE = re.compile(r"\b(?:huong dan cham|giai chi tiet|dap an|loi giai|chi tiet|chinh thuc|hdc|de)\b")
 
 
 class DocumentKind(StrEnum):
@@ -98,10 +94,7 @@ def classify_pairing_document(filename: str) -> DocumentKind:
     if not has_solution:
         return DocumentKind.EXAM
 
-    nfc_tokens = {
-        tok
-        for tok in _UNICODE_TOKEN_RE.findall(unicodedata.normalize("NFC", stem).casefold())
-    }
+    nfc_tokens = {tok for tok in _UNICODE_TOKEN_RE.findall(unicodedata.normalize("NFC", stem).casefold())}
     has_exam = "đề" in nfc_tokens or "de" in nfc_tokens
     if has_exam:
         return DocumentKind.EXAM_WITH_SOLUTION
@@ -128,16 +121,10 @@ def score_exam_and_solution_pairing(
     tokens_a = set(clean_pairing_stem(exam.filename).split())
     tokens_b = set(clean_pairing_stem(solution.filename).split())
     union_count = len(tokens_a | tokens_b)
-    name_sim = (
-        Decimal(len(tokens_a & tokens_b)) / Decimal(union_count)
-        if union_count > 0
-        else Decimal("0")
-    )
+    name_sim = Decimal(len(tokens_a & tokens_b)) / Decimal(union_count) if union_count > 0 else Decimal("0")
 
     same_folder = (
-        Decimal("1")
-        if exam.folder_id and solution.folder_id and exam.folder_id == solution.folder_id
-        else Decimal("0")
+        Decimal("1") if exam.folder_id and solution.folder_id and exam.folder_id == solution.folder_id else Decimal("0")
     )
     same_subject = (
         Decimal("1")
@@ -215,9 +202,7 @@ def auto_pair_exam_and_hdc_documents(
             continue
         used_exams.add(exam_id)
         used_solutions.add(sol_id)
-        status: Literal["CONFIRMED", "PROPOSED"] = (
-            "CONFIRMED" if total_score >= auto_confirm_threshold else "PROPOSED"
-        )
+        status: Literal["CONFIRMED", "PROPOSED"] = "CONFIRMED" if total_score >= auto_confirm_threshold else "PROPOSED"
         pairings.append(
             DocumentPairing(
                 exam_doc_id=exam_id,

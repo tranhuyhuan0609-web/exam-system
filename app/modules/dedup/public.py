@@ -47,4 +47,3 @@ __all__ = [
     "structural_hash",
     "structural_normalize",
 ]
-

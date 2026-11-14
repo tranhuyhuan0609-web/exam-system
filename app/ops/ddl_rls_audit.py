@@ -50,33 +50,21 @@ _CREATE_TABLE_RE = re.compile(
     re.IGNORECASE,
 )
 _PARTITION_OF_RE = re.compile(r"\s*PARTITION\s+OF\s+(?:public\.)?" + _IDENT, re.IGNORECASE)
-_ENABLE_RLS_RE = re.compile(
-    r"\bALTER\s+TABLE\s+" + _TABLE_REF + r"\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\b", re.IGNORECASE
-)
-_FORCE_RLS_RE = re.compile(
-    r"\bALTER\s+TABLE\s+" + _TABLE_REF + r"\s+FORCE\s+ROW\s+LEVEL\s+SECURITY\b", re.IGNORECASE
-)
+_ENABLE_RLS_RE = re.compile(r"\bALTER\s+TABLE\s+" + _TABLE_REF + r"\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY\b", re.IGNORECASE)
+_FORCE_RLS_RE = re.compile(r"\bALTER\s+TABLE\s+" + _TABLE_REF + r"\s+FORCE\s+ROW\s+LEVEL\s+SECURITY\b", re.IGNORECASE)
 _CREATE_POLICY_RE = re.compile(
     r"\bCREATE\s+POLICY\s+" + _IDENT + r"\s+ON\s+(?:public\.)?" + _IDENT + r"\b([^;]*);",
     re.IGNORECASE | re.DOTALL,
 )
 _DOLLAR_BODY_RE = re.compile(r"\$([A-Za-z_]*)\$(.*?)\$\1\$", re.DOTALL)
 _DO_PREFIX_RE = re.compile(r"\bDO\s+$", re.IGNORECASE)
-_ARRAY_DECL_RE =re.compile(r"\b(\w+)\s+text\[\]\s*:=\s*ARRAY\[(.*?)\]\s*;", re.IGNORECASE | re.DOTALL)
-_FOREACH_RE = re.compile(
-    r"\bFOREACH\s+\w+\s+IN\s+ARRAY\s+(\w+)\s+LOOP(.*?)\bEND\s+LOOP\s*;", re.IGNORECASE | re.DOTALL
-)
+_ARRAY_DECL_RE = re.compile(r"\b(\w+)\s+text\[\]\s*:=\s*ARRAY\[(.*?)\]\s*;", re.IGNORECASE | re.DOTALL)
+_FOREACH_RE = re.compile(r"\bFOREACH\s+\w+\s+IN\s+ARRAY\s+(\w+)\s+LOOP(.*?)\bEND\s+LOOP\s*;", re.IGNORECASE | re.DOTALL)
 _FORMAT_ENABLE_RE = re.compile(r"ALTER\s+TABLE\s+%I\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY", re.IGNORECASE)
 _FORMAT_FORCE_RE = re.compile(r"ALTER\s+TABLE\s+%I\s+FORCE\s+ROW\s+LEVEL\s+SECURITY", re.IGNORECASE)
-_FORMAT_POLICY_RE = re.compile(
-    r"CREATE\s+POLICY\s+(\w+)\s+ON\s+%I(.*?);\s*'", re.IGNORECASE | re.DOTALL
-)
-_ROLE_STMT_RE = re.compile(
-    r"\b(CREATE|ALTER)\s+(?:ROLE|USER)\s+" + _IDENT + r"\b([^;]*);", re.IGNORECASE | re.DOTALL
-)
-_FUNCTION_RE = re.compile(
-    r"\bCREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-zA-Z_][a-zA-Z0-9_.]*)\s*\(", re.IGNORECASE
-)
+_FORMAT_POLICY_RE = re.compile(r"CREATE\s+POLICY\s+(\w+)\s+ON\s+%I(.*?);\s*'", re.IGNORECASE | re.DOTALL)
+_ROLE_STMT_RE = re.compile(r"\b(CREATE|ALTER)\s+(?:ROLE|USER)\s+" + _IDENT + r"\b([^;]*);", re.IGNORECASE | re.DOTALL)
+_FUNCTION_RE = re.compile(r"\bCREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-zA-Z_][a-zA-Z0-9_.]*)\s*\(", re.IGNORECASE)
 _GRANT_REVOKE_RE = re.compile(
     r"\b(GRANT|REVOKE)\s+(.*?)\s+ON\s+(.*?)\s+(TO|FROM)\s+([^;]*);", re.IGNORECASE | re.DOTALL
 )
@@ -277,9 +265,13 @@ def audit_ddl_rls_hardening(
             for pm in _FORMAT_POLICY_RE.finditer(loop_body):
                 policied |= set(tables)
                 if not _INITPLAN_RE.search(pm.group(2)) or _BARE_TENANT_FN_RE.search(pm.group(2)):
-                    policy_violations.append(f"{pm.group(1).lower()} (loop over {loop.group(1)}): no InitPlan tenant expression")
+                    policy_violations.append(
+                        f"{pm.group(1).lower()} (loop over {loop.group(1)}): no InitPlan tenant expression"
+                    )
                 if _USING_TRUE_RE.search(pm.group(2)):
-                    policy_violations.append(f"{pm.group(1).lower()} (loop over {loop.group(1)}): permissive USING (true)")
+                    policy_violations.append(
+                        f"{pm.group(1).lower()} (loop over {loop.group(1)}): permissive USING (true)"
+                    )
 
     # --- partitions ----------------------------------------------------------------------------
     secure_fn_ok = False
@@ -293,7 +285,10 @@ def audit_ddl_rls_hardening(
     literal_secured = set()
     sweep = False
     for text in (outer, *all_bodies):
-        literal_secured |= {m.group(1).lower() for m in re.finditer(r"secure_partition\s*\(\s*'([a-zA-Z_][a-zA-Z0-9_]*)'\s*\)", text, re.IGNORECASE)}
+        literal_secured |= {
+            m.group(1).lower()
+            for m in re.finditer(r"secure_partition\s*\(\s*'([a-zA-Z_][a-zA-Z0-9_]*)'\s*\)", text, re.IGNORECASE)
+        }
     for body in do_bodies:
         if re.search(r"pg_inherits", body, re.IGNORECASE) and re.search(r"secure_partition\s*\(", body, re.IGNORECASE):
             sweep = True
@@ -393,7 +388,13 @@ def audit_ddl_rls_hardening(
         events: list[tuple[int, str, list[str], list[str], str]] = []
         for m in _GRANT_REVOKE_RE.finditer(outer):
             events.append(
-                (m.start(), m.group(1).upper(), _names(m.group(3).replace("TABLE ", "")), _names(m.group(5)), m.group(3))
+                (
+                    m.start(),
+                    m.group(1).upper(),
+                    _names(m.group(3).replace("TABLE ", "")),
+                    _names(m.group(5)),
+                    m.group(3),
+                )
             )
         for table in defined_answer_tables:
             for role in ANSWER_RESTRICTED_ROLES:

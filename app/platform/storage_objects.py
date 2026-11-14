@@ -35,11 +35,7 @@ def _validate_sha256(digest: object) -> str:
 
 def _is_safe_segment(value: str) -> bool:
     # A segment made only of dots ("." / "..") is a path-navigation token, never a name.
-    return (
-        _SAFE_SEGMENT_RE.fullmatch(value) is not None
-        and ".." not in value
-        and value.strip(".") != ""
-    )
+    return _SAFE_SEGMENT_RE.fullmatch(value) is not None and ".." not in value and value.strip(".") != ""
 
 
 def _validate_segment(value: object, label: str) -> str:

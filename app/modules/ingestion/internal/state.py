@@ -36,54 +36,48 @@ TERMINAL_JOB_STATUSES: frozenset[AcquisitionJobStatus] = frozenset(
     }
 )
 
-ALLOWED_JOB_TRANSITIONS: Mapping[AcquisitionJobStatus, frozenset[AcquisitionJobStatus]] = (
-    MappingProxyType(
-        {
-            AcquisitionJobStatus.QUEUED: frozenset(
-                {AcquisitionJobStatus.RUNNING, AcquisitionJobStatus.CANCELLED}
-            ),
-            AcquisitionJobStatus.RUNNING: frozenset(
-                {
-                    AcquisitionJobStatus.COMPLETED,
-                    AcquisitionJobStatus.FAILED,
-                    AcquisitionJobStatus.DEAD_LETTER,
-                    AcquisitionJobStatus.CANCELLED,
-                }
-            ),
-            AcquisitionJobStatus.FAILED: frozenset(
-                {
-                    AcquisitionJobStatus.RUNNING,
-                    AcquisitionJobStatus.DEAD_LETTER,
-                    AcquisitionJobStatus.CANCELLED,
-                }
-            ),
-            AcquisitionJobStatus.COMPLETED: frozenset(),
-            AcquisitionJobStatus.DEAD_LETTER: frozenset(),
-            AcquisitionJobStatus.CANCELLED: frozenset(),
-        }
-    )
+ALLOWED_JOB_TRANSITIONS: Mapping[AcquisitionJobStatus, frozenset[AcquisitionJobStatus]] = MappingProxyType(
+    {
+        AcquisitionJobStatus.QUEUED: frozenset({AcquisitionJobStatus.RUNNING, AcquisitionJobStatus.CANCELLED}),
+        AcquisitionJobStatus.RUNNING: frozenset(
+            {
+                AcquisitionJobStatus.COMPLETED,
+                AcquisitionJobStatus.FAILED,
+                AcquisitionJobStatus.DEAD_LETTER,
+                AcquisitionJobStatus.CANCELLED,
+            }
+        ),
+        AcquisitionJobStatus.FAILED: frozenset(
+            {
+                AcquisitionJobStatus.RUNNING,
+                AcquisitionJobStatus.DEAD_LETTER,
+                AcquisitionJobStatus.CANCELLED,
+            }
+        ),
+        AcquisitionJobStatus.COMPLETED: frozenset(),
+        AcquisitionJobStatus.DEAD_LETTER: frozenset(),
+        AcquisitionJobStatus.CANCELLED: frozenset(),
+    }
 )
 
-ALLOWED_STAGE_TRANSITIONS: Mapping[PipelineStageStatus, frozenset[PipelineStageStatus]] = (
-    MappingProxyType(
-        {
-            PipelineStageStatus.RUNNING: frozenset(
-                {
-                    PipelineStageStatus.COMPLETED,
-                    PipelineStageStatus.FAILED,
-                    PipelineStageStatus.SKIPPED,
-                }
-            ),
-            PipelineStageStatus.FAILED: frozenset(
-                {
-                    PipelineStageStatus.RUNNING,
-                    PipelineStageStatus.SKIPPED,
-                }
-            ),
-            PipelineStageStatus.COMPLETED: frozenset(),
-            PipelineStageStatus.SKIPPED: frozenset(),
-        }
-    )
+ALLOWED_STAGE_TRANSITIONS: Mapping[PipelineStageStatus, frozenset[PipelineStageStatus]] = MappingProxyType(
+    {
+        PipelineStageStatus.RUNNING: frozenset(
+            {
+                PipelineStageStatus.COMPLETED,
+                PipelineStageStatus.FAILED,
+                PipelineStageStatus.SKIPPED,
+            }
+        ),
+        PipelineStageStatus.FAILED: frozenset(
+            {
+                PipelineStageStatus.RUNNING,
+                PipelineStageStatus.SKIPPED,
+            }
+        ),
+        PipelineStageStatus.COMPLETED: frozenset(),
+        PipelineStageStatus.SKIPPED: frozenset(),
+    }
 )
 
 
@@ -165,12 +159,7 @@ class CancelJobEvent:
 
 
 type IngestionEvent = (
-    StartJobEvent
-    | StageCompletedEvent
-    | FailJobEvent
-    | RetryJobEvent
-    | CompleteJobEvent
-    | CancelJobEvent
+    StartJobEvent | StageCompletedEvent | FailJobEvent | RetryJobEvent | CompleteJobEvent | CancelJobEvent
 )
 
 

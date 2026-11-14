@@ -62,8 +62,8 @@
  {
   "file": "g02",
   "check": "essay_line_count",
-  "measured": 0.9107,
-  "reason": "sub/superscript and formula fragments are split into lines differently between the engines"
+  "measured": 0.875,
+  "reason": "sub/superscript and formula fragments are split into lines differently between the engines; fragments of one visual row are now ordered left to right (the baseline sorted them by fixed 6-unit buckets)"
  },
  {
   "file": "g02",
@@ -110,8 +110,8 @@
  {
   "file": "g04",
   "check": "essay_line_count",
-  "measured": 0.9361,
-  "reason": "sub/superscript and formula fragments are split into lines differently between the engines"
+  "measured": 0.9149,
+  "reason": "sub/superscript and formula fragments are split into lines differently between the engines; fragments of one visual row are now ordered left to right (the baseline sorted them by fixed 6-unit buckets)"
  },
  {
   "file": "g05",
@@ -128,8 +128,8 @@
  {
   "file": "g05",
   "check": "essay_line_count",
-  "measured": 0.9777,
-  "reason": "sub/superscript and formula fragments are split into lines differently between the engines"
+  "measured": 0.9556,
+  "reason": "sub/superscript and formula fragments are split into lines differently between the engines; fragments of one visual row are now ordered left to right (the baseline sorted them by fixed 6-unit buckets)"
  },
  {
   "file": "g06",
@@ -212,8 +212,8 @@
  {
   "file": "g07",
   "check": "essay_line_count",
-  "measured": 0.9259,
-  "reason": "sub/superscript and formula fragments are split into lines differently between the engines"
+  "measured": 0.8571,
+  "reason": "sub/superscript and formula fragments are split into lines differently between the engines; fragments of one visual row are now ordered left to right (the baseline sorted them by fixed 6-unit buckets)"
  },
  {
   "file": "g08",
@@ -320,8 +320,8 @@
  {
   "file": "g10",
   "check": "question_text",
-  "measured": 0.2121,
-  "reason": "question text is assembled from line fragments that the engines split and order differently (math); no question is gained or lost"
+  "measured": 0.1991,
+  "reason": "question text is assembled from line fragments that the engines split and order differently (math); no question is gained or lost; fragments of one visual row are now ordered left to right (the baseline sorted them by fixed 6-unit buckets)"
  },
  {
   "file": "g10",
@@ -386,7 +386,7 @@
  {
   "file": "g11",
   "check": "essay_line_text",
-  "measured": 0.7612,
-  "reason": "sub/superscript and formula fragments are ordered differently within merged lines"
+  "measured": 0.7264,
+  "reason": "sub/superscript and formula fragments are ordered differently within merged lines; fragments of one visual row are now ordered left to right (the baseline sorted them by fixed 6-unit buckets)"
  }
 ]

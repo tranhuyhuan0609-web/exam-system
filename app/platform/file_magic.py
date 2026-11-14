@@ -51,9 +51,7 @@ def _utf16(name: str) -> bytes:
 
 
 _OLE_WORD_STREAM = _utf16("WordDocument")
-_OLE_OTHER_OFFICE_STREAMS = tuple(
-    _utf16(n) for n in ("Workbook", "PowerPoint Document", "Book\x00")
-)
+_OLE_OTHER_OFFICE_STREAMS = tuple(_utf16(n) for n in ("Workbook", "PowerPoint Document", "Book\x00"))
 _OLE_VBA_STORAGE = _utf16("VBA\x00")
 
 
@@ -131,8 +129,17 @@ def _inspect_docx_archive(
         return _inspect_docx_archive_unchecked(raw_bytes, max_doc_xml_bytes=max_doc_xml_bytes)
     except FileSignatureError:
         raise
-    except (zipfile.BadZipFile, zipfile.LargeZipFile, zlib.error, EOFError, OSError, RuntimeError,
-            NotImplementedError, ValueError, OverflowError) as exc:
+    except (
+        zipfile.BadZipFile,
+        zipfile.LargeZipFile,
+        zlib.error,
+        EOFError,
+        OSError,
+        RuntimeError,
+        NotImplementedError,
+        ValueError,
+        OverflowError,
+    ) as exc:
         raise FileSignatureError("corrupt or unsupported OOXML archive") from exc
 
 

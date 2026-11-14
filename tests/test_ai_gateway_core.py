@@ -74,9 +74,7 @@ def test_asia_ho_chi_minh_day_boundary_resets_daily_budget() -> None:
 
 
 def test_two_phase_concurrent_reserve_blocks_combined_overrun() -> None:
-    ledger = DailyBudgetLedger(
-        clock=_MutableUtcClock(datetime(2026, 11, 13, 10, 0, 0, tzinfo=UTC))
-    )
+    ledger = DailyBudgetLedger(clock=_MutableUtcClock(datetime(2026, 11, 13, 10, 0, 0, tzinfo=UTC)))
     daily_limit = Decimal("1.00")
     barrier = threading.Barrier(2)
 
@@ -108,9 +106,7 @@ def test_two_phase_concurrent_reserve_blocks_combined_overrun() -> None:
 
 
 def test_exact_decimal_precision_without_float_drift() -> None:
-    ledger = DailyBudgetLedger(
-        clock=_MutableUtcClock(datetime(2026, 11, 13, 10, 0, 0, tzinfo=UTC))
-    )
+    ledger = DailyBudgetLedger(clock=_MutableUtcClock(datetime(2026, 11, 13, 10, 0, 0, tzinfo=UTC)))
     cap = Decimal("0.0003")
     r1 = ledger.reserve("t-dec", Decimal("0.0001"), daily_ai_budget_usd=cap)
     ledger.settle(r1.reservation_id, Decimal("0.0001"))

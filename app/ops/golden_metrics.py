@@ -181,13 +181,9 @@ def evaluate_extraction_quality(
     if recall < MIN_BOUNDARY_RECALL:
         failures.append(f"RECALL_BELOW_THRESHOLD:{recall:.4f}<{MIN_BOUNDARY_RECALL:.2f}")
     if ff_rate < MIN_FIGURE_FORMULA_PRESERVATION:
-        failures.append(
-            f"FIGURE_FORMULA_BELOW_THRESHOLD:{ff_rate:.4f}<{MIN_FIGURE_FORMULA_PRESERVATION:.2f}"
-        )
+        failures.append(f"FIGURE_FORMULA_BELOW_THRESHOLD:{ff_rate:.4f}<{MIN_FIGURE_FORMULA_PRESERVATION:.2f}")
     if redaction_rate < REQUIRED_CLEAN_TEXT_REDACTION or leaking_ids:
-        failures.append(
-            f"CLEAN_TEXT_REDACTION_FAILED:{redaction_rate:.4f}<{REQUIRED_CLEAN_TEXT_REDACTION:.2f}"
-        )
+        failures.append(f"CLEAN_TEXT_REDACTION_FAILED:{redaction_rate:.4f}<{REQUIRED_CLEAN_TEXT_REDACTION:.2f}")
     if require_full_11_golden:
         expected_ids = {s.corpus_id for s in CANONICAL_GOLDEN_CORPUS}
         missing = expected_ids - golden_ids
@@ -199,8 +195,10 @@ def evaluate_extraction_quality(
         expected_questions = {s.corpus_id: s.expected_questions for s in CANONICAL_GOLDEN_CORPUS}
         for obs in observations:
             expected = expected_questions.get(obs.corpus_id)
-            if not obs.is_held_out and expected is not None and (
-                obs.true_positive_boundaries + obs.false_negative_boundaries != expected
+            if (
+                not obs.is_held_out
+                and expected is not None
+                and (obs.true_positive_boundaries + obs.false_negative_boundaries != expected)
             ):
                 failures.append(f"GOLDEN_QUESTION_COUNT_MISMATCH:{obs.corpus_id}")
 

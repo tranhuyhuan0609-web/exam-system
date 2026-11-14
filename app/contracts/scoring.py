@@ -23,4 +23,3 @@ class NumericParsePolicy(BaseModel):
     allow_thousand_sep: bool = False
     max_chars: int = Field(default=4, ge=1, le=12)
     tolerance: Decimal = Field(default=Decimal("0.01"), ge=Decimal("0"))
-

@@ -99,12 +99,10 @@ def test_error_codes_match_the_rest_of_the_code_base() -> None:
     assert "DAILY_AI_BUDGET_EXCEEDED" in codes
     assert "IDEMPOTENCY_PAYLOAD_MISMATCH" not in codes
     assert "AI_DAILY_BUDGET_EXCEEDED" not in codes
-    assert build_problem_detail(
-        code=PlatformErrorCode.PAYLOAD_HASH_MISMATCH, detail="d", instance="/x"
-    ).status == 422
-    assert build_problem_detail(
-        code=PlatformErrorCode.DAILY_AI_BUDGET_EXCEEDED, detail="d", instance="/x"
-    ).status == 429
+    assert build_problem_detail(code=PlatformErrorCode.PAYLOAD_HASH_MISMATCH, detail="d", instance="/x").status == 422
+    assert (
+        build_problem_detail(code=PlatformErrorCode.DAILY_AI_BUDGET_EXCEEDED, detail="d", instance="/x").status == 429
+    )
 
 
 def test_every_error_code_has_a_status_and_a_problem_uri() -> None:

@@ -198,7 +198,9 @@ def evaluate_slo_compliance(
     """Verify measured latencies & error rate against V11.3 Chapter 9 SLO contracts."""
     if not latencies_ms:
         raise TelemetryError("latencies_ms must contain at least one sample")
-    if any(isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) or x < 0 for x in latencies_ms):
+    if any(
+        isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) or x < 0 for x in latencies_ms
+    ):
         raise TelemetryError("latencies_ms must be finite and non-negative")
     if isinstance(failed_count, bool) or not isinstance(failed_count, int):
         raise TelemetryError("failed_count must be an integer")

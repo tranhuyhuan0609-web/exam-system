@@ -81,10 +81,7 @@ def test_deterministic_exponential_backoff_bounds() -> None:
     d3 = compute_exponential_backoff_seconds(attempt=3, base_seconds=2.0, max_seconds=30.0, jitter_seed="evt-1")
     assert 1.0 <= d0 <= 2.0
     assert 8.0 <= d3 <= 16.0
-    assert (
-        compute_exponential_backoff_seconds(attempt=3, base_seconds=2.0, max_seconds=30.0, jitter_seed="evt-1")
-        == d3
-    )
+    assert compute_exponential_backoff_seconds(attempt=3, base_seconds=2.0, max_seconds=30.0, jitter_seed="evt-1") == d3
 
 
 # --- regression + boundary tests --------------------------------------------------------------
@@ -103,11 +100,15 @@ def _open_snapshot(opened_at: float | None = 100.0) -> CircuitSnapshot:
 
 
 def _ok(snap, now=101.0, **kw):
-    return record_circuit_outcome(snap, succeeded=True, latency_seconds=0.1, status_code=200, now_monotonic=now, policy=_POLICY, **kw)
+    return record_circuit_outcome(
+        snap, succeeded=True, latency_seconds=0.1, status_code=200, now_monotonic=now, policy=_POLICY, **kw
+    )
 
 
 def _fail(snap, now=101.0):
-    return record_circuit_outcome(snap, succeeded=False, latency_seconds=0.1, status_code=503, now_monotonic=now, policy=_POLICY)
+    return record_circuit_outcome(
+        snap, succeeded=False, latency_seconds=0.1, status_code=503, now_monotonic=now, policy=_POLICY
+    )
 
 
 def test_straggler_success_in_open_does_not_close_the_breaker() -> None:
@@ -160,21 +161,30 @@ def test_threshold_failure_opens_with_timestamp() -> None:
 
 
 def test_latency_exactly_at_timeout_is_success_above_is_failure() -> None:
-    at = record_circuit_outcome(initial_circuit(), succeeded=True, latency_seconds=15.0, now_monotonic=1.0, policy=_POLICY)
-    over = record_circuit_outcome(initial_circuit(), succeeded=True, latency_seconds=15.001, now_monotonic=1.0, policy=_POLICY)
+    at = record_circuit_outcome(
+        initial_circuit(), succeeded=True, latency_seconds=15.0, now_monotonic=1.0, policy=_POLICY
+    )
+    over = record_circuit_outcome(
+        initial_circuit(), succeeded=True, latency_seconds=15.001, now_monotonic=1.0, policy=_POLICY
+    )
     assert at.consecutive_failures == 0 and over.consecutive_failures == 1
 
 
 def test_status_429_and_500_fail_but_499_and_404_do_not() -> None:
     def code(c):
-        return record_circuit_outcome(initial_circuit(), succeeded=True, latency_seconds=0.1, status_code=c, now_monotonic=1.0, policy=_POLICY).consecutive_failures
+        return record_circuit_outcome(
+            initial_circuit(), succeeded=True, latency_seconds=0.1, status_code=c, now_monotonic=1.0, policy=_POLICY
+        ).consecutive_failures
+
     assert code(429) == 1 and code(500) == 1
     assert code(404) == 0 and code(499) == 0
 
 
 def test_nan_or_negative_latency_counts_as_failure() -> None:
     for bad in (math.nan, math.inf):
-        snap = record_circuit_outcome(initial_circuit(), succeeded=True, latency_seconds=bad, now_monotonic=1.0, policy=_POLICY)
+        snap = record_circuit_outcome(
+            initial_circuit(), succeeded=True, latency_seconds=bad, now_monotonic=1.0, policy=_POLICY
+        )
         assert snap.consecutive_failures == 1
 
 

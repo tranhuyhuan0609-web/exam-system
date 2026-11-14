@@ -149,15 +149,9 @@ def test_curriculum_hybrid_rls_and_many_to_many_mappings():
             pub_tax_maps = await list_mappings_for_taxonomy_node(session, pub_tax.id)
 
         async with tenant_transaction(tenant_b, role=DbRole.APP_RW) as session:
-            b_cv_codes = (
-                await session.scalars(text("SELECT code FROM curriculum_versions ORDER BY code"))
-            ).all()
-            b_cn_codes = (
-                await session.scalars(text("SELECT code FROM curriculum_nodes ORDER BY code"))
-            ).all()
-            b_mappings = (
-                await session.scalars(text("SELECT id FROM taxonomy_mappings"))
-            ).all()
+            b_cv_codes = (await session.scalars(text("SELECT code FROM curriculum_versions ORDER BY code"))).all()
+            b_cn_codes = (await session.scalars(text("SELECT code FROM curriculum_nodes ORDER BY code"))).all()
+            b_mappings = (await session.scalars(text("SELECT id FROM taxonomy_mappings"))).all()
 
         return {
             "pub_tax_id": pub_tax.id,
@@ -222,9 +216,7 @@ def test_seed_kntt_math_physics_grades_10_to_12_and_idempotency():
             second_run = await seed_kntt_math_physics(session)
 
         async with tenant_transaction(tenant_b, role=DbRole.APP_RW) as session:
-            visible_books = (
-                await session.scalars(text("SELECT code FROM curriculum_versions ORDER BY code"))
-            ).all()
+            visible_books = (await session.scalars(text("SELECT code FROM curriculum_versions ORDER BY code"))).all()
             math12_cv = await get_curriculum_version_by_code(
                 session, code="kntt-toan-12", tenant_id=SYSTEM_PUBLIC_TENANT_ID
             )
@@ -252,4 +244,3 @@ def test_seed_kntt_math_physics_grades_10_to_12_and_idempotency():
     assert any(n.node_level == "LESSON" for n in math12_nodes)
     assert len(phys12_subtree) > 10
     assert len(lesson_maps) == 1
-

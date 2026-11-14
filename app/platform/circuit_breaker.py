@@ -204,10 +204,10 @@ def compute_exponential_backoff_seconds(
         raise CircuitBreakerError("attempt must be a non-negative integer")
     if not (math.isfinite(base_seconds) and math.isfinite(max_seconds)) or base_seconds <= 0 or max_seconds <= 0:
         raise CircuitBreakerError("base_seconds and max_seconds must be finite and positive")
-    cap = min(max_seconds, base_seconds * (2**min(attempt, 10)))
+    cap = min(max_seconds, base_seconds * (2 ** min(attempt, 10)))
     if not jitter_seed:
         return round(cap, 3)
-    digest = hashlib.sha256(f"{jitter_seed}:{attempt}".encode("utf-8")).digest()
+    digest = hashlib.sha256(f"{jitter_seed}:{attempt}".encode()).digest()
     fraction = int.from_bytes(digest[:4], "big") / 0xFFFFFFFF
     # Preserve at least 50% of cap + deterministic up to cap to avoid thundering herd.
     delay = cap * (0.5 + 0.5 * fraction)

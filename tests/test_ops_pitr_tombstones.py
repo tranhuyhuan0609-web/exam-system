@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.ops.pitr_tombstones import (
     ErasureTombstone,
@@ -18,7 +18,7 @@ def test_pitr_replay_eliminates_resurrected_pii_and_keeps_active_users() -> None
         ErasureTombstone(
             tenant_id="t1",
             subject_id="erased-user-1",
-            erased_at=datetime(2026, 11, 13, 12, 0, tzinfo=timezone.utc),
+            erased_at=datetime(2026, 11, 13, 12, 0, tzinfo=UTC),
             certificate_sha256="c" * 64,
         )
     ]
@@ -104,7 +104,7 @@ from app.ops.pitr_tombstones import (  # noqa: E402
 )
 
 _CERT = "a" * 64
-_WHEN = datetime(2026, 11, 13, 12, 0, tzinfo=timezone.utc)
+_WHEN = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
 
 
 def _tomb(tenant="t1", subject="u1", cert=_CERT) -> ErasureTombstone:
@@ -209,8 +209,12 @@ def test_error_message_does_not_echo_certificate_or_ids() -> None:
 
 def _cfg(**kw) -> PatroniQuorumConfig:
     base = dict(
-        synchronous_mode=True, synchronous_mode_strict=True, synchronous_commit="on",
-        healthy_sync_standbys=1, measured_failover_rto_seconds=18.5, measured_pitr_rto_minutes=75.0,
+        synchronous_mode=True,
+        synchronous_mode_strict=True,
+        synchronous_commit="on",
+        healthy_sync_standbys=1,
+        measured_failover_rto_seconds=18.5,
+        measured_pitr_rto_minutes=75.0,
     )
     base.update(kw)
     return PatroniQuorumConfig(**base)
@@ -226,7 +230,9 @@ def test_nan_and_infinite_rto_values_are_never_compliant() -> None:
 
 
 def test_rto_boundaries_are_inclusive() -> None:
-    assert evaluate_patroni_quorum_config(_cfg(measured_failover_rto_seconds=30, measured_pitr_rto_minutes=120)).compliant
+    assert evaluate_patroni_quorum_config(
+        _cfg(measured_failover_rto_seconds=30, measured_pitr_rto_minutes=120)
+    ).compliant
     over = evaluate_patroni_quorum_config(_cfg(measured_failover_rto_seconds=30.001, measured_pitr_rto_minutes=120.001))
     assert [v.split(":")[0] for v in over.violations] == ["FAILOVER_RTO_EXCEEDED", "PITR_RTO_EXCEEDED"]
     assert evaluate_patroni_quorum_config(_cfg(measured_failover_rto_seconds=0, measured_pitr_rto_minutes=0)).compliant

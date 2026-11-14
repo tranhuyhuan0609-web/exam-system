@@ -276,4 +276,3 @@ def test_thptqg_2025_physics_28_items_total_10() -> None:
     assert isinstance(res.total_score, Decimal)
     assert res.total_score == Decimal("10.00")
     assert res.max_score == Decimal("10.00")
-

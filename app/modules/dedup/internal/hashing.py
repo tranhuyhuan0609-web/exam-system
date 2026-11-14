@@ -82,4 +82,3 @@ def compute_question_hashes(stem_md: str, options_md: Sequence[str] = ()) -> Que
         content_hash=content_hash(stem_md, options_md),
         structural_hash=structural_hash(stem_md, options_md),
     )
-

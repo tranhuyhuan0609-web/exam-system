@@ -115,4 +115,3 @@ def map_other_book_to_kntt(
         return best_cand
 
     return None
-

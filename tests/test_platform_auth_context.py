@@ -96,8 +96,14 @@ _UID, _TID, _MID = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
 
 def _mint(**kw) -> str:
     args = dict(
-        secret=_SECRET, user_id=_UID, tenant_id=_TID, membership_id=_MID, roles=["STUDENT"],
-        jti="jti-1", issued_at=_NOW, ttl_seconds=900,
+        secret=_SECRET,
+        user_id=_UID,
+        tenant_id=_TID,
+        membership_id=_MID,
+        roles=["STUDENT"],
+        jti="jti-1",
+        issued_at=_NOW,
+        ttl_seconds=900,
     )
     args.update(kw)
     return mint_hs256_token(**args)
@@ -110,8 +116,16 @@ def _b64(obj) -> str:
 def _forge(payload_updates: dict, *, drop: tuple[str, ...] = (), header=None) -> str:
     """A correctly signed token with attacker-chosen claims (simulates a buggy issuer)."""
     base = {
-        "sub": str(_UID), "tenant_id": str(_TID), "membership_id": str(_MID), "roles": ["STUDENT"],
-        "jti": "j", "iss": "ulp-auth", "aud": "ulp-api", "iat": _NOW, "nbf": _NOW, "exp": _NOW + 900,
+        "sub": str(_UID),
+        "tenant_id": str(_TID),
+        "membership_id": str(_MID),
+        "roles": ["STUDENT"],
+        "jti": "j",
+        "iss": "ulp-auth",
+        "aud": "ulp-api",
+        "iat": _NOW,
+        "nbf": _NOW,
+        "exp": _NOW + 900,
     }
     base.update(payload_updates)
     for key in drop:

@@ -27,25 +27,25 @@ VN_TZ: tzinfo = _resolve_vn_tz()
 
 # Standard 19 FSRS-5 parameters (W[0] .. W[18]).
 FSRS_V5_DEFAULT_WEIGHTS: tuple[float, ...] = (
-    0.40255,   # w0: S0(Again)
-    1.18385,   # w1: S0(Hard)
-    3.17300,   # w2: S0(Good)
+    0.40255,  # w0: S0(Again)
+    1.18385,  # w1: S0(Hard)
+    3.17300,  # w2: S0(Good)
     15.69105,  # w3: S0(Easy)
-    7.19490,   # w4: D0 base
-    0.53450,   # w5: D0 exponent
-    1.46040,   # w6: D delta
-    0.00460,   # w7: D mean reversion weight
-    1.54575,   # w8: Recall stability base
-    0.11920,   # w9: Recall stability S power
-    1.01925,   # w10: Recall stability R factor
-    1.93950,   # w11: Forget stability base
-    0.11000,   # w12: Forget stability D power
-    0.29605,   # w13: Forget stability S power
-    2.26980,   # w14: Forget stability R factor
-    0.23150,   # w15: Hard penalty
-    2.98980,   # w16: Easy bonus
-    0.51655,   # w17: Short-term stability factor
-    0.66210,   # w18: Short-term stability offset
+    7.19490,  # w4: D0 base
+    0.53450,  # w5: D0 exponent
+    1.46040,  # w6: D delta
+    0.00460,  # w7: D mean reversion weight
+    1.54575,  # w8: Recall stability base
+    0.11920,  # w9: Recall stability S power
+    1.01925,  # w10: Recall stability R factor
+    1.93950,  # w11: Forget stability base
+    0.11000,  # w12: Forget stability D power
+    0.29605,  # w13: Forget stability S power
+    2.26980,  # w14: Forget stability R factor
+    0.23150,  # w15: Hard penalty
+    2.98980,  # w16: Easy bonus
+    0.51655,  # w17: Short-term stability factor
+    0.66210,  # w18: Short-term stability offset
 )
 
 FSRS_DECAY = -0.5

@@ -94,14 +94,23 @@ def test_permissive_licenses_pass(text: str) -> None:
     assert report.passed is True and report.warnings == ()
 
 
-@pytest.mark.parametrize("text", ["GPL-2.0", "GPL-3.0-only", "GNU General Public License v3", "LGPL-2.1", "GNU Lesser General Public License"])
+@pytest.mark.parametrize(
+    "text",
+    ["GPL-2.0", "GPL-3.0-only", "GNU General Public License v3", "LGPL-2.1", "GNU Lesser General Public License"],
+)
 def test_gpl_family_warns_without_blocking(text: str) -> None:
     report = audit_cyclonedx_sbom(_sbom(_comp("libx", _lic(text))))
     assert report.passed is True and len(report.warnings) == 1
 
 
 def test_component_without_a_license_is_blocked_unless_waived() -> None:
-    for comp in (_comp("nolic"), _comp("empty", []), _comp("junk", "MIT"), _comp("blank", [{"license": {}}]), _comp("none", [None])):
+    for comp in (
+        _comp("nolic"),
+        _comp("empty", []),
+        _comp("junk", "MIT"),
+        _comp("blank", [{"license": {}}]),
+        _comp("none", [None]),
+    ):
         assert audit_cyclonedx_sbom(_sbom(comp)).blocking_violations[0].license_id == "UNDECLARED"
     assert audit_cyclonedx_sbom(_sbom(_comp("nolic")), commercial_exceptions={"NoLic"}).passed is True
 
@@ -110,15 +119,32 @@ def test_spdx_or_expression_is_blocked_only_when_every_alternative_is() -> None:
     assert audit_cyclonedx_sbom(_sbom(_comp("a", [{"expression": "MIT OR AGPL-3.0-only"}]))).passed is True
     assert audit_cyclonedx_sbom(_sbom(_comp("b", [{"expression": "AGPL-3.0-only OR SSPL-1.0"}]))).passed is False
     assert audit_cyclonedx_sbom(_sbom(_comp("c", [{"expression": "MIT AND AGPL-3.0-only"}]))).passed is False
-    assert audit_cyclonedx_sbom(_sbom(_comp("d", [{"expression": "(MIT OR Apache-2.0) AND (GPL-3.0-only OR AGPL-3.0-only)"}]))).passed is True
-    assert audit_cyclonedx_sbom(_sbom(_comp("e", [{"expression": "GPL-2.0-only WITH Classpath-exception-2.0"}]))).warnings
-    assert audit_cyclonedx_sbom(_sbom(_comp("f", [{"expression": "MIT OR (AGPL-3.0"}]))).passed is False  # malformed -> closed
+    assert (
+        audit_cyclonedx_sbom(
+            _sbom(_comp("d", [{"expression": "(MIT OR Apache-2.0) AND (GPL-3.0-only OR AGPL-3.0-only)"}]))
+        ).passed
+        is True
+    )
+    assert audit_cyclonedx_sbom(
+        _sbom(_comp("e", [{"expression": "GPL-2.0-only WITH Classpath-exception-2.0"}]))
+    ).warnings
+    assert (
+        audit_cyclonedx_sbom(_sbom(_comp("f", [{"expression": "MIT OR (AGPL-3.0"}]))).passed is False
+    )  # malformed -> closed
 
 
 def test_nested_components_are_scanned() -> None:
-    nested = _comp("outer", [{"license": {"id": "MIT"}}], components=[
-        _comp("inner", [{"license": {"id": "MIT"}}], components=[_comp("deep", [{"license": {"id": "AGPL-3.0-only"}}])])
-    ])
+    nested = _comp(
+        "outer",
+        [{"license": {"id": "MIT"}}],
+        components=[
+            _comp(
+                "inner",
+                [{"license": {"id": "MIT"}}],
+                components=[_comp("deep", [{"license": {"id": "AGPL-3.0-only"}}])],
+            )
+        ],
+    )
     report = audit_cyclonedx_sbom(_sbom(nested))
     assert report.scanned_components == 3
     assert [v.package_name for v in report.blocking_violations] == ["deep"]
@@ -127,7 +153,12 @@ def test_nested_components_are_scanned() -> None:
 def test_banned_packages_are_matched_after_pep503_normalisation() -> None:
     for name in ("PyMuPDF", "py_mu_pdf".replace("py_mu_pdf", "PyMuPDF"), "pymupdf", "FITZ", "PyMuPDF4LLM"):
         assert audit_cyclonedx_sbom(_sbom(_comp(name, [{"license": {"id": "MIT"}}]))).passed is False
-    assert audit_cyclonedx_sbom(_sbom(_comp("PyMuPDF", [{"license": {"id": "MIT"}}])), commercial_exceptions={"pymupdf"}).passed is True
+    assert (
+        audit_cyclonedx_sbom(
+            _sbom(_comp("PyMuPDF", [{"license": {"id": "MIT"}}])), commercial_exceptions={"pymupdf"}
+        ).passed
+        is True
+    )
 
 
 def test_malformed_sbom_shapes_do_not_crash_and_non_dict_is_rejected() -> None:
@@ -174,7 +205,15 @@ def test_requirements_scanner_catches_every_way_to_name_pymupdf(line: str) -> No
 
 @pytest.mark.parametrize(
     "line",
-    ["fastapi>=0.115", "# pymupdf is banned", "   ", "-r other.txt", "--index-url https://pypi.org/simple", "pypdfium2>=4", "requests  # not pymupdf"],
+    [
+        "fastapi>=0.115",
+        "# pymupdf is banned",
+        "   ",
+        "-r other.txt",
+        "--index-url https://pypi.org/simple",
+        "pypdfium2>=4",
+        "requests  # not pymupdf",
+    ],
 )
 def test_requirements_scanner_ignores_clean_lines_and_comments(line: str) -> None:
     assert audit_requirements_lines([line]).passed is True

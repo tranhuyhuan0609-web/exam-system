@@ -260,7 +260,10 @@ def test_riff_that_is_not_webp_and_truncated_signatures_are_rejected() -> None:
         detect_magic_kind(b"\xff\xd8")
 
 
-@pytest.mark.parametrize("name", ["a.exe", "a.pdf.exe", "pdf", "", "   ", ".", "a.", "a.PDF.js", "a.svg", "a.pdf\x00.png", "a\n.pdf", None, 5])
+@pytest.mark.parametrize(
+    "name",
+    ["a.exe", "a.pdf.exe", "pdf", "", "   ", ".", "a.", "a.PDF.js", "a.svg", "a.pdf\x00.png", "a\n.pdf", None, 5],
+)
 def test_unsupported_or_hostile_filenames_are_rejected(name) -> None:
     with pytest.raises(FileSignatureError):
         _inspect(name, b"%PDF-1.4")
@@ -284,6 +287,11 @@ def test_error_messages_do_not_echo_filenames() -> None:
 
 
 def test_invalid_limit_arguments_fail_closed() -> None:
-    for kw in (dict(max_upload_bytes=0), dict(max_upload_bytes=True), dict(max_doc_xml_bytes=0), dict(max_doc_xml_bytes=-1)):
+    for kw in (
+        dict(max_upload_bytes=0),
+        dict(max_upload_bytes=True),
+        dict(max_doc_xml_bytes=0),
+        dict(max_doc_xml_bytes=-1),
+    ):
         with pytest.raises(FileSignatureError):
             _inspect("a.pdf", b"%PDF-1.4", **kw)
