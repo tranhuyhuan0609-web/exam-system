@@ -174,6 +174,10 @@ def test_expand_table_grid_rejects_huge_spans_and_grids() -> None:
     wide = [[TableCellSpan("x") for _ in range(MAX_GRID_COLS + 1)]]
     with pytest.raises(TableGridLimitError):
         expand_table_grid(wide)
+    # 300 rows x 40 cols = 12,000 cells > MAX_GRID_CELLS (10,000)
+    too_many_cells = [[TableCellSpan("x") for _ in range(40)] for _ in range(300)]
+    with pytest.raises(TableGridLimitError):
+        expand_table_grid(too_many_cells)
     # at the limits it still works
     ok = expand_table_grid([[TableCellSpan("x", rowspan=MAX_SPAN, colspan=MAX_SPAN)]])
     assert len(ok) == MAX_SPAN and len(ok[0]) == MAX_SPAN

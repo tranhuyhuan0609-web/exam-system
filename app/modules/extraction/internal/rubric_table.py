@@ -76,6 +76,8 @@ def expand_table_grid(raw_rows: Sequence[Sequence[TableCellSpan]]) -> list[list[
             c_idx += cell.colspan
 
     max_cols = max((len(r) for r in grid), default=0)
+    if len(grid) * max_cols > MAX_GRID_CELLS:
+        raise TableGridLimitError(f"Expanded table grid exceeds {MAX_GRID_CELLS} total cells")
     return [[cell or "" for cell in (row + [None] * (max_cols - len(row)))] for row in grid]
 
 

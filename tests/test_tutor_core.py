@@ -295,3 +295,6 @@ def test_retrieval_fails_closed_on_blank_tenants_and_wrong_case_status() -> None
     assert filter_grounded_retrieval_candidates([], learner_tenant_id="tenant-a") == ()
     blank_owner = [RetrievalCandidate("d1", "", "PUBLISHED", "TENANT_PRIVATE")]
     assert filter_grounded_retrieval_candidates(blank_owner, learner_tenant_id="") == ()
+    mutable_doc = [RetrievalCandidate("d-mut", "tenant-a", "PUBLISHED", "TENANT_PRIVATE", is_immutable=False)]
+    assert filter_grounded_retrieval_candidates(mutable_doc, learner_tenant_id="tenant-a") == ()
+    assert _blocked(r"Ta thu được \boxed{B} hoặc \boxed{12,5}", {"correct_option": "B"})

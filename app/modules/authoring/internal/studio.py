@@ -18,6 +18,10 @@ from app.modules.content.public import (
 )
 
 _ENV_TAG_RE = re.compile(r"\\(begin|end)\{([a-zA-Z0-9*]+)\}")
+_FORBIDDEN_KATEX_CMD_RE = re.compile(
+    r"\\(?:url|href|input|include|write18|write|openout|catcode|def|newcommand|renewcommand|"
+    r"htmlClass|htmlId|htmlStyle|htmlData|includegraphics)\b"
+)
 
 
 def _extract_math_spans(markdown: str) -> tuple[list[str], list[ContentValidationIssue]]:
@@ -109,6 +113,11 @@ def validate_katex_syntax(text: str) -> list[ContentValidationIssue]:
             k += 1
         if depth > 0:
             issues.append(ContentValidationIssue(None, "UNBALANCED_KATEX_BRACE", "Unclosed '{' brace in KaTeX"))
+
+        if _FORBIDDEN_KATEX_CMD_RE.search(span):
+            issues.append(
+                ContentValidationIssue(None, "FORBIDDEN_KATEX_COMMAND", "Forbidden LaTeX macro in KaTeX block")
+            )
 
         env_stack: list[str] = []
         for match in _ENV_TAG_RE.finditer(span):

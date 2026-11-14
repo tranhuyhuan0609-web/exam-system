@@ -38,6 +38,9 @@ def test_katex_validator_detects_unclosed_delimiters_braces_and_environments() -
     bad_env = validate_katex_syntax(r"Sai cặp $\begin{aligned} x = 1 \end{cases}$")
     assert bad_env[0].code == "MISMATCHED_KATEX_ENVIRONMENT"
 
+    bad_cmd = validate_katex_syntax(r"Macro nguy hiểm $\href{javascript:alert(1)}{x}$")
+    assert bad_cmd[0].code == "FORBIDDEN_KATEX_COMMAND"
+
 
 def test_cross_tenant_embedded_asset_blocked_and_own_or_public_assets_allowed() -> None:
     catalog = {

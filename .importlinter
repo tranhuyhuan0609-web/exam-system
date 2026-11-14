@@ -410,3 +410,84 @@ protected_modules =
 allowed_importers =
     app.modules.extraction
     app.model_registry
+
+[importlinter:contract:internal-assets]
+name = assets internals are private to the module
+type = protected
+protected_modules =
+    app.modules.assets.internal
+allowed_importers =
+    app.modules.assets
+    app.model_registry
+
+[importlinter:contract:internal-exam_import]
+name = exam_import internals are private to the module
+type = protected
+protected_modules =
+    app.modules.exam_import.internal
+allowed_importers =
+    app.modules.exam_import
+    app.model_registry
+
+[importlinter:contract:internal-parsers]
+name = parsers internals are private to the module
+type = protected
+protected_modules =
+    app.modules.parsers.internal
+allowed_importers =
+    app.modules.parsers
+    app.model_registry
+
+[importlinter:contract:internal-generation]
+name = generation internals are private to the module
+type = protected
+protected_modules =
+    app.modules.generation.internal
+allowed_importers =
+    app.modules.generation
+    app.model_registry
+
+[importlinter:contract:internal-explanations]
+name = explanations internals are private to the module
+type = protected
+protected_modules =
+    app.modules.explanations.internal
+allowed_importers =
+    app.modules.explanations
+    app.model_registry
+
+[importlinter:contract:internal-recommendations]
+name = recommendations internals are private to the module
+type = protected
+protected_modules =
+    app.modules.recommendations.internal
+allowed_importers =
+    app.modules.recommendations
+    app.model_registry
+
+[importlinter:contract:internal-teacher_copilot]
+name = teacher_copilot internals are private to the module
+type = protected
+protected_modules =
+    app.modules.teacher_copilot.internal
+allowed_importers =
+    app.modules.teacher_copilot
+    app.model_registry
+
+[importlinter:contract:internal-analytics]
+name = analytics internals are private to the module
+type = protected
+protected_modules =
+    app.modules.analytics.internal
+allowed_importers =
+    app.modules.analytics
+    app.model_registry
+
+[importlinter:contract:internal-vertical_packs]
+name = vertical_packs internals are private to the module
+type = protected
+protected_modules =
+    app.modules.vertical_packs.internal
+allowed_importers =
+    app.modules.vertical_packs
+    app.model_registry

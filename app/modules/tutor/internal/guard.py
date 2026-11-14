@@ -48,6 +48,7 @@ class RetrievalCandidate:
     publication_status: str
     visibility_scope: str
     shared_tenant_ids: frozenset[str] = field(default_factory=frozenset)
+    is_immutable: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +118,7 @@ _NUMBER_AFTER_MARKER_RE = re.compile(
     r"\b(?:ket\s+qua|dap\s+so|gia\s+tri|result|answer)(?:\s+cuoi\s+cung)?\s*(?:la|bang|is|=|:)\s*"
     r"(-?\d+(?:[.,]\d+)?)"
 )
+_BOXED_RE = re.compile(r"\\boxed\s*\{")
 
 
 def _as_decimal(raw: object) -> Decimal | None:
@@ -165,12 +167,14 @@ def filter_grounded_retrieval_candidates(
     *,
     learner_tenant_id: str,
 ) -> tuple[RetrievalCandidate, ...]:
-    """Allow ONLY `PUBLISHED` materials visible to `learner_tenant_id` in RAG context."""
+    """Allow ONLY immutable (`is_immutable=True`, H-01) `PUBLISHED` materials visible to `learner_tenant_id`."""
     if not isinstance(learner_tenant_id, str) or not learner_tenant_id.strip():
         return ()
     approved: list[RetrievalCandidate] = []
     for item in candidates:
         if not isinstance(item.tenant_id, str) or not item.tenant_id.strip():
+            continue
+        if item.is_immutable is not True:
             continue
         if item.publication_status != "PUBLISHED":
             continue
@@ -234,7 +238,7 @@ def filter_tutor_output(
     cased = _fold_ascii(candidate_reply)
     folded = cased.lower()
 
-    if _STRONG_OPTION_RE.search(cased) or _WEAK_OPTION_RE.search(cased):
+    if _STRONG_OPTION_RE.search(cased) or _WEAK_OPTION_RE.search(cased) or _BOXED_RE.search(cased):
         return _blocked("HINT_ANSWER_KEY_LEAK_BLOCKED")
     if _TF_SINGLE_RE.search(cased) or _TF_PREFIXED_RE.search(cased) or _TF_LIST_RE.search(cased):
         return _blocked("HINT_ANSWER_KEY_LEAK_BLOCKED")
