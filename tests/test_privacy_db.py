@@ -654,7 +654,7 @@ def test_f04_tables_and_definer_functions_are_owned_by_ulp_migrator():
     for table in tables:
         assert run(_scalar("SELECT tableowner FROM pg_tables WHERE tablename = :t", t=table)) == "ulp_migrator", table
     owners = run(
-        _scalar("SELECT array_agg(DISTINCT pg_get_userbyid(proowner)) FROM pg_proc WHERE proname LIKE 'f04\_%'")
+        _scalar(r"SELECT array_agg(DISTINCT pg_get_userbyid(proowner)) FROM pg_proc WHERE proname LIKE 'f04\_%'")
     )
     assert owners == ["ulp_migrator"]
     policy_roles = run(

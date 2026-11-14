@@ -9,7 +9,7 @@ os.environ["DATA_DIR"] = tempfile.mkdtemp(prefix="exam-test-data-")
 os.environ["GEMINI_API_KEY"] = ""  # tests never call the real AI
 os.environ["STORAGE_BACKEND"] = "local"  # never touch a real S3 bucket from tests
 os.environ["DATABASE_URL"] = os.environ.get(
-    "TEST_DATABASE_URL", "postgresql+asyncpg://exam:exam@localhost:5432/exam_test"
+    "TEST_DATABASE_URL", "postgresql+asyncpg://exam:exam@127.0.0.1:5432/exam_test?ssl=disable"
 )
 
 ROOT = Path(__file__).resolve().parent.parent
