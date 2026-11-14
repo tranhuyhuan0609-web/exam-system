@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     clamav_host: str = "localhost"  # clamd: uploads are scanned before they are accepted
     clamav_port: int = 3310
     secret_key: str = "change-me"
+    # Pepper of the e-mail blind indexes (F04). Empty: derived from secret_key, so existing indexes keep
+    # matching; set it to decouple login look-ups from session-secret rotation (changing it re-keys every index).
+    blind_index_pepper: str = ""
     # Set to true in production (HTTPS) so the session cookie is never sent over plain HTTP.
     session_https_only: bool = False
     session_max_age_seconds: int = 7 * 24 * 3600

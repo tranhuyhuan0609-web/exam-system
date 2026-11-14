@@ -53,7 +53,7 @@ def _migrate() -> None:
 
 
 # Tables whose rows are seeded by migrations and must survive between tests.
-SEEDED_TABLES = {"tenants", "fts_dictionary_versions", "permissions"}
+SEEDED_TABLES = {"tenants", "fts_dictionary_versions", "permissions", "ai_providers"}
 
 
 async def _truncate_all() -> None:
@@ -61,6 +61,7 @@ async def _truncate_all() -> None:
     async with engine.begin() as conn:
         await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
         await conn.execute(text("DELETE FROM tenants WHERE id <> system_public_tenant_id()"))
+        await conn.execute(text("UPDATE ai_providers SET circuit_state = 'CLOSED'"))  # seeded; state is per test
 
 
 @pytest.fixture(scope="session", autouse=True)

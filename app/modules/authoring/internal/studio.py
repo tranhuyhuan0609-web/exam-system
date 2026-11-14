@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from app.modules.content.public import (
     AssetCatalogEntry,
+    ContentBlockDraft,
     ContentBlockType,
     ContentStudioError,
     ContentValidationIssue,
@@ -224,6 +225,16 @@ def _collect_text_and_asset_refs(payload: Any) -> _Collected:
         elif isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
             stack.extend((item, depth + 1) for item in value)
     return out
+
+
+def collect_asset_references(blocks: Iterable[ContentBlockDraft]) -> list[str]:
+    """Distinct asset ids referenced by the blocks (`asset://<id>` and asset-named fields), in first-seen order."""
+    seen: dict[str, None] = {}
+    for block in blocks:
+        if isinstance(block.payload_json, Mapping):
+            for asset_id in _collect_text_and_asset_refs(block.payload_json).asset_ids:
+                seen.setdefault(asset_id, None)
+    return list(seen)
 
 
 def validate_content_version(

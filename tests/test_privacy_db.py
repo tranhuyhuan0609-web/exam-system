@@ -644,3 +644,48 @@ def test_membership_roles_validation_and_authorization(client, tenants):
     assert client.put(url, headers=_headers(tenant_a, ["TEACHER"]), json={"roles": []}).status_code == 403
     assert client.put(url, json={"roles": []}).status_code == 401
     assert run(_scalar("SELECT roles FROM memberships WHERE id = :m", m=mine)) == ["LEARNER"]
+
+
+# --- owner of the F04 objects and the pepper setting ------------------------------------------------
+
+
+def test_f04_tables_and_definer_functions_are_owned_by_ulp_migrator():
+    tables = ("users", "user_pii_encryption_keys", "erasure_certificates", "memberships", "parental_consents")
+    for table in tables:
+        assert run(_scalar("SELECT tableowner FROM pg_tables WHERE tablename = :t", t=table)) == "ulp_migrator", table
+    owners = run(
+        _scalar(r"SELECT array_agg(DISTINCT pg_get_userbyid(proowner)) FROM pg_proc WHERE proname LIKE 'f04\_%'")
+    )
+    assert owners == ["ulp_migrator"]
+    policy_roles = run(
+        _scalar(
+            "SELECT array_agg(DISTINCT r) FROM pg_policies, unnest(roles) AS r WHERE policyname = 'f04_owner_policy'"
+        )
+    )
+    assert policy_roles == ["ulp_migrator"]
+    assert run(_scalar("SELECT rolbypassrls FROM pg_roles WHERE rolname = 'ulp_migrator'")) is False
+
+
+def test_pepper_falls_back_to_the_secret_and_a_configured_one_re_keys_the_index():
+    secret = get_settings().secret_key
+    assert blind_index_pepper(secret) == blind_index_pepper(secret, "")  # unchanged for existing deployments
+    configured = blind_index_pepper(secret, "a-dedicated-pepper")
+    assert configured != blind_index_pepper(secret) and len(configured) == 32
+    assert compute_email_blind_index("a@example.com", configured) != compute_email_blind_index("a@example.com", PEPPER)
+    # rotating the session secret leaves a configured pepper alone
+    assert blind_index_pepper("another-secret", "a-dedicated-pepper") == blind_index_pepper(
+        secret, "a-dedicated-pepper"
+    )
+
+
+def test_the_router_uses_the_configured_pepper(client, tenants, monkeypatch):
+    tenant_a, _ = tenants
+    monkeypatch.setattr(get_settings(), "blind_index_pepper", "router-pepper")
+    body = _enroll(client, tenant_a, "pep@example.com", birth_year=1990)
+    stored = run(
+        _scalar("SELECT email_blind_index FROM users WHERE id = :u", u=uuid.UUID(body["membership"]["user_id"]))
+    )
+    assert stored == compute_email_blind_index(
+        "pep@example.com", blind_index_pepper(get_settings().secret_key, "router-pepper")
+    )
+    assert stored != compute_email_blind_index("pep@example.com", PEPPER)
