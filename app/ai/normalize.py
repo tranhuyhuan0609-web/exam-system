@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from app.ai.figures import PageGeometry, page_geometry, remove_light_text
+from app.ai.figures import PageGeometry, page_geometry, render_without_light_text
 from app.infrastructure.pdf_engine import PDFEngineAdapter, PDFEngineError, PDFPasswordRequired
 
 PDF_EXTENSIONS = (".pdf",)
@@ -84,35 +84,22 @@ def pdf_to_pages(pdf: Path, out_dir: Path, dpi: int = RENDER_DPI) -> tuple[list[
         if reader.page_count > MAX_PAGES:
             raise NormalizeError(f"File có {reader.page_count} trang, vượt giới hạn {MAX_PAGES} trang mỗi lần.")
         paths, geometries = [], []
-        redactor = None  # PyMuPDF, opened only for a page that has watermark text (redaction is PR C)
-        try:
-            for index in range(1, reader.page_count + 1):
-                path = out_dir / f"page-{index:03d}.png"
-                reader.render(index - 1, dpi=dpi).save(path)  # original, for the AI and the review screen
-                paths.append(path)
-                geometry = page_geometry(reader, index - 1)
-                if geometry.has_light_text:  # figures are cut from a render without watermark text
-                    if redactor is None:
-                        redactor = _open_pymupdf(pdf)
-                    page = redactor[index - 1]
-                    if remove_light_text(page):
-                        clean = out_dir / f"page-{index:03d}-clean.png"
-                        page.get_pixmap(dpi=dpi).save(clean)
-                        geometry.figure_png = clean
-                geometries.append(geometry)
-        finally:
-            if redactor is not None:
-                redactor.close()
+        for index in range(1, reader.page_count + 1):
+            path = out_dir / f"page-{index:03d}.png"
+            reader.render(index - 1, dpi=dpi).save(path)  # original, for the AI and the review screen
+            paths.append(path)
+            geometry = page_geometry(reader, index - 1)
+            if geometry.has_light_text:  # figures are cut from a render without watermark text
+                try:
+                    clean_image = render_without_light_text(reader, index - 1, dpi)
+                except PDFEngineError as exc:
+                    raise NormalizeError("Không mở được file PDF (file hỏng hoặc có mật khẩu).") from exc
+                if clean_image is not None:
+                    clean = out_dir / f"page-{index:03d}-clean.png"
+                    clean_image.save(clean)
+                    geometry.figure_png = clean
+            geometries.append(geometry)
     return paths, geometries
-
-
-def _open_pymupdf(pdf: Path):
-    import pymupdf
-
-    try:
-        return pymupdf.open(pdf)
-    except Exception as exc:
-        raise NormalizeError("Không mở được file PDF (file hỏng hoặc có mật khẩu).") from exc
 
 
 def image_to_page(source: Path, out_dir: Path) -> list[Path]:

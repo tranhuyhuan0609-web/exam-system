@@ -14,9 +14,18 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import fitz  # PyMuPDF
-
 from app.application.paper import SECTION_ORDER
+from app.infrastructure.pdf_engine import (
+    ImageStamp,
+    LineStamp,
+    PDFEngineAdapter,
+    Rect,
+    Stamp,
+    TextStamp,
+    extend_page_top,
+    redact_pdf,
+    stamp_pages,
+)
 from app.infrastructure.storage import Storage, StorageError
 from app.models import Question, QuestionType
 from app.templating import templates
@@ -44,69 +53,52 @@ def rebrand_pdf_preserve_exam_title(
     - Xóa watermark 'PRO: admin@...' ở đỉnh trang và Footer tên GV/SĐT cũ ở đáy trang.
     - Nếu Trang 1 có Header kỳ thi ('KỲ THI...'): chỉ xóa góc trái (Logo + Đơn vị cũ), giữ nguyên tên kỳ thi bên phải.
     - Nếu Trang 1 vào thẳng 'Câu 1' ở sát mép trên (như HSG 1.1.pdf): dịch trang xuống 70pt để gắn Banner + Logo mới.
+
+    PDF engine adapter (ADR-010): text/images under the removed bands are taken out of the content stream and the
+    bands painted white (``redact_pdf``); logo, banner and footer are an overlay in DejaVu Sans (``stamp_pages``).
     """
-    src = fitz.open(str(input_pdf))
-    dst = fitz.open()
+    data = Path(input_pdf).read_bytes()
+    with PDFEngineAdapter.open(data) as src:
+        page_count = src.page_count
+        ky_thi_rects = src.find_text(0, "KỲ THI")
+        cau1_rects = src.find_text(0, "Câu 1") + src.find_text(0, "Câu I") + src.find_text(0, "Chương ")
+        has_header = bool(ky_thi_rects) or bool(cau1_rects and cau1_rects[0].y0 > 110)
+        regions: dict[int, list[Rect]] = {}
+        for idx in range(page_count):
+            w, h = src.page_size(idx)
+            areas = regions.setdefault(idx, [])
+            # 1. Xóa dòng "PRO: admin@..." ở mép trên
+            areas += [Rect(0, 0, w, r.y1 + 3) for r in src.find_text(idx, "PRO:")]
+            # 2. Xóa Footer tên GV / SĐT cũ ở đáy trang (VD: "GV. Phan Nhật Linh - SĐT...")
+            for kw in ("GV.", "SĐT:", "0817"):
+                areas += [Rect(0, r.y0 - 4, w, h) for r in src.find_text(idx, kw) if r.y0 > h - 65]
+            # 3. Ở Trang 1 có Header kỳ thi: Xóa góc trái, giữ nguyên khối "KỲ THI..." bên phải
+            if idx == 0 and has_header and ky_thi_rects:
+                chinh_thuc = src.find_text(idx, "CHÍNH THỨC")
+                bottom_limit = chinh_thuc[0].y0 - 4 if chinh_thuc else 130
+                areas.append(Rect(0, 0, ky_thi_rects[0].x0 - 8, bottom_limit))
 
-    p0 = src[0]
-    ky_thi_rects = p0.search_for("KỲ THI")
-    cau1_rects = p0.search_for("Câu 1") + p0.search_for("Câu I") + p0.search_for("Chương ")
-    has_header = bool(ky_thi_rects) or (cau1_rects and cau1_rects[0].y0 > 110)
+    pdf = redact_pdf(data, lambda idx, _w, _h: regions.get(idx, []))
+    if not has_header:  # Phiếu bài tập không có Header -> trang 1 cao thêm 70pt, nội dung dịch xuống
+        pdf = extend_page_top(pdf, 0, 70)
+    logo = Path(logo_path) if logo_path and os.path.exists(str(logo_path)) else None
+    right_limit = ky_thi_rects[0].x0 - 8 if ky_thi_rects else 220
 
-    for idx, page in enumerate(src):
-        w, h = page.rect.width, page.rect.height
+    def brand(idx: int, w: float, h: float) -> list[Stamp]:
+        stamps: list[Stamp] = []
+        if idx == 0 and has_header:
+            cx = (30 + right_limit) / 2
+            if logo:
+                stamps.append(ImageStamp(logo, Rect(cx - 30, 35, cx + 30, 95)))
+        elif idx == 0:
+            if logo:
+                stamps.append(ImageStamp(logo, Rect(40, 12, 90, 62)))
+            stamps.append(TextStamp.at(105, 42, brand_footer.upper(), 10, max_width=w - 145))
+            stamps.append(LineStamp(40, 68, w - 40, 68, (0.2, 0.3, 0.6), 1.0))
+        stamps.append(TextStamp.at(40, h - 14, f"{brand_footer} • Trang {idx + 1}/{page_count}", 8, (0.45, 0.45, 0.45)))
+        return stamps
 
-        # 1. Xóa dòng "PRO: admin@..." ở mép trên
-        for r in page.search_for("PRO:"):
-            page.add_redact_annot(fitz.Rect(0, 0, w, r.y1 + 3), fill=(1, 1, 1))
-
-        # 2. Xóa Footer tên GV / SĐT cũ ở đáy trang (VD: "GV. Phan Nhật Linh - SĐT...")
-        for kw in ("GV.", "SĐT:", "0817"):
-            for r in page.search_for(kw):
-                if r.y0 > h - 65:
-                    page.add_redact_annot(fitz.Rect(0, r.y0 - 4, w, h), fill=(1, 1, 1))
-
-        # 3. Ở Trang 1 có Header kỳ thi: Xóa góc trái, giữ nguyên khối "KỲ THI..." bên phải
-        if idx == 0 and has_header and ky_thi_rects:
-            right_limit = ky_thi_rects[0].x0 - 8
-            chinh_thuc = page.search_for("CHÍNH THỨC")
-            bottom_limit = chinh_thuc[0].y0 - 4 if chinh_thuc else 130
-            page.add_redact_annot(fitz.Rect(0, 0, right_limit, bottom_limit), fill=(1, 1, 1))
-
-        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE)
-
-        # 4. Đưa trang vào file đích và gắn Logo mới
-        if idx == 0:
-            if has_header:
-                right_limit = ky_thi_rects[0].x0 - 8 if ky_thi_rects else 220
-                cx = (30 + right_limit) / 2
-                if logo_path and os.path.exists(str(logo_path)):
-                    page.insert_image(
-                        fitz.Rect(cx - 30, 35, cx + 30, 95), filename=str(logo_path), keep_proportion=True
-                    )  # noqa: E501
-                dst.insert_pdf(src, from_page=0, to_page=0)
-            else:
-                # Phiếu bài tập không có Header -> Tạo trang cao hơn 70pt và dịch nội dung xuống
-                new_p = dst.new_page(width=w, height=h + 70)
-                if logo_path and os.path.exists(str(logo_path)):
-                    new_p.insert_image(fitz.Rect(40, 12, 90, 62), filename=str(logo_path), keep_proportion=True)
-                new_p.insert_text((105, 42), brand_footer.upper(), fontsize=10, fontname="helv")
-                new_p.draw_line((40, 68), (w - 40, 68), color=(0.2, 0.3, 0.6), width=1.0)
-                new_p.show_pdf_page(fitz.Rect(0, 72, w, h + 70), src, 0)
-        else:
-            dst.insert_pdf(src, from_page=idx, to_page=idx)
-
-        cur_page = dst[-1]
-        cur_page.insert_text(
-            (40, cur_page.rect.height - 14),
-            f"{brand_footer} • Trang {idx + 1}/{len(src)}",
-            fontsize=8,
-            color=(0.45, 0.45, 0.45),
-        )
-
-    dst.save(str(output_pdf))
-    dst.close()
-    src.close()
+    Path(output_pdf).write_bytes(stamp_pages(pdf, brand))
     return str(output_pdf)
 
 

@@ -29,8 +29,20 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-import fitz  # PyMuPDF
 from docx import Document
+
+from app.infrastructure.pdf_engine import (
+    ImageStamp,
+    LineStamp,
+    PDFEngineAdapter,
+    Rect,
+    Stamp,
+    TextStamp,
+    extend_page_top,
+    redact_pdf,
+    slice_pdf,
+    stamp_pages,
+)
 
 log = logging.getLogger(__name__)
 
@@ -172,116 +184,70 @@ class UniversalExamAndMaterialIngestor:
         3. Chuyên đề VietJack: Xóa Footer tên GV cũ ở đáy toàn bộ các trang, đóng Footer thương hiệu mới.
         """
         footer_text = system_footer or self.system_footer
-        src_doc = fitz.open(pdf_path)
+        data = Path(pdf_path).read_bytes()
 
-        first_page = src_doc[0]
-        ky_thi_rects = first_page.search_for("KỲ THI") + first_page.search_for("ĐỀ CHÍNH THỨC")
-        cau_1_rects = first_page.search_for("Câu 1") + first_page.search_for("Câu I")
+        with PDFEngineAdapter.open(data) as src:
+            page_count = src.page_count
+            ky_thi_rects = src.find_text(0, "KỲ THI") + src.find_text(0, "ĐỀ CHÍNH THỨC")
+            cau_1_rects = src.find_text(0, "Câu 1") + src.find_text(0, "Câu I")
 
-        # Có Header kỳ thi nếu tìm thấy "KỲ THI" hoặc "Câu 1" bắt đầu ở phía dưới (y0 > 115)
-        has_official_header = bool(ky_thi_rects) or (cau_1_rects and cau_1_rects[0].y0 > 115)
-        right_x = ky_thi_rects[0].x0 - 8 if ky_thi_rects else 230
+            # Có Header kỳ thi nếu tìm thấy "KỲ THI" hoặc "Câu 1" bắt đầu ở phía dưới (y0 > 115)
+            has_official_header = bool(ky_thi_rects) or bool(cau_1_rects and cau_1_rects[0].y0 > 115)
+            right_x = ky_thi_rects[0].x0 - 8 if ky_thi_rects else 230
 
-        # Bước 1: Áp dụng redaction trên src_doc
-        for page_idx, page in enumerate(src_doc):
-            w, h = page.rect.width, page.rect.height
+            # Bước 1: Tính vùng cần xóa trên từng trang (toạ độ hiển thị, gốc trên-trái)
+            regions: dict[int, list[Rect]] = {}
+            for page_idx in range(page_count):
+                w, h = src.page_size(page_idx)
+                areas = regions.setdefault(page_idx, [])
 
-            # 2.1. Xóa dòng "PRO: admin@example.com" ở đỉnh trang (như Đề Lý 10, Hóa 11)
-            for r in page.search_for("PRO:"):
-                page.add_redact_annot(fitz.Rect(0, 0, w, r.y1 + 4), fill=(1, 1, 1))
+                # 2.1. Xóa dòng "PRO: admin@example.com" ở đỉnh trang (như Đề Lý 10, Hóa 11)
+                areas += [Rect(0, 0, w, r.y1 + 4) for r in src.find_text(page_idx, "PRO:")]
 
-            # 2.2. Xóa dòng Footer tên GV/SĐT cũ ở đáy trang (như file Công thức Bayes: "GV. Phan Nhật Linh...")
-            for kw in ["GV.", "SĐT:", "0817", "Phan Nhật Linh"]:
-                for r in page.search_for(kw):
-                    if r.y0 > h - 70:
-                        page.add_redact_annot(fitz.Rect(0, max(0, r.y0 - 6), w, h), fill=(1, 1, 1))
+                # 2.2. Xóa dòng Footer tên GV/SĐT cũ ở đáy trang (như file Công thức Bayes: "GV. Phan Nhật Linh...")
+                for kw in ["GV.", "SĐT:", "0817", "Phan Nhật Linh"]:
+                    areas += [Rect(0, max(0, r.y0 - 6), w, h) for r in src.find_text(page_idx, kw) if r.y0 > h - 70]
 
-            # 2.3. Nếu Trang 1 CÓ Header kỳ thi chính thức: Xóa góc trái, GIỮ NGUYÊN tên kỳ thi bên phải
-            if page_idx == 0 and has_official_header:
-                chinh_thuc = page.search_for("CHÍNH THỨC")
-                bottom_y = chinh_thuc[0].y0 - 4 if chinh_thuc else 135
-                page.add_redact_annot(fitz.Rect(0, 0, right_x, bottom_y), fill=(1, 1, 1))
+                # 2.3. Nếu Trang 1 CÓ Header kỳ thi chính thức: Xóa góc trái, GIỮ NGUYÊN tên kỳ thi bên phải
+                if page_idx == 0 and has_official_header:
+                    chinh_thuc = src.find_text(page_idx, "CHÍNH THỨC")
+                    bottom_y = chinh_thuc[0].y0 - 4 if chinh_thuc else 135
+                    areas.append(Rect(0, 0, right_x, bottom_y))
 
-            page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE)
-
-        # Đóng gói bản sạch ra byte stream để tránh lỗi số xref khi insert page
-        clean_bytes = src_doc.tobytes(garbage=3, deflate=True)
-        src_doc.close()
-
-        clean_doc = fitz.open(stream=clean_bytes, filetype="pdf")
+        # Bước 2: Xóa đối tượng trong các vùng và tô trắng (pdfium, ADR-010 G3)
+        clean = redact_pdf(data, lambda idx, _w, _h: regions.get(idx, []))
         branded_path = str(self.storage_dir / "branded_pdfs" / f"{doc_id}_branded.pdf")
         preview_path = None
+        logo = self.my_logo_path if os.path.exists(self.my_logo_path) else None
 
-        if has_official_header:
-            # Gắn logo vào góc trái Trang 1
-            if len(clean_doc) > 0 and os.path.exists(self.my_logo_path):
-                p0 = clean_doc[0]
-                cx = (30 + right_x) / 2
-                p0.insert_image(
-                    fitz.Rect(max(10, cx - 45), 20, min(right_x, cx + 45), 85),
-                    filename=self.my_logo_path,
-                    keep_proportion=True,
-                )
-
-            # Đóng Footer thương hiệu mới ở đáy mỗi trang
-            for page_idx, page in enumerate(clean_doc):
-                h = page.rect.height
-                page.insert_text(
-                    (40, h - 18),
-                    f"{footer_text} • Trang {page_idx + 1}/{len(clean_doc)}",
-                    fontsize=8,
-                    color=(0.35, 0.35, 0.35),
-                )
-
-            clean_doc.save(branded_path)
-
-            if is_pro and len(clean_doc) > 1:
-                prev_doc = fitz.open()
-                prev_doc.insert_pdf(clean_doc, from_page=0, to_page=0)
-                preview_path = str(self.storage_dir / "previews" / f"{doc_id}_preview.pdf")
-                prev_doc.save(preview_path)
-                prev_doc.close()
-
-            clean_doc.close()
-
-        else:
+        if not has_official_header:
             # TRƯỜNG HỢP WORKSHEET KHÔNG CÓ HEADER (như HSG 1.1.pdf, 06.1.pdf):
-            # Tạo trang mới và dịch nội dung xuống 80pt để lấy chỗ gắn Logo ở góc trái trên
-            out_doc = fitz.open()
-            first_p = clean_doc[0]
-            w, h = first_p.rect.width, first_p.rect.height
+            # Trang 1 cao thêm 80pt, nội dung dịch xuống để lấy chỗ gắn Logo ở góc trái trên
+            clean = extend_page_top(clean, 0, 80)
 
-            new_page = out_doc.new_page(width=w, height=h + 80)
-            if os.path.exists(self.my_logo_path):
-                new_page.insert_image(fitz.Rect(40, 12, 100, 68), filename=self.my_logo_path, keep_proportion=True)
-            new_page.insert_text((115, 42), footer_text.upper(), fontsize=11, fontname="helv", color=(0.15, 0.25, 0.55))
-            new_page.draw_line((40, 74), (w - 40, 74), color=(0.2, 0.35, 0.65), width=1)
-            new_page.show_pdf_page(fitz.Rect(0, 80, w, h + 80), clean_doc, 0)
-
-            if len(clean_doc) > 1:
-                out_doc.insert_pdf(clean_doc, from_page=1, to_page=len(clean_doc) - 1)
-
+        def brand(page_idx: int, w: float, h: float) -> list[Stamp]:
+            stamps: list[Stamp] = []
+            if page_idx == 0 and has_official_header and logo:
+                # Gắn logo vào góc trái Trang 1
+                cx = (30 + right_x) / 2
+                stamps.append(ImageStamp(logo, Rect(max(10, cx - 45), 20, min(right_x, cx + 45), 85)))
+            elif page_idx == 0 and not has_official_header:
+                if logo:
+                    stamps.append(ImageStamp(logo, Rect(40, 12, 100, 68)))
+                stamps.append(TextStamp.at(115, 42, footer_text.upper(), 11, (0.15, 0.25, 0.55), max_width=w - 155))
+                stamps.append(LineStamp(40, 74, w - 40, 74, (0.2, 0.35, 0.65), 1))
             # Đóng Footer thương hiệu mới ở đáy mỗi trang
-            for page_idx, cur_p in enumerate(out_doc):
-                cur_h = cur_p.rect.height
-                cur_p.insert_text(
-                    (40, cur_h - 18),
-                    f"{footer_text} • Trang {page_idx + 1}/{len(out_doc)}",
-                    fontsize=8,
-                    color=(0.35, 0.35, 0.35),
-                )
+            stamps.append(
+                TextStamp.at(40, h - 18, f"{footer_text} • Trang {page_idx + 1}/{page_count}", 8, (0.35, 0.35, 0.35))
+            )
+            return stamps
 
-            out_doc.save(branded_path)
+        branded = stamp_pages(clean, brand)
+        Path(branded_path).write_bytes(branded)
 
-            if is_pro and len(out_doc) > 1:
-                prev_doc = fitz.open()
-                prev_doc.insert_pdf(out_doc, from_page=0, to_page=0)
-                preview_path = str(self.storage_dir / "previews" / f"{doc_id}_preview.pdf")
-                prev_doc.save(preview_path)
-                prev_doc.close()
-
-            out_doc.close()
-            clean_doc.close()
+        if is_pro and page_count > 1:
+            preview_path = str(self.storage_dir / "previews" / f"{doc_id}_preview.pdf")
+            Path(preview_path).write_bytes(slice_pdf(branded, 0, 0))
 
         return {"branded_pdf": branded_path, "preview_pdf": preview_path}
 
@@ -295,81 +261,78 @@ class UniversalExamAndMaterialIngestor:
         - Xóa chữ vụn nằm đè trong hình (như 'OH', 'v(m/s)') để không làm bẩn văn bản câu hỏi.
         - Chèn thẻ [[FIG_P1_0]] vào đúng tọa độ Y để hình nằm đúng ở câu hỏi chứa nó.
         """
-        doc = fitz.open(pdf_path)
         figure_map: dict[str, str] = {}
         all_pages_lines: list[str] = []
 
-        for page_idx, page in enumerate(doc):
-            w, h = page.rect.width, page.rect.height
-            page_items: list[tuple[float, str]] = []
+        with PDFEngineAdapter.open(pdf_path) as doc:
+            for page_idx in range(doc.page_count):
+                w, h = doc.page_size(page_idx)
+                page_items: list[tuple[float, str]] = []
 
-            # 3.1. Gom khung ảnh Raster (bỏ qua ký hiệu công thức nhỏ và logo)
-            raster_boxes: list[fitz.Rect] = []
-            for img in page.get_images(full=True):
-                rects = page.get_image_rects(img[0])
-                for r in rects:
-                    if r.height >= 32 and r.width >= 35:
-                        raster_boxes.append(r)
+                # 3.1. Gom khung ảnh Raster (bỏ qua ký hiệu công thức nhỏ và logo)
+                raster_boxes = [
+                    img.rect for img in doc.images(page_idx) if img.rect.height >= 32 and img.rect.width >= 35
+                ]
 
-            # Gom cụm nét vẽ Vector (height > 32 và width > 35)
-            vector_boxes = [
-                r for r in page.cluster_drawings(x_tolerance=22, y_tolerance=22) if r.height > 32 and r.width > 35
-            ]
+                # Gom cụm nét vẽ Vector (height > 32 và width > 35)
+                vector_boxes = [
+                    r
+                    for r in doc.cluster_drawings(page_idx, x_tolerance=22, y_tolerance=22)
+                    if r.height > 32 and r.width > 35
+                ]
 
-            # Gộp các box chồng lấn
-            graphic_boxes = self._merge_overlapping_rects(raster_boxes + vector_boxes)
+                # Gộp các box chồng lấn
+                graphic_boxes = self._merge_overlapping_rects(raster_boxes + vector_boxes)
+                figure_rects: list[Rect] = []
 
-            for box_idx, rect in enumerate(graphic_boxes):
-                # Bỏ qua Logo ở góc trên bên trái Trang 1 (y0 < 125 và x0 < 240)
-                if page_idx == 0 and rect.y0 < 125 and rect.x0 < 240:
-                    continue
+                for box_idx, rect in enumerate(graphic_boxes):
+                    # Bỏ qua Logo ở góc trên bên trái Trang 1 (y0 < 125 và x0 < 240)
+                    if page_idx == 0 and rect.y0 < 125 and rect.x0 < 240:
+                        continue
 
-                fig_tag = f"[[FIG_P{page_idx + 1}_{box_idx}]]"
-                fig_file = self.storage_dir / "figures" / f"{doc_id}_P{page_idx + 1}_{box_idx}.png"
+                    fig_tag = f"[[FIG_P{page_idx + 1}_{box_idx}]]"
+                    fig_file = self.storage_dir / "figures" / f"{doc_id}_P{page_idx + 1}_{box_idx}.png"
 
-                pad_rect = fitz.Rect(
-                    max(rect.x0 - 8, 0),
-                    max(rect.y0 - 8, 0),
-                    min(rect.x1 + 8, w),
-                    min(rect.y1 + 8, h),
-                )
-                page.get_pixmap(clip=pad_rect, dpi=300).save(str(fig_file))
-                figure_map[fig_tag] = str(fig_file)
+                    pad_rect = Rect(
+                        max(rect.x0 - 8, 0),
+                        max(rect.y0 - 8, 0),
+                        min(rect.x1 + 8, w),
+                        min(rect.y1 + 8, h),
+                    )
+                    doc.render(page_idx, dpi=300, clip=pad_rect).save(str(fig_file))
+                    figure_map[fig_tag] = str(fig_file)
 
-                page_items.append((rect.y0, fig_tag))
-                page.add_redact_annot(rect)
+                    page_items.append((rect.y0, fig_tag))
+                    figure_rects.append(rect)
 
-            page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+                # 3.2. Đọc các block văn bản còn lại trên trang (bỏ mép trên/dưới); chữ vụn trong hình bị loại
+                body_clip = Rect(0, 30, w, h - 35)
+                for b in doc.blocks(page_idx, clip=body_clip, exclude=figure_rects):
+                    txt = b.text.strip()
+                    if not txt:
+                        continue
+                    # Bỏ qua dòng tên GV hoặc tiêu đề lặp lại ở đầu trang
+                    if re.search(r"GV\.\s*Phan Nhật Linh|SĐT:\s*0817|Trang\s+\d+/\d+", txt, re.IGNORECASE):
+                        continue
+                    page_items.append((b.rect.y0, txt))
 
-            # 3.2. Đọc các block văn bản còn lại trên trang (bỏ mép trên/dưới)
-            body_clip = fitz.Rect(0, 30, w, h - 35)
-            for b in page.get_text("blocks", clip=body_clip):
-                txt = b[4].strip()
-                if not txt:
-                    continue
-                # Bỏ qua dòng tên GV hoặc tiêu đề lặp lại ở đầu trang
-                if re.search(r"GV\.\s*Phan Nhật Linh|SĐT:\s*0817|Trang\s+\d+/\d+", txt, re.IGNORECASE):
-                    continue
-                page_items.append((b[1], txt))
+                page_items.sort(key=lambda item: item[0])
+                all_pages_lines.extend(item[1] for item in page_items)
 
-            page_items.sort(key=lambda item: item[0])
-            all_pages_lines.extend(item[1] for item in page_items)
-
-        doc.close()
         return "\n".join(all_pages_lines), figure_map
 
-    def _merge_overlapping_rects(self, rects: list[fitz.Rect], pad: float = 12.0) -> list[fitz.Rect]:
+    def _merge_overlapping_rects(self, rects: list[Rect], pad: float = 12.0) -> list[Rect]:
         if not rects:
             return []
-        merged: list[fitz.Rect] = []
+        merged: list[Rect] = []
         for r in sorted(rects, key=lambda x: (x.y0, x.x0)):
-            expanded = fitz.Rect(r.x0 - pad, r.y0 - pad, r.x1 + pad, r.y1 + pad)
+            expanded = r.expanded(pad)
             if not merged:
                 merged.append(r)
             else:
                 prev = merged[-1]
                 if expanded.intersects(prev):
-                    merged[-1] = prev | r
+                    merged[-1] = prev.union(r)
                 else:
                     merged.append(r)
         return merged
@@ -472,7 +435,6 @@ class UniversalExamAndMaterialIngestor:
 
     def parse_vietjack_study_guide(self, pdf_path: str) -> tuple[int, list[dict], dict]:
         """Tách tự động Chuyên đề Lý thuyết & Luyện dạng bài theo cấu trúc VietJack và rebrand Logo."""
-        doc = fitz.open(pdf_path)
         clean_lines = []
         out_dir = "app/static/docs"
         os.makedirs(out_dir, exist_ok=True)
@@ -481,44 +443,42 @@ class UniversalExamAndMaterialIngestor:
         branded_pdf_path = os.path.join(out_dir, f"{safe_name}_branded.pdf")
 
         logo_path = self.my_logo_path if os.path.exists(self.my_logo_path) else "app/static/img/logo.png"
+        data = Path(pdf_path).read_bytes()
 
-        for page_idx, page in enumerate(doc):
-            w, h = page.rect.width, page.rect.height
-            # Redact old footer
-            footer_rect = fitz.Rect(0, h - 45, w, h)
-            page.add_redact_annot(footer_rect, fill=(1, 1, 1))
-            page.apply_redactions()
+        with PDFEngineAdapter.open(data) as doc:
+            page_count = doc.page_count
+            for page_idx in range(page_count):
+                w, h = doc.page_size(page_idx)
+                clip_rect = Rect(0, 55 if page_idx > 0 else 30, w, h - 45)
+                text = "".join(b.text for b in doc.blocks(page_idx, clip=clip_rect))
+                for line in text.splitlines():
+                    line_str = line.strip()
+                    if re.search(r"GV\.\s*Phan Nhật Linh|0817\s*098\s*716", line_str, re.IGNORECASE):
+                        continue
+                    if page_idx > 0 and line_str in ["Chương 6. XÁC SUẤT CÓ ĐIỀU KIỆN", "TOÁN 12 - CHƯƠNG TRÌNH MỚI"]:
+                        continue
+                    clean_lines.append(line_str)
 
-            # Separator line
-            shape = page.new_shape()
-            shape.draw_line(fitz.Point(36, h - 32), fitz.Point(w - 36, h - 32))
-            shape.finish(color=(0.85, 0.88, 0.92), width=0.8)
-            shape.commit()
+        # Redact old footer, then separator line, text footer and logo stamp
+        clean = redact_pdf(data, lambda _idx, w, h: [Rect(0, h - 45, w, h)])
 
-            # Text footer
-            page.insert_text(
-                (36, h - 18),
-                f"H2Edu • Ngân hàng Tài liệu & Luyện thi THPTQG — Trang {page_idx + 1}/{len(doc)}",
-                fontsize=8.5,
-                color=(0.35, 0.4, 0.45),
-            )
-
-            # Logo stamp
+        def footer(page_idx: int, w: float, h: float) -> list[Stamp]:
+            stamps: list[Stamp] = [
+                LineStamp(36, h - 32, w - 36, h - 32, (0.85, 0.88, 0.92), 0.8),
+                TextStamp.at(
+                    36,
+                    h - 18,
+                    f"H2Edu • Ngân hàng Tài liệu & Luyện thi THPTQG — Trang {page_idx + 1}/{page_count}",
+                    8.5,
+                    (0.35, 0.4, 0.45),
+                    max_width=w - 110,
+                ),
+            ]
             if os.path.exists(logo_path):
-                logo_rect = fitz.Rect(w - 62, h - 28, w - 36, h - 8)
-                page.insert_image(logo_rect, filename=logo_path)
+                stamps.append(ImageStamp(logo_path, Rect(w - 62, h - 28, w - 36, h - 8)))
+            return stamps
 
-            clip_rect = fitz.Rect(0, 55 if page_idx > 0 else 30, w, h - 45)
-            text = page.get_text("text", clip=clip_rect)
-            for line in text.splitlines():
-                line_str = line.strip()
-                if re.search(r"GV\.\s*Phan Nhật Linh|0817\s*098\s*716", line_str, re.IGNORECASE):
-                    continue
-                if page_idx > 0 and line_str in ["Chương 6. XÁC SUẤT CÓ ĐIỀU KIỆN", "TOÁN 12 - CHƯƠNG TRÌNH MỚI"]:
-                    continue
-                clean_lines.append(line_str)
-
-        doc.save(branded_pdf_path)
+        Path(branded_pdf_path).write_bytes(stamp_pages(clean, footer))
         full_text = "\n".join(clean_lines)
 
         split_theory = re.split(r"\n\s*(?:BÀI TẬP TỰ LUẬN\s*\n|(?=Bài tập 1:))", full_text, maxsplit=1)
@@ -684,7 +644,7 @@ $$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline
         for idx, d in enumerate(drafts):
             d["index"] = idx
 
-        return len(doc), drafts, knowledge_article_data
+        return page_count, drafts, knowledge_article_data
 
         pattern = re.compile(r"(?:^|\n)\s*(?:Câu|Bài)\s+([IVX]+|\d+)[\.\:]?[ \t]*", re.I)
         parts = pattern.split(text)
@@ -881,15 +841,15 @@ $$P(A) = P(B) \\cdot P(A \\mid B) + P(\\overline{B}) \\cdot P(A \\mid \\overline
             # No LibreOffice here, or it could not convert the file: the caller reads the file itself or reports it.
             return "WORKSHEET_NO_HEADER"
         try:
-            with fitz.open(pdf_file) as fdoc:
-                first_text = fdoc[0].get_text()
+            with PDFEngineAdapter.open(pdf_file) as fdoc:
+                first_text = fdoc.text_stream(0, newline_terminated=True)
                 if any(k in first_text for k in ["Phương pháp:", "Dạng ", "Dạng 1:", "Dạng 2:"]) and any(
                     k in first_text for k in ["PHẦN I.", "BÀI TẬP TỰ LUẬN", "BÀI TẬP"]
                 ):
                     return "VIETJACK_THEORY_WORKSHEET"
 
-                ky_thi_rects = fdoc[0].search_for("KỲ THI") + fdoc[0].search_for("ĐỀ CHÍNH THỨC")
-                cau_1_rects = fdoc[0].search_for("Câu 1") + fdoc[0].search_for("Câu I")
+                ky_thi_rects = fdoc.find_text(0, "KỲ THI") + fdoc.find_text(0, "ĐỀ CHÍNH THỨC")
+                cau_1_rects = fdoc.find_text(0, "Câu 1") + fdoc.find_text(0, "Câu I")
 
                 if bool(ky_thi_rects) or (cau_1_rects and cau_1_rects[0].y0 > 115):
                     return "OFFICIAL_EXAM"
