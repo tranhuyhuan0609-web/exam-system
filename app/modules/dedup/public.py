@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import importlib
+from typing import TYPE_CHECKING, Any
+
 from app.modules.dedup.internal.hashing import (
     QuestionHashes,
     compute_question_hashes,
@@ -26,11 +29,60 @@ from app.modules.dedup.internal.pairing import (
     score_exam_and_solution_pairing,
 )
 
+if TYPE_CHECKING:
+    from app.modules.dedup.internal.service import (
+        CandidateNotFoundError,
+        DedupError,
+        DedupMatchCandidate,
+        DedupMatchResult,
+        DedupValidationError,
+        DuplicateClusterNotFoundError,
+        DuplicateClusterView,
+        DuplicateMemberView,
+        decide_duplicate_cluster,
+        get_duplicate_cluster,
+        match_question_candidate,
+    )
+
+_SERVICE_EXPORTS = frozenset(
+    {
+        "CandidateNotFoundError",
+        "DedupError",
+        "DedupMatchCandidate",
+        "DedupMatchResult",
+        "DedupValidationError",
+        "DuplicateClusterNotFoundError",
+        "DuplicateClusterView",
+        "DuplicateMemberView",
+        "decide_duplicate_cluster",
+        "get_duplicate_cluster",
+        "match_question_candidate",
+    }
+)
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily load DB service exports so pure-core callers avoid registering ORM models."""
+    if name in _SERVICE_EXPORTS:
+        service_mod = importlib.import_module("app.modules.dedup.internal.service")
+        value = getattr(service_mod, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 __all__ = [
     "DEFAULT_AUTO_CONFIRM_THRESHOLD",
     "DEFAULT_PROPOSE_THRESHOLD",
+    "CandidateNotFoundError",
+    "DedupError",
+    "DedupMatchCandidate",
+    "DedupMatchResult",
+    "DedupValidationError",
     "DocumentKind",
     "DocumentPairing",
+    "DuplicateClusterNotFoundError",
+    "DuplicateClusterView",
+    "DuplicateMemberView",
     "PairingDocumentInput",
     "PairingScore",
     "PairingSignals",
@@ -40,8 +92,11 @@ __all__ = [
     "clean_pairing_stem",
     "compute_question_hashes",
     "content_hash",
+    "decide_duplicate_cluster",
     "fold_vietnamese_ascii",
+    "get_duplicate_cluster",
     "is_solution_filename",
+    "match_question_candidate",
     "normalize_text",
     "score_exam_and_solution_pairing",
     "structural_hash",
