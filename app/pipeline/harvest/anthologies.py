@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.exam_pdf import Renderer, chromium_pdf
+from app.infrastructure.pdf_engine import PDFEngineError, merge_pdfs
 from app.infrastructure.storage import StorageError, get_bronze_storage
 from app.models import LibraryDocument, LibraryKind, LibraryStatus
 from app.templating import templates
@@ -27,14 +28,8 @@ SOURCES = ("openalex", "semanticscholar", "crossref")
 
 def _bind(cover: bytes, papers: list[bytes]) -> tuple[bytes, list[int]]:
     """The cover followed by the papers; returns the PDF and the first page of each paper (1-based)."""
-    import fitz  # PyMuPDF
-
-    out, starts = fitz.open(stream=cover, filetype="pdf"), []
-    for data in papers:
-        starts.append(out.page_count + 1)
-        with fitz.open(stream=data, filetype="pdf") as paper:
-            out.insert_pdf(paper)
-    return out.tobytes(garbage=3, deflate=True), starts
+    out, starts = merge_pdfs([cover, *papers])
+    return out, starts[1:]
 
 
 async def _cover(title: str, papers: list[LibraryDocument], starts: list[int] | None, render: Renderer) -> bytes:
@@ -83,7 +78,12 @@ async def compile_anthologies(session: AsyncSession, render: Renderer | None = N
                 first = await _cover(title, papers, None, render)  # page count of the cover, then the real one
                 _, starts = await asyncio.to_thread(_bind, first, files)
                 pdf, _ = await asyncio.to_thread(_bind, await _cover(title, papers, starts, render), files)
-            except (StorageError, RuntimeError, ValueError) as exc:  # a broken paper PDF: try again with others later
+            except (
+                StorageError,
+                PDFEngineError,
+                RuntimeError,
+                ValueError,
+            ) as exc:  # a broken paper PDF: try again with others later
                 log.warning("Anthology %s: %s", title, exc)
                 stats["failed"] += 1
                 continue

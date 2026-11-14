@@ -13,8 +13,9 @@ Memory: nothing is cached per page. Every method opens the page it needs, conver
 plain dataclasses and releases the page before returning, so memory is bounded by one page
 (plus one rendered bitmap).
 
-Out of scope on purpose: writing/assembling PDFs, redaction, OCR
-(see docs/architecture/PDF_ENGINE_MIGRATION.md).
+Writing (PR C, gaps G1 and G2) lives at the bottom of the module as plain functions: ``slice_pdf`` and
+``merge_pdfs`` (pypdfium2 ``import_pages``) and ``stamp_pages`` (reportlab overlay merged with pypdf; all
+BSD/Apache licensed). Redaction and OCR are not here (see docs/architecture/PDF_ENGINE_MIGRATION.md).
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from __future__ import annotations
 import ctypes
 import io
 import unicodedata
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +34,9 @@ import pdfplumber
 import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_raw
 from PIL import Image
+from pypdf import PdfReader, PdfWriter, Transformation
+from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.pdfgen import canvas
 
 PathOrBytes = str | Path | bytes | bytearray | memoryview
 
@@ -1017,3 +1021,144 @@ class PDFEngineAdapter:
             bounds = ln.rect if bounds is None else bounds.union(ln.rect)
         close()
         return blocks
+
+
+# -- writing: slice, merge, stamp (gaps G1 and G2) ---------------------------------------------
+
+
+def _save(document: pdfium.PdfDocument) -> bytes:
+    buf = io.BytesIO()
+    document.save(buf)
+    return buf.getvalue()
+
+
+def slice_pdf(data: PathOrBytes, first: int, last: int) -> bytes:
+    """A new PDF with pages ``first``..``last`` (0-based, both included) of ``data``, like ``insert_pdf``."""
+    source = None
+    try:
+        with PDFEngineAdapter.open(data) as probe:
+            count = probe.page_count
+        if not 0 <= first <= last < count:
+            raise PDFEngineError(f"Page range {first}..{last} is outside 0..{count - 1}")
+        source = pdfium.PdfDocument(data if isinstance(data, (str, Path)) else bytes(data))
+        part = pdfium.PdfDocument.new()
+        try:
+            part.import_pages(source, list(range(first, last + 1)))
+            return _save(part)
+        finally:
+            part.close()
+    except PDFEngineError:
+        raise
+    except Exception as exc:
+        raise PDFEngineError(f"Cannot slice PDF: {exc}") from exc
+    finally:
+        if source is not None:
+            source.close()
+
+
+def merge_pdfs(parts: Sequence[PathOrBytes]) -> tuple[bytes, list[int]]:
+    """The PDFs one after the other in a single PDF, and the first page (1-based) of each part."""
+    if not parts:
+        raise PDFEngineError("Nothing to merge")
+    merged = pdfium.PdfDocument.new()
+    starts: list[int] = []
+    try:
+        for part in parts:
+            starts.append(len(merged) + 1)
+            source = None
+            try:
+                source = pdfium.PdfDocument(part if isinstance(part, (str, Path)) else bytes(part))
+                merged.import_pages(source)
+            finally:
+                if source is not None:
+                    source.close()
+        return _save(merged), starts
+    except Exception as exc:
+        raise PDFEngineError(f"Cannot merge PDFs: {exc}") from exc
+    finally:
+        merged.close()
+
+
+@dataclass(frozen=True, slots=True)
+class TextStamp:
+    """One line of text written onto a page, in the adapter's coordinates (points, top-left origin).
+
+    The text is drawn on one line inside ``rect``, centred vertically. The font shrinks (down to 4 pt) when the
+    text is too wide; what still does not fit is clipped. ``background`` paints the rectangle first.
+    Base-14 Helvetica only: it covers the Latin-1 range, not the full Vietnamese alphabet.
+    """
+
+    text: str
+    rect: Rect
+    size: float = 9.0
+    color: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    align: str = "left"  # "left" | "center" | "right"
+    background: tuple[float, float, float] | None = None
+
+
+_STAMP_FONT = "Helvetica"
+_STAMP_MIN_SIZE = 4.0
+
+
+def _draw_stamp(pdf: canvas.Canvas, page_height: float, stamp: TextStamp) -> None:
+    r = stamp.rect
+    if stamp.background is not None:
+        pdf.setFillColorRGB(*stamp.background)
+        pdf.rect(r.x0, page_height - r.y1, r.width, r.height, stroke=0, fill=1)
+    size = stamp.size
+    while size > _STAMP_MIN_SIZE and stringWidth(stamp.text, _STAMP_FONT, size) > r.width:
+        size -= 0.25
+    width = stringWidth(stamp.text, _STAMP_FONT, size)
+    x = {"center": r.x0 + (r.width - width) / 2, "right": r.x1 - width}.get(stamp.align, r.x0)
+    baseline = page_height - (r.y0 + r.height / 2) - size * 0.35  # glyphs span roughly -0.2..0.75 em
+    pdf.saveState()
+    clip = pdf.beginPath()  # text still too wide at the minimum size is cut at the box, never spilled over the page
+    clip.rect(r.x0, page_height - r.y1, r.width, r.height)
+    pdf.clipPath(clip, stroke=0, fill=0)
+    pdf.setFillColorRGB(*stamp.color)
+    pdf.setFont(_STAMP_FONT, size)
+    pdf.drawString(x, baseline, stamp.text)
+    pdf.restoreState()
+
+
+def _overlay_matrix(rotation: int, width: float, height: float, origin: tuple[float, float]) -> Transformation:
+    """Maps the displayed page (what ``stamp_pages`` draws on) back to the page's own, unrotated space."""
+    a, b, c, d, e, f = {
+        90: (0.0, 1.0, -1.0, 0.0, width, 0.0),
+        180: (-1.0, 0.0, 0.0, -1.0, width, height),
+        270: (0.0, -1.0, 1.0, 0.0, 0.0, height),
+    }.get(rotation, (1.0, 0.0, 0.0, 1.0, 0.0, 0.0))
+    return Transformation((a, b, c, d, e + origin[0], f + origin[1]))
+
+
+def stamp_pages(data: PathOrBytes, build: Callable[[int, float, float], Sequence[TextStamp]]) -> bytes:
+    """Write text onto pages. ``build(page_index, width, height)`` returns the stamps of that page (an empty
+    sequence leaves it alone); width and height are the displayed size in points, rotation applied."""
+    try:
+        source = bytes(data) if not isinstance(data, (str, Path)) else Path(data).read_bytes()
+        writer = PdfWriter(clone_from=PdfReader(io.BytesIO(source)))
+        for index, page in enumerate(writer.pages):
+            box = page.cropbox
+            width, height = float(box.width), float(box.height)
+            rotation = int(page.rotation) % 360
+            shown_w, shown_h = (height, width) if rotation in (90, 270) else (width, height)
+            stamps = build(index, shown_w, shown_h)
+            if not stamps:
+                continue
+            buf = io.BytesIO()
+            pdf = canvas.Canvas(buf, pagesize=(shown_w, shown_h))
+            for stamp in stamps:
+                _draw_stamp(pdf, shown_h, stamp)
+            pdf.showPage()
+            pdf.save()
+            overlay = PdfReader(io.BytesIO(buf.getvalue())).pages[0]
+            matrix = _overlay_matrix(rotation, width, height, (float(box.left), float(box.bottom)))
+            page.merge_transformed_page(overlay, matrix)
+        writer.compress_identical_objects()  # defaults dedupe and drop orphans in every pypdf release
+        out = io.BytesIO()
+        writer.write(out)
+        return out.getvalue()
+    except PDFEngineError:
+        raise
+    except Exception as exc:
+        raise PDFEngineError(f"Cannot stamp PDF: {exc}") from exc

@@ -12,13 +12,12 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
-import pymupdf
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.normalize import NormalizeError, docx_to_pdf
 from app.config import get_settings
-from app.infrastructure.pdf_engine import PDFEngineAdapter, PDFEngineError, Rect
+from app.infrastructure.pdf_engine import PDFEngineAdapter, PDFEngineError, Rect, slice_pdf
 from app.models import AccessTier, Category, Difficulty, ExamOriginType, ImportJob, JobStatus, LibraryDocument
 from app.pipeline.domain.exam_split import Segment, find_exams
 
@@ -32,10 +31,17 @@ HEAD, FOOT = 0.35, 0.08  # parts of the page height where the exam code and the 
 
 
 def _ocr(pdf: PDFEngineAdapter, index: int, clip: Rect, tessdata: str) -> str:
-    # Rendered by pdfium; only the OCR itself (Tesseract inside MuPDF) is still PyMuPDF (gap G7).
-    pixmap = pymupdf.Pixmap(pdf.render_png(index, dpi=120, clip=clip))  # RGB: Tesseract reads nothing from grey
-    with pymupdf.open("pdf", pixmap.pdfocr_tobytes(language="vie", tessdata=tessdata)) as scanned:
-        return scanned[0].get_text("text")
+    """Tesseract (pytesseract, gap G7) on a pdfium render of the band; "" when OCR is not available here."""
+    try:
+        import pytesseract
+
+        image = pdf.render(index, dpi=120, clip=clip)  # RGB: Tesseract reads nothing from grey
+        return pytesseract.image_to_string(image, lang="vie", config=f'--tessdata-dir "{tessdata}"')
+    except ImportError:
+        log.warning("OCR skipped: pytesseract is not installed")
+    except Exception as exc:  # TesseractNotFoundError (no binary), TesseractError (bad tessdata), ...
+        log.warning("OCR skipped on page %d: %s", index + 1, exc)
+    return ""
 
 
 def page_texts(pdf: bytes, tessdata: str = "") -> list[str]:
@@ -54,9 +60,7 @@ def page_texts(pdf: bytes, tessdata: str = "") -> list[str]:
 
 
 def cut(pdf: bytes, segment: Segment) -> bytes:
-    with pymupdf.open(stream=pdf, filetype="pdf") as source, pymupdf.open() as part:
-        part.insert_pdf(source, from_page=segment.first, to_page=segment.last)
-        return part.tobytes(garbage=3, deflate=True)
+    return slice_pdf(pdf, segment.first, segment.last)
 
 
 async def as_pdf(data: bytes, mime: str, soffice: str) -> bytes | None:
