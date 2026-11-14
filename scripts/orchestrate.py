@@ -69,6 +69,9 @@ WAVES: tuple[WaveSpec, ...] = (
                 "app/cli.py",
                 "universal_ingestor.py",
                 "requirements.txt",
+                "requirements.lock",
+                "app/static/fonts/",
+                "docs/architecture/PDF_ENGINE_MIGRATION.md",
                 "tests/",
             ),
             forbidden_prefixes=GLOBAL_CLAUDE_FORBIDDEN
@@ -433,8 +436,10 @@ def build_agent_prompt(wave: WaveSpec, agent: str) -> str:
         f"với chuỗi task tuần tự: **{tasks_str}**.\n"
         f"Mục tiêu: {lane.summary}\n\n"
         f"QUY TẮC BẮT BUỘC (KHÔNG ĐƯỢC LÀM TRÁI):\n"
-        f"1. CHỈ LÀM LẦN LƯỢT TỪNG TASK MỘT theo thứ tự ({tasks_str}). Làm xong `{lane.tasks[0]}` phải chạy kiểm tra, "
-        f"báo cáo kết quả và DỪNG LẠI CHỜ TÔI DUYỆT rồi mới được chuyển sang task tiếp theo.\n"
+        f"1. GIAO THEO LÔ CÙNG MODEL (SAME-MODEL WAVE BATCHING): Các task dùng CÙNG MỘT MODEL trong đợt này "
+        f"thì thực hiện LIÊN TỤC theo đúng thứ tự ({tasks_str}) trong một lượt (xong mỗi task vẫn tự chạy test "
+        f"và commit riêng từng task cho sạch lịch sử Git); CHỈ DỪNG LẠI khi chuyển sang task yêu cầu model khác "
+        f"(ví dụ chuyển giữa Sonnet và Opus) hoặc khi đã hoàn thành toàn bộ các task cùng model của đợt.\n"
         f"2. Bám sát 100% đặc tả trong `docs/architecture/chapters/` và tái sử dụng các hàm Pure Core đã có sẵn "
         f"trong `app/modules/<tên>/internal/`. Tuyệt đối không tự đặt tên module/bảng/cột lệch đặc tả.\n"
         f"3. PHẠM VI FILE ĐƯỢC PHÉP SỬA/TẠO (Strict Lane Ownership):\n{allowed_lines}\n"
