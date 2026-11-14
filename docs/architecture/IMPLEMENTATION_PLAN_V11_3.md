@@ -5,25 +5,17 @@
 ## Context
 
 Repo `exam-system` (FastAPI + SQLAlchemy 2.0 + Alembic, 23 bảng cũ, giao diện Jinja2) đang được nâng cấp lên ULP V11.3: 47 module, 17 ADR, 7 DB role, 11 cổng `GATE-01..10`. Bộ tài liệu vừa được thay bằng bản hợp nhất (`TL_Handover_V11_3_Engineering_Hardening_Unified.md` + `chapters/`), bổ sung nhóm Hardening `H-01..H-07` và thứ tự `Wave 0 → Wave 1 → Wave 2`. Kế hoạch này thay cho kế hoạch cũ (`tender-enchanting-adleman.md`): giữ các quyết định đã chốt, thêm Wave 0 lên trước Sprint 1.
-## 1. Hiện trạng so với V11.3
+## 1. Hiện trạng so với V11.3 (Cập nhật ngày 14/11/2026 tại commit `4cbdbe9`)
 
-| Hạng mục | Đã có | Còn thiếu |
+| Hạng mục | Đã hoàn thành trên `main` | Còn thiếu (Cần làm tiếp theo thứ tự tuần tự) |
 |---|---|---|
-| M0.1 CI & biên giới | `.importlinter`, `tests/test_architecture.py`, `app/modules/`, `app/contracts/` (rỗng), CI chạy ruff + lint-imports + gate ids + alembic check + pytest | `mypy --strict`, license/CVE audit (Cổng 6), IDOR suite (Cổng 4), golden (Cổng 5) |
-| M0.2 Nền DB | `alembic/versions/c1d2e3f4a5b6_v113_foundation.py`: 5 extension, 7 role `NOBYPASSRLS`, `uuid_generate_v7()`, `current_app_tenant_id()`, `system_public_tenant_id()`, `app_system_job()`, `f_unaccent`, `tenants`, `fts_dictionary_versions`; `app/platform/rls.py` (`strict_tenant_rls`, `hybrid_write_rls`), `app/platform/tenancy.py` (`tenant_transaction`, `system_job_transaction`); `tests/test_db_foundation.py` (18 test) | 124/126 bảng Chương 4, `hybrid_read_policy` (21 bảng), policy grading/scheduler, trigger bất biến, GRANT theo bảng |
-| M0.3 Hạ tầng dev | PgBouncer, Redis, Vault dev, ClamAV trong `docker-compose.yml`; login `ulp_api` (`app/platform/runtime_login.py`); `tests/test_runtime_role.py` | Patroni (hoãn), Vault Transit client, ClamAV client |
-| M0.4 PDF engine | — | `pymupdf` còn trong `requirements.txt` và 23 file (13 file `app/`, 9 test, `universal_ingestor.py`) |
-| H-02 SymPy | Chưa có dòng `sympy` nào trong repo | Toàn bộ |
-| H-04 Autosave | `app/attempts.py::save_answers` + `PATCH /api/attempts/{id}/answers` (gộp thay đổi, không idempotency/version/hash); `app/static/js/attempt.js` | Contract mới, 4 bảng phòng thi, thư mục `frontend/` chưa tồn tại |
-| Git | M0.1–M0.3 nằm trên 3 nhánh xếp chồng, **chưa vào `main`**; working tree có thay đổi tài liệu chưa commit | Merge + commit tài liệu |
-
-Sai lệch đã phát hiện (sẽ sửa ở Bước 0, không tự sửa nội dung đặc tả):
-- `ci/check_gate_ids.sh` bị ghi đè bằng bản nguyên văn tài liệu → **khôi phục bản M0.1** (đã chốt).
-- `CLAUDE.md` mục 5 đang chứa nguyên văn lời nhắc thay vì 3 quy tắc; còn trỏ `frontend/src/lib/...` và `backend/...` trong khi bố cục đã chốt là `app/modules/<tên>/`.
-- Docstring migration `c1d2e3f4a5b6` trỏ `handover-v11.3/02-...` (đã xóa) — chỉ là chú thích, không sửa migration đã phát hành.
-- Chương 00 và 9.3B ghi manifest "11.2.0", tiêu đề Phần I ghi "10 ADRs"; file thật là 11.3.0 / 17 ADR.
-- Chương 2 ghi "giữ nguyên xác thực JWT" nhưng repo dùng cookie phiên (`SessionMiddleware`), chưa có JWT.
-- `verify_rls_hardening.sql`: Test 3 không khẳng định gì (`PERFORM count(*)`), Test 4 thiếu ca dương, cần dữ liệu seed.
+| **M0.1 CI, Contracts & Pure Core (47/47 module)** | `.importlinter` (**52 contracts kept, 0 broken**), `tests/test_architecture.py`, đầy đủ `app/contracts/` (scoring, autosave, blueprints, delivery, enums, events, event_catalog, core_schemas, text), `app/platform/` (16 file nhân dùng chung), `app/ops/` (8 công cụ vận hành/kiểm toán), và **toàn bộ 47/47 module trong `app/modules/<tên>/`** đã có **Pure Core (`public.py` + `internal/*.py`)** kèm **1.577 unit test Python (`pytest --noconftest`)** | Tầng Persistence (`internal/models.py` + Alembic migration + `internal/service.py`) và tầng HTTP (`router.py` `/api/v1/*`) cho **44/47 module** còn lại; `mypy --strict` |
+| **M0.2 & Wave 0.1–0.2 Nền DB & RLS** | `c1d2e3f4a5b6_v113_foundation.py` (5 extension, 7 role `NOBYPASSRLS`, hàm tenant/system_job, `tenants`, `fts_dictionary_versions`); `app/platform/rls.py` (đủ builder `strict_tenant_rls`, `hybrid_read_root`, `hybrid_read_child`, `hybrid_write_rls`, `grading_read`, `system_job_policy`, `partition_lockdown`, `invoker_view`); dry-run DDL Chương 4 (`tests/security/test_ddl_dry_run.py`, 57 test qua sạch, đã vá `F-01..F-04`) | Đưa 115 bảng còn lại của Chương 4 vào DB ứng dụng qua Alembic migration theo từng module (hiện DB ứng dụng mới có 8 bảng V11.3 từ M0.2, `G03 outbox`, `B04 taxonomy`, `B06 curriculum`) |
+| **M0.3 Hạ tầng dev** | PgBouncer, Redis, Vault dev, ClamAV trong `docker-compose.yml`; login `ulp_api` (`app/platform/runtime_login.py`); `tests/test_runtime_role.py` | Adapter kết nối thật tới Vault Transit HTTP API & ClamAV clamd socket trong luồng runtime (`F04`, `A01`, `B03`), Patroni HA (Sprint 13–14) |
+| **M0.4 / W0.5 PDF Engine (ADR-010)** | `app/infrastructure/pdf_engine.py` (`PDFEngineAdapter` dùng `pypdfium2` + `pdfplumber`), đã hoàn thành **PR A** (read-only callers) và **PR B** (structure & geometry readers) | **PR C**: chuyển phần cắt/ghép trang, chèn watermark/banner, xóa vùng chữ mờ (redaction) và OCR khỏi `pymupdf`/`fitz` ở 8 file ứng dụng + 9 file test, sau đó gỡ hẳn `pymupdf` khỏi `requirements.txt` |
+| **W0.3 — H-02 SymPy Sandbox** | Đã hoàn thành `app/modules/quality/internal/{sympy_runner.py, sympy_sandbox_worker.py}` (`python -I`, fail-closed `SANDBOX_WORKER_UNAVAILABLE`), tích hợp AST whitelist ở `explanations` | Tích hợp vào DB service & router của `C02 quality` và `E04 explanations` |
+| **W0.4 — H-04 Autosave & Frontend Core** | Đã hoàn thành `app/contracts/autosave.py`, `app/modules/attempts/internal/autosave.py` và bộ thư viện lõi TypeScript `frontend/src/lib/*.ts` (14 module, `Dexie` store, `canonical-json`, shared vector test, **179 test Vitest qua sạch**) | Bảng DB `attempts`, `responses`, `response_revisions`, `autosave_idempotency_registry`, endpoint `PUT /api/v1/attempts/{id}/responses/{item_id}`, và giao diện Next.js App Router (`frontend/src/app/...`) cho 6 Workspaces |
+| **Module đã có DB + Migration thật** | **3/47 module:** `G03 outbox` (`a7b8c9d0e1f2`, `b8c9d0e1f2a3`), `B04 taxonomy` + `B06 curriculum` (`c9d0e1f2a3b4`, kèm seed KNTT Toán & Lý 10–12) | **44/47 module còn lại** cần viết `internal/models.py`, migration Alembic, `internal/service.py`, `router.py` và gắn vào `app/main.py` |
 
 ## 2. Quyết định đã chốt
 
@@ -86,7 +78,7 @@ Phần Dexie của H-04 (`exam-autosave-store.ts`) làm cùng C06 ở Sprint 5 v
 | 1 | G03 `outbox` | `app/worker.py` | `outbox_events`, `inbox_events` | Cùng `event_id` 5 lần → 1 tác dụng phụ; relay chạy dưới `ulp_system_scheduler` |
 | 1 | G01 `config` | `app/config.py` | `platform_settings`, `feature_flags` | Đổi cờ có hiệu lực < 5s |
 | 1 | F05 `access` | `app/security.py`, `app/deps.py` | `roles`, `permissions`, `role_permissions` | IDOR chéo tenant: 0 ca lọt |
-| 1 | F04 `identity` | `app/routers/auth.py`; `users` → `legacy_users` | `users`, `memberships`, `parental_consents`, `user_pii_encryption_keys`, `erasure_certificates` | Dưới 16 tuổi thiếu consent bị chặn; xóa khóa Vault → không giải mã được |
+| 1 | F04 `privacy` | `app/routers/auth.py`; `users` → `legacy_users` | `users`, `memberships`, `parental_consents`, `user_pii_encryption_keys`, `erasure_certificates` | Dưới 16 tuổi thiếu consent bị chặn; xóa khóa Vault → không giải mã được |
 | 1 | B03 `assets` | `app/infrastructure/storage.py` | `assets`, `content_assets`, `question_assets` | FREE chỉ lấy `PREVIEW_PDF`; chéo tenant → 404 |
 | 1 | A01 `ingestion` | `app/ai/pipeline.py`, `ImportJob` | `sources`, `source_documents`, `document_versions`, `acquisition_jobs`, `pipeline_stage_runs`, `dead_letter_items` | Trùng sha256 trả bản cũ; retry idempotent 50 kịch bản |
 | 2 | B04 `taxonomy` | `app/application/categories.py`, `curriculum_data.py` | `taxonomy_nodes`, `taxonomy_node_versions`, `taxonomy_aliases` | `<@` < 5ms; nâng version không đứt liên kết |

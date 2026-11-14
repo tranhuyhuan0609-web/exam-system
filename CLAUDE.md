@@ -80,6 +80,8 @@ Thay vì đọc toàn bộ file lớn 2.500 dòng cùng lúc, hãy đọc từng
 
 ## 6. Kế Hoạch Triển Khai & Bố Cục Code Đã Chốt
 
-- Kế hoạch theo từng chặng (Wave 0 `H-01..H-04` → Track 1 → Track 2 → Track 3), các quyết định đã chốt và câu hỏi còn mở: `docs/architecture/IMPLEMENTATION_PLAN_V11_3.md`.
-- Bố cục code của repo này: `app/modules/<tên>/{public.py, router.py, internal/}` và `app/contracts/` (thay cho `backend/modules/...` và `backend/contracts/...` trong tài liệu); nhân dùng chung ở `app/platform/`.
+- Kế hoạch tổng thể (Wave 0 `H-01..H-04` → Track 1 → Track 2 → Track 3), các quyết định đã chốt và câu hỏi còn mở: `docs/architecture/IMPLEMENTATION_PLAN_V11_3.md`.
+- **Danh sách 36 Task tuần tự bắt buộc (`TASK-01` .. `TASK-36`):** `docs/architecture/CLAUDE_CODE_SEQUENTIAL_PLAN.md`. Claude Code **chỉ được phép làm lần lượt từng `TASK-xx` một**, tái sử dụng các hàm Pure Core đã có sẵn trong `app/modules/<tên>/internal/`, không tự đặt tên module/bảng/cột lệch đặc tả, và dừng chờ duyệt sau mỗi task.
+- Bố cục code của repo này: `app/modules/<tên>/{public.py, router.py, internal/}` và `app/contracts/` (thay cho `backend/modules/...` và `backend/contracts/...` trong tài liệu); nhân dùng chung ở `app/platform/`, công cụ vận hành/kiểm toán ở `app/ops/`.
 - Lệnh kiểm tra trước khi kết thúc mỗi chặng: `ruff check .` · `lint-imports` · `bash ci/check_gate_ids.sh` · `alembic upgrade head && alembic check` · `pytest -q`.
+
