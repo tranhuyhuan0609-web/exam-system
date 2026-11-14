@@ -138,7 +138,6 @@ async def recrop_figures() -> int:
     """
     import io
 
-    import pymupdf
     from PIL import Image
 
     from app.ai.figures import (
@@ -146,7 +145,7 @@ async def recrop_figures() -> int:
         cut,
         locate_crop,
         page_geometry,
-        remove_light_text,
+        render_without_light_text,
         snap_to_graphics,
         trim_cut_text,
     )
@@ -178,11 +177,11 @@ async def recrop_figures() -> int:
             def clean_render(number: int, width: int, clean_pages=clean_pages, pdf_bytes=pdf_bytes) -> Image.Image:
                 """The PDF page without watermark text, at the resolution of the stored page image."""
                 if number not in clean_pages:
-                    with pymupdf.open(stream=pdf_bytes, filetype="pdf") as doc:
-                        page = doc[number - 1]
-                        remove_light_text(page)
-                        pix = page.get_pixmap(dpi=round(width / (page.rect.width / 72)))
-                        clean_pages[number] = Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
+                    with PDFEngineAdapter.open(pdf_bytes) as reader:
+                        dpi = round(width / (reader.page_size(number - 1)[0] / 72))
+                        clean_pages[number] = render_without_light_text(reader, number - 1, dpi) or reader.render(
+                            number - 1, dpi
+                        )
                 return clean_pages[number]
 
             drafts = [dict(d) for d in job.drafts or []]

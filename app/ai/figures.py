@@ -8,13 +8,14 @@
    content cut by the crop border (a partial text line above or below the figure) is trimmed away.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from PIL import Image
 
 from app.ai.schemas import BoundingBox
-from app.infrastructure.pdf_engine import Drawing, PDFEngineAdapter, RichLine
+from app.infrastructure.pdf_engine import Drawing, PageObject, PDFEngineAdapter, Rect, RichLine
 
 SNAP_SLACK = 0.12  # how far outside the model's box a graphic or label may reach (fraction of the box size)
 SNAP_MIN_COVER = 0.15  # snapped area must cover at least this share of the model's box
@@ -124,24 +125,15 @@ def is_light_text(span: dict) -> bool:
     return is_light_colour(span.get("color", 0), span.get("alpha", 255))
 
 
-def remove_light_text(page) -> int:
-    """Redact watermark-style text from a PyMuPDF page in memory (drawings and images are kept)."""
-    import pymupdf
+def _light_text_object(obj: PageObject) -> bool:
+    return obj.kind == "text" and is_light_colour(obj.color, obj.alpha)
 
-    count = 0
-    for block in page.get_text("dict")["blocks"]:
-        for line in block.get("lines", []):
-            for span in line["spans"]:
-                if span["text"].strip() and is_light_text(span):
-                    page.add_redact_annot(pymupdf.Rect(span["bbox"]))
-                    count += 1
-    if count:
-        page.apply_redactions(
-            images=pymupdf.PDF_REDACT_IMAGE_NONE,
-            graphics=pymupdf.PDF_REDACT_LINE_ART_NONE,
-            text=pymupdf.PDF_REDACT_TEXT_REMOVE,
-        )
-    return count
+
+def render_without_light_text(reader: PDFEngineAdapter, index: int, dpi: float) -> Image.Image | None:
+    """Page ``index`` rendered without its watermark-style text (drawings and images are kept); None when the
+    page has no such text, so the plain render serves. The open document is not changed (gap G3 b)."""
+    image, removed = reader.render_without(index, dpi, drop=_light_text_object)
+    return image if removed else None
 
 
 def extract_unlabeled_diagrams(reader: PDFEngineAdapter, index: int, min_paths: int = 4) -> list[BoundingBox]:
@@ -173,16 +165,15 @@ def extract_unlabeled_diagrams(reader: PDFEngineAdapter, index: int, min_paths: 
     return diagram_boxes
 
 
-def redact_diagram_interior_text(page, diagram_rects) -> None:
-    """Redacts noise text inside complex diagram clusters before OCR/text extraction."""
-    import fitz
-
-    for d_rect in diagram_rects:
-        for block in page.get_text("blocks"):
-            b_rect = fitz.Rect(block[:4])
-            if d_rect.contains(b_rect):
-                page.add_redact_annot(b_rect)
-    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+def render_without_diagram_text(
+    reader: PDFEngineAdapter, index: int, diagram_rects: Sequence[Rect], dpi: float = 300
+) -> Image.Image:
+    """Page ``index`` rendered without the noise text (labels such as 'OH', 'v(m/s)') lying inside complex
+    diagram clusters. Read the remaining text with ``reader.blocks(index, exclude=diagram_rects)``."""
+    image, _ = reader.render_without(
+        index, dpi, drop=lambda obj: obj.kind == "text" and any(r.contains(obj.rect) for r in diagram_rects)
+    )
+    return image
 
 
 def _area(b: BoundingBox) -> int:

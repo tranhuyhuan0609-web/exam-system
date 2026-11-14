@@ -33,16 +33,15 @@ def test_sbom_blocks_agplv3_unless_commercial_exception_and_allows_mit_apache() 
     assert waived.blocking_violations == ()
 
 
-def test_requirements_scanner_detects_remaining_pymupdf_until_w05_finishes() -> None:
+def test_requirements_scanner_passes_now_that_pymupdf_is_removed() -> None:
     req_lines = (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
     current = audit_requirements_lines(req_lines)
-    # pymupdf>=1.24 is still listed in requirements.txt until ADR-010 PR C removes it.
-    assert current.passed is False
-    assert {v.package_name.lower() for v in current.blocking_violations} == {"pymupdf"}
+    # ADR-010 PR C removed pymupdf from requirements.txt; the scanner still catches it if it comes back.
+    assert current.passed is True and current.blocking_violations == ()
 
-    cleaned = [line for line in req_lines if not line.strip().lower().startswith("pymupdf")]
-    clean_report = audit_requirements_lines(cleaned)
-    assert clean_report.passed is True
+    regressed = audit_requirements_lines([*req_lines, "pymupdf>=1.24"])
+    assert regressed.passed is False
+    assert {v.package_name.lower() for v in regressed.blocking_violations} == {"pymupdf"}
 
 
 # --- regression + boundary tests --------------------------------------------------------------

@@ -17,6 +17,7 @@ from app.infrastructure.pdf_engine import (
     cluster_rects,
     merge_intersecting_rects_union_find,
 )
+from tests.pdf_fixtures import encrypted
 
 PAGE_W, PAGE_H = 595.0, 842.0
 
@@ -121,10 +122,9 @@ def test_invalid_input_raises_adapter_error(tmp_path):
 
 
 def _encrypted_pdf(sample_pdf: bytes) -> bytes:
-    # pdfium cannot write encrypted files; PyMuPDF is used here only as a fixture writer.
-    pymupdf = pytest.importorskip("pymupdf")
-    with pymupdf.open(stream=sample_pdf, filetype="pdf") as src:
-        return src.tobytes(encryption=pymupdf.PDF_ENCRYPT_AES_256, user_pw="secret", owner_pw="owner")
+    # pdfium cannot write encrypted files; pypdf (AES needs the `cryptography` package) is the fixture writer.
+    pytest.importorskip("cryptography")
+    return encrypted(sample_pdf, "secret", "owner")
 
 
 def test_password_protected_pdf_is_told_apart_from_a_corrupt_one(sample_pdf):

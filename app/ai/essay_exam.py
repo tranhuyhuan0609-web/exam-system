@@ -40,7 +40,7 @@ from app.ai.figures import (
     cut,
     is_light_colour,
     page_geometry,
-    remove_light_text,
+    render_without_light_text,
 )
 from app.ai.schemas import ExtractedQuestion
 from app.infrastructure.pdf_engine import PDFEngineAdapter, PDFEngineError
@@ -771,32 +771,6 @@ def _is_broken_text(text: str, has_pua: bool = False) -> bool:
     return False
 
 
-class _WatermarkRedactor:
-    """Renders a page of a PDF without its watermark-style text (PyMuPDF redaction; opened on first use)."""
-
-    def __init__(self, path: Path, dpi: int) -> None:
-        self._path, self._dpi, self._doc = path, dpi, None
-
-    def render(self, index: int) -> Image.Image | None:
-        import pymupdf
-
-        try:
-            if self._doc is None:
-                self._doc = pymupdf.open(self._path)
-            page = self._doc[index]
-            if not remove_light_text(page):
-                return None
-            return Image.open(io.BytesIO(page.get_pixmap(dpi=self._dpi).tobytes("png"))).convert("RGB")
-        except Exception:
-            log.warning("watermark removal failed on page %d", index + 1, exc_info=True)
-            return None
-
-    def close(self) -> None:
-        if self._doc is not None:
-            self._doc.close()
-            self._doc = None
-
-
 def _extract_pdf_lines(reader: PDFEngineAdapter) -> tuple[list[PdfLine], list[PageGeometry]]:
     """Step 1: Use the adapter's `rich_lines` to collect positioned lines in reading order,
     stripping headers, footers, and light watermarks."""
@@ -1475,18 +1449,15 @@ def read_essay_pdf(path: Path, dpi: int = 300) -> EssayPaper | None:
         page_rects: dict[int, tuple[float, float]] = {
             p_idx: doc.page_size(p_idx - 1) for p_idx in range(1, doc.page_count + 1)
         }
-        # Redaction is not available in the PDF engine adapter yet, so a page with watermark text is rendered
-        # a second time by PyMuPDF with that text removed (the only PyMuPDF use left in this function).
-        redactor = _WatermarkRedactor(path, dpi)
-        try:
-            for p_idx in range(1, doc.page_count + 1):
-                raw_page_imgs[p_idx] = doc.render(p_idx - 1, dpi)
-                if geometries[p_idx - 1].has_light_text:
-                    clean_page_imgs[p_idx] = redactor.render(p_idx - 1) or raw_page_imgs[p_idx]
-                else:
-                    clean_page_imgs[p_idx] = raw_page_imgs[p_idx]
-        finally:
-            redactor.close()
+        # A page with watermark text is rendered a second time without that text (pdfium object removal, G3).
+        for p_idx in range(1, doc.page_count + 1):
+            raw_page_imgs[p_idx] = doc.render(p_idx - 1, dpi)
+            clean_page_imgs[p_idx] = raw_page_imgs[p_idx]
+            if geometries[p_idx - 1].has_light_text:
+                try:
+                    clean_page_imgs[p_idx] = render_without_light_text(doc, p_idx - 1, dpi) or raw_page_imgs[p_idx]
+                except PDFEngineError:
+                    log.warning("watermark removal failed on page %d", p_idx, exc_info=True)
 
     questions: list[ExtractedQuestion] = []
     points: dict[int, float] = {}

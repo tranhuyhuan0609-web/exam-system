@@ -5,12 +5,12 @@ import asyncio
 import shutil
 from pathlib import Path
 
-import pymupdf
 import pytest
 from sqlalchemy import func, select
 
 from app.application.exam_pdf import PrintedPart, PrintedQuestion, chromium_pdf, exam_html
 from app.application.library_publish import auto_publish
+from app.infrastructure.pdf_engine import PDFEngineAdapter
 from app.infrastructure.storage import get_bronze_storage
 from app.models import (
     AnswerKey,
@@ -206,8 +206,8 @@ def test_chromium_prints_the_paper():
         solutions=False,
     )
     pdf = asyncio.run(chromium_pdf(html, "Đề thử"))
-    with pymupdf.open(stream=pdf, filetype="pdf") as document:
-        text = document[0].get_text()
+    with PDFEngineAdapter.open(pdf) as document:
+        text = document.text_stream(0)
     assert "Câu 1." in text and "Họ, tên thí sinh" in text and "Trang 1/1" in text
 
 

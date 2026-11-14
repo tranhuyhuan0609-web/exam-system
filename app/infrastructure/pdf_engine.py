@@ -13,8 +13,11 @@ Memory: nothing is cached per page. Every method opens the page it needs, conver
 plain dataclasses and releases the page before returning, so memory is bounded by one page
 (plus one rendered bitmap).
 
-Out of scope on purpose: writing/assembling PDFs, redaction, OCR
-(see docs/architecture/PDF_ENGINE_MIGRATION.md).
+Writing (PR C, gaps G1, G2, G3) lives at the bottom of the module as plain functions: ``slice_pdf`` and
+``merge_pdfs`` (pypdfium2 ``import_pages``), ``extend_page_top`` (pypdf page boxes), ``redact_pdf`` (pdfium
+page objects removed, then a fill painted) and ``stamp_pages`` (reportlab overlay merged with pypdf; all
+BSD/Apache licensed). ``PDFEngineAdapter.render_without`` renders a page with some objects removed (in memory).
+OCR is not here (see docs/architecture/PDF_ENGINE_MIGRATION.md).
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ from __future__ import annotations
 import ctypes
 import io
 import unicodedata
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +36,13 @@ import pdfplumber
 import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_raw
 from PIL import Image
+from pypdf import PdfReader, PdfWriter, Transformation
+from pypdf.generic import RectangleObject
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen import canvas
 
 PathOrBytes = str | Path | bytes | bytearray | memoryview
 
@@ -475,6 +485,136 @@ def merge_intersecting_rects_union_find(rects: Iterable[Rect], pad: float = 10.0
         working = merged
 
 
+@dataclass(frozen=True, slots=True)
+class _PageSpace:
+    """pdfium reports text and object boxes in the page's own space: unrotated, crop box origin anywhere.
+    This maps them to the adapter's displayed, top-left coordinates (and back)."""
+
+    rotation: int
+    left: float
+    bottom: float
+    width: float  # unrotated crop box size
+    height: float
+
+    @classmethod
+    def of(cls, page: Any) -> _PageSpace:
+        left, bottom, right, top = page.get_cropbox()
+        return cls(int(page.get_rotation()) % 360, float(left), float(bottom), float(right - left), float(top - bottom))
+
+    def point_to_view(self, x: float, y: float) -> tuple[float, float]:
+        u, v = x - self.left, y - self.bottom
+        if self.rotation == 90:
+            return v, u
+        if self.rotation == 180:
+            return self.width - u, v
+        if self.rotation == 270:
+            return self.height - v, self.width - u
+        return u, self.height - v
+
+    def point_to_pdf(self, x: float, y: float) -> tuple[float, float]:
+        if self.rotation == 90:
+            u, v = y, x
+        elif self.rotation == 180:
+            u, v = self.width - x, y
+        elif self.rotation == 270:
+            u, v = self.width - y, self.height - x
+        else:
+            u, v = x, self.height - y
+        return u + self.left, v + self.bottom
+
+    def to_view(self, left: float, bottom: float, right: float, top: float) -> Rect:
+        pts = [self.point_to_view(x, y) for x, y in ((left, bottom), (right, top))]
+        return Rect(min(p[0] for p in pts), min(p[1] for p in pts), max(p[0] for p in pts), max(p[1] for p in pts))
+
+    def to_pdf(self, rect: Rect) -> tuple[float, float, float, float]:
+        pts = [self.point_to_pdf(x, y) for x, y in ((rect.x0, rect.y0), (rect.x1, rect.y1))]
+        return min(p[0] for p in pts), min(p[1] for p in pts), max(p[0] for p in pts), max(p[1] for p in pts)
+
+
+_OBJECT_KINDS = {
+    pdfium_raw.FPDF_PAGEOBJ_TEXT: "text",
+    pdfium_raw.FPDF_PAGEOBJ_PATH: "path",
+    pdfium_raw.FPDF_PAGEOBJ_IMAGE: "image",
+    pdfium_raw.FPDF_PAGEOBJ_SHADING: "shading",
+    pdfium_raw.FPDF_PAGEOBJ_FORM: "form",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class PageObject:
+    """A pdfium page object as seen by ``render_without`` / ``redact_pdf`` predicates.
+
+    ``rect`` is in the adapter's coordinates; ``color`` (0xRRGGBB) and ``alpha`` (0..255) are the fill colour,
+    which is the colour of normal (filled) text. ``depth`` is 0 for objects of the page, more inside form XObjects.
+    """
+
+    kind: str
+    rect: Rect
+    color: int
+    alpha: int
+    depth: int
+
+
+def _object_bounds(obj: Any) -> tuple[float, float, float, float]:
+    """Bounds of a page object in page space (pdfium gives the bounds of an object inside a form in form space)."""
+    left, bottom, right, top = obj.get_bounds()
+    container = obj.container
+    matrix: Matrix | None = None
+    while container is not None and not isinstance(container, pdfium.PdfPage):
+        m: Matrix = tuple(container.get_matrix().get())  # type: ignore[assignment]
+        matrix = m if matrix is None else _compose(matrix, m)
+        container = getattr(container, "container", None)
+    if matrix is None:
+        return left, bottom, right, top
+    pts = [_apply(matrix, x, y) for x, y in ((left, bottom), (left, top), (right, bottom), (right, top))]
+    return min(p[0] for p in pts), min(p[1] for p in pts), max(p[0] for p in pts), max(p[1] for p in pts)
+
+
+def _describe(obj: Any, space: _PageSpace) -> PageObject:
+    r_, g_, b_, a_ = (ctypes.c_uint() for _ in range(4))
+    color, alpha = 0, 255
+    if pdfium_raw.FPDFPageObj_GetFillColor(obj.raw, *(ctypes.byref(v) for v in (r_, g_, b_, a_))):
+        color, alpha = (r_.value << 16) | (g_.value << 8) | b_.value, a_.value
+    depth, container = 0, obj.container
+    while container is not None and not isinstance(container, pdfium.PdfPage):
+        depth += 1
+        container = getattr(container, "container", None)
+    return PageObject(_OBJECT_KINDS.get(obj.type, "other"), space.to_view(*_object_bounds(obj)), color, alpha, depth)
+
+
+def _remove_objects(page: Any, drop: Callable[[PageObject], bool]) -> int:
+    """Remove the objects ``drop`` selects (also inside form XObjects) and regenerate the content. Returns the count."""
+    space = _PageSpace.of(page)
+    chosen = [
+        obj
+        for obj in page.get_objects(max_depth=_FORM_DEPTH)
+        if obj.type != pdfium_raw.FPDF_PAGEOBJ_FORM and drop(_describe(obj, space))
+    ]
+    for obj in chosen:
+        container = obj.container
+        if container is None or isinstance(container, pdfium.PdfPage):
+            page.remove_obj(obj)
+        else:
+            pdfium_raw.FPDFFormObj_RemoveObject(container.raw, obj.raw)
+        obj.close()
+    if chosen:
+        page.gen_content()
+    return len(chosen)
+
+
+def _render_page(page: Any, dpi: float, clip: Rect | None) -> Image.Image:
+    w, h = page.get_size()
+    crop = (0.0, 0.0, 0.0, 0.0)
+    if clip is not None:
+        x0, y0 = max(0.0, min(w, clip.x0)), max(0.0, min(h, clip.y0))
+        x1, y1 = max(x0, min(w, clip.x1)), max(y0, min(h, clip.y1))
+        if x1 - x0 <= 0 or y1 - y0 <= 0:
+            raise PDFEngineError("Clip rectangle is empty or outside the page")
+        crop = (x0, h - y1, w - x1, y0)  # pdfium order: left, bottom, right, top margins to cut
+    bitmap = page.render(scale=dpi / 72.0, crop=crop, may_draw_forms=False)
+    return bitmap.to_pil().convert("RGB")
+
+
 class PDFEngineAdapter:
     """Read-only PDF access. Use as a context manager so both engines are closed deterministically.
 
@@ -616,16 +756,7 @@ class PDFEngineAdapter:
         self._check(index)
         page = self._pdfium[index]
         try:
-            w, h = page.get_size()
-            crop = (0.0, 0.0, 0.0, 0.0)
-            if clip is not None:
-                x0, y0 = max(0.0, min(w, clip.x0)), max(0.0, min(h, clip.y0))
-                x1, y1 = max(x0, min(w, clip.x1)), max(y0, min(h, clip.y1))
-                if x1 - x0 <= 0 or y1 - y0 <= 0:
-                    raise PDFEngineError("Clip rectangle is empty or outside the page")
-                crop = (x0, h - y1, w - x1, y0)  # pdfium order: left, bottom, right, top margins to cut
-            bitmap = page.render(scale=dpi / 72.0, crop=crop, may_draw_forms=False)
-            return bitmap.to_pil().convert("RGB")
+            return _render_page(page, dpi, clip)
         except PDFEngineError:
             raise
         except Exception as exc:
@@ -637,6 +768,49 @@ class PDFEngineAdapter:
         buf = io.BytesIO()
         self.render(index, dpi, clip).save(buf, format="PNG")
         return buf.getvalue()
+
+    def page_objects(self, index: int) -> list[PageObject]:
+        """Every page object (form XObjects entered, the forms themselves not listed), in content order."""
+        self._check(index)
+        page = self._pdfium[index]
+        try:
+            space = _PageSpace.of(page)
+            return [
+                _describe(obj, space)
+                for obj in page.get_objects(max_depth=_FORM_DEPTH)
+                if obj.type != pdfium_raw.FPDF_PAGEOBJ_FORM
+            ]
+        except Exception as exc:
+            raise PDFEngineError(f"Cannot read objects of page {index}: {exc}") from exc
+        finally:
+            page.close()
+
+    def render_without(
+        self, index: int, dpi: float = 300.0, *, drop: Callable[[PageObject], bool], clip: Rect | None = None
+    ) -> tuple[Image.Image, int]:
+        """Render a page with the objects ``drop`` selects removed (gap G3 b: watermark text, labels inside a
+        figure). Works on a private copy of the document; this one is not changed. Returns the image and how many
+        objects were removed (0: the image is the plain render)."""
+        if dpi <= 0:
+            raise PDFEngineError("dpi must be positive")
+        self._check(index)
+        try:
+            copy = pdfium.PdfDocument(self._data, password=self._password)
+        except Exception as exc:
+            raise PDFEngineError(f"Cannot open PDF: {exc}") from exc
+        try:
+            page = copy[index]
+            try:
+                removed = _remove_objects(page, drop)
+                return _render_page(page, dpi, clip), removed
+            finally:
+                page.close()
+        except PDFEngineError:
+            raise
+        except Exception as exc:
+            raise PDFEngineError(f"Cannot render page {index}: {exc}") from exc
+        finally:
+            copy.close()
 
     # -- text --------------------------------------------------------------------------------
 
@@ -666,7 +840,8 @@ class PDFEngineAdapter:
             page.close()
 
     def find_text(self, index: int, needle: str, *, match_case: bool = False) -> list[Rect]:
-        """Bounding boxes (top-left origin) of every occurrence of ``needle``, like ``page.search_for``.
+        """Bounding boxes (top-left origin, page as displayed: /Rotate and the crop box origin applied) of every
+        occurrence of ``needle``, like ``page.search_for``.
 
         One rectangle per occurrence (a match wrapped over two lines yields their union).
         pdfium matches on code points; when it finds nothing, a second pass compares both sides decomposed
@@ -677,7 +852,7 @@ class PDFEngineAdapter:
         self._check(index)
         page = self._pdfium[index]
         try:
-            _, height = page.get_size()
+            space = _PageSpace.of(page)
             textpage = page.get_textpage()
             try:
                 spans: list[tuple[int, int]] = []
@@ -692,11 +867,11 @@ class PDFEngineAdapter:
                     boxes = [b for b in boxes if b[2] > b[0] and b[3] > b[1]]
                     if boxes:
                         found.append(
-                            Rect(
+                            space.to_view(
                                 min(b[0] for b in boxes),
-                                height - max(b[3] for b in boxes),
+                                min(b[1] for b in boxes),
                                 max(b[2] for b in boxes),
-                                height - min(b[1] for b in boxes),
+                                max(b[3] for b in boxes),
                             )
                         )
                 return found
@@ -900,14 +1075,20 @@ class PDFEngineAdapter:
             page.close()
 
     def rich_lines(
-        self, index: int, *, clip: Rect | None = None, line_gap: float = LINE_BREAK_GAP_EM
+        self,
+        index: int,
+        *,
+        clip: Rect | None = None,
+        line_gap: float = LINE_BREAK_GAP_EM,
+        exclude: Sequence[Rect] = (),
     ) -> list[RichLine]:
         """Text lines with spans (font, size, colour, alpha), in content-stream order.
 
         A line is a run of characters sharing a text row: it ends when the next
         character overlaps the row by less than 40 %, jumps back to the left, or sits more than ``line_gap`` em
         to the right (table cells, tab stops: PyMuPDF reports those as separate blocks too).
-        With ``clip`` only characters whose centre lies inside the rectangle are read.
+        With ``clip`` only characters whose centre lies inside the rectangle are read; characters centred in any
+        ``exclude`` rectangle are skipped (reading around a figure without redacting it, gap G3 a).
         """
         lines: list[RichLine] = []
         cur: list[_PChar] = []
@@ -957,8 +1138,12 @@ class PDFEngineAdapter:
         space = _PChar(" ", 0.0, 0.0, 0.0, 0.0, 0.0, "", 0, 255, False)
         prev = space  # the last boxed character
         for c in self._pdfium_chars(index):
-            if clip is not None and c.boxed and not clip.contains_point((c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2):
-                continue
+            if c.boxed and (clip is not None or exclude):
+                cx, cy = (c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2
+                if clip is not None and not clip.contains_point(cx, cy):
+                    continue
+                if any(e.contains_point(cx, cy) for e in exclude):
+                    continue
             if not c.boxed:
                 # A generated space between two text objects. Generated CR/LF are ignored: pdfium also emits them
                 # between a text and its superscript, so geometry alone decides about lines and word gaps.
@@ -982,13 +1167,14 @@ class PDFEngineAdapter:
         flush()
         return lines
 
-    def blocks(self, index: int, *, clip: Rect | None = None) -> list[Block]:
+    def blocks(self, index: int, *, clip: Rect | None = None, exclude: Sequence[Rect] = ()) -> list[Block]:
         """Paragraph-like text blocks in content-stream order, like ``get_text("blocks")`` (which, with
         PyMuPDF's default flags, reports no image blocks either).
 
         Consecutive lines belong to one block while the vertical gap stays below ``BLOCK_GAP_EM`` times the line
         height and the lines overlap horizontally; a jump up the page or sideways starts a new block.
-        ``clip`` restricts the text like ``get_text("blocks", clip=)``.
+        ``clip`` restricts the text like ``get_text("blocks", clip=)``; ``exclude`` drops characters as in
+        ``rich_lines``.
         """
         blocks: list[Block] = []
         group: list[RichLine] = []
@@ -1001,7 +1187,7 @@ class PDFEngineAdapter:
             group.clear()
             bounds = None
 
-        for ln in self.rich_lines(index, clip=clip):
+        for ln in self.rich_lines(index, clip=clip, exclude=exclude):
             if group and bounds is not None:
                 prev = group[-1].rect
                 height = max(prev.height, ln.rect.height)
@@ -1017,3 +1203,323 @@ class PDFEngineAdapter:
             bounds = ln.rect if bounds is None else bounds.union(ln.rect)
         close()
         return blocks
+
+
+# -- writing: slice, merge, stamp (gaps G1 and G2) ---------------------------------------------
+
+
+def _save(document: pdfium.PdfDocument) -> bytes:
+    buf = io.BytesIO()
+    document.save(buf)
+    return buf.getvalue()
+
+
+def slice_pdf(data: PathOrBytes, first: int, last: int) -> bytes:
+    """A new PDF with pages ``first``..``last`` (0-based, both included) of ``data``, like ``insert_pdf``."""
+    source = None
+    try:
+        with PDFEngineAdapter.open(data) as probe:
+            count = probe.page_count
+        if not 0 <= first <= last < count:
+            raise PDFEngineError(f"Page range {first}..{last} is outside 0..{count - 1}")
+        source = pdfium.PdfDocument(data if isinstance(data, (str, Path)) else bytes(data))
+        part = pdfium.PdfDocument.new()
+        try:
+            part.import_pages(source, list(range(first, last + 1)))
+            return _save(part)
+        finally:
+            part.close()
+    except PDFEngineError:
+        raise
+    except Exception as exc:
+        raise PDFEngineError(f"Cannot slice PDF: {exc}") from exc
+    finally:
+        if source is not None:
+            source.close()
+
+
+def merge_pdfs(parts: Sequence[PathOrBytes]) -> tuple[bytes, list[int]]:
+    """The PDFs one after the other in a single PDF, and the first page (1-based) of each part."""
+    if not parts:
+        raise PDFEngineError("Nothing to merge")
+    merged = pdfium.PdfDocument.new()
+    starts: list[int] = []
+    try:
+        for part in parts:
+            starts.append(len(merged) + 1)
+            source = None
+            try:
+                source = pdfium.PdfDocument(part if isinstance(part, (str, Path)) else bytes(part))
+                merged.import_pages(source)
+            finally:
+                if source is not None:
+                    source.close()
+        return _save(merged), starts
+    except Exception as exc:
+        raise PDFEngineError(f"Cannot merge PDFs: {exc}") from exc
+    finally:
+        merged.close()
+
+
+#: Bundled Unicode font (DejaVu Sans, Bitstream Vera licence) with the whole Vietnamese alphabet.
+DEFAULT_STAMP_FONT = Path(__file__).resolve().parents[1] / "static" / "fonts" / "DejaVuSans.ttf"
+_FALLBACK_FONT = "Helvetica"  # base-14, Latin-1 only; used when the bundled font is missing
+_STAMP_MIN_SIZE = 4.0
+_registered_fonts: dict[str, str] = {}
+
+
+def _font_name(font: str | Path | None) -> str:
+    """The reportlab name of ``font`` (a TTF path, or None for the bundled font), registering it once."""
+    path = Path(font) if font is not None else DEFAULT_STAMP_FONT
+    key = str(path)
+    if key not in _registered_fonts:
+        if not path.is_file():
+            if font is not None:
+                raise PDFEngineError(f"Font file not found: {path}")
+            return _FALLBACK_FONT
+        name = f"stamp-{len(_registered_fonts)}-{path.stem}"
+        pdfmetrics.registerFont(TTFont(name, key))
+        _registered_fonts[key] = name
+    return _registered_fonts[key]
+
+
+@dataclass(frozen=True, slots=True)
+class TextStamp:
+    """One line of text written onto a page, in the adapter's coordinates (points, top-left origin).
+
+    The text is drawn on one line inside ``rect``, centred vertically. The font shrinks (down to 4 pt) when the
+    text is too wide; what still does not fit is clipped. ``background`` paints the rectangle first.
+    ``font`` is a TTF file; by default the bundled DejaVu Sans, which writes Vietnamese.
+    """
+
+    text: str
+    rect: Rect
+    size: float = 9.0
+    color: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    align: str = "left"  # "left" | "center" | "right"
+    background: tuple[float, float, float] | None = None
+    font: str | Path | None = None
+
+    @classmethod
+    def at(
+        cls,
+        x: float,
+        baseline: float,
+        text: str,
+        size: float = 9.0,
+        color: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        *,
+        max_width: float = 10_000.0,
+        font: str | Path | None = None,
+    ) -> TextStamp:
+        """Left-aligned text whose baseline is at ``(x, baseline)``, like PyMuPDF ``insert_text``."""
+        return cls(text, Rect(x, baseline - 0.85 * size, x + max_width, baseline + 0.15 * size), size, color, font=font)
+
+
+@dataclass(frozen=True, slots=True)
+class ImageStamp:
+    """A picture (file path or encoded bytes: PNG, JPEG) placed in ``rect``; centred when the proportion is kept."""
+
+    image: str | Path | bytes
+    rect: Rect
+    keep_proportion: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class LineStamp:
+    """A straight line from ``(x0, y0)`` to ``(x1, y1)``."""
+
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+    color: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    width: float = 1.0
+
+
+Stamp = TextStamp | ImageStamp | LineStamp
+
+
+def _draw_text(pdf: canvas.Canvas, page_height: float, stamp: TextStamp) -> None:
+    r = stamp.rect
+    if stamp.background is not None:
+        pdf.setFillColorRGB(*stamp.background)
+        pdf.rect(r.x0, page_height - r.y1, r.width, r.height, stroke=0, fill=1)
+    if not stamp.text:
+        return
+    font = _font_name(stamp.font)
+    size = stamp.size
+    while size > _STAMP_MIN_SIZE and stringWidth(stamp.text, font, size) > r.width:
+        size -= 0.25
+    width = stringWidth(stamp.text, font, size)
+    x = {"center": r.x0 + (r.width - width) / 2, "right": r.x1 - width}.get(stamp.align, r.x0)
+    baseline = page_height - (r.y0 + r.height / 2) - size * 0.35  # glyphs span roughly -0.2..0.75 em
+    pdf.saveState()
+    clip = pdf.beginPath()  # text still too wide at the minimum size is cut at the box, never spilled over the page
+    clip.rect(r.x0, page_height - r.y1, r.width, r.height)
+    pdf.clipPath(clip, stroke=0, fill=0)
+    pdf.setFillColorRGB(*stamp.color)
+    pdf.setFont(font, size)
+    pdf.drawString(x, baseline, stamp.text)
+    pdf.restoreState()
+
+
+def _draw(pdf: canvas.Canvas, page_height: float, stamp: Stamp) -> None:
+    if isinstance(stamp, TextStamp):
+        _draw_text(pdf, page_height, stamp)
+    elif isinstance(stamp, ImageStamp):
+        source = io.BytesIO(stamp.image) if isinstance(stamp.image, bytes) else str(stamp.image)
+        r = stamp.rect
+        pdf.drawImage(
+            ImageReader(source),
+            r.x0,
+            page_height - r.y1,
+            r.width,
+            r.height,
+            mask="auto",
+            preserveAspectRatio=stamp.keep_proportion,
+            anchor="c",
+        )
+    else:
+        pdf.setStrokeColorRGB(*stamp.color)
+        pdf.setLineWidth(stamp.width)
+        pdf.line(stamp.x0, page_height - stamp.y0, stamp.x1, page_height - stamp.y1)
+
+
+def _overlay_matrix(rotation: int, width: float, height: float, origin: tuple[float, float]) -> Transformation:
+    """Maps the displayed page (what ``stamp_pages`` draws on) back to the page's own, unrotated space."""
+    a, b, c, d, e, f = {
+        90: (0.0, 1.0, -1.0, 0.0, width, 0.0),
+        180: (-1.0, 0.0, 0.0, -1.0, width, height),
+        270: (0.0, -1.0, 1.0, 0.0, 0.0, height),
+    }.get(rotation, (1.0, 0.0, 0.0, 1.0, 0.0, 0.0))
+    return Transformation((a, b, c, d, e + origin[0], f + origin[1]))
+
+
+def _read_bytes(data: PathOrBytes) -> bytes:
+    return Path(data).read_bytes() if isinstance(data, (str, Path)) else bytes(data)
+
+
+def _write(writer: PdfWriter) -> bytes:
+    writer.compress_identical_objects()  # defaults dedupe and drop orphans in every pypdf release
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
+def stamp_pages(data: PathOrBytes, build: Callable[[int, float, float], Sequence[Stamp]]) -> bytes:
+    """Write text, pictures and lines onto pages (gap G2). ``build(page_index, width, height)`` returns the stamps
+    of that page (an empty sequence leaves it alone); width and height are the displayed size in points."""
+    try:
+        writer = PdfWriter(clone_from=PdfReader(io.BytesIO(_read_bytes(data))))
+        for index, page in enumerate(writer.pages):
+            box = page.cropbox
+            width, height = float(box.width), float(box.height)
+            rotation = int(page.rotation) % 360
+            shown_w, shown_h = (height, width) if rotation in (90, 270) else (width, height)
+            stamps = build(index, shown_w, shown_h)
+            if not stamps:
+                continue
+            buf = io.BytesIO()
+            pdf = canvas.Canvas(buf, pagesize=(shown_w, shown_h))
+            for stamp in stamps:
+                _draw(pdf, shown_h, stamp)
+            pdf.showPage()
+            pdf.save()
+            overlay = PdfReader(io.BytesIO(buf.getvalue())).pages[0]
+            matrix = _overlay_matrix(rotation, width, height, (float(box.left), float(box.bottom)))
+            page.merge_transformed_page(overlay, matrix)
+        return _write(writer)
+    except PDFEngineError:
+        raise
+    except Exception as exc:
+        raise PDFEngineError(f"Cannot stamp PDF: {exc}") from exc
+
+
+def extend_page_top(data: PathOrBytes, index: int, extra: float) -> bytes:
+    """Make page ``index`` ``extra`` points taller at its displayed top: the content keeps its place relative to the
+    bottom, so it moves down by ``extra`` in the adapter's coordinates and leaves a blank band for a banner.
+    Only the page boxes change (the content is not re-rendered)."""
+    if extra <= 0:
+        raise PDFEngineError("extra must be positive")
+    try:
+        writer = PdfWriter(clone_from=PdfReader(io.BytesIO(_read_bytes(data))))
+        if not 0 <= index < len(writer.pages):
+            raise PDFEngineError(f"Page index {index} out of range (0..{len(writer.pages) - 1})")
+        page = writer.pages[index]
+        left, bottom = float(page.cropbox.left), float(page.cropbox.bottom)
+        right, top = float(page.cropbox.right), float(page.cropbox.top)
+        rotation = int(page.rotation) % 360
+        if rotation == 90:  # the displayed top is the unrotated left edge
+            left -= extra
+        elif rotation == 180:
+            bottom -= extra
+        elif rotation == 270:
+            right += extra
+        else:
+            top += extra
+        box = RectangleObject((left, bottom, right, top))
+        page.mediabox = box
+        page.cropbox = box
+        return _write(writer)
+    except PDFEngineError:
+        raise
+    except Exception as exc:
+        raise PDFEngineError(f"Cannot extend page {index}: {exc}") from exc
+
+
+def redact_pdf(
+    data: PathOrBytes,
+    regions: Callable[[int, float, float], Sequence[Rect]],
+    *,
+    remove_images: bool = True,
+    fill: tuple[float, float, float] | None = (1.0, 1.0, 1.0),
+) -> bytes:
+    """Remove what lies in ``regions(page_index, width, height)`` (adapter coordinates) and paint ``fill`` over it
+    (gap G3 c, for PDFs handed to customers).
+
+    pdfium cannot cut a text or image object in two, so the rules work per object: text is removed when at least
+    half of its box is inside a region, a picture when at least half of it is (with ``remove_images``), a path
+    when it lies inside. What partly overlaps and stays is covered by the fill.
+    """
+
+    def drop(obj: PageObject, areas: Sequence[Rect]) -> bool:
+        if obj.kind == "text":
+            return any(obj.rect.overlap_ratio(a) >= 0.5 or a.contains(obj.rect) for a in areas)
+        if obj.kind == "image":
+            return remove_images and any(obj.rect.overlap_ratio(a) >= 0.5 for a in areas)
+        if obj.kind == "path":
+            return any(a.expanded(1.0).contains(obj.rect) for a in areas)
+        return False
+
+    document = None
+    try:
+        document = pdfium.PdfDocument(_read_bytes(data))
+        for index in range(len(document)):
+            page = document[index]
+            try:
+                width, height = page.get_size()
+                areas = [a for a in regions(index, width, height) if a.width > 0 and a.height > 0]
+                if not areas:
+                    continue
+                _remove_objects(page, lambda obj, areas=areas: drop(obj, areas))
+                if fill is not None:
+                    space = _PageSpace.of(page)
+                    red, green, blue = (max(0, min(255, round(c * 255))) for c in fill)
+                    for area in areas:
+                        left, bottom, right, top = space.to_pdf(area)
+                        rect = pdfium_raw.FPDFPageObj_CreateNewRect(left, bottom, right - left, top - bottom)
+                        pdfium_raw.FPDFPageObj_SetFillColor(rect, red, green, blue, 255)
+                        pdfium_raw.FPDFPath_SetDrawMode(rect, pdfium_raw.FPDF_FILLMODE_WINDING, 0)
+                        pdfium_raw.FPDFPage_InsertObject(page.raw, rect)
+                    page.gen_content()
+            finally:
+                page.close()
+        return _save(document)
+    except PDFEngineError:
+        raise
+    except Exception as exc:
+        raise PDFEngineError(f"Cannot redact PDF: {exc}") from exc
+    finally:
+        if document is not None:
+            document.close()
