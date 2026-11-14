@@ -27,8 +27,8 @@ LEGACY_TABLES = frozenset(
         "ai_cache", "ai_usage", "answer_keys", "categories", "crawl_category_map", "crawl_runs",
         "crawled_questions", "crawler_sites", "exam_attempts", "exam_enrollments", "exam_questions",
         "exam_targets", "exams", "import_jobs", "knowledge_articles", "knowledge_units",
-        "library_documents", "library_views", "question_categories", "question_target_tags",
-        "questions", "target_curriculum_mappings", "legacy_users",
+        "legacy_questions", "library_documents", "library_views", "question_categories", "question_target_tags",
+        "target_curriculum_mappings", "legacy_users",
     }
 )  # fmt: skip
 """Pre-V11.3 tables, single-tenant by design. Each one leaves this list when its module replaces it;

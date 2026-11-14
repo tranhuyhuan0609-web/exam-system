@@ -39,10 +39,12 @@ OPEN_TAKEDOWN_ACTION = "OPEN_TAKEDOWN_CASE"
 _AUDIT_ROUTE = "/api/v1/audit-logs"
 _AUDIT_SORT_FIELD = "occurred_at"
 
-# Where each target type lives and which status columns a takedown forces. QUESTION waits for C01: the
-# V11.3 `questions` table does not exist yet (the legacy one has integer ids).
+# Where each target type lives and whether it has a publication axis (forced to TAKEN_DOWN with the rights).
+# A taken-down question keeps its frozen versions untouched: the papers that used them stay reproducible, and
+# the question's own status hides it from public reads (hybrid_read_policy) and from new versions (C01).
 _TARGETS: dict[str, tuple[str, bool]] = {
     TakedownEntityType.CONTENT_ITEM: ("content_items", True),
+    TakedownEntityType.QUESTION: ("questions", True),
     TakedownEntityType.SOURCE_DOCUMENT: ("source_documents", False),
 }
 
@@ -213,9 +215,7 @@ async def list_audit_events(
 async def _target_statuses(session: AsyncSession, entity_type: str, entity_id: uuid.UUID) -> tuple[str, str | None]:
     """(rights_status, publication_status or None) of a target the tenant can see; AuditNotFoundError otherwise."""
     if entity_type not in _TARGETS:
-        raise TakedownConflictError(
-            "TARGET_TYPE_NOT_SUPPORTED_YET", f"{entity_type} takedowns need the C01 questions module (V11.3 table)"
-        )
+        raise TakedownConflictError("TARGET_TYPE_NOT_SUPPORTED", f"{entity_type} takedowns are not supported")
     table, has_publication = _TARGETS[entity_type]
     columns = "rights_status, publication_status" if has_publication else "rights_status, NULL"
     # table and columns come from the fixed map above, never from input
@@ -325,13 +325,15 @@ async def execute_takedown_case(
             text(f"UPDATE {table} SET rights_status = 'TAKEDOWN', publication_status = 'TAKEN_DOWN' WHERE id = :id"),
             {"id": case.target_entity_id},
         )
-        # Every published version too: the immutability trigger allows exactly this one change.
-        await session.execute(
-            text(
-                "UPDATE content_versions SET status = 'TAKEN_DOWN' WHERE content_item_id = :id AND status = 'PUBLISHED'"
-            ),
-            {"id": case.target_entity_id},
-        )
+        if case.target_entity_type == TakedownEntityType.CONTENT_ITEM:
+            # Every published version too: the immutability trigger allows exactly this one change.
+            await session.execute(
+                text(
+                    "UPDATE content_versions SET status = 'TAKEN_DOWN' "
+                    "WHERE content_item_id = :id AND status = 'PUBLISHED'"
+                ),
+                {"id": case.target_entity_id},
+            )
     else:
         await session.execute(
             text(f"UPDATE {table} SET rights_status = 'TAKEDOWN' WHERE id = :id"), {"id": case.target_entity_id}

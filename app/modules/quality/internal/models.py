@@ -1,6 +1,6 @@
 """SQLAlchemy ORM model for C02 quality (spec chapter 4): verification runs.
 
-`question_version_id` stays a plain UUID until C01 creates `question_versions` (TASK-17 adds the foreign key).
+`question_version_id` (C01, TASK-17) and `candidate_id` (A07) are composite same-tenant foreign keys.
 """
 
 from __future__ import annotations
@@ -25,6 +25,12 @@ class VerificationRun(Base):
         CheckConstraint(
             "verifier_type IN ('DETERMINISTIC_RULE', 'SYMPY_SOLVER', 'LLM_BLIND_SOLVER', 'HUMAN_EXPERT')",
             name="ck_verification_runs_verifier_type",
+        ),
+        ForeignKeyConstraint(
+            ["question_version_id", "tenant_id"],
+            ["question_versions.id", "question_versions.tenant_id"],
+            ondelete="CASCADE",
+            name="fk_verification_runs_question_version_tenant",
         ),
         ForeignKeyConstraint(
             ["candidate_id", "tenant_id"],

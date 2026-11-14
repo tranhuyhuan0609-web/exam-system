@@ -1,7 +1,8 @@
-"""FastAPI /api/v1 routes for C02: verify a question candidate with the SymPy sandbox, read a verification run.
+"""FastAPI /api/v1 routes for C02: verify a question candidate or a C01 question version with the SymPy sandbox,
+read a verification run.
 
-`POST /question-versions/{id}/verify` arrives with C01 (TASK-17); until `question_versions` exists the same
-check runs against a candidate: `POST /candidates/{id}/verify`.
+`POST /question-versions/{id}/verify` compares with the version's stored SHORT_NUMERIC answer unless the request
+gives `source_answer`; the answer itself is never returned.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from app.modules.quality.internal.service import (
     VerificationNotFoundError,
     get_verification_run,
     verify_candidate_numeric,
+    verify_question_version_numeric,
 )
 from app.platform.auth_context import (
     ActorContext,
@@ -145,6 +147,47 @@ async def verify_candidate_endpoint(
     return JSONResponse(
         status_code=status.HTTP_201_CREATED,
         content=jsonable_encoder({"run": run, "candidate_verification_status": candidate_status}),
+        headers={"X-Correlation-Id": correlation_id},
+    )
+
+
+class VerifyVersionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expression: str = Field(min_length=1, max_length=500)
+    source_answer: str | None = Field(default=None, min_length=1, max_length=100)
+    tolerance: Decimal = Field(default=Decimal("0.01"), ge=0, le=1)
+
+
+@router.post("/question-versions/{version_id}/verify", status_code=status.HTTP_201_CREATED)
+async def verify_question_version_endpoint(
+    version_id: uuid.UUID, request: Request, credentials: OptionalBearer = None
+) -> JSONResponse:
+    actor, correlation_id, err = _authenticate(request, credentials, write=True)
+    if err is not None:
+        return err
+    assert actor is not None
+    try:
+        payload = VerifyVersionRequest.model_validate(await request.json())
+    except (ValidationError, ValueError) as exc:
+        return _problem(request, correlation_id, PlatformErrorCode.VALIDATION_ERROR, str(exc))
+    try:
+        async with tenant_transaction(actor.tenant_id, role=DbRole.APP_RW) as session:
+            run, question_status = await verify_question_version_numeric(
+                session,
+                version_id,
+                tenant_id=actor.tenant_id,
+                expression=payload.expression,
+                source_answer=payload.source_answer,
+                tolerance=payload.tolerance,
+            )
+    except VerificationNotFoundError as exc:
+        return _problem(request, correlation_id, PlatformErrorCode.NOT_FOUND, str(exc))
+    except ValueError as exc:
+        return _problem(request, correlation_id, PlatformErrorCode.VALIDATION_ERROR, str(exc))
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED,
+        content=jsonable_encoder({"run": run, "question_verification_status": question_status}),
         headers={"X-Correlation-Id": correlation_id},
     )
 

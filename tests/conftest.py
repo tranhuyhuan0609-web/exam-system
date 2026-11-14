@@ -57,9 +57,16 @@ SEEDED_TABLES = {"tenants", "fts_dictionary_versions", "permissions", "ai_provid
 
 
 async def _truncate_all() -> None:
-    tables = ", ".join(t.name for t in Base.metadata.sorted_tables if t.name not in SEEDED_TABLES)
+    """Empty every model table that exists: models of a later wave may be imported before their migration."""
     async with engine.begin() as conn:
-        await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+        existing = set(
+            (await conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))).scalars()
+        )
+        tables = ", ".join(
+            f'"{t.name}"' for t in Base.metadata.sorted_tables if t.name in existing and t.name not in SEEDED_TABLES
+        )
+        if tables:
+            await conn.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
         await conn.execute(text("DELETE FROM tenants WHERE id <> system_public_tenant_id()"))
         await conn.execute(text("UPDATE ai_providers SET circuit_state = 'CLOSED'"))  # seeded; state is per test
 

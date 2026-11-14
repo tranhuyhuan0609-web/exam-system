@@ -195,7 +195,7 @@ QUESTION_MIN_CHOICES, QUESTION_MAX_CHOICES = 2, 6
 
 
 class Question(TimestampMixin, UpdatedAtMixin, Base):
-    __tablename__ = "questions"
+    __tablename__ = "legacy_questions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     # The subject (root category) and the most specific category the question belongs to.
@@ -270,12 +270,12 @@ class Question(TimestampMixin, UpdatedAtMixin, Base):
 
     __table_args__ = (
         Index(
-            "ix_questions_embedding_hnsw",
+            "ix_legacy_questions_embedding_hnsw",
             "embedding",
             postgresql_using="hnsw",
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
-        Index("ix_questions_target_tags_gin", "target_tags", postgresql_using="gin"),
+        Index("ix_legacy_questions_target_tags_gin", "target_tags", postgresql_using="gin"),
     )
 
 
@@ -284,7 +284,7 @@ class QuestionCategory(Base):
 
     __tablename__ = "question_categories"
 
-    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("legacy_questions.id", ondelete="CASCADE"), primary_key=True)
     category_id: Mapped[int] = mapped_column(
         ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True, index=True
     )  # noqa: E501
@@ -352,7 +352,7 @@ class ExamQuestion(Base):
     __tablename__ = "exam_questions"
 
     exam_id: Mapped[int] = mapped_column(ForeignKey("exams.id", ondelete="CASCADE"), primary_key=True)
-    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="RESTRICT"), primary_key=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("legacy_questions.id", ondelete="RESTRICT"), primary_key=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
 
 
@@ -531,8 +531,8 @@ class CrawledQuestion(Base):
     status: Mapped[CrawlItemStatus] = mapped_column(_enum(CrawlItemStatus, "crawl_item_status"), index=True)
     issues: Mapped[list[str]] = mapped_column(JSONB, default=list)
     similarity: Mapped[float | None] = mapped_column(Numeric(5, 4))  # best cosine match found by dedup
-    duplicate_of: Mapped[int | None] = mapped_column(ForeignKey("questions.id", ondelete="SET NULL"))
-    question_id: Mapped[int | None] = mapped_column(ForeignKey("questions.id", ondelete="SET NULL"))
+    duplicate_of: Mapped[int | None] = mapped_column(ForeignKey("legacy_questions.id", ondelete="SET NULL"))
+    question_id: Mapped[int | None] = mapped_column(ForeignKey("legacy_questions.id", ondelete="SET NULL"))
     ai_tries: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -758,7 +758,7 @@ class QuestionTargetTag(Base):
 
     __tablename__ = "question_target_tags"
 
-    question_id: Mapped[int] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), primary_key=True)
+    question_id: Mapped[int] = mapped_column(ForeignKey("legacy_questions.id", ondelete="CASCADE"), primary_key=True)
     target_id: Mapped[int] = mapped_column(
         ForeignKey("exam_targets.id", ondelete="CASCADE"), primary_key=True, index=True
     )

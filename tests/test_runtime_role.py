@@ -63,7 +63,7 @@ def test_other_runtime_roles_get_nothing_on_legacy_tables():
     for role in DbRole:
         if role is DbRole.APP_RW:
             continue
-        for table in ("users", "questions", "answer_keys", "exam_attempts"):
+        for table in ("users", "legacy_questions", "answer_keys", "exam_attempts"):
             assert not run(_scalar("SELECT has_table_privilege(:r, :t, 'SELECT')", r=role.value, t=table))
 
 
