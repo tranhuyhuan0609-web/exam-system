@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 
 from app.config import get_settings
-from app.db import SessionLocal, engine
+from app.db import Base, SessionLocal, engine
 from app.modules.assets.internal.models import Asset
 from app.modules.assets.router import router as assets_router
 from app.modules.outbox.internal.models import OutboxEvent
@@ -113,6 +113,7 @@ def _ensure_assets_schema() -> None:
         async with engine.begin() as conn:
             for stmt in ddl_statements:
                 await conn.execute(text(stmt))
+            await conn.run_sync(Base.metadata.create_all, checkfirst=True)
 
     run(create())
 
