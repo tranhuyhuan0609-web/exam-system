@@ -1,4 +1,4 @@
-"""Public API for app.modules.audit (G02 Legal Takedown, immutable audit event builder, and rollback diff)."""
+"""Public API for app.modules.audit (G02: append-only audit trail, legal takedown, rollback diff)."""
 
 from app.modules.audit.internal.diff import (
     MIN_SENSITIVE_REASON_LEN,
@@ -10,6 +10,22 @@ from app.modules.audit.internal.diff import (
     compute_rollback_patch,
     monthly_audit_partition_name,
 )
+from app.modules.audit.internal.service import (
+    EXECUTE_TAKEDOWN_ACTION,
+    OPEN_TAKEDOWN_ACTION,
+    TAKEDOWN_EXECUTED_EVENT,
+    AuditEventRecord,
+    AuditNotFoundError,
+    TakedownCaseRecord,
+    TakedownConflictError,
+    TakedownExecution,
+    UnknownActorError,
+    create_takedown_case,
+    execute_takedown_case,
+    get_takedown_case,
+    list_audit_events,
+    record_audit_event,
+)
 from app.modules.audit.internal.takedown import (
     TakedownCaseState,
     TakedownEntityType,
@@ -20,7 +36,21 @@ from app.modules.audit.internal.takedown import (
 )
 
 __all__ = [
+    "EXECUTE_TAKEDOWN_ACTION",
     "MIN_SENSITIVE_REASON_LEN",
+    "OPEN_TAKEDOWN_ACTION",
+    "TAKEDOWN_EXECUTED_EVENT",
+    "AuditEventRecord",
+    "AuditNotFoundError",
+    "TakedownCaseRecord",
+    "TakedownConflictError",
+    "TakedownExecution",
+    "UnknownActorError",
+    "create_takedown_case",
+    "execute_takedown_case",
+    "get_takedown_case",
+    "list_audit_events",
+    "record_audit_event",
     "SENSITIVE_AUDIT_ACTIONS",
     "AuditDiffError",
     "AuditEventSpec",

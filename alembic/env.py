@@ -69,13 +69,38 @@ DB_ONLY_INDEXES = {
 }
 
 
-def include_object(obj, name, type_, reflected, compare_to) -> bool:
-    return not (type_ == "index" and reflected and compare_to is None and name in DB_ONLY_INDEXES)
+def include_object(obj, name, type_, reflected, compare_to, partitions: frozenset[str] = frozenset()) -> bool:
+    if type_ == "table" and reflected and compare_to is None and name in partitions:
+        return False  # a partition (audit_events_2026_11, ...): created by migrations / ensure_monthly_partitions
+    if (
+        type_ == "index"
+        and reflected
+        and compare_to is None
+        and (name in DB_ONLY_INDEXES or getattr(getattr(obj, "table", None), "name", None) in partitions)
+    ):
+        return False
+    return True
+
+
+def _partition_names(connection: Connection) -> frozenset[str]:
+    rows = connection.exec_driver_sql(
+        "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+        "WHERE n.nspname = 'public' AND c.relispartition"
+    )
+    names = frozenset(r[0] for r in rows)
+    # The SELECT opened a transaction (autobegin); end it, or Alembic's own transaction would be nested
+    # inside it and the migration would never be committed.
+    connection.commit()
+    return names
 
 
 def do_run_migrations(connection: Connection) -> None:
+    partitions = _partition_names(connection)
     context.configure(
-        connection=connection, target_metadata=target_metadata, compare_type=True, include_object=include_object
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        include_object=lambda *args: include_object(*args, partitions=partitions),
     )
 
     with context.begin_transaction():

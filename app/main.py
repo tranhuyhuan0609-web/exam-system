@@ -17,6 +17,7 @@ from app.deps import LoginRequired, SessionDep, get_current_user
 from app.modules.access.router import router as access_router
 from app.modules.ai_gateway.router import router as ai_gateway_router
 from app.modules.assets.router import router as assets_router
+from app.modules.audit.router import router as audit_router
 from app.modules.authoring.router import router as authoring_router
 from app.modules.config.router import router as config_router
 from app.modules.content.router import router as content_router
@@ -122,6 +123,7 @@ for _module_router in (
     content_router,
     authoring_router,
     ai_gateway_router,
+    audit_router,
 ):
     app.include_router(_module_router)
 

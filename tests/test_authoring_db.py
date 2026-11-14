@@ -454,8 +454,9 @@ def test_system_blocks_are_visible_only_through_a_visible_published_version(worl
                         "INSERT INTO content_versions (id, tenant_id, content_item_id, version_no, title, status) "
                         "VALUES (:v, :t, :i, 1, :s, :st)"
                     ),
-                    {"v": version_id, "t": SYSTEM, "i": item_id, "s": slug, "st": status},
+                    {"v": version_id, "t": SYSTEM, "i": item_id, "s": slug, "st": "DRAFT"},
                 )
+                # Blocks are written while the version is a draft: once frozen, the database refuses them.
                 await session.execute(
                     text(
                         "INSERT INTO content_blocks "
@@ -463,6 +464,9 @@ def test_system_blocks_are_visible_only_through_a_visible_published_version(worl
                         "VALUES (:t, :v, 0, 'THEORY_SUMMARY', CAST(:p AS jsonb))"
                     ),
                     {"t": SYSTEM, "v": version_id, "p": '{"text": "' + slug + '"}'},
+                )
+                await session.execute(
+                    text("UPDATE content_versions SET status = :st WHERE id = :v"), {"st": status, "v": version_id}
                 )
 
     run(seed())
