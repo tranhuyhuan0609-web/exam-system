@@ -1,5 +1,24 @@
-"""Public API for app.modules.content (B01 immutable content versioning)."""
+"""Public API for app.modules.content (B01 immutable content versioning, items and publication)."""
 
+from app.modules.content.internal.service import (
+    CONTENT_PUBLISHED_EVENT,
+    ContentConflictError,
+    ContentItemRecord,
+    ContentNotFoundError,
+    ContentValidationFailedError,
+    ContentVersionRecord,
+    PublishGateBlockedError,
+    PublishResult,
+    blocks_from_json,
+    blocks_to_json,
+    create_content_item,
+    create_next_version,
+    gate_reasons,
+    get_content_item,
+    get_content_version,
+    list_content_versions,
+    publish_version,
+)
 from app.modules.content.internal.versioning import (
     AssetCatalogEntry,
     ContentBlockDraft,
@@ -16,16 +35,33 @@ from app.modules.content.internal.versioning import (
 )
 
 __all__ = [
+    "CONTENT_PUBLISHED_EVENT",
     "AssetCatalogEntry",
     "ContentBlockDraft",
     "ContentBlockType",
+    "ContentConflictError",
+    "ContentItemRecord",
+    "ContentNotFoundError",
     "ContentStudioError",
     "ContentType",
+    "ContentValidationFailedError",
     "ContentValidationIssue",
     "ContentValidationReport",
+    "ContentVersionRecord",
     "ContentVersionState",
     "ContentVersionStatus",
+    "PublishGateBlockedError",
+    "PublishResult",
+    "blocks_from_json",
+    "blocks_to_json",
+    "create_content_item",
+    "create_next_version",
     "edit_draft_blocks",
     "fork_next_content_version",
+    "gate_reasons",
+    "get_content_item",
+    "get_content_version",
+    "list_content_versions",
     "publish_content_version",
+    "publish_version",
 ]

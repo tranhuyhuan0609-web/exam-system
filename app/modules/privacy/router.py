@@ -205,7 +205,8 @@ def _has_role(actor: ActorContext, roles: frozenset[str]) -> bool:
 
 
 def _pepper() -> bytes:
-    return blind_index_pepper(get_settings().secret_key)
+    settings = get_settings()
+    return blind_index_pepper(settings.secret_key, settings.blind_index_pepper)
 
 
 # --- routes -------------------------------------------------------------------------------------

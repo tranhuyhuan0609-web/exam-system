@@ -133,12 +133,15 @@ def decrypt_value(dek: bytes, user_id: uuid.UUID, ciphertext: bytes, purpose: st
     return _open(dek, ciphertext, user_id.bytes + purpose.encode()).decode()
 
 
-def blind_index_pepper(secret_key: str) -> bytes:
-    """A 32-byte pepper for e-mail blind indexes, derived from the application secret.
+def blind_index_pepper(secret_key: str, configured_pepper: str = "") -> bytes:
+    """A 32-byte pepper for e-mail blind indexes.
 
-    A dedicated cluster pepper setting (kept apart from the session secret) is the better long-term home.
+    `configured_pepper` (setting `blind_index_pepper`) when set; otherwise derived from `secret_key`, which
+    is what every index created before the setting existed used, so those keep matching.
     """
-    return hmac.new(secret_key.encode(), b"f04:email-blind-index:v1", hashlib.sha256).digest()
+    source = configured_pepper or secret_key
+    domain = b"f04:email-blind-index:v2" if configured_pepper else b"f04:email-blind-index:v1"
+    return hmac.new(source.encode(), domain, hashlib.sha256).digest()
 
 
 def erasure_certificate(*, tenant_id: uuid.UUID, subject_user_id: uuid.UUID, key_destroyed: bool,
