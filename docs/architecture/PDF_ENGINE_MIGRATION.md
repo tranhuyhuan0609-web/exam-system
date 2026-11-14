@@ -1,7 +1,8 @@
 # PDF engine migration: PyMuPDF (AGPLv3) to pypdfium2 + pdfplumber (ADR-010, task T0.7)
 
-Status: adapter done; PR A (read-only callers) and PR B (structure and geometry readers) migrated, see "Migration status" below.
-`pymupdf` is still a dependency (redaction, PDF writing, OCR: PR C). Before/after numbers on the golden exams: `PDF_GOLDEN_REPORT.md`.
+Status: **done**. Adapter, PR A (read-only callers), PR B (structure and geometry readers) and PR C (writers, redaction, OCR,
+test fixtures) are migrated, see "Migration status" below. `pymupdf` is no longer a dependency and no file imports `fitz` or
+`pymupdf` (enforced by `tests/test_architecture.py`). Before/after numbers on the golden exams: `PDF_GOLDEN_REPORT.md`.
 The adapter is `app/infrastructure/pdf_engine.py` (`PDFEngineAdapter`), tests in `tests/test_pdf_engine.py`.
 
 Licences: pypdfium2 Apache-2.0 / BSD-3 (bundles PDFium, BSD-3); pdfplumber MIT (pdfminer.six MIT);
@@ -159,9 +160,49 @@ Adapter additions in PR B (all unit-tested in `tests/test_pdf_engine.py` with sy
 Not equivalent to PyMuPDF (details and numbers in `PDF_GOLDEN_REPORT.md`): line fragments of formulas (sub/superscripts) are split and
 ordered differently, so some math question texts differ, and PyMuPDF lists a few images that pdfium does not expose.
 
+### PR C (writers, redaction, OCR, tests), done
+
+| File | Moved to | Replaces |
+| --- | --- | --- |
+| `app/application/pdf_preview.py` | `slice_pdf`, `stamp_pages` (`TextStamp`) | `insert_pdf`, `insert_textbox`, `tobytes(garbage=)` (G1, G2) |
+| `app/pipeline/harvest/anthologies.py` | `merge_pdfs` (first page of each part) | `insert_pdf` of many PDFs (G1) |
+| `app/pipeline/use_cases/library_split.py` | `slice_pdf`; `pytesseract` on a pdfium render of the band | `insert_pdf`, `Pixmap.pdfocr_tobytes` (G1, G7). No Tesseract binary: the band reads as empty and a warning is logged |
+| `app/ai/figures.py`, `essay_exam.py`, `normalize.py`, `cli.py` | `render_without_light_text` (adapter `render_without`): pdfium page objects removed on a private copy, then rendered | `add_redact_annot` + `apply_redactions` on watermark text (G3 b). `redact_diagram_interior_text` became `render_without_diagram_text` (no callers) |
+| `app/application/exam_pdf.py`, `universal_ingestor.py` | `redact_pdf`, `extend_page_top`, `stamp_pages` (`TextStamp`, `ImageStamp`, `LineStamp`), `merge`/`slice` for the preview | redaction, `new_page`, `show_pdf_page`, `insert_text`, `insert_image`, `draw_line` (G1, G2, G3 c) |
+| `universal_ingestor.py` | `find_text`, `images`, `cluster_drawings`, `blocks(clip=, exclude=)`, `render(clip=)` | figure cutting with `[[FIG_..]]` tags, VietJack footer, document-type detection (rows marked E/M in the inventory) |
+| 9 test files + `tests/test_pdf_engine.py` | `tests/pdf_fixtures.py` (`PdfSketch` on reportlab, `scanned_pdf` on Pillow, `encrypted` on pypdf) | `pymupdf.open()`, `insert_htmlbox`, `draw_rect`, `Pixmap` (G8). Chromium is not needed for fixtures |
+
+Adapter additions in PR C (unit-tested in `tests/test_pdf_writers.py`, `tests/test_pdf_redaction.py`, `tests/test_pdf_rebrand.py`):
+
+* `slice_pdf`, `merge_pdfs` (pypdfium2 `import_pages`), `extend_page_top` (page boxes: the content moves down, nothing is re-rendered).
+* `stamp_pages(data, build)`: reportlab overlay merged with pypdf; text, pictures and lines; `/Rotate` and crop-box origin handled.
+  Text uses the bundled DejaVu Sans (`app/static/fonts/DejaVuSans.ttf`, see `NOTICE.md`), which has the whole Vietnamese alphabet,
+  unlike the base-14 "helv" PyMuPDF used. G2 is closed with this font.
+* `redact_pdf(data, regions, remove_images=, fill=)`: objects removed from the content stream, then a fill painted (G3 c).
+  pdfium cannot cut an object in two, so it works per object: text and images go when at least half of the box is inside a
+  region, paths when they lie inside; what only touches a region stays and is covered by the fill. One consequence: a large
+  scan that merely grazes a region is kept (fitz `IMAGE_REMOVE` would have clipped it).
+* `PDFEngineAdapter.page_objects(i)` and `render_without(i, dpi, drop=)` (G3 b), forms entered, the open document untouched.
+* `exclude=` on `rich_lines` and `blocks` (G3 a: read around a figure without editing the PDF).
+
+**Coordinates and `/Rotate`** (measured on a 90-degree page). In the page as displayed (rotation and crop-box origin
+applied): `find_text`, `page_objects`, `render_without`, `redact_pdf`, `stamp_pages`, `extend_page_top`, and the pdfplumber
+readers `chars`, `words`, `lines`, `text`, `tables`. Unchanged from the PR B baseline, so **not** rotated: `rich_lines`,
+`blocks`, `images`, `drawings`, `cluster_drawings`, `drawing_rects` (they read pdfium text and page objects in the unrotated
+page space and assume a media box starting at (0, 0)). Changing them would re-baseline the PR B golden corpus, so it is a
+separate step. Do not combine rectangles from the two families on a rotated page (the exam PDFs handled so far are not rotated).
+
+Known differences from PyMuPDF in the writers: page 1 of a worksheet without header is moved down by exactly 70/80 pt (fitz
+`show_pdf_page` scaled it by about 2 pt); `fitz` text fell back to Helvetica glyphs, the stamps are now DejaVu Sans.
+
+Dependencies: `pymupdf` removed from `requirements.txt` and `requirements.lock` (with `pymupdf4llm`, `pymupdf_layout`);
+`pypdf`, `reportlab`, `pytesseract` added, plus `pypdfium2`, `pdfplumber`, `pdfminer.six` which the lock was missing.
+
 ### Still to do
 
-PR C as listed in "Proposed migration order". Remaining fitz inventory rows are unchanged except the files above.
+Nothing for ADR-010. Open follow-ups: apply `/Rotate` to `rich_lines`/`blocks`/`images`/`drawings` together with a golden corpus re-baseline;
+install the Chromium of Playwright and the Tesseract `vie` data in CI so that `test_chromium_prints_the_paper` and
+`test_scanned_papers_are_read_with_ocr` run (both skip or fail on a machine without them).
 
 ## Proposed migration order (3 PRs, lowest risk first)
 
@@ -179,8 +220,8 @@ PR C as listed in "Proposed migration order". Remaining fitz inventory rows are 
    remnants in `figures.py`, `essay_exam.py`, `normalize.py`. Finish by deleting the `pymupdf` requirement and
    moving the remaining tests off fitz.
 
-## Dependencies to add later (not added by this task)
+## Dependencies added by the migration
 
-* `pypdf` (BSD-3), for G1/G2 in PR C.
-* `reportlab` (BSD-3), for G2 overlays and for fixtures (G8); optional if the pdfium raw API is preferred.
-* `pytesseract` (Apache-2.0), for G7 in PR A.
+* `pypdf` (BSD-3), page boxes and overlay merging (G1/G2).
+* `reportlab` (BSD-3), text/picture overlays and test fixtures (G2, G8).
+* `pytesseract` (Apache-2.0), OCR of scanned bands (G7); needs the `tesseract` binary and `vie.traineddata`.

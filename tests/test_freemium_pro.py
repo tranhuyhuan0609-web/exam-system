@@ -10,12 +10,12 @@
 import asyncio
 from datetime import timedelta
 
-import pymupdf
 from fastapi.testclient import TestClient
 from sqlalchemy import func, update
 
 from app.application.ai_publish import create_exam, publish_drafts
 from app.application.categories import create_category
+from app.infrastructure.pdf_engine import PDFEngineAdapter
 from app.infrastructure.storage import get_bronze_storage
 from app.main import app
 from app.models import (
@@ -34,6 +34,7 @@ from app.models import (
     User,
     UserRole,
 )
+from tests.pdf_fixtures import PdfSketch
 
 
 def _login(make_user, email: str, role: UserRole = UserRole.STUDENT) -> TestClient:
@@ -48,11 +49,10 @@ def _grant_pro(db, email: str) -> None:
 
 
 def _make_pdf(pages: int) -> bytes:
-    with pymupdf.open() as doc:
-        for i in range(1, pages + 1):
-            page = doc.new_page(width=595, height=842)
-            page.insert_text((72, 100), f"Trang noi dung so {i} / {pages} - Chuyen de HSG Vat Li")
-        return doc.tobytes()
+    sketch = PdfSketch()
+    for i in range(1, pages + 1):
+        sketch.new_page(595, 842).text(72, 100, f"Trang noi dung so {i} / {pages} - Chuyen de HSG Vat Li")
+    return sketch.tobytes()
 
 
 def test_category_tier_inheritance_and_free_matrix_excludes_pro_questions(db, make_user):
@@ -277,8 +277,8 @@ def test_funnel_c_pro_library_document_slices_2_page_preview_for_free_and_full_f
     assert res.headers.get("x-preview-only") == "true"
     assert res.headers.get("x-preview-pages") == "2"
     assert res.headers.get("x-total-pages") == "6"
-    with pymupdf.open(stream=res.content, filetype="pdf") as sliced_pdf:
-        assert len(sliced_pdf) == 2
+    with PDFEngineAdapter.open(res.content) as sliced_pdf:
+        assert sliced_pdf.page_count == 2
 
     # Presigned URL endpoint rejects Free user with 403 + preview_url
     presign_free = student.get(f"/api/library/{doc_id}/presigned-url")
@@ -295,8 +295,8 @@ def test_funnel_c_pro_library_document_slices_2_page_preview_for_free_and_full_f
     full_res = student.get(f"/library/{doc_id}/view")
     assert full_res.status_code == 200
     assert full_res.headers.get("x-preview-only") is None
-    with pymupdf.open(stream=full_res.content, filetype="pdf") as full_pdf:
-        assert len(full_pdf) == 6
+    with PDFEngineAdapter.open(full_res.content) as full_pdf:
+        assert full_pdf.page_count == 6
     presign_pro = student.get(f"/api/library/{doc_id}/presigned-url")
     assert presign_pro.status_code == 200
     assert presign_pro.json()["expires_in"] == 60

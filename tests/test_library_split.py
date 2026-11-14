@@ -3,7 +3,6 @@
 import asyncio
 from pathlib import Path
 
-import pymupdf
 import pytest
 from sqlalchemy import delete, select
 
@@ -15,6 +14,7 @@ from app.pipeline.adapters.memory import MemoryRawStore
 from app.pipeline.domain.exam_split import Segment, find_exams
 from app.pipeline.use_cases.drive_sync import DriveSource, sync_drive
 from app.pipeline.use_cases.library_split import page_texts
+from tests.pdf_fixtures import PdfSketch, scanned_pdf
 
 
 @pytest.mark.parametrize(
@@ -60,10 +60,10 @@ def test_find_exams(pages, expected):
 
 
 def _bundle() -> bytes:
-    with pymupdf.open() as pdf:
-        for text in ["TUYỂN TẬP 2 ĐỀ TOÁN", "ĐỀ SỐ 1<br>Câu 1", "Câu 2", "ĐỀ SỐ 2<br>Câu 1"]:
-            pdf.new_page().insert_htmlbox(pymupdf.Rect(72, 72, 500, 300), text)  # Noto: Vietnamese glyphs
-        return pdf.tobytes()
+    sketch = PdfSketch()
+    for text in ["TUYỂN TẬP 2 ĐỀ TOÁN", "ĐỀ SỐ 1\nCâu 1", "Câu 2", "ĐỀ SỐ 2\nCâu 1"]:
+        sketch.new_page().lines(72, 72, text)  # DejaVu: Vietnamese glyphs
+    return sketch.tobytes()
 
 
 class BundleDrive:
@@ -143,13 +143,7 @@ def test_splitting_a_stored_bundle_replaces_its_waiting_whole_file_import(admin_
 
 def _scanned(texts: list[str]) -> bytes:
     """Pages that are only pictures of text, like a scanned paper."""
-    with pymupdf.open() as text_pdf, pymupdf.open() as scan:
-        for text in texts:
-            page = text_pdf.new_page()
-            page.insert_htmlbox(pymupdf.Rect(60, 60, 540, 300), f"<p style='font-size:20px'>{text}</p>")
-            picture = page.get_pixmap(dpi=110)
-            scan.new_page(width=page.rect.width, height=page.rect.height).insert_image(page.rect, pixmap=picture)
-        return scan.tobytes()
+    return scanned_pdf([text.split("<br>") for text in texts], dpi=110)
 
 
 TESSDATA = get_settings().tessdata_dir

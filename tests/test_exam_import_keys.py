@@ -8,6 +8,7 @@ from app.ai.pipeline import run_pipeline
 from app.ai.schemas import ExtractedChoice, ExtractedQuestion, Solution
 from app.application.library_publish import answered_in_file, exam_code, subject_name
 from app.infrastructure.storage import LocalStorage
+from tests.pdf_fixtures import PdfSketch
 from tests.test_ai_import import _noop_progress, make_pdf
 
 PAPER = """
@@ -181,9 +182,7 @@ def test_a_gemini_timeout_moves_to_the_next_model_instead_of_failing_the_file():
 
 
 def test_essay_pdf_code_first_7_steps_and_flags(tmp_path):
-    """Steps 1–5 & 7: PyMuPDF dict extraction, sub-parts intact, figure captions, self-verification, flags, matrix diff."""  # noqa: E501
-    import pymupdf
-
+    """Steps 1–5 & 7: PDF engine adapter line extraction, sub-parts intact, figure captions, self-verification, flags, matrix diff."""  # noqa: E501
     from app.ai.essay_exam import (
         extract_matrix_difficulty,
         match_essay_header,
@@ -216,27 +215,29 @@ def test_essay_pdf_code_first_7_steps_and_flags(tmp_path):
     assert extract_matrix_difficulty("Câu hỏi tự luận không có ma trận") is None
 
     # Build a PDF with Unicode Vietnamese text layer + vector figure + embedded answer section
-    doc = pymupdf.open()
-    p1 = doc.new_page()
-    p1.insert_htmlbox(pymupdf.Rect(72, 40, 520, 75), "SỞ GD&ĐT HÀ NỘI - ĐỀ THI HỌC SINH GIỎI (Đề thi gồm 02 bài)")
-    p1.insert_htmlbox(pymupdf.Rect(72, 80, 520, 105), "Bài 1. (5,0 điểm) – DAO ĐỘNG CƠ HỌC")
-    p1.insert_htmlbox(
-        pymupdf.Rect(72, 110, 520, 135),
-        "Cho con lắc lò xo bố trí như Hình 1.1 trên mặt phẳng ngang (NB 1,0 – VDC 4,0).",
-    )
-    p1.draw_rect(pymupdf.Rect(120, 140, 260, 210), color=(0, 0, 0), width=2)
-    p1.insert_htmlbox(pymupdf.Rect(72, 225, 520, 248), "1. Tìm vị trí cân bằng của vật.")
-    p1.insert_htmlbox(pymupdf.Rect(72, 250, 520, 273), "2a) Tính vận tốc cực đại của vật.")
-    p1.insert_htmlbox(pymupdf.Rect(72, 275, 520, 300), "3. Đồ thị năng lượng có dạng như Hình 1.2, tính cơ năng.")
-    p1.insert_htmlbox(pymupdf.Rect(72, 315, 520, 340), "Bài 2. (5,0 điểm) – ĐIỆN XOAY CHIỀU")
-    p1.insert_htmlbox(pymupdf.Rect(72, 345, 520, 375), "1. Tính tổng trở của mạch khi chưa có đoạn đề dẫn ở đầu bài.")
-    p1.insert_htmlbox(pymupdf.Rect(72, 385, 520, 410), "------------ HẾT ------------")
-    p1.insert_htmlbox(pymupdf.Rect(72, 415, 520, 440), "HƯỚNG DẪN CHẤM")
-    p1.insert_htmlbox(pymupdf.Rect(72, 445, 520, 480), "Bài 1: Vị trí cân bằng x = 0, cơ năng W = 0,5 J.")
+    sketch = PdfSketch()
+    p1 = sketch.new_page()
+    for top, text in (
+        (40, "SỞ GD&ĐT HÀ NỘI - ĐỀ THI HỌC SINH GIỎI (Đề thi gồm 02 bài)"),
+        (80, "Bài 1. (5,0 điểm) – DAO ĐỘNG CƠ HỌC"),
+        (110, "Cho con lắc lò xo bố trí như Hình 1.1 trên mặt phẳng ngang (NB 1,0 – VDC 4,0)."),
+    ):
+        p1.lines(72, top, text)
+    p1.rect(120, 140, 260, 210, width=2)
+    for top, text in (
+        (225, "1. Tìm vị trí cân bằng của vật."),
+        (250, "2a) Tính vận tốc cực đại của vật."),
+        (275, "3. Đồ thị năng lượng có dạng như Hình 1.2, tính cơ năng."),
+        (315, "Bài 2. (5,0 điểm) – ĐIỆN XOAY CHIỀU"),
+        (345, "1. Tính tổng trở của mạch khi chưa có đoạn đề dẫn ở đầu bài."),
+        (385, "------------ HẾT ------------"),
+        (415, "HƯỚNG DẪN CHẤM"),
+        (445, "Bài 1: Vị trí cân bằng x = 0, cơ năng W = 0,5 J."),
+    ):
+        p1.lines(72, top, text)
 
     pdf_path = tmp_path / "hsg_vatli.pdf"
-    doc.save(pdf_path)
-    doc.close()
+    sketch.save(pdf_path)
 
     paper = read_essay_pdf(pdf_path)
     assert paper is not None

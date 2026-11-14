@@ -1,6 +1,5 @@
 import asyncio
 
-import pymupdf
 import pytest
 from sqlalchemy import select
 
@@ -12,15 +11,16 @@ from app.config import get_settings
 from app.infrastructure.storage import LocalStorage, get_storage
 from app.models import Exam, ExamQuestion, ImportJob, JobStatus, Question, UserRole
 from tests.factories import make_tree
+from tests.pdf_fixtures import PdfSketch
 
 
 def make_pdf(pages: int = 2) -> bytes:
-    doc = pymupdf.open()
+    sketch = PdfSketch()
     for i in range(pages):
-        page = doc.new_page()
-        page.insert_text((72, 72), f"Cau {i + 1}: trang {i + 1}")
-        page.draw_rect(pymupdf.Rect(300, 300, 500, 450), color=(0, 0, 0), width=2)  # a "figure"
-    return doc.tobytes()
+        page = sketch.new_page()
+        page.text(72, 72, f"Cau {i + 1}: trang {i + 1}")
+        page.rect(300, 300, 500, 450, width=2)  # a "figure"
+    return sketch.tobytes()
 
 
 def mcq(number, page=1, figure=False, kind="MULTIPLE_CHOICE"):

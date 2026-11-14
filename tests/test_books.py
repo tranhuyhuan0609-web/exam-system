@@ -2,21 +2,19 @@
 
 import asyncio
 
-import fitz
 from sqlalchemy import select
 
 from app.application import books
 from app.application.categories import create_category
+from app.infrastructure.pdf_engine import PDFEngineAdapter
 from app.infrastructure.storage import get_bronze_storage
 from app.models import Difficulty, LibraryDocument, LibraryKind, LibraryStatus, Question, QuestionType
 from app.pipeline.harvest.anthologies import SIZE, compile_anthologies
+from tests.pdf_fixtures import blank_pdf
 
 
 def _pdf(pages: int = 1) -> bytes:
-    doc = fitz.open()
-    for _ in range(pages):
-        doc.new_page()
-    return doc.tobytes()
+    return blank_pdf(pages)
 
 
 class Printer:
@@ -103,8 +101,8 @@ def test_open_papers_of_a_field_are_bound_with_a_table_of_contents(db):
     assert db(lambda s: compile_anthologies(s, render=printer)) == {"printed": 1, "failed": 0}
     book = db(lambda s: s.scalar(select(LibraryDocument).where(LibraryDocument.source == "anthology")))
     assert book.title == "Tuyển tập nghiên cứu Giáo dục học – Số 1" and book.folder_path[0] == "Tuyển tập nghiên cứu"
-    pdf = fitz.open(stream=asyncio.run(bronze.get(book.storage_key)), filetype="pdf")
-    assert pdf.page_count == 1 + SIZE * 2  # the cover, then every paper in full
+    with PDFEngineAdapter.open(asyncio.run(bronze.get(book.storage_key))) as pdf:
+        assert pdf.page_count == 1 + SIZE * 2  # the cover, then every paper in full
     toc = printer.html[-1]
     assert "Tác giả 0" in toc and "DOI 10.1/0" in toc and "cc-by" in toc and "Bài báo 5<" not in toc  # CC only
     assert db(lambda s: compile_anthologies(s, render=printer))["printed"] == 0  # the next group is not full yet

@@ -2,7 +2,6 @@
 
 import asyncio
 
-import pymupdf
 import pytest
 from sqlalchemy import select
 
@@ -22,6 +21,7 @@ from app.models import (
     LibraryStatus,
 )
 from app.pipeline.use_cases.toc import ensure_path
+from tests.pdf_fixtures import png
 
 
 @pytest.mark.parametrize(
@@ -80,7 +80,7 @@ async def _printer(html, footer):
 
 def test_reading_the_answer_table_publishes_the_codes_that_were_waiting_for_it(db, monkeypatch):
     monkeypatch.setattr(library_publish, "chromium_pdf", _printer)
-    picture = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 20, 20)).tobytes("png")
+    picture = png((20, 20))
     asyncio.run(get_storage().put("raw/key.png", picture, "image/png"))
 
     async def make(s):
