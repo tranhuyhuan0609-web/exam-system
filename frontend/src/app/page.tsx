@@ -39,6 +39,24 @@ export default function HomePage() {
           >
             Mở Phòng thi mẫu (Workspace 2)
           </Link>
+          <Link
+            href="/studio/imports/demo-run/review"
+            className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-800 transition hover:bg-indigo-100"
+          >
+            Duyệt BBox đề nhập (Workspace 3)
+          </Link>
+          <Link
+            href="/studio/content/cong-thuc-bayes"
+            className="inline-flex items-center rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+          >
+            Block Studio (Workspace 4)
+          </Link>
+          <Link
+            href="/studio/questions/new"
+            className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+          >
+            Soạn câu hỏi C01
+          </Link>
         </div>
       </div>
     </main>
