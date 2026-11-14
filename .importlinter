@@ -267,6 +267,150 @@ allowed_importers =
     app.modules.ai_gateway
     app.model_registry
 
+[importlinter:contract:internal-review]
+name = review internals are private to the module
+type = protected
+protected_modules =
+    app.modules.review.internal
+allowed_importers =
+    app.modules.review
+    app.model_registry
+
+[importlinter:contract:internal-audit]
+name = audit internals are private to the module
+type = protected
+protected_modules =
+    app.modules.audit.internal
+allowed_importers =
+    app.modules.audit
+    app.model_registry
+
+[importlinter:contract:internal-access]
+name = access internals are private to the module
+type = protected
+protected_modules =
+    app.modules.access.internal
+allowed_importers =
+    app.modules.access
+    app.model_registry
+
+[importlinter:contract:internal-config]
+name = config internals are private to the module
+type = protected
+protected_modules =
+    app.modules.config.internal
+allowed_importers =
+    app.modules.config
+    app.model_registry
+
+[importlinter:contract:internal-questions]
+name = questions internals are private to the module
+type = protected
+protected_modules =
+    app.modules.questions.internal
+allowed_importers =
+    app.modules.questions
+    app.model_registry
+
+[importlinter:contract:internal-tutor]
+name = tutor internals are private to the module
+type = protected
+protected_modules =
+    app.modules.tutor.internal
+allowed_importers =
+    app.modules.tutor
+    app.model_registry
+
+[importlinter:contract:internal-content]
+name = content internals are private to the module
+type = protected
+protected_modules =
+    app.modules.content.internal
+allowed_importers =
+    app.modules.content
+    app.model_registry
+
+[importlinter:contract:internal-authoring]
+name = authoring internals are private to the module
+type = protected
+protected_modules =
+    app.modules.authoring.internal
+allowed_importers =
+    app.modules.authoring
+    app.model_registry
+
+[importlinter:contract:internal-practice]
+name = practice internals are private to the module
+type = protected
+protected_modules =
+    app.modules.practice.internal
+allowed_importers =
+    app.modules.practice
+    app.model_registry
+
+[importlinter:contract:internal-dashboard]
+name = dashboard internals are private to the module
+type = protected
+protected_modules =
+    app.modules.dashboard.internal
+allowed_importers =
+    app.modules.dashboard
+    app.model_registry
+
+[importlinter:contract:internal-classes]
+name = classes internals are private to the module
+type = protected
+protected_modules =
+    app.modules.classes.internal
+allowed_importers =
+    app.modules.classes
+    app.model_registry
+
+[importlinter:contract:internal-assignments]
+name = assignments internals are private to the module
+type = protected
+protected_modules =
+    app.modules.assignments.internal
+allowed_importers =
+    app.modules.assignments
+    app.model_registry
+
+[importlinter:contract:internal-gradebook]
+name = gradebook internals are private to the module
+type = protected
+protected_modules =
+    app.modules.gradebook.internal
+allowed_importers =
+    app.modules.gradebook
+    app.model_registry
+
+[importlinter:contract:internal-notifications]
+name = notifications internals are private to the module
+type = protected
+protected_modules =
+    app.modules.notifications.internal
+allowed_importers =
+    app.modules.notifications
+    app.model_registry
+
+[importlinter:contract:internal-billing]
+name = billing internals are private to the module
+type = protected
+protected_modules =
+    app.modules.billing.internal
+allowed_importers =
+    app.modules.billing
+    app.model_registry
+
+[importlinter:contract:internal-extraction]
+name = extraction internals are private to the module
+type = protected
+protected_modules =
+    app.modules.extraction.internal
+allowed_importers =
+    app.modules.extraction
+    app.model_registry
+
 [importlinter:contract:internal-assets]
 name = assets internals are private to the module
 type = protected

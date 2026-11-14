@@ -41,7 +41,8 @@ ALLOWED_LATEX_COMMANDS: frozenset[str] = frozenset(
     frac dfrac tfrac cfrac sqrt cdot times div pm mp ast star circ bullet oplus otimes
     le leq ge geq ne neq lt gt approx equiv sim simeq cong propto ll gg
     to rightarrow leftarrow Rightarrow Leftarrow leftrightarrow Leftrightarrow longrightarrow Longrightarrow
-    mapsto iff implies therefore because uparrow downarrow
+    mapsto iff implies therefore because uparrow downarrow xleftharpoons rightleftharpoons
+    ce pu
     infty sum prod int iint oint lim limsup liminf sup inf max min gcd lcm det deg dim ker arg
     log ln lg exp sin cos tan cot sec csc arcsin arccos arctan sinh cosh tanh coth
     alpha beta gamma delta epsilon varepsilon zeta eta theta vartheta iota kappa lambda mu nu xi pi varpi rho

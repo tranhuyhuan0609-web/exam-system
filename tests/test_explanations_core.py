@@ -301,6 +301,7 @@ def test_katex_guard_rejects_dangerous_or_unknown_commands(bad: str) -> None:
         "$\\overrightarrow{AB} \\perp \\vec{u}$",
         "Cho $a<b$ va $x \\in \\mathbb{R}$.",
         "$\\text{Vậy } x = 2$",
+        "$\\ce{2H2 + O2 -> 2H2O}$ va $\\pu{0,5 mol/L}$",
         "100\\% dung",
     ],
 )
