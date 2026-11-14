@@ -1,3 +1,4 @@
+import React from "react";
 import Link from "next/link";
 
 export default function HomePage() {
@@ -56,6 +57,36 @@ export default function HomePage() {
             className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
           >
             Soạn câu hỏi C01
+          </Link>
+          <Link
+            href="/teacher/exam-builder"
+            className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-100"
+          >
+            Ma trận Đề THPTQG 2025 (Workspace 5)
+          </Link>
+          <Link
+            href="/teacher/classes/class-12a1"
+            className="inline-flex items-center rounded-lg border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-50"
+          >
+            Lớp học 12A1 LMS (Workspace 5)
+          </Link>
+          <Link
+            href="/admin/ops"
+            className="inline-flex items-center rounded-lg border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+          >
+            Admin Ops &amp; SLO (Workspace 6)
+          </Link>
+          <Link
+            href="/admin/sources"
+            className="inline-flex items-center rounded-lg border border-slate-300 bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-200"
+          >
+            Drive Pairing &amp; Drift (Workspace 6)
+          </Link>
+          <Link
+            href="/admin/takedowns"
+            className="inline-flex items-center rounded-lg border border-rose-300 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-900 transition hover:bg-rose-100"
+          >
+            DMCA &amp; Takedowns (Workspace 6)
           </Link>
         </div>
       </div>
