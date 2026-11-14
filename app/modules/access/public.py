@@ -1,4 +1,4 @@
-"""Public API for app.modules.access (F05 RBAC/ABAC & Entitlement core)."""
+"""Public API for app.modules.access (F05 RBAC/ABAC, tenant roles and entitlements)."""
 
 from app.modules.access.internal.evaluator import (
     AccessControlError,
@@ -14,18 +14,44 @@ from app.modules.access.internal.evaluator import (
     entitlement_satisfies,
     evaluate_asset_access,
 )
+from app.modules.access.internal.service import (
+    ROLE_CODE_PATTERN,
+    RoleConflictError,
+    RoleRecord,
+    UnknownPermissionError,
+    UnknownRoleError,
+    create_role,
+    list_roles,
+    normalize_role_codes,
+    permission_catalog,
+    permissions_for_roles,
+    principal_for,
+    require_role_codes,
+)
 
 __all__ = [
+    "ROLE_CODE_PATTERN",
     "AccessControlError",
     "AccessPrincipal",
     "AssetAccessDecision",
     "EntitlementTier",
     "MembershipStatus",
     "ResourceContext",
+    "RoleConflictError",
+    "RoleRecord",
+    "UnknownPermissionError",
+    "UnknownRoleError",
     "VisibilityScope",
     "assert_active_membership",
     "assert_tenant_scope",
     "authorize_action",
+    "create_role",
     "entitlement_satisfies",
     "evaluate_asset_access",
+    "list_roles",
+    "normalize_role_codes",
+    "permission_catalog",
+    "permissions_for_roles",
+    "principal_for",
+    "require_role_codes",
 ]

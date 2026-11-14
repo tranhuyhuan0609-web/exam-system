@@ -143,7 +143,8 @@ class UpdatedAtMixin:
 
 
 class User(TimestampMixin, Base):
-    __tablename__ = "users"
+    # Pre-V11.3 accounts, renamed by F04 (decision #2); the V11.3 `users` lives in app.modules.privacy.
+    __tablename__ = "legacy_users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     # Always stored lower-cased so uniqueness is case-insensitive.
@@ -321,7 +322,7 @@ class Exam(TimestampMixin, UpdatedAtMixin, Base):
         server_default=ExamVisibility.PUBLIC.value,
         index=True,
     )
-    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("legacy_users.id", ondelete="SET NULL"))
     origin_type: Mapped[ExamOriginType] = mapped_column(
         _enum(ExamOriginType, "exam_origin_type"),
         default=ExamOriginType.PUBLIC_CRAWLED,
@@ -361,7 +362,9 @@ class ExamEnrollment(Base):
     __tablename__ = "exam_enrollments"
 
     exam_id: Mapped[int] = mapped_column(ForeignKey("exams.id", ondelete="CASCADE"), primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("legacy_users.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -369,7 +372,7 @@ class ExamAttempt(Base):
     __tablename__ = "exam_attempts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("legacy_users.id", ondelete="CASCADE"))
     exam_id: Mapped[int] = mapped_column(ForeignKey("exams.id", ondelete="CASCADE"))
     attempt_no: Mapped[int] = mapped_column(Integer)
     status: Mapped[AttemptStatus] = mapped_column(
@@ -417,7 +420,7 @@ class ImportJob(Base):
     __tablename__ = "import_jobs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("legacy_users.id", ondelete="SET NULL"))
     original_filename: Mapped[str] = mapped_column(String(300))
     stored_path: Mapped[str] = mapped_column(String(300))  # relative to data_dir
     solution_stored_path: Mapped[str | None] = mapped_column(
@@ -491,7 +494,7 @@ class CrawlRun(Base):
     pages_failed: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     docs_published: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     error: Mapped[str | None] = mapped_column(Text)
-    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("legacy_users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -634,7 +637,7 @@ class LibraryView(Base):
     __tablename__ = "library_views"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("legacy_users.id", ondelete="CASCADE"))
     document_id: Mapped[int] = mapped_column(ForeignKey("library_documents.id", ondelete="CASCADE"))
     day: Mapped[date] = mapped_column(Date)
 

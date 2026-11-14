@@ -1,4 +1,4 @@
-"""Public facade of the privacy module (F04/G02)."""
+"""Public facade of the privacy module (F04 identity, consent and erasure; G02 audit scrubbing)."""
 
 from app.modules.privacy.internal.audit_sanitizer import (
     DEFAULT_MAX_AUDIT_DEPTH,
@@ -11,23 +11,85 @@ from app.modules.privacy.internal.blind_index import (
     normalize_email_for_blind_index,
     verify_email_blind_index,
 )
+from app.modules.privacy.internal.consent import (
+    MINOR_AGE_LIMIT,
+    ConsentState,
+    ParentalConsentRequiredError,
+    is_user_minor,
+)
+from app.modules.privacy.internal.crypto_shredding import (
+    InMemoryKeyEncryptionService,
+    KeyEncryptionService,
+    KeyShreddedError,
+    key_service,
+    set_key_service,
+)
 from app.modules.privacy.internal.scrub import (
     REDACTED_TEXT_MARKER,
     ScrubCounts,
     ScrubResult,
     scrub_free_text_pii_records,
 )
+from app.modules.privacy.internal.service import (
+    ConsentRecord,
+    EnrollmentResult,
+    ErasureCertificateRecord,
+    ErasureForbiddenError,
+    MembershipConflictError,
+    MembershipRecord,
+    PrivacyNotFoundError,
+    TenantConflictError,
+    TenantRecord,
+    bind_user,
+    consent_state,
+    create_tenant,
+    enroll_member,
+    erase_user,
+    get_membership,
+    read_profile,
+    record_parental_consent,
+    set_membership_roles,
+    store_sensitive_profile,
+)
 
 __all__ = [
     "DEFAULT_MAX_AUDIT_DEPTH",
+    "MINOR_AGE_LIMIT",
     "MIN_PEPPER_BYTES",
     "REDACTED_TEXT_MARKER",
     "SENSITIVE_AUDIT_KEYS",
+    "ConsentRecord",
+    "ConsentState",
+    "EnrollmentResult",
+    "ErasureCertificateRecord",
+    "ErasureForbiddenError",
+    "InMemoryKeyEncryptionService",
+    "KeyEncryptionService",
+    "KeyShreddedError",
+    "MembershipConflictError",
+    "MembershipRecord",
+    "ParentalConsentRequiredError",
+    "PrivacyNotFoundError",
     "ScrubCounts",
     "ScrubResult",
+    "TenantConflictError",
+    "TenantRecord",
+    "bind_user",
     "compute_email_blind_index",
+    "consent_state",
+    "create_tenant",
+    "enroll_member",
+    "erase_user",
+    "get_membership",
+    "is_user_minor",
+    "key_service",
     "normalize_email_for_blind_index",
+    "read_profile",
+    "record_parental_consent",
     "sanitize_audit_json",
     "scrub_free_text_pii_records",
+    "set_key_service",
+    "set_membership_roles",
+    "store_sensitive_profile",
     "verify_email_blind_index",
 ]
