@@ -296,7 +296,9 @@ def test_reconciler_auto_enforces_123_tables_when_complete(migrated_audit_state:
     base_report = reconcile_live_schema(base, spec, require_full_schema=False)
     present_names = set(base_report.migrated_chapter4_tables)
     missing_tables = spec.logical_tables - present_names
-    synthetic_rels = [r for r in base.relations if r.name not in missing_tables]
+    synthetic_rels = [
+        r for r in base.relations if r.name not in missing_tables and r.name != "v_public_question_versions"
+    ]
     synthetic_policies = list(base.policies)
     for table in sorted(missing_tables):
         is_tenant = table in spec.strict_tenant_tables or table in spec.hybrid_public_tables

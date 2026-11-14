@@ -394,8 +394,8 @@ def test_parser_definitions_are_a_seeded_read_only_global_registry() -> None:
     assert run(_scalar("SELECT relrowsecurity FROM pg_class WHERE relname = 'parser_definitions'")) is False
     codes = run(_scalar("SELECT array_agg(code ORDER BY code) FROM parser_definitions"))
     assert codes == ["LIBREOFFICE_HEADLESS", "NATIVE_DOCX_XML", "OCR_PIPELINE", "PDF_ENGINE"]
+    assert run(_scalar("SELECT has_table_privilege('ulp_app_rw', 'parser_definitions', 'SELECT')"))
     for role in ("ulp_app_rw", "ulp_worker_ingestion"):
-        assert run(_scalar("SELECT has_table_privilege(:r, 'parser_definitions', 'SELECT')", r=role))
         for privilege in ("INSERT", "UPDATE", "DELETE"):
             assert not run(_scalar("SELECT has_table_privilege(:r, 'parser_definitions', :p)", r=role, p=privilege))
     xml_cap = run(

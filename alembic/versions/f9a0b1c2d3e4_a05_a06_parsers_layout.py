@@ -119,7 +119,7 @@ def upgrade() -> None:
             op.execute(stmt)
 
     op.execute("REVOKE ALL ON parser_definitions, extraction_runs, extracted_pages, layout_regions FROM PUBLIC")
-    op.execute("GRANT SELECT ON parser_definitions TO ulp_app_rw, ulp_worker_ingestion")
+    op.execute("GRANT SELECT ON parser_definitions TO ulp_app_rw")
     op.execute("GRANT SELECT, INSERT, UPDATE ON extraction_runs TO ulp_app_rw")
     op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON extracted_pages, layout_regions TO ulp_app_rw")
     op.execute(
