@@ -5,7 +5,16 @@ existing builder returns would change what already-released migrations do on a f
 """
 
 GLOBAL_TABLES = frozenset(
-    {"alembic_version", "tenants", "fts_dictionary_versions", "platform_settings", "feature_flags", "permissions"}
+    {
+        "alembic_version",
+        "tenants",
+        "fts_dictionary_versions",
+        "platform_settings",
+        "feature_flags",
+        "permissions",
+        "users",
+        "user_pii_encryption_keys",
+    }
 )
 """Platform tables with no tenant of their own."""
 
@@ -15,7 +24,7 @@ LEGACY_TABLES = frozenset(
         "crawled_questions", "crawler_sites", "exam_attempts", "exam_enrollments", "exam_questions",
         "exam_targets", "exams", "import_jobs", "knowledge_articles", "knowledge_units",
         "library_documents", "library_views", "question_categories", "question_target_tags",
-        "questions", "target_curriculum_mappings", "users",
+        "questions", "target_curriculum_mappings", "legacy_users",
     }
 )  # fmt: skip
 """Pre-V11.3 tables, single-tenant by design. Each one leaves this list when its module replaces it;

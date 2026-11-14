@@ -11,5 +11,6 @@ from app.modules.config.internal import models as config_models  # noqa: F401
 from app.modules.curriculum.internal import models as curriculum_models  # noqa: F401
 from app.modules.ingestion.internal import models as ingestion_models  # noqa: F401
 from app.modules.outbox.internal import models as outbox_models  # noqa: F401
+from app.modules.privacy.internal import models as privacy_models  # noqa: F401
 from app.modules.taxonomy.internal import models as taxonomy_models  # noqa: F401
 from app.platform import models as platform_models  # noqa: F401

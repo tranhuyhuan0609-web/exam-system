@@ -20,6 +20,7 @@ from app.modules.config.router import router as config_router
 from app.modules.curriculum.router import router as curriculum_router
 from app.modules.ingestion.router import router as ingestion_router
 from app.modules.outbox.router import router as outbox_router
+from app.modules.privacy.router import router as privacy_router
 from app.modules.taxonomy.router import router as taxonomy_router
 from app.platform.branding import BRAND_NAME, BRAND_SEO_DESCRIPTION
 from app.routers import admin, auth, library, maker, plans, student, teacher
@@ -114,6 +115,7 @@ for _module_router in (
     ingestion_router,
     config_router,
     access_router,
+    privacy_router,
 ):
     app.include_router(_module_router)
 
