@@ -111,6 +111,7 @@ WAVES: tuple[WaveSpec, ...] = (
                 "app/model_registry.py",
                 "app/main.py",
                 "app/models.py",
+                "app/platform/rls.py",
                 "app/modules/config/",
                 "app/modules/access/",
                 "app/modules/privacy/",
