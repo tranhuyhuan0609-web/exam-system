@@ -2195,17 +2195,23 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- 1. Hàm tự động tạo Partition hàng tháng & Dọn dẹp khóa Idempotency quá hạn (Chạy định kỳ hàng ngày)
+--    F-05 (dry-run): dùng make_timestamptz(..., 'UTC') để mốc đầu/cuối tháng và tên partition luôn tính theo UTC,
+--    không bị lệch tháng khi session timezone là Asia/Ho_Chi_Minh.
 CREATE OR REPLACE FUNCTION ensure_monthly_partitions(p_table_name TEXT, p_start_date DATE, p_months INT) RETURNS void AS $$
 DECLARE
     i INT;
+    v_month DATE;
     v_start TIMESTAMPTZ;
     v_end TIMESTAMPTZ;
     v_part_name TEXT;
 BEGIN
     FOR i IN 0..(p_months - 1) LOOP
-        v_start := (date_trunc('month', p_start_date) + (i || ' months')::interval) AT TIME ZONE 'UTC';
-        v_end := (date_trunc('month', p_start_date) + ((i + 1) || ' months')::interval) AT TIME ZONE 'UTC';
-        v_part_name := format('%s_%s', p_table_name, to_char(v_start AT TIME ZONE 'UTC', 'YYYY_MM'));
+        v_month := (date_trunc('month', p_start_date::timestamp) + make_interval(months => i))::date;
+        v_start := make_timestamptz(EXTRACT(YEAR FROM v_month)::int, EXTRACT(MONTH FROM v_month)::int, 1, 0, 0, 0, 'UTC');
+        v_end := make_timestamptz(
+            EXTRACT(YEAR FROM (v_month + interval '1 month'))::int,
+            EXTRACT(MONTH FROM (v_month + interval '1 month'))::int, 1, 0, 0, 0, 'UTC');
+        v_part_name := format('%s_%s', p_table_name, to_char(v_month, 'YYYY_MM'));
         IF to_regclass(v_part_name) IS NULL THEN
             EXECUTE format(
                 'CREATE TABLE %I PARTITION OF %I FOR VALUES FROM (%L) TO (%L);',
