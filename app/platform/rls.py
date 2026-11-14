@@ -14,6 +14,9 @@ GLOBAL_TABLES = frozenset(
         "permissions",
         "users",
         "user_pii_encryption_keys",
+        "ai_providers",
+        "ai_models",
+        "prompt_versions",
     }
 )
 """Platform tables with no tenant of their own."""

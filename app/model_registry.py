@@ -6,6 +6,7 @@ it never imports this module. Each V11.3 module adds its `internal.models` here.
 
 from app import models as legacy_models  # noqa: F401
 from app.modules.access.internal import models as access_models  # noqa: F401
+from app.modules.ai_gateway.internal import models as ai_gateway_models  # noqa: F401
 from app.modules.assets.internal import models as assets_models  # noqa: F401
 from app.modules.authoring.internal import models as authoring_models  # noqa: F401
 from app.modules.config.internal import models as config_models  # noqa: F401
