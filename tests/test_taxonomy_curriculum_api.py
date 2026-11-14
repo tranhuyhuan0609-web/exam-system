@@ -561,7 +561,7 @@ def test_curriculum_version_fork_coverage_report_and_kntt_performance(
     assert report_v1["unmapped_node_count"] == 1
     assert report_v1["mapping_coverage_ratio"] == 0.5
     assert report_v1["question_counts"] == {"NB": 0, "TH": 0, "VD": 0, "VDC": 0, "total": 0}
-    assert report_v1["question_bank_available"] is False
+    assert report_v1["question_bank_available"] is True  # C01 `questions` exists since TASK-17 (bank still empty)
     assert report_v1["generated_in_ms"] < 200.0
 
     by_code = {item["code"]: item for item in report_v1["items"]}

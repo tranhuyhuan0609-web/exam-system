@@ -9,13 +9,12 @@ import time
 import uuid
 import zipfile
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 
 from app.config import get_settings
-from app.db import Base, SessionLocal, engine
+from app.db import SessionLocal
 from app.infrastructure.storage import get_bronze_storage
 from app.modules.layout.internal.models import ExtractedPage, LayoutRegion  # noqa: F401
 from app.modules.layout.router import router as layout_router
@@ -72,283 +71,13 @@ def _make_multipage_exam_pdf() -> bytes:
         page.text(50, 822, f"H2Edu - Ma de 101 - Trang {idx + 1}", size=10)
         # Distinct body question text
         question_text = (
-            f"Cau {idx + 1}. Cho ham so y = x^3 - 3x^2 + 2 co bao nhieu diem cuc tri?\n"
-            "A. 1   B. 2   C. 3   D. 0"
+            f"Cau {idx + 1}. Cho ham so y = x^3 - 3x^2 + 2 co bao nhieu diem cuc tri?\nA. 1   B. 2   C. 3   D. 0"
         )
         page.lines(60, 120, question_text, size=11)
         # Two overlapping/close vector rectangles representing ONE clustered diagram (>= 35x30 pt)
         page.rect(100, 300, 160, 355)
         page.rect(155, 315, 220, 370)
     return sketch.tobytes()
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _ensure_parsers_layout_schema() -> None:
-    """Create parent B03/A01 + A05/A06 tables, RLS policies, and grants idempotently."""
-    ddl_statements = (
-        """
-        CREATE TABLE IF NOT EXISTS assets (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
-            parent_asset_id UUID REFERENCES assets(id) ON DELETE SET NULL,
-            asset_role VARCHAR(40) NOT NULL
-                CHECK (asset_role IN (
-                    'RAW_SOURCE', 'BRANDED_PDF', 'PREVIEW_PDF',
-                    'PAGE_RENDER', 'FIGURE_CROP', 'AUDIO', 'THUMBNAIL'
-                )),
-            object_key VARCHAR(512) UNIQUE NOT NULL,
-            mime_type VARCHAR(120) NOT NULL,
-            sha256 CHAR(64) NOT NULL,
-            size_bytes BIGINT NOT NULL CHECK (size_bytes >= 0),
-            is_immutable_bronze BOOLEAN GENERATED ALWAYS AS (asset_role = 'RAW_SOURCE') STORED,
-            metadata_json JSONB NOT NULL DEFAULT '{}',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS sources (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            source_type VARCHAR(40) NOT NULL
-                CHECK (source_type IN ('MANUAL_UPLOAD', 'GOOGLE_DRIVE', 'WEB_CRAWLER', 'PARTNER_API')),
-            name VARCHAR(255) NOT NULL,
-            base_uri VARCHAR(512),
-            adapter_key VARCHAR(80),
-            config_json JSONB NOT NULL DEFAULT '{}',
-            rights_status VARCHAR(40) NOT NULL DEFAULT 'PENDING_REVIEW'
-                CHECK (rights_status IN (
-                    'PENDING_REVIEW', 'OWNED', 'LICENSED',
-                    'ALLOWED_DERIVATIVE', 'RESTRICTED', 'TAKEDOWN'
-                )),
-            attribution_text VARCHAR(500),
-            policy_status VARCHAR(30) NOT NULL DEFAULT 'ACTIVE'
-                CHECK (policy_status IN ('ACTIVE', 'PAUSED_DRIFT', 'PAUSED_MANUAL', 'REVOKED')),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS source_documents (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            source_id UUID NOT NULL,
-            external_id VARCHAR(255) NOT NULL,
-            title VARCHAR(500),
-            mime_type VARCHAR(120) NOT NULL,
-            acquisition_status VARCHAR(30) NOT NULL DEFAULT 'INGESTED'
-                CHECK (acquisition_status IN ('INGESTED', 'EXTRACTED', 'NORMALIZED', 'FAILED')),
-            rights_status VARCHAR(40) NOT NULL DEFAULT 'PENDING_REVIEW'
-                CHECK (rights_status IN (
-                    'PENDING_REVIEW', 'OWNED', 'LICENSED',
-                    'ALLOWED_DERIVATIVE', 'RESTRICTED', 'TAKEDOWN'
-                )),
-            inferred_metadata_json JSONB NOT NULL DEFAULT '{}',
-            paired_solution_doc_id UUID,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (source_id, external_id),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (source_id, tenant_id) REFERENCES sources(id, tenant_id) ON DELETE RESTRICT
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS document_versions (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            source_document_id UUID NOT NULL,
-            version_no INT NOT NULL,
-            raw_asset_id UUID NOT NULL,
-            checksum_sha256 CHAR(64) NOT NULL,
-            page_count INT,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (source_document_id, version_no),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (source_document_id, tenant_id)
-                REFERENCES source_documents(id, tenant_id) ON DELETE CASCADE,
-            FOREIGN KEY (raw_asset_id, tenant_id)
-                REFERENCES assets(id, tenant_id) ON DELETE RESTRICT
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS parser_definitions (
-            code VARCHAR(60) PRIMARY KEY,
-            version VARCHAR(40) NOT NULL,
-            supported_mimes VARCHAR(120)[] NOT NULL,
-            config_schema_json JSONB NOT NULL DEFAULT '{}',
-            is_active BOOLEAN NOT NULL DEFAULT TRUE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS acquisition_jobs (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            source_id UUID,
-            document_version_id UUID,
-            job_type VARCHAR(40) NOT NULL
-                CHECK (job_type IN ('EXAM_IMPORT', 'DRIVE_SYNC', 'WEB_CRAWL', 'REPROCESS_EXTRACTION')),
-            job_status VARCHAR(30) NOT NULL DEFAULT 'QUEUED'
-                CHECK (job_status IN ('QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'DEAD_LETTER', 'CANCELLED')),
-            current_stage VARCHAR(50),
-            idempotency_key VARCHAR(128) UNIQUE NOT NULL,
-            attempt_count INT NOT NULL DEFAULT 0,
-            metrics_json JSONB NOT NULL DEFAULT '{}',
-            last_error_code VARCHAR(80),
-            last_error_detail TEXT,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (source_id, tenant_id) REFERENCES sources(id, tenant_id),
-            FOREIGN KEY (document_version_id, tenant_id) REFERENCES document_versions(id, tenant_id)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS pipeline_stage_runs (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            acquisition_job_id UUID NOT NULL,
-            stage_name VARCHAR(50) NOT NULL,
-            status VARCHAR(30) NOT NULL DEFAULT 'RUNNING'
-                CHECK (status IN ('RUNNING', 'COMPLETED', 'FAILED', 'SKIPPED')),
-            worker_version VARCHAR(40),
-            input_ref VARCHAR(512),
-            output_ref VARCHAR(512),
-            started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            finished_at TIMESTAMPTZ,
-            FOREIGN KEY (acquisition_job_id, tenant_id)
-                REFERENCES acquisition_jobs(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS dead_letter_items (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            acquisition_job_id UUID,
-            source_queue VARCHAR(80) NOT NULL,
-            payload_json JSONB NOT NULL,
-            error_trace TEXT NOT NULL,
-            replayed_at TIMESTAMPTZ,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS extraction_runs (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            document_version_id UUID NOT NULL,
-            acquisition_job_id UUID,
-            profile_code VARCHAR(60) NOT NULL,
-            parser_version VARCHAR(40) NOT NULL,
-            ocr_engine_version VARCHAR(40),
-            confidence_score NUMERIC(4,3),
-            silver_artifact_key VARCHAR(512),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (document_version_id, tenant_id)
-                REFERENCES document_versions(id, tenant_id) ON DELETE CASCADE,
-            FOREIGN KEY (acquisition_job_id, tenant_id)
-                REFERENCES acquisition_jobs(id, tenant_id)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS extracted_pages (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            extraction_run_id UUID NOT NULL,
-            page_no INT NOT NULL,
-            render_asset_id UUID,
-            width_pt NUMERIC(8,2) NOT NULL,
-            height_pt NUMERIC(8,2) NOT NULL,
-            detected_header_y0 NUMERIC(8,2),
-            detected_footer_y1 NUMERIC(8,2),
-            raw_text TEXT,
-            UNIQUE (extraction_run_id, page_no),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (extraction_run_id, tenant_id)
-                REFERENCES extraction_runs(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS layout_regions (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            extracted_page_id UUID NOT NULL,
-            region_type VARCHAR(40) NOT NULL
-                CHECK (region_type IN ('HEADER', 'FOOTER', 'QUESTION_BLOCK', 'FIGURE', 'TABLE', 'FORMULA_BLOCK')),
-            bbox_json JSONB NOT NULL,
-            cropped_asset_id UUID,
-            extracted_text TEXT,
-            FOREIGN KEY (extracted_page_id, tenant_id)
-                REFERENCES extracted_pages(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-    )
-
-    strict_tables = (
-        "sources",
-        "source_documents",
-        "document_versions",
-        "acquisition_jobs",
-        "pipeline_stage_runs",
-        "dead_letter_items",
-        "extraction_runs",
-        "extracted_pages",
-        "layout_regions",
-    )
-
-    async def create() -> None:
-        async with engine.begin() as conn:
-            for stmt in ddl_statements:
-                await conn.execute(text(stmt))
-            await conn.run_sync(Base.metadata.create_all, checkfirst=True)
-
-            await conn.execute(text("ALTER TABLE assets ENABLE ROW LEVEL SECURITY"))
-            await conn.execute(text("ALTER TABLE assets FORCE ROW LEVEL SECURITY"))
-            await conn.execute(text("DROP POLICY IF EXISTS hybrid_write_policy ON assets"))
-            await conn.execute(text("DROP POLICY IF EXISTS hybrid_read_policy ON assets"))
-            await conn.execute(
-                text(
-                    "CREATE POLICY hybrid_write_policy ON assets FOR ALL "
-                    "USING (tenant_id = (SELECT current_app_tenant_id())) "
-                    "WITH CHECK (tenant_id = (SELECT current_app_tenant_id()))"
-                )
-            )
-            await conn.execute(
-                text(
-                    "CREATE POLICY hybrid_read_policy ON assets FOR SELECT USING ("
-                    "tenant_id = (SELECT current_app_tenant_id()) "
-                    "OR (tenant_id = system_public_tenant_id() AND asset_role <> 'RAW_SOURCE')"
-                    ")"
-                )
-            )
-            await conn.execute(text("GRANT SELECT, INSERT, UPDATE, DELETE ON assets TO ulp_app_rw"))
-            await conn.execute(text("GRANT SELECT, INSERT ON assets TO ulp_worker_ingestion"))
-            await conn.execute(text("GRANT SELECT, INSERT, UPDATE, DELETE ON parser_definitions TO ulp_app_rw"))
-            await conn.execute(text("GRANT SELECT ON parser_definitions TO ulp_worker_ingestion"))
-
-            for tbl in strict_tables:
-                await conn.execute(text(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"DROP POLICY IF EXISTS tenant_isolation_policy ON {tbl}"))
-                await conn.execute(
-                    text(
-                        f"CREATE POLICY tenant_isolation_policy ON {tbl} "
-                        "USING (tenant_id = (SELECT current_app_tenant_id())) "
-                        "WITH CHECK (tenant_id = (SELECT current_app_tenant_id()))"
-                    )
-                )
-                await conn.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {tbl} TO ulp_app_rw"))
-
-            await conn.execute(
-                text(
-                    "GRANT SELECT, INSERT, UPDATE ON sources, source_documents, document_versions, "
-                    "acquisition_jobs, pipeline_stage_runs, extraction_runs, extracted_pages, layout_regions "
-                    "TO ulp_worker_ingestion"
-                )
-            )
-            await conn.execute(text("GRANT SELECT, INSERT ON outbox_events TO ulp_app_rw"))
-            await conn.execute(text("GRANT INSERT ON outbox_events TO ulp_worker_ingestion"))
-
-    run(create())
 
 
 def _create_tenant(slug_prefix: str = "parser-tenant") -> uuid.UUID:
@@ -529,13 +258,17 @@ def test_scanned_pdf_routes_to_ocr_and_multipage_layout_segments_figures_margins
                 )
             ).scalar_one()
             events = (
-                await session.execute(
-                    select(OutboxEvent).where(
-                        OutboxEvent.aggregate_id == uuid.UUID(run_id),
-                        OutboxEvent.event_type == "layout.ocr_job_completed",
+                (
+                    await session.execute(
+                        select(OutboxEvent).where(
+                            OutboxEvent.aggregate_id == uuid.UUID(run_id),
+                            OutboxEvent.event_type == "layout.ocr_job_completed",
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             return str(row), len(events)
 
     crop_key, outbox_count = run(_verify_crop_exists())
@@ -635,7 +368,53 @@ def test_auth_anti_spoofing_and_cross_tenant_rls_isolation() -> None:
         == 404
     )
     assert client.get(f"/api/v1/ocr/jobs/{run_id}", headers=headers_b).status_code == 404
-    assert (
-        client.post(f"/api/v1/ocr/jobs/{run_id}/pages/1/reprocess", headers=headers_b).status_code
-        == 404
+    assert client.post(f"/api/v1/ocr/jobs/{run_id}/pages/1/reprocess", headers=headers_b).status_code == 404
+
+
+# --- schema created by the migration (f9a0b1c2d3e4) ------------------------------------------------
+
+
+async def _scalar(sql: str, **params):
+    async with SessionLocal() as session:
+        return (await session.execute(text(sql), params)).scalar()
+
+
+def test_strict_tables_force_rls_with_the_initplan_policy() -> None:
+    for table in ("extraction_runs", "extracted_pages", "layout_regions"):
+        assert run(_scalar("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE relname = :t", t=table))
+        qual = run(
+            _scalar(
+                "SELECT qual FROM pg_policies WHERE tablename = :t AND policyname = 'tenant_isolation_policy'", t=table
+            )
+        )
+        assert "( SELECT current_app_tenant_id() AS current_app_tenant_id)" in qual, table
+
+
+def test_parser_definitions_are_a_seeded_read_only_global_registry() -> None:
+    assert run(_scalar("SELECT relrowsecurity FROM pg_class WHERE relname = 'parser_definitions'")) is False
+    codes = run(_scalar("SELECT array_agg(code ORDER BY code) FROM parser_definitions"))
+    assert codes == ["LIBREOFFICE_HEADLESS", "NATIVE_DOCX_XML", "OCR_PIPELINE", "PDF_ENGINE"]
+    for role in ("ulp_app_rw", "ulp_worker_ingestion"):
+        assert run(_scalar("SELECT has_table_privilege(:r, 'parser_definitions', 'SELECT')", r=role))
+        for privilege in ("INSERT", "UPDATE", "DELETE"):
+            assert not run(_scalar("SELECT has_table_privilege(:r, 'parser_definitions', :p)", r=role, p=privilege))
+    xml_cap = run(
+        _scalar(
+            "SELECT config_schema_json->>'max_document_xml_bytes' "
+            "FROM parser_definitions WHERE code = 'NATIVE_DOCX_XML'"
+        )
     )
+    assert int(xml_cap) == 25 * 1024 * 1024
+
+
+def test_worker_and_api_privileges_on_the_extraction_tables() -> None:
+    def has(role: str, table: str, privilege: str) -> bool:
+        return run(_scalar("SELECT has_table_privilege(:r, :t, :p)", r=role, t=table, p=privilege))
+
+    for table in ("extraction_runs", "extracted_pages", "layout_regions"):
+        assert has("ulp_worker_ingestion", table, "INSERT") and has("ulp_worker_ingestion", table, "UPDATE")
+        assert not has("ulp_worker_ingestion", table, "DELETE")  # the worker never deletes
+        for role in ("ulp_exam_session_rw", "ulp_worker_grading", "ulp_analytics_ro", "ulp_system_scheduler"):
+            assert not has(role, table, "SELECT"), (role, table)
+    assert has("ulp_app_rw", "extracted_pages", "DELETE") and has("ulp_app_rw", "layout_regions", "DELETE")
+    assert not has("ulp_app_rw", "extraction_runs", "DELETE")

@@ -532,14 +532,64 @@ def test_a_source_document_takedown(client, world):
     assert event.payload_json["publication_status"] is None
 
 
-def test_question_cases_wait_for_the_questions_module(client, world):
-    case = _open_case(client, world, uuid.uuid4(), target_type="QUESTION")
-    assert case.status_code == 201  # the legal record is kept
+def _published_question(world, who="a") -> tuple[uuid.UUID, uuid.UUID]:
+    """A VERIFIED, OWNED question of the tenant, PUBLISHED with a frozen version 1."""
+
+    async def create():
+        async with tenant_transaction(world[who], role=DbRole.APP_RW) as session:
+            question_id, version_id = uuid.uuid4(), uuid.uuid4()
+            await session.execute(
+                text(
+                    "INSERT INTO questions (id, tenant_id, stable_code, item_type, verification_status, rights_status) "
+                    "VALUES (:q, :t, :c, 'SHORT_NUMERIC', 'VERIFIED', 'OWNED')"
+                ),
+                {"q": question_id, "t": world[who], "c": f"Q-{question_id.hex[:8]}"},
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO question_versions (id, tenant_id, question_id, version_no, stem_json, content_hash, "
+                    'structural_hash) VALUES (:v, :t, :q, 1, \'{"text": "1+1?"}\', :h, :h)'
+                ),
+                {"v": version_id, "t": world[who], "q": question_id, "h": "0" * 64},
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO question_version_answers (question_version_id, tenant_id, answer_schema) "
+                    'VALUES (:v, :t, \'{"value": "2"}\')'
+                ),
+                {"v": version_id, "t": world[who]},
+            )
+            await session.execute(
+                text("UPDATE questions SET publication_status = 'PUBLISHED', current_version_id = :v WHERE id = :q"),
+                {"v": version_id, "q": question_id},
+            )
+            return question_id, version_id
+
+    return run(create())
+
+
+def test_a_question_takedown_hides_the_question_and_keeps_its_frozen_version(client, world):
+    question_id, version_id = _published_question(world)
+    case = _open_case(client, world, question_id, target_type="QUESTION")
+    assert case.status_code == 201, case.text
     execute = client.post(
         f"/api/v1/takedown-cases/{case.json()['id']}/execute", headers=_headers(world["a"], world["admin_a"])
     )
-    assert execute.status_code == 409 and "C01" in execute.json()["detail"]
-    assert run(_scalar("SELECT status FROM takedown_cases")) == "OPEN"
+    assert execute.status_code == 200, execute.text
+    question = run(_all("SELECT rights_status, publication_status FROM questions WHERE id = :q", q=question_id))[0]
+    assert (question.rights_status, question.publication_status) == ("TAKEDOWN", "TAKEN_DOWN")
+    assert run(_scalar("SELECT is_immutable FROM question_versions WHERE id = :v", v=version_id)) is True
+    audit = run(_all("SELECT target_type, before_json, after_json FROM audit_events WHERE action = 'EXECUTE_TAKEDOWN'"))
+    assert audit[0].target_type == "question" and audit[0].before_json["publication_status"] == "PUBLISHED"
+    assert audit[0].after_json["publication_status"] == "TAKEN_DOWN"
+    event = run(_all("SELECT payload_json FROM outbox_events"))[0]
+    assert event.payload_json["publication_status"] == "TAKEN_DOWN"
+
+
+def test_a_question_case_cannot_target_another_tenants_question(client, world):
+    question_id, _ = _published_question(world, who="b")
+    assert _open_case(client, world, question_id, target_type="QUESTION").status_code == 404
+    assert run(_scalar("SELECT count(*) FROM takedown_cases")) == 0
 
 
 def test_execution_rules_for_people_and_tenants(client, world):
