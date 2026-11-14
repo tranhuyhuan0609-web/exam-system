@@ -5,7 +5,7 @@ existing builder returns would change what already-released migrations do on a f
 """
 
 GLOBAL_TABLES = frozenset(
-    {"alembic_version", "tenants", "fts_dictionary_versions", "platform_settings", "feature_flags"}
+    {"alembic_version", "tenants", "fts_dictionary_versions", "platform_settings", "feature_flags", "permissions"}
 )
 """Platform tables with no tenant of their own."""
 
