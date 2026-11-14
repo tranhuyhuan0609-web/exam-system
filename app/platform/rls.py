@@ -4,7 +4,9 @@ The SQL builders are used by Alembic revisions. Treat them as append-only: chang
 existing builder returns would change what already-released migrations do on a fresh database.
 """
 
-GLOBAL_TABLES = frozenset({"alembic_version", "tenants", "fts_dictionary_versions"})
+GLOBAL_TABLES = frozenset(
+    {"alembic_version", "tenants", "fts_dictionary_versions", "platform_settings", "feature_flags"}
+)
 """Platform tables with no tenant of their own."""
 
 LEGACY_TABLES = frozenset(

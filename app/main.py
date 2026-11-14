@@ -14,6 +14,12 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.config import get_settings
 from app.db import SessionLocal
 from app.deps import LoginRequired, SessionDep, get_current_user
+from app.modules.assets.router import router as assets_router
+from app.modules.config.router import router as config_router
+from app.modules.curriculum.router import router as curriculum_router
+from app.modules.ingestion.router import router as ingestion_router
+from app.modules.outbox.router import router as outbox_router
+from app.modules.taxonomy.router import router as taxonomy_router
 from app.platform.branding import BRAND_NAME, BRAND_SEO_DESCRIPTION
 from app.routers import admin, auth, library, maker, plans, student, teacher
 from app.templating import templates
@@ -97,6 +103,17 @@ app.include_router(library.router)
 app.include_router(plans.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
+
+# V11.3 /api/v1 modules (JWT bearer auth; tenant context bound per transaction for RLS).
+for _module_router in (
+    outbox_router,
+    taxonomy_router,
+    curriculum_router,
+    assets_router,
+    ingestion_router,
+    config_router,
+):
+    app.include_router(_module_router)
 
 
 @app.exception_handler(LoginRequired)
