@@ -1,4 +1,4 @@
-"""Public API for app.modules.ingestion (A01 Unified Ingestion Backbone core)."""
+"""Public API for app.modules.ingestion (A01 Unified Ingestion Backbone)."""
 
 from app.modules.ingestion.internal.fingerprint import (
     DEFAULT_CHUNK_SIZE,
@@ -6,6 +6,21 @@ from app.modules.ingestion.internal.fingerprint import (
     StreamFingerprint,
     compute_stream_fingerprint,
     decide_duplicate_ingest,
+)
+from app.modules.ingestion.internal.service import (
+    ALLOWED_JOB_TYPES,
+    DocumentVersionView,
+    DuplicateIdempotencyConflictError,
+    ImportJobNotFoundError,
+    ImportJobView,
+    IngestionValidationError,
+    PipelineStageRunView,
+    SubmitImportResult,
+    apply_import_job_event,
+    cancel_import_job,
+    get_import_job,
+    retry_import_job,
+    submit_import,
 )
 from app.modules.ingestion.internal.state import (
     ALLOWED_JOB_TRANSITIONS,
@@ -30,6 +45,7 @@ from app.modules.ingestion.internal.state import (
 
 __all__ = [
     "ALLOWED_JOB_TRANSITIONS",
+    "ALLOWED_JOB_TYPES",
     "ALLOWED_STAGE_TRANSITIONS",
     "DEFAULT_CHUNK_SIZE",
     "TERMINAL_JOB_STATUSES",
@@ -38,18 +54,30 @@ __all__ = [
     "CancelJobEvent",
     "CompleteJobEvent",
     "DeadLetterPayload",
+    "DocumentVersionView",
     "DuplicateDecision",
+    "DuplicateIdempotencyConflictError",
     "FailJobEvent",
+    "ImportJobNotFoundError",
+    "ImportJobView",
     "IngestionEvent",
     "IngestionTransitionError",
+    "IngestionValidationError",
+    "PipelineStageRunView",
     "PipelineStageStatus",
     "RetryJobEvent",
     "StageCompletedEvent",
     "StartJobEvent",
     "StreamFingerprint",
+    "SubmitImportResult",
+    "apply_import_job_event",
     "apply_job_event",
+    "cancel_import_job",
     "compute_stream_fingerprint",
     "decide_duplicate_ingest",
+    "get_import_job",
+    "retry_import_job",
+    "submit_import",
     "validate_job_transition",
     "validate_stage_transition",
 ]
