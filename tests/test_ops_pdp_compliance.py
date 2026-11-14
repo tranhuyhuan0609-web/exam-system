@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -85,3 +85,44 @@ def test_crypto_shredding_erasure_verification() -> None:
     assert "VAULT_ENCRYPTION_KEY_NOT_DESTROYED" in bad.blocking_reasons
     assert "PLAINTEXT_PII_REMAINS:email,phone" in bad.blocking_reasons
     assert "IMMUTABLE_AUDIT_TRAIL_MISSING" in bad.blocking_reasons
+
+
+def test_pdp_compliance_validates_types_revocation_and_secret_paths() -> None:
+    ref = date(2026, 11, 13)
+    # Adult who explicitly revokes consent is respected
+    adult_revoked = evaluate_minor_consent(
+        birth_date=date(2005, 1, 1),
+        reference_date=ref,
+        consent_granted=True,
+        consent_revoked=True,
+    )
+    assert adult_revoked.sensitive_profile_allowed is False
+    assert adult_revoked.reason_code == "CONSENT_REVOKED"
+
+    # datetime instead of date or non-bool consent flags rejected
+    with pytest.raises(PdpComplianceError):
+        evaluate_minor_consent(
+            birth_date=datetime(2010, 1, 1, tzinfo=UTC),  # type: ignore[arg-type]
+            reference_date=ref,
+            consent_granted=True,
+            consent_revoked=False,
+        )
+    with pytest.raises(PdpComplianceError):
+        evaluate_minor_consent(
+            birth_date=date(2010, 1, 1),
+            reference_date=ref,
+            consent_granted="yes",  # type: ignore[arg-type]
+            consent_revoked=False,
+        )
+    with pytest.raises(PdpComplianceError):
+        validate_vault_secret_ref("vault://transit//keys/dek")
+    with pytest.raises(PdpComplianceError):
+        validate_vault_secret_ref("vault://transit/keys/sk-abcdefghijklmnopqrstuvwxyz123456")
+    with pytest.raises(PdpComplianceError):
+        evaluate_crypto_shredding_erasure(
+            tenant_id="tenant-1",
+            subject_id="user-99",
+            vault_key_destroyed=True,
+            remaining_plaintext_pii_fields="email",  # type: ignore[arg-type]
+            audit_trail_preserved=True,
+        )

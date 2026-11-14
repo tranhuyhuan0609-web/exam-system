@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.ops.golden_metrics import (
     CANONICAL_GOLDEN_CORPUS,
     DocumentExtractionObservation,
+    GoldenMetricsError,
     evaluate_extraction_quality,
 )
 
@@ -75,3 +78,57 @@ def test_detects_precision_drop_and_axis_noise_leak_fail_closed() -> None:
     assert any(c.startswith("FIGURE_FORMULA_BELOW_THRESHOLD") for c in report.failed_criteria)
     assert any(c.startswith("CLEAN_TEXT_REDACTION_FAILED") for c in report.failed_criteria)
     assert any(c.startswith("MISSING_GOLDEN_FILES") for c in report.failed_criteria)
+    assert any(c.startswith("GOLDEN_QUESTION_COUNT_MISMATCH") for c in report.failed_criteria)
+    assert report.files_below_threshold == ("golden_09_word_shapes_graph.docx",)
+
+
+def test_golden_metrics_rejects_inconsistent_or_duplicate_observations() -> None:
+    with pytest.raises(GoldenMetricsError):
+        evaluate_extraction_quality([])
+
+    base = DocumentExtractionObservation(
+        corpus_id="golden_01_phy10_essay.pdf",
+        is_held_out=False,
+        true_positive_boundaries=5,
+        false_positive_boundaries=0,
+        false_negative_boundaries=0,
+        expected_figures_and_formulas=2,
+        preserved_figures_and_formulas=2,
+        extracted_questions_total=5,
+        clean_text_questions=5,
+    )
+    with pytest.raises(GoldenMetricsError, match="duplicate"):
+        evaluate_extraction_quality([base, base])
+
+    with pytest.raises(GoldenMetricsError, match="preserved"):
+        evaluate_extraction_quality(
+            [
+                DocumentExtractionObservation(
+                    corpus_id="doc-a",
+                    is_held_out=True,
+                    true_positive_boundaries=5,
+                    false_positive_boundaries=0,
+                    false_negative_boundaries=0,
+                    expected_figures_and_formulas=2,
+                    preserved_figures_and_formulas=3,
+                    extracted_questions_total=5,
+                    clean_text_questions=5,
+                )
+            ]
+        )
+    with pytest.raises(GoldenMetricsError, match="clean"):
+        evaluate_extraction_quality(
+            [
+                DocumentExtractionObservation(
+                    corpus_id="doc-a",
+                    is_held_out=True,
+                    true_positive_boundaries=5,
+                    false_positive_boundaries=0,
+                    false_negative_boundaries=0,
+                    expected_figures_and_formulas=2,
+                    preserved_figures_and_formulas=2,
+                    extracted_questions_total=5,
+                    clean_text_questions=6,
+                )
+            ]
+        )

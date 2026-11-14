@@ -9,6 +9,10 @@ import uuid
 import pytest
 from pydantic import ValidationError
 
+from app.contracts.autosave import (
+    AutosaveRequestContract as CanonicalAutosaveReq,
+    AutosaveResponseContract as CanonicalAutosaveRes,
+)
 from app.contracts.core_schemas import (
     AssessmentSnapshotPublicContract,
     AssessmentSnapshotPublicItem,
@@ -20,6 +24,7 @@ from app.contracts.core_schemas import (
     QuestionOptionContract,
 )
 from app.contracts.enums import AcquisitionMethod, QuestionItemType
+from app.contracts.scoring import NumericParsePolicy as CanonicalNumericParsePolicy
 
 _SHA = "a" * 64
 
@@ -108,3 +113,42 @@ def test_assessment_snapshot_rejects_answer_leak_fields_and_autosave_contract_va
         server_timestamp=datetime.now(UTC),
     )
     assert res.status == "COMMITTED"
+    # No duplicate classes: core_schemas re-exports the canonical contracts
+    assert NumericParsePolicy is CanonicalNumericParsePolicy
+    assert AutosaveRequestContract is CanonicalAutosaveReq
+    assert AutosaveResponseContract is CanonicalAutosaveRes
+
+    # Non-finite bbox, missing bbox on DOCUMENT_IMPORT, or duplicate sequence_order rejected
+    with pytest.raises(ValidationError):
+        ProvenanceContract(document_version_id= uuid.uuid4(), page_no=1, bbox=(float("nan"), 0.0, 10.0, 10.0))
+    with pytest.raises(ValidationError):
+        QuestionCandidateContract(
+            tenant_id=uuid.uuid4(),
+            acquisition_method=AcquisitionMethod.DOCUMENT_IMPORT,
+            item_type=QuestionItemType.ESSAY,
+            stem_md="Chứng minh:",
+            provenance=ProvenanceContract(document_version_id=uuid.uuid4(), page_no=1, bbox=None),
+        )
+    with pytest.raises(ValidationError):
+        AssessmentSnapshotPublicContract(
+            assessment_version_id=uuid.uuid4(),
+            framework_code="THPTQG_2025",
+            subject_code="MATH",
+            duration_seconds=5400,
+            items=(
+                AssessmentSnapshotPublicItem(
+                    question_version_id=uuid.uuid4(),
+                    section_code="PART_I_MCQ",
+                    sequence_order=1,
+                    points=Decimal("0.25"),
+                    content_hash=_SHA,
+                ),
+                AssessmentSnapshotPublicItem(
+                    question_version_id=uuid.uuid4(),
+                    section_code="PART_I_MCQ",
+                    sequence_order=1,
+                    points=Decimal("0.25"),
+                    content_hash=_SHA,
+                ),
+            ),
+        )

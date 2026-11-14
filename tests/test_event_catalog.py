@@ -11,8 +11,11 @@ from pydantic import ValidationError
 
 from app.contracts.event_catalog import (
     EVENT_CATALOG,
+    AiBudgetThresholdExceededPayload,
+    AttemptExpiredPayload,
     AttemptGradedPayload,
     AttemptSubmittedPayload,
+    CrawlParserDriftDetectedPayload,
     RightsTakedownExecutedPayload,
     build_catalog_envelope,
     validate_event_payload,
@@ -79,3 +82,28 @@ def test_catalog_rejects_extra_fields_wrong_model_or_unknown_events() -> None:
         )
 
     assert AttemptSubmittedPayload.__name__ == "AttemptSubmittedPayload"
+
+    # Drift rate below threshold, inverted expiry timestamps, or spend below threshold rejected
+    with pytest.raises(ValidationError):
+        CrawlParserDriftDetectedPayload(
+            tenant_id=tid,
+            source_id=uuid.uuid4(),
+            adapter_version="v1",
+            empty_yield_rate=0.10,
+            threshold=0.20,
+        )
+    now = datetime.now(UTC)
+    with pytest.raises(ValidationError):
+        AttemptExpiredPayload(
+            tenant_id=tid,
+            attempt_id=uuid.uuid4(),
+            deadline_at=now,
+            auto_submitted_at=now.replace(year=now.year - 1),
+        )
+    with pytest.raises(ValidationError):
+        AiBudgetThresholdExceededPayload(
+            tenant_id=tid,
+            current_spend_usd=Decimal("5.00"),
+            daily_budget_usd=Decimal("10.00"),
+            threshold_pct=80,
+        )

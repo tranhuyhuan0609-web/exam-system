@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from app.ops.runbooks import (
     CANONICAL_RUNBOOKS,
     compute_rb05_deadline_compensation,
@@ -58,3 +60,18 @@ def test_rb05_deadline_extension_and_rb14_72h_pdp_window() -> None:
     )
     assert late.within_72h_window is False
     assert late.hours_remaining == -1.0
+
+    # Reject non-finite SLA minutes, bool durations, and naive datetimes
+    for bad_mins in (float("nan"), float("inf"), -0.1, True):
+        with pytest.raises(ValueError):
+            evaluate_incident_response_sla(runbook_code="RB-05", acknowledged_minutes=bad_mins)  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        compute_rb05_deadline_compensation(
+            current_deadline=datetime(2026, 11, 13, 14, 0, 0),
+            outage_duration_seconds=120,
+        )
+    with pytest.raises(ValueError):
+        evaluate_rb14_breach_notification_window(
+            breach_detected_at=datetime(2026, 11, 13, 10, 0, 0),
+            current_or_notified_at=detected,
+        )

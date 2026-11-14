@@ -15,6 +15,10 @@ MIN_FIGURE_FORMULA_PRESERVATION = 0.99
 REQUIRED_CLEAN_TEXT_REDACTION = 1.00
 
 
+class GoldenMetricsError(ValueError):
+    """Raised when observations are internally inconsistent (the gate cannot be evaluated)."""
+
+
 @dataclass(frozen=True)
 class CanonicalGoldenSpec:
     corpus_id: str
@@ -53,6 +57,20 @@ class DocumentExtractionObservation:
 
 
 @dataclass(frozen=True)
+class PerDocumentMetrics:
+    """Per-file view. The spec gates the aggregate over the whole set; this exposes files the
+    micro-average could hide (informational, it does not fail the gate by itself)."""
+
+    corpus_id: str
+    is_held_out: bool
+    boundary_precision: float
+    boundary_recall: float
+    figure_formula_preservation_rate: float
+    clean_text_rate: float
+    below_threshold: bool
+
+
+@dataclass(frozen=True)
 class GoldenEvaluationReport:
     golden_file_count: int
     held_out_file_count: int
@@ -63,6 +81,67 @@ class GoldenEvaluationReport:
     passed: bool
     failed_criteria: tuple[str, ...]
     leaking_corpus_ids: tuple[str, ...]
+    per_document: tuple[PerDocumentMetrics, ...] = ()
+    files_below_threshold: tuple[str, ...] = ()
+
+
+def _ratio(numerator: int, denominator: int, *, empty: float) -> float:
+    return numerator / denominator if denominator > 0 else empty
+
+
+def _per_document(o: DocumentExtractionObservation) -> PerDocumentMetrics:
+    precision = _ratio(o.true_positive_boundaries, o.true_positive_boundaries + o.false_positive_boundaries, empty=0.0)
+    recall = _ratio(o.true_positive_boundaries, o.true_positive_boundaries + o.false_negative_boundaries, empty=0.0)
+    ff_rate = _ratio(o.preserved_figures_and_formulas, o.expected_figures_and_formulas, empty=1.0)
+    clean = _ratio(o.clean_text_questions, o.extracted_questions_total, empty=0.0)
+    below = (
+        precision < MIN_BOUNDARY_PRECISION
+        or recall < MIN_BOUNDARY_RECALL
+        or ff_rate < MIN_FIGURE_FORMULA_PRESERVATION
+        or clean < REQUIRED_CLEAN_TEXT_REDACTION
+        or o.noise_leaks_detected > 0
+    )
+    return PerDocumentMetrics(
+        corpus_id=o.corpus_id,
+        is_held_out=o.is_held_out,
+        boundary_precision=round(precision, 4),
+        boundary_recall=round(recall, 4),
+        figure_formula_preservation_rate=round(ff_rate, 4),
+        clean_text_rate=round(clean, 4),
+        below_threshold=below,
+    )
+
+
+_COUNT_FIELDS = (
+    "true_positive_boundaries",
+    "false_positive_boundaries",
+    "false_negative_boundaries",
+    "expected_figures_and_formulas",
+    "preserved_figures_and_formulas",
+    "extracted_questions_total",
+    "clean_text_questions",
+    "noise_leaks_detected",
+)
+
+
+def _validate_observations(observations: object) -> None:
+    if not observations:
+        raise GoldenMetricsError("at least one observation is required")
+    seen: dict[str, bool] = {}
+    for o in observations:  # type: ignore[attr-defined]
+        if not isinstance(o.corpus_id, str) or not o.corpus_id.strip():
+            raise GoldenMetricsError("corpus_id must be a non-empty string")
+        if o.corpus_id in seen:
+            raise GoldenMetricsError("duplicate corpus_id would be counted twice in the aggregate")
+        seen[o.corpus_id] = bool(o.is_held_out)
+        for name in _COUNT_FIELDS:
+            value = getattr(o, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise GoldenMetricsError(f"{name} must be a non-negative integer")
+        if o.preserved_figures_and_formulas > o.expected_figures_and_formulas:
+            raise GoldenMetricsError("preserved figures cannot exceed expected figures")
+        if o.clean_text_questions > o.extracted_questions_total:
+            raise GoldenMetricsError("clean questions cannot exceed extracted questions")
 
 
 def evaluate_extraction_quality(
@@ -72,6 +151,7 @@ def evaluate_extraction_quality(
     require_30_held_out: bool = False,
 ) -> GoldenEvaluationReport:
     """Evaluate aggregate extraction quality across golden and held-out runs."""
+    _validate_observations(observations)
     tp = sum(o.true_positive_boundaries for o in observations)
     fp = sum(o.false_positive_boundaries for o in observations)
     fn = sum(o.false_negative_boundaries for o in observations)
@@ -115,6 +195,17 @@ def evaluate_extraction_quality(
             failures.append(f"MISSING_GOLDEN_FILES:{len(missing)}")
     if require_30_held_out and len(held_out_ids) < 30:
         failures.append(f"INSUFFICIENT_HELD_OUT:{len(held_out_ids)}<30")
+    if require_full_11_golden:
+        expected_questions = {s.corpus_id: s.expected_questions for s in CANONICAL_GOLDEN_CORPUS}
+        for obs in observations:
+            expected = expected_questions.get(obs.corpus_id)
+            if not obs.is_held_out and expected is not None and (
+                obs.true_positive_boundaries + obs.false_negative_boundaries != expected
+            ):
+                failures.append(f"GOLDEN_QUESTION_COUNT_MISMATCH:{obs.corpus_id}")
+
+    per_document = tuple(_per_document(o) for o in observations)
+    below = tuple(sorted(d.corpus_id for d in per_document if d.below_threshold))
 
     return GoldenEvaluationReport(
         golden_file_count=len(golden_ids),
@@ -126,4 +217,6 @@ def evaluate_extraction_quality(
         passed=len(failures) == 0,
         failed_criteria=tuple(failures),
         leaking_corpus_ids=leaking_ids,
+        per_document=per_document,
+        files_below_threshold=below,
     )

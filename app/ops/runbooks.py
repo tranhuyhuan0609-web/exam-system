@@ -1,6 +1,6 @@
 """V11.3 Chapter 10 operational runbooks registry (`RB-01`..`RB-14`) & incident SLA helpers.
 
-Pure stdlib policy helpers in ``app.platform`` providing:
+Pure stdlib policy helpers in ``app.ops`` providing:
 - Structured registry of all 14 production runbooks with owners, severities, and SLAs,
 - Response SLA evaluator (`SEV-1 < 5m`, `SEV-2 < 15m`, `SEV-3 < 2h`),
 - `RB-05` exam attempt deadline compensation calculator for autosave outages > 60s,
@@ -9,8 +9,9 @@ Pure stdlib policy helpers in ``app.platform`` providing:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Literal
 
 SeverityLevel = Literal["SEV-1", "SEV-2", "SEV-3"]
@@ -79,10 +80,18 @@ class PdpNotificationDeadline:
 
 
 def get_runbook(code: str) -> RunbookSpec:
+    if not isinstance(code, str) or not code.strip():
+        raise ValueError("runbook code must be a non-empty string")
     spec = _RUNBOOK_MAP.get(code.strip().upper())
     if spec is None:
         raise ValueError(f"unknown runbook code: {code!r}")
     return spec
+
+
+def _require_aware_datetime(value: object, name: str) -> datetime:
+    if not isinstance(value, datetime) or value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+        raise ValueError(f"{name} must be a timezone-aware datetime")
+    return value
 
 
 def evaluate_incident_response_sla(
@@ -90,15 +99,20 @@ def evaluate_incident_response_sla(
     runbook_code: str,
     acknowledged_minutes: float,
 ) -> SlaEvaluation:
-    if acknowledged_minutes < 0:
-        raise ValueError("acknowledged_minutes must be non-negative")
+    if (
+        isinstance(acknowledged_minutes, bool)
+        or not isinstance(acknowledged_minutes, (int, float))
+        or not math.isfinite(acknowledged_minutes)
+        or acknowledged_minutes < 0
+    ):
+        raise ValueError("acknowledged_minutes must be a finite non-negative number")
     spec = get_runbook(runbook_code)
     limit = RESPONSE_SLA_MINUTES[spec.severity]
     return SlaEvaluation(
         runbook_code=spec.code,
         severity=spec.severity,
         sla_limit_minutes=limit,
-        acknowledged_minutes=acknowledged_minutes,
+        acknowledged_minutes=float(acknowledged_minutes),
         within_sla=acknowledged_minutes <= limit,
     )
 
@@ -110,19 +124,24 @@ def compute_rb05_deadline_compensation(
     grace_buffer_seconds: int = 30,
 ) -> DeadlineCompensation:
     """RB-05: compensate active exam deadline when autosave infrastructure outage > 60s."""
-    if outage_duration_seconds < 0 or grace_buffer_seconds < 0:
-        raise ValueError("durations must be non-negative")
+    deadline = _require_aware_datetime(current_deadline, "current_deadline")
+    for name, val in (
+        ("outage_duration_seconds", outage_duration_seconds),
+        ("grace_buffer_seconds", grace_buffer_seconds),
+    ):
+        if isinstance(val, bool) or not isinstance(val, int) or val < 0:
+            raise ValueError(f"{name} must be a non-negative integer")
     if outage_duration_seconds <= 60:
         return DeadlineCompensation(
             apply_extension=False,
             extension_seconds=0,
-            new_deadline=current_deadline,
+            new_deadline=deadline,
         )
     ext = outage_duration_seconds + grace_buffer_seconds
     return DeadlineCompensation(
         apply_extension=True,
         extension_seconds=ext,
-        new_deadline=current_deadline + timedelta(seconds=ext),
+        new_deadline=deadline + timedelta(seconds=ext),
     )
 
 
@@ -132,16 +151,8 @@ def evaluate_rb14_breach_notification_window(
     current_or_notified_at: datetime,
 ) -> PdpNotificationDeadline:
     """RB-14: Vietnam PDP Law 91/2025/QH15 requires A05 notification within 72 hours."""
-    detected = (
-        breach_detected_at.replace(tzinfo=timezone.utc)
-        if breach_detected_at.tzinfo is None
-        else breach_detected_at
-    )
-    now = (
-        current_or_notified_at.replace(tzinfo=timezone.utc)
-        if current_or_notified_at.tzinfo is None
-        else current_or_notified_at
-    )
+    detected = _require_aware_datetime(breach_detected_at, "breach_detected_at")
+    now = _require_aware_datetime(current_or_notified_at, "current_or_notified_at")
     if now < detected:
         raise ValueError("current_or_notified_at cannot precede breach_detected_at")
 

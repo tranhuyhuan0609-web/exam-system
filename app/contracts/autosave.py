@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 
 class AutosaveRequestContract(BaseModel):
@@ -21,25 +21,25 @@ class AutosaveRequestContract(BaseModel):
     A first save on a question (no response row yet) sends 0.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     client_sequence: int = Field(ge=1)
     expected_response_version: int = Field(ge=0)
     idempotency_key: str = Field(min_length=8, max_length=128)
-    payload_hash: str = Field(min_length=64, max_length=64)
+    payload_hash: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
     response_payload: dict[str, Any]
     is_flagged: bool = False
 
 
 class AutosaveResponseContract(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     status: Literal["COMMITTED", "IDEMPOTENT_REPLAY"]
     attempt_id: UUID
     question_version_id: UUID
-    committed_sequence: int
-    saved_response_version: int
-    server_timestamp: datetime
+    committed_sequence: int = Field(ge=1)
+    saved_response_version: int = Field(ge=1)
+    server_timestamp: AwareDatetime
 
 
 def canonical_json(payload: Any) -> str:
