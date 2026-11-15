@@ -53,7 +53,16 @@ def _migrate() -> None:
 
 
 # Tables whose rows are seeded by migrations and must survive between tests.
-SEEDED_TABLES = {"tenants", "fts_dictionary_versions", "permissions", "ai_providers", "parser_definitions"}
+SEEDED_TABLES = {
+    "tenants",
+    "fts_dictionary_versions",
+    "permissions",
+    "ai_providers",
+    "parser_definitions",
+    "assessment_frameworks",  # the THPTQG 2025+ standards (TASK-19)
+    "framework_versions",
+    "scoring_scheme_versions",
+}
 
 
 async def _truncate_all() -> None:
