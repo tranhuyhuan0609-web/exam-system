@@ -429,3 +429,10 @@ def test_only_graders_override_and_never_across_tenants(client, world):  # noqa:
     )
     assert anonymous.status_code == 401
     assert run(_scalar("SELECT count(*) FROM grades")) == 1
+
+
+def test_override_reason_counts_characters_not_padding(client, world):  # noqa: F811
+    attempt, first = _graded_attempt(client, world)
+    padded = _override(client, world, first["id"], total_score="7", reason="   " + "x" * 8 + "          ")
+    assert padded.status_code == 422, "8 real characters wrapped in blanks are not a reason"
+    assert run(_scalar("SELECT count(*) FROM grades")) == 1

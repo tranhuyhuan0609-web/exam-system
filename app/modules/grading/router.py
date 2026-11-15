@@ -54,7 +54,7 @@ class GradeRequest(BaseModel):
 
 
 class OverrideRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)  # 15 characters of reason, not of padding
 
     total_score: Decimal = Field(ge=0, le=1000, max_digits=6, decimal_places=2)
     reason: str = Field(min_length=15, max_length=2000)
