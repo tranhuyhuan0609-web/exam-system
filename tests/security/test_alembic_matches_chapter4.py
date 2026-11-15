@@ -297,7 +297,11 @@ def test_reconciler_auto_enforces_123_tables_when_complete(migrated_audit_state:
     present_names = set(base_report.migrated_chapter4_tables)
     missing_tables = spec.logical_tables - present_names
     synthetic_rels = [
-        r for r in base.relations if r.name not in missing_tables and r.name != "v_public_question_versions"
+        r
+        for r in base.relations
+        if r.name not in missing_tables
+        and r.name != "v_public_question_versions"
+        and r.parent_name != "response_revisions"
     ]
     synthetic_policies = list(base.policies)
     for table in sorted(missing_tables):

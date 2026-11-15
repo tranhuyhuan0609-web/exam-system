@@ -89,11 +89,10 @@ def _auth_headers(
     return headers
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _ensure_sprint9_schema(_database: None) -> None:
-    """Create Sprint 9 tables + parent `attempts` stub, strict RLS policies, and grants idempotently."""
+@pytest.fixture(scope="module", autouse=True)
+def _ensure_sprint9_schema(_database: None) -> Any:
+    """Create Sprint 9 tables, strict RLS policies, and grants idempotently, then clean up on module teardown."""
     strict_tables = (
-        "attempts",
         "flashcard_decks",
         "flashcards",
         "revision_schedules",
@@ -103,26 +102,6 @@ def _ensure_sprint9_schema(_database: None) -> None:
         "explanation_runs",
     )
     ddl_statements = (
-        """
-        CREATE TABLE IF NOT EXISTS attempts (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
-            assessment_version_id UUID NOT NULL,
-            assignment_id UUID,
-            membership_id UUID NOT NULL,
-            status VARCHAR(30) NOT NULL DEFAULT 'IN_PROGRESS'
-                CHECK (status IN ('IN_PROGRESS', 'SUBMITTED', 'AUTO_SUBMITTED', 'GRADED', 'VOIDED')),
-            attempt_seed BIGINT NOT NULL DEFAULT 1,
-            question_order_ids UUID[] NOT NULL DEFAULT ARRAY[]::uuid[],
-            option_permutations_json JSONB NOT NULL DEFAULT '{}',
-            started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            deadline_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '60 minutes',
-            submitted_at TIMESTAMPTZ,
-            submit_idempotency_key VARCHAR(128) UNIQUE,
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (membership_id, tenant_id) REFERENCES memberships(id, tenant_id) ON DELETE RESTRICT
-        )
-        """,
         """
         CREATE TABLE IF NOT EXISTS flashcard_decks (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
@@ -221,7 +200,6 @@ def _ensure_sprint9_schema(_database: None) -> None:
         async with engine.begin() as conn:
             for stmt in ddl_statements:
                 await conn.execute(text(stmt))
-            await conn.run_sync(Base.metadata.create_all, checkfirst=True)
             for table in strict_tables:
                 await conn.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
                 await conn.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
@@ -241,6 +219,14 @@ def _ensure_sprint9_schema(_database: None) -> None:
             )
 
     run(create())
+    yield
+
+    async def drop() -> None:
+        async with engine.begin() as conn:
+            for table in reversed(strict_tables):
+                await conn.execute(text(f"DROP TABLE IF EXISTS {table} CASCADE"))
+
+    run(drop())
 
 
 @pytest.fixture
@@ -420,13 +406,34 @@ def test_tutor_e02_exam_lock_gate08_blocks_and_unlocks(world: dict[str, uuid.UUI
 
     async def _insert_attempt(status_val: str) -> uuid.UUID:
         async with SessionLocal() as session, session.begin():
+            scheme_id = (
+                await session.execute(text("SELECT id FROM scoring_scheme_versions LIMIT 1"))
+            ).scalar_one()
+            asmt_id = uuid.uuid4()
+            av_id = uuid.uuid4()
+            await session.execute(
+                text(
+                    "INSERT INTO assessments (id, tenant_id, title, subject_code, grade_band, exam_type_code) "
+                    "VALUES (:id, :t, 'Sprint 9 Tutor Lock Exam', 'MATH', '12', 'THPTQG')"
+                ),
+                {"id": asmt_id, "t": ta},
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO assessment_versions "
+                    "(id, tenant_id, assessment_id, version_no, scoring_scheme_id, duration_seconds, structure_snapshot_json) "
+                    "VALUES (:id, :t, :a, 1, :sc, 3600, '{}'::jsonb)"
+                ),
+                {"id": av_id, "t": ta, "a": asmt_id, "sc": scheme_id},
+            )
             att_id = (
                 await session.execute(
                     text(
-                        "INSERT INTO attempts (tenant_id, assessment_version_id, membership_id, status) "
-                        "VALUES (:t, :av, :m, :s) RETURNING id"
+                        "INSERT INTO attempts "
+                        "(tenant_id, assessment_version_id, membership_id, status, attempt_seed, question_order_ids, deadline_at) "
+                        "VALUES (:t, :av, :m, :s, 1, ARRAY[]::uuid[], NOW() + INTERVAL '60 minutes') RETURNING id"
                     ),
-                    {"t": ta, "av": uuid.uuid4(), "m": ma1, "s": status_val},
+                    {"t": ta, "av": av_id, "m": ma1, "s": status_val},
                 )
             ).scalar_one()
             return att_id
