@@ -69,6 +69,24 @@ export interface CopilotRemediationCluster {
   readonly assigned?: boolean;
 }
 
+/** One row of `GET /api/v1/assignments?class_id=`. */
+export interface ClassAssignmentOption {
+  readonly id: string;
+  readonly class_id: string | null;
+  readonly assessment_id: string | null;
+  readonly assessment_version_id: string;
+  readonly assessment_title: string | null;
+  readonly due_at: string | null;
+  readonly max_attempts: number;
+}
+
+/** One published paper of `GET /api/v1/assessments`. */
+export interface PublishedPaperOption {
+  readonly id: string;
+  readonly title: string;
+  readonly current_version_id: string | null;
+}
+
 export interface TeacherClassLmsData {
   readonly classId: string;
   readonly className: string;

@@ -10,6 +10,7 @@ export interface WorkspaceCallOptions {
   url: string;
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   json?: unknown;
+  formData?: FormData;
   fetchFn?: typeof fetch;
   apiBase?: string;
   isDemoMode?: boolean;
@@ -62,6 +63,7 @@ export async function workspaceCall<T = unknown>({
   url,
   method = "POST",
   json,
+  formData,
   fetchFn,
   apiBase = "",
   isDemoMode,
@@ -76,7 +78,7 @@ export async function workspaceCall<T = unknown>({
     const res = await apiFetch(`${apiBase}${url}`, {
       method,
       fetchFn: caller,
-      json,
+      ...(formData !== undefined ? { body: formData } : { json }),
       redirectOn401,
       throwOnError: true,
     });

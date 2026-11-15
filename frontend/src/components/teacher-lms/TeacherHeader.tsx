@@ -75,6 +75,18 @@ export function TeacherHeader({
             );
           })}
           <Link
+            href="/studio/questions"
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Ngân hàng câu hỏi
+          </Link>
+          <Link
+            href="/studio/imports"
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Nạp file đề
+          </Link>
+          <Link
             href="/studio/imports/demo-run/review"
             className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
           >

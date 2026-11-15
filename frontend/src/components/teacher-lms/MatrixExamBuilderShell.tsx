@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { WorkspaceApiAlert } from "@/components/workspace/WorkspaceApiAlert";
 import {
   EmptyState,
@@ -17,7 +17,7 @@ import {
   type SubjectGroup2025,
 } from "@/lib/matrix-builder";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
-import { isUuid, shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
+import { isUuid, shouldHydrateLive, shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
 import { TeacherHeader } from "./TeacherHeader";
 import {
   createDemoMatrixBuilderData,
@@ -57,6 +57,50 @@ export function MatrixExamBuilderShell({
   const [apiErrorStatus, setApiErrorStatus] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [conflictDismissed, setConflictDismissed] = useState(false);
+  const [livePapers, setLivePapers] = useState<
+    readonly { id: string; title?: string; subject_code?: string; publication_status?: string; status?: string }[]
+  >([]);
+
+  useEffect(() => {
+    if (!shouldHydrateLive({ hasInitialData: Boolean(initialData), apiBase })) return;
+    let active = true;
+    void workspaceCall<
+      | readonly { id: string; title?: string; subject_code?: string; publication_status?: string; status?: string }[]
+      | { items?: readonly { id: string; title?: string; subject_code?: string; publication_status?: string; status?: string }[] }
+    >({
+      url: "/api/v1/assessments",
+      method: "GET",
+      fetchFn,
+      apiBase,
+      redirectOn401: false,
+    }).then((res) => {
+      if (!active || !res.ok || !res.data) return;
+      const rawRows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray((res.data as { items?: unknown }).items)
+          ? (
+              res.data as {
+                items: readonly { id: string; title?: string; subject_code?: string; publication_status?: string; status?: string }[];
+              }
+            ).items
+          : [];
+      const rows = rawRows.filter((row) => isUuid(String(row?.id ?? "")));
+      if (rows.length === 0) return;
+      setLivePapers(rows);
+      setData((prev) =>
+        isUuid(prev.examId)
+          ? prev
+          : {
+              ...prev,
+              examId: rows[0].id,
+              examTitle: rows[0].title ?? prev.examTitle,
+            },
+      );
+    });
+    return () => {
+      active = false;
+    };
+  }, [apiBase, fetchFn, initialData]);
 
   const cells: MatrixCellSpec[] = useMemo(() => {
     const out: MatrixCellSpec[] = [];
@@ -122,7 +166,10 @@ export function MatrixExamBuilderShell({
 
   const handlePresetSwitch = (group: SubjectGroup2025) => {
     const next = createDemoMatrixBuilderData(group);
-    setData(next);
+    setData((prev) => ({
+      ...next,
+      ...(isUuid(prev.examId) ? { examId: prev.examId } : {}),
+    }));
     setDesiredMap({ ...next.initialDesired });
     setRandomSeed(next.randomSeed);
     setStatusFeedback(
@@ -278,6 +325,29 @@ export function MatrixExamBuilderShell({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              {livePapers.length > 0 && (
+                <select
+                  aria-label="Chọn đề thi thật để bốc câu"
+                  data-testid="live-assessment-select"
+                  value={data.examId}
+                  onChange={(e) => {
+                    const picked = livePapers.find((p) => p.id === e.target.value);
+                    if (!picked) return;
+                    setData((prev) => ({
+                      ...prev,
+                      examId: picked.id,
+                      examTitle: picked.title ?? prev.examTitle,
+                    }));
+                  }}
+                  className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-2 text-xs font-semibold text-emerald-950"
+                >
+                  {livePapers.map((paper) => (
+                    <option key={paper.id} value={paper.id}>
+                      {paper.title ?? paper.id.slice(0, 8)} ({paper.publication_status ?? paper.status ?? "DRAFT"})
+                    </option>
+                  ))}
+                </select>
+              )}
               <button
                 type="button"
                 data-testid="preset-math-btn"

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { SafeKatexText } from "@/components/workspace/SafeKatexText";
 import { WorkspaceApiAlert } from "@/components/workspace/WorkspaceApiAlert";
 import {
@@ -16,7 +16,9 @@ import { isUuid, shouldHydrateLive, shouldSyncLiveEntity, workspaceCall } from "
 import { TeacherHeader } from "./TeacherHeader";
 import {
   createDemoTeacherClassData,
+  type ClassAssignmentOption,
   type CopilotRemediationCluster,
+  type PublishedPaperOption,
   type StudentGradeRow,
   type TeacherClassLmsData,
 } from "./types";
@@ -42,6 +44,34 @@ export function buildGradebookCsv(students: readonly StudentGradeRow[]): string 
   return [header, ...rows].join("\n");
 }
 
+interface BackendGradebookRow {
+  membership_id?: string;
+  student_label?: string;
+  score?: string;
+  submitted_at?: string | null;
+  due_at?: string | null;
+}
+
+/** Gradebook rows of `GET /classes/{id}/gradebook` as the table rows; a row without `submitted_at` has no score yet. */
+export function mapGradebookRows(rows: readonly BackendGradebookRow[]): StudentGradeRow[] {
+  return rows.map((row, idx) => {
+    const submittedAt = row.submitted_at ?? null;
+    const dueAt = row.due_at ?? null;
+    const score = Number(row.score);
+    return {
+      studentId: row.membership_id ?? `mem-${idx + 1}`,
+      studentCode: (row.membership_id ?? `HS${idx + 1}`).slice(0, 8),
+      studentName: row.student_label || `Học sinh ${idx + 1}`,
+      submitted: submittedAt !== null,
+      submittedAt,
+      isLate: submittedAt !== null && dueAt !== null && new Date(submittedAt) > new Date(dueAt),
+      score: submittedAt !== null && Number.isFinite(score) ? score : null,
+      attemptId: null,
+      weakTopicIds: [],
+    };
+  });
+}
+
 export function TeacherClassLmsShell({
   classId,
   initialData,
@@ -62,12 +92,66 @@ export function TeacherClassLmsShell({
   const [lastExportCsv, setLastExportCsv] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [conflictDismissed, setConflictDismissed] = useState(false);
+  const [classAssignments, setClassAssignments] = useState<readonly ClassAssignmentOption[]>([]);
+  const [publishedPapers, setPublishedPapers] = useState<readonly PublishedPaperOption[]>([]);
+  const [pickedPaperId, setPickedPaperId] = useState("");
+  const [isAssigning, setIsAssigning] = useState(false);
+
+  /** The assignments of the class (newest first) and the gradebook of the chosen one, from the backend. */
+  const loadAssignmentsAndGradebook = useCallback(
+    async (liveClassId: string, preferredAssignmentId?: string) => {
+      const listed = await workspaceCall<ClassAssignmentOption[]>({
+        url: `/api/v1/assignments?class_id=${encodeURIComponent(liveClassId)}`,
+        method: "GET",
+        fetchFn,
+        apiBase,
+        redirectOn401: false,
+      });
+      if (!listed.ok) {
+        if (listed.status !== 404 && listed.status !== 422) {
+          setApiError(listed.error);
+          setApiErrorStatus(listed.status);
+        }
+        return;
+      }
+      const assignments = Array.isArray(listed.data) ? listed.data.filter((a) => isUuid(a?.id)) : [];
+      setClassAssignments(assignments);
+      const active = assignments.find((a) => a.id === preferredAssignmentId) ?? assignments[0];
+      if (!active) return;
+      setClassData((prev) => ({
+        ...prev,
+        classId: liveClassId,
+        activeAssignmentId: active.id,
+        assessmentVersionId: active.assessment_version_id,
+        activeAssessmentTitle: active.assessment_title || prev.activeAssessmentTitle,
+      }));
+      const book = await workspaceCall<{ rows?: BackendGradebookRow[] }>({
+        url: `/api/v1/classes/${encodeURIComponent(liveClassId)}/gradebook?assignment_id=${encodeURIComponent(active.id)}`,
+        method: "GET",
+        fetchFn,
+        apiBase,
+        redirectOn401: false,
+      });
+      if (!book.ok) {
+        if (book.status !== 404 && book.status !== 422) {
+          setApiError(book.error);
+          setApiErrorStatus(book.status);
+        }
+        return;
+      }
+      if (Array.isArray(book.data?.rows) && book.data.rows.length > 0) {
+        const rows = mapGradebookRows(book.data.rows);
+        setClassData((prev) => ({ ...prev, students: rows }));
+      }
+    },
+    [apiBase, fetchFn],
+  );
 
   useEffect(() => {
     if (!shouldHydrateLive({ hasInitialData: Boolean(initialData), apiBase, entityIds: [classId] })) return;
     let active = true;
     void workspaceCall<{
-      classroom?: { name?: string; join_code?: string; title?: string };
+      classroom?: { id?: string; name?: string; invite_code?: string };
       members?: Array<{
         membership_id?: string;
         display_name?: string | null;
@@ -80,7 +164,7 @@ export function TeacherClassLmsShell({
       fetchFn,
       apiBase,
       redirectOn401: false,
-    }).then((result) => {
+    }).then(async (result) => {
       if (!active) return;
       if (!result.ok) {
         if (result.status !== 404 && result.status !== 422) {
@@ -91,8 +175,9 @@ export function TeacherClassLmsShell({
       }
       const remote = result.data;
       if (!remote?.classroom) return;
+      const liveClassId = isUuid(remote.classroom.id) ? remote.classroom.id : classId;
       const studentMembers = (remote.members ?? [])
-        .filter((m) => (m.role_in_class ?? "STUDENT") === "STUDENT")
+        .filter((m) => (m.role_in_class ?? "STUDENT") === "STUDENT" && (m.status ?? "ACTIVE") === "ACTIVE")
         .map<StudentGradeRow>((m, idx) => ({
           studentId: m.membership_id ?? `mem-${idx + 1}`,
           studentCode: (m.membership_id ?? `HS${idx + 1}`).slice(0, 8),
@@ -106,15 +191,39 @@ export function TeacherClassLmsShell({
         }));
       setClassData((prev) => ({
         ...prev,
-        className: remote.classroom?.name || remote.classroom?.title || prev.className,
-        inviteCode: remote.classroom?.join_code || prev.inviteCode,
+        classId: liveClassId,
+        className: remote.classroom?.name || prev.className,
+        inviteCode: remote.classroom?.invite_code || prev.inviteCode,
         ...(studentMembers.length > 0 ? { students: studentMembers } : {}),
       }));
+      // Published papers to hand out, then what is already assigned and how the class did.
+      const papers = await workspaceCall<PublishedPaperOption[]>({
+        url: "/api/v1/assessments",
+        method: "GET",
+        fetchFn,
+        apiBase,
+        redirectOn401: false,
+      });
+      if (!active) return;
+      if (papers.ok && Array.isArray(papers.data)) {
+        const usable = papers.data.filter((p) => isUuid(p?.id) && isUuid(p?.current_version_id));
+        setPublishedPapers(usable);
+        const first = usable[0];
+        if (first) {
+          setPickedPaperId((prev) => prev || first.id);
+          setClassData((prev) =>
+            isUuid(prev.assessmentVersionId)
+              ? prev
+              : { ...prev, assessmentVersionId: first.current_version_id ?? prev.assessmentVersionId },
+          );
+        }
+      }
+      await loadAssignmentsAndGradebook(liveClassId);
     });
     return () => {
       active = false;
     };
-  }, [apiBase, classId, fetchFn, initialData]);
+  }, [apiBase, classId, fetchFn, initialData, loadAssignmentsAndGradebook]);
 
   const uiResolution = useMemo(
     () =>
@@ -195,6 +304,36 @@ export function TeacherClassLmsShell({
     }
     setStatusFeedback(`Đã xuất bảng điểm CSV gồm ${classData.students.length} học sinh.`);
   };
+
+  const handleAssignPaper = async () => {
+    const paper = publishedPapers.find((p) => p.id === pickedPaperId);
+    if (!paper?.current_version_id) return;
+    setIsAssigning(true);
+    setApiError(null);
+    setApiErrorStatus(null);
+    try {
+      const result = await workspaceCall<{ id?: string }>({
+        url: "/api/v1/assignments",
+        method: "POST",
+        json: { class_id: classData.classId, assessment_version_id: paper.current_version_id },
+        fetchFn,
+        apiBase,
+      });
+      if (!result.ok) {
+        setApiError(result.error);
+        setApiErrorStatus(result.status);
+        setStatusFeedback(null);
+        return;
+      }
+      await loadAssignmentsAndGradebook(classData.classId, result.data?.id);
+      setStatusFeedback(`Đã giao đề "${paper.title}" cho lớp ${classData.className}.`);
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
+  const canAssignLive =
+    isUuid(classData.classId) && (Boolean(fetchFn) || shouldSyncLiveEntity({ apiBase, entityIds: [classData.classId] }));
 
   const handleConfirmRemediation = async (cluster: CopilotRemediationCluster) => {
     setIsSubmitting(true);
@@ -329,6 +468,56 @@ export function TeacherClassLmsShell({
             </button>
           </div>
         </section>
+
+        {canAssignLive && publishedPapers.length > 0 && (
+          <section
+            data-testid="assign-paper-panel"
+            className="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs"
+          >
+            {classAssignments.length > 1 && (
+              <label className="text-xs font-semibold text-slate-700">
+                Bài đã giao
+                <select
+                  data-testid="class-assignment-select"
+                  value={classData.activeAssignmentId ?? ""}
+                  onChange={(e) => void loadAssignmentsAndGradebook(classData.classId, e.target.value)}
+                  className="ml-2 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs"
+                >
+                  {classAssignments.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.assessment_title ?? a.id.slice(0, 8)}
+                      {a.due_at ? ` · hạn ${new Date(a.due_at).toLocaleDateString("vi-VN")}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label className="text-xs font-semibold text-slate-700">
+              Giao đề đã xuất bản cho lớp
+              <select
+                data-testid="assign-paper-select"
+                value={pickedPaperId}
+                onChange={(e) => setPickedPaperId(e.target.value)}
+                className="ml-2 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs"
+              >
+                {publishedPapers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              data-testid="assign-paper-btn"
+              disabled={isAssigning || !pickedPaperId}
+              onClick={handleAssignPaper}
+              className="rounded-lg bg-blue-700 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-blue-800 disabled:opacity-50"
+            >
+              {isAssigning ? "Đang giao..." : "Giao bài"}
+            </button>
+          </section>
+        )}
 
         {/* Distribution + Unsubmitted Students */}
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
