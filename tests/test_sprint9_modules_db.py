@@ -15,6 +15,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -22,7 +23,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 
 from app.config import get_settings
-from app.db import Base, SessionLocal, engine
+from app.db import SessionLocal, engine
 from app.modules.explanations.internal.models import ExplanationRun  # noqa: F401
 from app.modules.explanations.router import router as explanations_router
 from app.modules.flashcards.internal.fsrs import VN_TZ, FSRSRating, review_card
@@ -421,7 +422,8 @@ def test_tutor_e02_exam_lock_gate08_blocks_and_unlocks(world: dict[str, uuid.UUI
             await session.execute(
                 text(
                     "INSERT INTO assessment_versions "
-                    "(id, tenant_id, assessment_id, version_no, scoring_scheme_id, duration_seconds, structure_snapshot_json) "
+                    "(id, tenant_id, assessment_id, version_no, scoring_scheme_id, "
+                    "duration_seconds, structure_snapshot_json) "
                     "VALUES (:id, :t, :a, 1, :sc, 3600, '{}'::jsonb)"
                 ),
                 {"id": av_id, "t": ta, "a": asmt_id, "sc": scheme_id},
@@ -430,7 +432,8 @@ def test_tutor_e02_exam_lock_gate08_blocks_and_unlocks(world: dict[str, uuid.UUI
                 await session.execute(
                     text(
                         "INSERT INTO attempts "
-                        "(tenant_id, assessment_version_id, membership_id, status, attempt_seed, question_order_ids, deadline_at) "
+                        "(tenant_id, assessment_version_id, membership_id, status, "
+                        "attempt_seed, question_order_ids, deadline_at) "
                         "VALUES (:t, :av, :m, :s, 1, ARRAY[]::uuid[], NOW() + INTERVAL '60 minutes') RETURNING id"
                     ),
                     {"t": ta, "av": av_id, "m": ma1, "s": status_val},
