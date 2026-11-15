@@ -111,7 +111,7 @@ class CommandResult:
 
 def _run(argv: list[str], timeout: int = 3600) -> subprocess.CompletedProcess[str]:
     return subprocess.run(  # noqa: S603 - fixed argument lists, no shell
-        argv, cwd=ROOT, capture_output=True, text=True, timeout=timeout, check=False
+        argv, cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, check=False
     )
 
 
