@@ -25,8 +25,9 @@ class ExplanationRun(Base):
         ForeignKey("tenants.id", ondelete="CASCADE"),
         nullable=False,
     )
-    # FK to question_versions(id) is enforced in PostgreSQL DDL / migrations once questions ORM lands.
-    question_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    question_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("question_versions.id"), nullable=False
+    )
     draft_rationale_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     sympy_verified: Mapped[bool] = mapped_column(
         Boolean,

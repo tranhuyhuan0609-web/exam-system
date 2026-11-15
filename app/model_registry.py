@@ -22,7 +22,9 @@ from app.modules.dedup.internal import models as dedup_models  # noqa: F401
 from app.modules.delivery.internal import models as delivery_models  # noqa: F401
 from app.modules.error_notebook.internal import models as error_notebook_models  # noqa: F401
 from app.modules.exam_import.internal import models as exam_import_models  # noqa: F401
+from app.modules.explanations.internal import models as explanations_models  # noqa: F401
 from app.modules.extraction.internal import models as extraction_models  # noqa: F401
+from app.modules.flashcards.internal import models as flashcards_models  # noqa: F401
 from app.modules.frameworks.internal import models as frameworks_models  # noqa: F401
 from app.modules.gradebook.internal import models as gradebook_models  # noqa: F401
 from app.modules.grading.internal import models as grading_models  # noqa: F401
@@ -40,4 +42,5 @@ from app.modules.questions.internal import models as questions_models  # noqa: F
 from app.modules.review.internal import models as review_models  # noqa: F401
 from app.modules.search.internal import models as search_models  # noqa: F401
 from app.modules.taxonomy.internal import models as taxonomy_models  # noqa: F401
+from app.modules.tutor.internal import models as tutor_models  # noqa: F401
 from app.platform import models as platform_models  # noqa: F401
