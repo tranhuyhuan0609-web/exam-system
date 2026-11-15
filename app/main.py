@@ -16,12 +16,14 @@ from app.db import SessionLocal
 from app.deps import LoginRequired, SessionDep, get_current_user
 from app.modules.access.router import router as access_router
 from app.modules.ai_gateway.router import router as ai_gateway_router
+from app.modules.analytics.router import router as analytics_router
 from app.modules.assembly.router import router as assembly_router
 from app.modules.assets.router import router as assets_router
 from app.modules.assignments.router import router as assignments_router
 from app.modules.attempts.router import router as attempts_router
 from app.modules.audit.router import router as audit_router
 from app.modules.authoring.router import router as authoring_router
+from app.modules.billing.router import router as billing_router
 from app.modules.classes.router import router as classes_router
 from app.modules.config.router import router as config_router
 from app.modules.content.router import router as content_router
@@ -58,6 +60,7 @@ from app.modules.search.router import router as search_router
 from app.modules.taxonomy.router import router as taxonomy_router
 from app.modules.teacher_copilot.router import router as teacher_copilot_router
 from app.modules.tutor.router import router as tutor_router
+from app.modules.vertical_packs.router import router as vertical_packs_router
 from app.platform.branding import BRAND_NAME, BRAND_SEO_DESCRIPTION
 from app.routers import admin, auth, library, maker, plans, student, teacher
 from app.templating import templates
@@ -188,6 +191,9 @@ for _module_router in (
     mastery_router,
     recommendations_router,
     teacher_copilot_router,
+    analytics_router,
+    billing_router,
+    vertical_packs_router,
 ):
     app.include_router(_module_router)
 

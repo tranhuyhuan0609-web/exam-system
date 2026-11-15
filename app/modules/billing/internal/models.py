@@ -96,6 +96,9 @@ class PaymentWebhookRecord(Base):
     """Idempotent webhook deduplication receipt keyed by `webhook_id`."""
 
     __tablename__ = "payment_webhooks"
+    # Decision #7: the API role may only INSERT here. RETURNING needs SELECT, so the ORM must not fetch the
+    # server-generated `processed_at` back after the insert.
+    __mapper_args__ = {"eager_defaults": False}
 
     webhook_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     provider: Mapped[str] = mapped_column(String(40), nullable=False)
