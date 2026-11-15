@@ -102,13 +102,7 @@ def _task_view(row: RemediationTask, *, note_status: str) -> RemediationTaskView
 async def _has_table_privilege(session: AsyncSession, table_name: str, privilege: str) -> bool:
     row = (
         await session.execute(
-            text(
-                "SELECT EXISTS ("
-                "  SELECT 1 FROM pg_tables "
-                "  WHERE schemaname = 'public' AND tablename = :t "
-                "  AND has_table_privilege(current_user, 'public.' || quote_ident(tablename), :priv)"
-                ")"
-            ),
+            text("SELECT has_table_privilege(current_user, 'public.' || quote_ident(:t), :priv)"),
             {"t": table_name, "priv": privilege},
         )
     ).scalar_one()

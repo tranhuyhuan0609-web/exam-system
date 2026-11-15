@@ -115,32 +115,15 @@ def _extract_expected_answer(answer_schema: Any) -> str:
     return str(answer_schema)
 
 
-async def _selectable_tables(session: AsyncSession, names: Sequence[str]) -> set[str]:
-    rows = (
-        await session.execute(
-            text(
-                "SELECT tablename FROM pg_tables "
-                "WHERE schemaname = 'public' AND tablename = ANY(:names) "
-                "AND has_table_privilege(current_user, 'public.' || quote_ident(tablename), 'SELECT')"
-            ),
-            {"names": list(names)},
-        )
-    ).scalars().all()
-    return set(rows)
-
-
-async def _insertable_tables(session: AsyncSession, names: Sequence[str]) -> set[str]:
-    rows = (
-        await session.execute(
-            text(
-                "SELECT tablename FROM pg_tables "
-                "WHERE schemaname = 'public' AND tablename = ANY(:names) "
-                "AND has_table_privilege(current_user, 'public.' || quote_ident(tablename), 'INSERT')"
-            ),
-            {"names": list(names)},
-        )
-    ).scalars().all()
-    return set(rows)
+async def _can_read_answers(session: AsyncSession) -> bool:
+    """Role-privilege branch: only the API and grading roles may read `question_version_answers` (H-03)."""
+    return bool(
+        (
+            await session.execute(
+                text("SELECT has_table_privilege(current_user, 'public.question_version_answers', 'SELECT')")
+            )
+        ).scalar_one()
+    )
 
 
 async def _load_item_specs_from_db(
@@ -152,8 +135,7 @@ async def _load_item_specs_from_db(
         raise PracticeValidationError("at least one question_version_id or item_spec is required")
 
     unique_ids = list(dict.fromkeys(question_version_ids))
-    readable = await _selectable_tables(session, ("question_version_answers", "questions", "question_versions"))
-    has_answers = "question_version_answers" in readable
+    has_answers = await _can_read_answers(session)
 
     if has_answers:
         rows = (
@@ -587,9 +569,8 @@ async def complete_session(
     db_sess.completed_at = now_ts
     await session.flush()
 
-    writable = await _insertable_tables(session, ("error_notes", "outbox_events"))
     item_by_qid = {item.question_version_id: item for item in state.items}
-    if capture_error_notes and "error_notes" in writable:
+    if capture_error_notes:
         for qid_str in report.error_note_question_ids:
             item = item_by_qid.get(qid_str)
             node_uuid: uuid.UUID | None = None
@@ -627,34 +608,33 @@ async def complete_session(
                 )
 
     accuracy_float = float(report.accuracy)
-    if "outbox_events" in writable:
-        envelope = EventEnvelopeContract(
-            event_type="practice.session_completed",
-            tenant_id=tenant_id,
-            aggregate_type="practice_session",
-            aggregate_id=db_sess.id,
-            payload={
-                "practice_session_id": str(db_sess.id),
-                "membership_id": str(db_sess.membership_id),
-                "mode": db_sess.mode,
-                "correct_count": report.correct_count,
-                "total_answered": report.total_answered,
-                "accuracy": accuracy_float,
-                "error_note_question_ids": list(report.error_note_question_ids),
-                "resolved_remediation_question_ids": list(report.resolved_remediation_question_ids),
-                "mastery_signals": [
-                    {
-                        "taxonomy_node_id": sig.taxonomy_node_id,
-                        "question_version_id": sig.question_version_id,
-                        "is_correct": sig.is_correct,
-                        "hints_used": sig.hints_used,
-                        "source_kind": sig.source_kind,
-                    }
-                    for sig in report.mastery_signals
-                ],
-            },
-        )
-        await enqueue(session, envelope)
+    envelope = EventEnvelopeContract(
+        event_type="practice.session_completed",
+        tenant_id=tenant_id,
+        aggregate_type="practice_session",
+        aggregate_id=db_sess.id,
+        payload={
+            "practice_session_id": str(db_sess.id),
+            "membership_id": str(db_sess.membership_id),
+            "mode": db_sess.mode,
+            "correct_count": report.correct_count,
+            "total_answered": report.total_answered,
+            "accuracy": accuracy_float,
+            "error_note_question_ids": list(report.error_note_question_ids),
+            "resolved_remediation_question_ids": list(report.resolved_remediation_question_ids),
+            "mastery_signals": [
+                {
+                    "taxonomy_node_id": sig.taxonomy_node_id,
+                    "question_version_id": sig.question_version_id,
+                    "is_correct": sig.is_correct,
+                    "hints_used": sig.hints_used,
+                    "source_kind": sig.source_kind,
+                }
+                for sig in report.mastery_signals
+            ],
+        },
+    )
+    await enqueue(session, envelope)
 
     mastery_summary = aggregate_signal_summary(report.mastery_signals)
     return PracticeCompletionView(
