@@ -44,6 +44,7 @@ from app.modules.ingestion.router import router as ingestion_router
 from app.modules.knowledge_graph.router import router as knowledge_graph_router
 from app.modules.layout.router import router as layout_router
 from app.modules.learning_path.router import router as learning_path_router
+from app.modules.mastery.router import router as mastery_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.outbox.router import router as outbox_router
 from app.modules.parsers.router import router as parsers_router
@@ -51,9 +52,11 @@ from app.modules.practice.router import router as practice_router
 from app.modules.privacy.router import router as privacy_router
 from app.modules.quality.router import router as quality_router
 from app.modules.questions.router import router as questions_router
+from app.modules.recommendations.router import router as recommendations_router
 from app.modules.review.router import router as review_router
 from app.modules.search.router import router as search_router
 from app.modules.taxonomy.router import router as taxonomy_router
+from app.modules.teacher_copilot.router import router as teacher_copilot_router
 from app.modules.tutor.router import router as tutor_router
 from app.platform.branding import BRAND_NAME, BRAND_SEO_DESCRIPTION
 from app.routers import admin, auth, library, maker, plans, student, teacher
@@ -182,6 +185,9 @@ for _module_router in (
     crawler_router,
     drive_sync_router,
     generation_router,
+    mastery_router,
+    recommendations_router,
+    teacher_copilot_router,
 ):
     app.include_router(_module_router)
 

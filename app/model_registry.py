@@ -35,6 +35,7 @@ from app.modules.ingestion.internal import models as ingestion_models  # noqa: F
 from app.modules.knowledge_graph.internal import models as knowledge_graph_models  # noqa: F401
 from app.modules.layout.internal import models as layout_models  # noqa: F401
 from app.modules.learning_path.internal import models as learning_path_models  # noqa: F401
+from app.modules.mastery.internal import models as mastery_models  # noqa: F401
 from app.modules.notifications.internal import models as notifications_models  # noqa: F401
 from app.modules.outbox.internal import models as outbox_models  # noqa: F401
 from app.modules.parsers.internal import models as parsers_models  # noqa: F401
@@ -42,8 +43,10 @@ from app.modules.practice.internal import models as practice_models  # noqa: F40
 from app.modules.privacy.internal import models as privacy_models  # noqa: F401
 from app.modules.quality.internal import models as quality_models  # noqa: F401
 from app.modules.questions.internal import models as questions_models  # noqa: F401
+from app.modules.recommendations.internal import models as recommendations_models  # noqa: F401
 from app.modules.review.internal import models as review_models  # noqa: F401
 from app.modules.search.internal import models as search_models  # noqa: F401
 from app.modules.taxonomy.internal import models as taxonomy_models  # noqa: F401
+from app.modules.teacher_copilot.internal import models as teacher_copilot_models  # noqa: F401
 from app.modules.tutor.internal import models as tutor_models  # noqa: F401
 from app.platform import models as platform_models  # noqa: F401
