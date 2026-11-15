@@ -33,11 +33,16 @@ class CrawlUrl(Base):
         ),
         UniqueConstraint("source_id", "url_hash", name="uq_crawl_urls_source_url_hash"),
         UniqueConstraint("id", "tenant_id", name="uq_crawl_urls_id_tenant"),
+        ForeignKeyConstraint(
+            ["source_id", "tenant_id"],
+            ["sources.id", "sources.tenant_id"],
+            ondelete="CASCADE",
+            name="fk_crawl_urls_source_tenant",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=UUID_V7)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    # Composite FK (source_id, tenant_id) -> sources(id, tenant_id) enforced in PostgreSQL DDL/Alembic.
     source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     url: Mapped[str] = mapped_column(String(1024), nullable=False)
     url_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
@@ -58,13 +63,17 @@ class CrawlFetch(Base):
             ondelete="CASCADE",
             name="fk_crawl_fetches_crawl_url_tenant",
         ),
+        ForeignKeyConstraint(
+            ["raw_asset_id", "tenant_id"],
+            ["assets.id", "assets.tenant_id"],
+            name="fk_crawl_fetches_raw_asset_tenant",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=UUID_V7)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     crawl_url_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     http_status: Mapped[int] = mapped_column(Integer, nullable=False)
-    # Composite FK (raw_asset_id, tenant_id) -> assets(id, tenant_id) enforced in PostgreSQL DDL/Alembic.
     raw_asset_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     resolved_ip: Mapped[str] = mapped_column(String(64), nullable=False)
     parse_yield_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))

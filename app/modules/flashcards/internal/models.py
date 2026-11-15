@@ -8,6 +8,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     DateTime,
+    ForeignKey,
     ForeignKeyConstraint,
     Integer,
     Numeric,
@@ -63,8 +64,9 @@ class Flashcard(Base):
     deck_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     front_md: Mapped[str] = mapped_column(Text, nullable=False)
     back_md: Mapped[str] = mapped_column(Text, nullable=False)
-    # FK to question_versions(id) is enforced in PostgreSQL DDL / migrations once questions ORM lands.
-    source_question_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    source_question_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("question_versions.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=NOW)
 
 

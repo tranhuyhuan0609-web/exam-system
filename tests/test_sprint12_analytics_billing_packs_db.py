@@ -26,7 +26,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
 
 from app.config import get_settings
-from app.db import SessionLocal, engine
+from app.db import SessionLocal
 from app.modules.analytics.internal.models import AnalyticsEventRecord, DailyMetricRollupRecord  # noqa: F401
 from app.modules.analytics.public import run_daily_metric_rollup
 from app.modules.analytics.router import router as analytics_router
@@ -79,201 +79,6 @@ def _auth_headers(
         ttl_seconds=900,
     )
     return {"Authorization": f"Bearer {token}"}
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _ensure_task34_schema(_database: None):
-    """Create TASK-34 tables, RLS policies and least-privilege grants locally; DROP CASCADE on teardown."""
-    ddl_specs: list[tuple[str, str]] = [
-        (
-            "analytics_events",
-            """
-            CREATE TABLE IF NOT EXISTS analytics_events (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-                tenant_id UUID NOT NULL,
-                event_name VARCHAR(80) NOT NULL,
-                dimensions_json JSONB NOT NULL DEFAULT '{}',
-                metrics_json JSONB NOT NULL DEFAULT '{}',
-                occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-            """,
-        ),
-        (
-            "daily_metric_rollups",
-            """
-            CREATE TABLE IF NOT EXISTS daily_metric_rollups (
-                metric_date DATE NOT NULL,
-                tenant_id UUID NOT NULL,
-                metric_code VARCHAR(80) NOT NULL,
-                metric_value NUMERIC(14,4) NOT NULL,
-                PRIMARY KEY (metric_date, tenant_id, metric_code)
-            )
-            """,
-        ),
-        (
-            "subscription_plans",
-            """
-            CREATE TABLE IF NOT EXISTS subscription_plans (
-                code VARCHAR(40) PRIMARY KEY,
-                name VARCHAR(120) NOT NULL,
-                price_vnd BIGINT NOT NULL,
-                quotas_json JSONB NOT NULL
-            )
-            """,
-        ),
-        (
-            "subscriptions",
-            """
-            CREATE TABLE IF NOT EXISTS subscriptions (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-                tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
-                membership_id UUID NOT NULL,
-                plan_code VARCHAR(40) NOT NULL REFERENCES subscription_plans(code),
-                status VARCHAR(30) NOT NULL DEFAULT 'ACTIVE'
-                    CHECK (status IN ('ACTIVE', 'PAST_DUE', 'CANCELLED', 'EXPIRED')),
-                current_period_end TIMESTAMPTZ NOT NULL,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                FOREIGN KEY (membership_id, tenant_id) REFERENCES memberships(id, tenant_id) ON DELETE RESTRICT
-            )
-            """,
-        ),
-        (
-            "usage_ledger",
-            """
-            CREATE TABLE IF NOT EXISTS usage_ledger (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-                tenant_id UUID NOT NULL,
-                membership_id UUID NOT NULL,
-                resource_code VARCHAR(60) NOT NULL,
-                delta INT NOT NULL,
-                idempotency_key VARCHAR(128) UNIQUE NOT NULL,
-                recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                FOREIGN KEY (membership_id, tenant_id) REFERENCES memberships(id, tenant_id) ON DELETE RESTRICT
-            )
-            """,
-        ),
-        (
-            "payment_webhooks",
-            """
-            CREATE TABLE IF NOT EXISTS payment_webhooks (
-                webhook_id VARCHAR(128) PRIMARY KEY,
-                provider VARCHAR(40) NOT NULL,
-                raw_payload_json JSONB NOT NULL,
-                processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-            """,
-        ),
-        (
-            "vertical_packs",
-            """
-            CREATE TABLE IF NOT EXISTS vertical_packs (
-                code VARCHAR(60) PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
-                manifest_json JSONB NOT NULL,
-                is_enabled BOOLEAN NOT NULL DEFAULT FALSE
-            )
-            """,
-        ),
-        (
-            "locale_bundles",
-            """
-            CREATE TABLE IF NOT EXISTS locale_bundles (
-                locale_code VARCHAR(20) NOT NULL,
-                namespace VARCHAR(60) NOT NULL,
-                messages_json JSONB NOT NULL,
-                PRIMARY KEY (locale_code, namespace)
-            )
-            """,
-        ),
-    ]
-
-    strict_rls_tables = (
-        "analytics_events",
-        "daily_metric_rollups",
-        "subscriptions",
-        "usage_ledger",
-    )
-    created_tables: list[str] = []
-
-    async def create() -> None:
-        async with engine.begin() as conn:
-            preexisting = set(
-                (
-                    await conn.execute(
-                        text(
-                            "SELECT tablename FROM pg_tables "
-                            "WHERE schemaname = 'public' AND tablename = ANY(:names)"
-                        ),
-                        {"names": [name for name, _ in ddl_specs]},
-                    )
-                ).scalars()
-            )
-            for name, stmt in ddl_specs:
-                if name in preexisting:
-                    continue
-                await conn.execute(text(stmt))
-                created_tables.append(name)
-
-            for name in created_tables:
-                await conn.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {name} TO ulp_app_rw"))
-
-            if "daily_metric_rollups" in created_tables:
-                await conn.execute(
-                    text("REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON daily_metric_rollups FROM ulp_app_rw")
-                )
-                await conn.execute(
-                    text("GRANT SELECT, INSERT, UPDATE ON daily_metric_rollups TO ulp_system_scheduler")
-                )
-                await conn.execute(text("GRANT SELECT ON daily_metric_rollups TO ulp_analytics_ro"))
-
-            if "analytics_events" in created_tables:
-                await conn.execute(text("GRANT SELECT ON analytics_events TO ulp_system_scheduler"))
-                await conn.execute(text("GRANT SELECT ON analytics_events TO ulp_analytics_ro"))
-
-            for name in strict_rls_tables:
-                if name not in created_tables:
-                    continue
-                await conn.execute(text(f"ALTER TABLE {name} ENABLE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"ALTER TABLE {name} FORCE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"DROP POLICY IF EXISTS tenant_isolation_policy ON {name}"))
-                await conn.execute(
-                    text(
-                        f"CREATE POLICY tenant_isolation_policy ON {name} "
-                        "USING (tenant_id = (SELECT current_app_tenant_id())) "
-                        "WITH CHECK (tenant_id = (SELECT current_app_tenant_id()))"
-                    )
-                )
-
-            if "analytics_events" in created_tables:
-                await conn.execute(text("DROP POLICY IF EXISTS sys_rollup_read ON analytics_events"))
-                await conn.execute(
-                    text(
-                        "CREATE POLICY sys_rollup_read ON analytics_events "
-                        "FOR SELECT TO ulp_system_scheduler "
-                        "USING ((SELECT app_system_job()) = 'metric_rollup')"
-                    )
-                )
-            if "daily_metric_rollups" in created_tables:
-                await conn.execute(text("DROP POLICY IF EXISTS sys_rollup_write ON daily_metric_rollups"))
-                await conn.execute(
-                    text(
-                        "CREATE POLICY sys_rollup_write ON daily_metric_rollups "
-                        "FOR ALL TO ulp_system_scheduler "
-                        "USING ((SELECT app_system_job()) = 'metric_rollup') "
-                        "WITH CHECK ((SELECT app_system_job()) = 'metric_rollup')"
-                    )
-                )
-
-    async def drop() -> None:
-        if not created_tables:
-            return
-        async with engine.begin() as conn:
-            reversed_names = ", ".join(reversed(created_tables))
-            await conn.execute(text(f"DROP TABLE IF EXISTS {reversed_names} CASCADE"))
-
-    run(create())
-    yield
-    run(drop())
 
 
 @pytest.fixture
@@ -661,9 +466,7 @@ def test_vertical_packs_activation_isolation_and_locale_fallback(world: dict[str
     client = _api_client()
     ta = world["ta"]
     headers_adm = _auth_headers(tenant_id=ta, membership_id=world["ma_adm"], user_id=world["ua_adm"], roles=["ADMIN"])
-    headers_lrn = _auth_headers(
-        tenant_id=ta, membership_id=world["ma_lrn"], user_id=world["ua_lrn"], roles=["LEARNER"]
-    )
+    headers_lrn = _auth_headers(tenant_id=ta, membership_id=world["ma_lrn"], user_id=world["ua_lrn"], roles=["LEARNER"])
 
     # Non-admin blocked from registering packs
     forbid = client.post(
@@ -764,3 +567,52 @@ def test_vertical_packs_activation_isolation_and_locale_fallback(world: dict[str
         headers=headers_lrn,
     )
     assert default_fb.json()["resolved_label"] == "Mac dinh tieng Viet"
+
+
+def test_special_grants_payment_webhooks_insert_only_rollups_read_only_and_job_policies() -> None:
+    """Decision #7 and section 5: the API role only INSERTs webhooks and only reads rollups; the rollup job is
+    reachable through its two system-job policies and nothing else."""
+
+    async def privileges() -> dict[str, bool]:
+        async with SessionLocal() as session:
+            out = {}
+            for role, table, priv in (
+                ("ulp_app_rw", "payment_webhooks", "INSERT"),
+                ("ulp_app_rw", "payment_webhooks", "SELECT"),
+                ("ulp_app_rw", "payment_webhooks", "UPDATE"),
+                ("ulp_app_rw", "payment_webhooks", "DELETE"),
+                ("ulp_app_rw", "daily_metric_rollups", "SELECT"),
+                ("ulp_app_rw", "daily_metric_rollups", "INSERT"),
+                ("ulp_app_rw", "daily_metric_rollups", "UPDATE"),
+                ("ulp_system_scheduler", "daily_metric_rollups", "UPDATE"),
+                ("ulp_system_scheduler", "analytics_events", "SELECT"),
+                ("ulp_system_scheduler", "analytics_events", "INSERT"),
+                ("ulp_analytics_ro", "daily_metric_rollups", "SELECT"),
+            ):
+                out[f"{role}:{table}:{priv}"] = (
+                    await session.execute(
+                        text("SELECT has_table_privilege(:r, :t, :p)"), {"r": role, "t": table, "p": priv}
+                    )
+                ).scalar_one()
+            return out
+
+    got = run(privileges())
+    assert {k for k, v in got.items() if v} == {
+        "ulp_app_rw:payment_webhooks:INSERT",
+        "ulp_app_rw:daily_metric_rollups:SELECT",
+        "ulp_system_scheduler:daily_metric_rollups:UPDATE",
+        "ulp_system_scheduler:analytics_events:SELECT",
+        "ulp_analytics_ro:daily_metric_rollups:SELECT",
+    }
+
+    async def policies() -> set[tuple[str, str]]:
+        async with SessionLocal() as session:
+            rows = await session.execute(
+                text("SELECT tablename, policyname FROM pg_policies WHERE policyname LIKE 'sys_rollup_%'")
+            )
+            return {(r.tablename, r.policyname) for r in rows}
+
+    assert run(policies()) == {
+        ("analytics_events", "sys_rollup_read"),
+        ("daily_metric_rollups", "sys_rollup_write"),
+    }

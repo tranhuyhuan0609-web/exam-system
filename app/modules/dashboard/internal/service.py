@@ -353,7 +353,7 @@ async def _gather_live_signals(
             await session.execute(
                 text(
                     """
-                    SELECT tn.code AS chapter_code, tn.code AS chapter_name, me.mastery_prob
+                    SELECT tn.code AS chapter_code, tn.code AS chapter_name, me.mastery_probability AS mastery_prob
                     FROM mastery_estimates me
                     JOIN taxonomy_nodes tn ON tn.id = me.taxonomy_node_id
                     WHERE me.tenant_id = :tenant_id AND me.membership_id = :membership_id

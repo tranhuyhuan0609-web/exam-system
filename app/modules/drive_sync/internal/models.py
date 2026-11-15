@@ -33,11 +33,16 @@ class SourceConnection(Base):
             name="ck_source_connections_status",
         ),
         UniqueConstraint("id", "tenant_id", name="uq_source_connections_id_tenant"),
+        ForeignKeyConstraint(
+            ["source_id", "tenant_id"],
+            ["sources.id", "sources.tenant_id"],
+            ondelete="CASCADE",
+            name="fk_source_connections_source_tenant",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=UUID_V7)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    # Composite FK (source_id, tenant_id) -> sources(id, tenant_id) enforced in PostgreSQL DDL/Alembic.
     source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     provider: Mapped[str] = mapped_column(String(40), nullable=False, server_default=text("'GOOGLE_DRIVE'"))
     secret_vault_ref: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -79,11 +84,22 @@ class FilePairingCandidate(Base):
             "status IN ('PROPOSED', 'CONFIRMED', 'REJECTED')",
             name="ck_file_pairing_candidates_status",
         ),
+        ForeignKeyConstraint(
+            ["exam_doc_id", "tenant_id"],
+            ["source_documents.id", "source_documents.tenant_id"],
+            ondelete="CASCADE",
+            name="fk_file_pairing_candidates_exam_doc_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["solution_doc_id", "tenant_id"],
+            ["source_documents.id", "source_documents.tenant_id"],
+            ondelete="CASCADE",
+            name="fk_file_pairing_candidates_solution_doc_tenant",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=UUID_V7)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    # Composite FKs -> source_documents(id, tenant_id) enforced in PostgreSQL DDL/Alembic.
     exam_doc_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     solution_doc_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     similarity_score: Mapped[Decimal] = mapped_column(Numeric(4, 3), nullable=False)
