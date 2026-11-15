@@ -77,23 +77,6 @@ def _auth_headers(
 
 
 LATER_WAVE_STUBS = {
-    # F02 assessment_assignments arrives with TASK-30 (it needs classes, F01).
-    "assessment_assignments": """
-        CREATE TABLE IF NOT EXISTS assessment_assignments (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            assessment_version_id UUID NOT NULL,
-            class_id UUID,
-            group_id UUID,
-            assigned_by UUID NOT NULL REFERENCES users(id),
-            available_from TIMESTAMPTZ NOT NULL,
-            due_at TIMESTAMPTZ NOT NULL,
-            max_attempts INT NOT NULL DEFAULT 1,
-            reveal_policy VARCHAR(30) NOT NULL DEFAULT 'AFTER_DUE',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id)
-        )
-    """,
     # D06 mastery_estimates arrives with TASK-33; the learning path reads it when it exists.
     "mastery_estimates": """
         CREATE TABLE IF NOT EXISTS mastery_estimates (
@@ -117,8 +100,8 @@ LATER_WAVE_STUBS = {
 
 @pytest.fixture(scope="module", autouse=True)
 def _ensure_later_wave_tables(_database: None):
-    """The D02 / D03 / D05 tables come from Alembic. Only the two tables of later waves that the learning path
-    reads are stubbed here, and only while no migration creates them (a stub is dropped again on teardown)."""
+    """The D02 / D03 / D05 tables and the F02 assignments come from Alembic. Only `mastery_estimates` (D06, TASK-33)
+    is stubbed here, and only while no migration creates it (a stub is dropped again on teardown)."""
     created: list[str] = []
 
     async def create() -> None:
@@ -346,6 +329,22 @@ def test_d02_learning_plan_prerequisite_order_rationale_recalc_and_teacher_non_o
                 ),
                 {"tid": ta, "mid": ma, "n1": n_a, "n2": n_b, "n3": n_target},
             )
+            paper_id, paper_version_id = uuid.uuid4(), uuid.uuid4()
+            await session.execute(
+                text(
+                    "INSERT INTO assessments (id, tenant_id, title, subject_code, grade_band, exam_type_code) "
+                    "VALUES (:a, :t, 'Teacher exam', 'MATH', 'GRADE_12', 'THPTQG')"
+                ),
+                {"a": paper_id, "t": ta},
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO assessment_versions (id, tenant_id, assessment_id, version_no, scoring_scheme_id, "
+                    "duration_seconds, structure_snapshot_json) "
+                    "SELECT :v, :t, :a, 1, id, 5400, '{}' FROM scoring_scheme_versions ORDER BY code LIMIT 1"
+                ),
+                {"v": paper_version_id, "t": ta, "a": paper_id},
+            )
             await session.execute(
                 text(
                     "INSERT INTO assessment_assignments "
@@ -356,7 +355,7 @@ def test_d02_learning_plan_prerequisite_order_rationale_recalc_and_teacher_non_o
                 {
                     "aid": asg_id,
                     "tid": ta,
-                    "avid": uuid.uuid4(),
+                    "avid": paper_version_id,
                     "by": ua2,
                     "avail": datetime(2026, 11, 14, 8, 0, tzinfo=UTC),
                     "due": asg_due,

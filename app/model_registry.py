@@ -9,9 +9,11 @@ from app.modules.access.internal import models as access_models  # noqa: F401
 from app.modules.ai_gateway.internal import models as ai_gateway_models  # noqa: F401
 from app.modules.assembly.internal import models as assembly_models  # noqa: F401
 from app.modules.assets.internal import models as assets_models  # noqa: F401
+from app.modules.assignments.internal import models as assignments_models  # noqa: F401
 from app.modules.attempts.internal import models as attempts_models  # noqa: F401
 from app.modules.audit.internal import models as audit_models  # noqa: F401
 from app.modules.authoring.internal import models as authoring_models  # noqa: F401
+from app.modules.classes.internal import models as classes_models  # noqa: F401
 from app.modules.config.internal import models as config_models  # noqa: F401
 from app.modules.content.internal import models as content_models  # noqa: F401
 from app.modules.curriculum.internal import models as curriculum_models  # noqa: F401
@@ -22,11 +24,13 @@ from app.modules.error_notebook.internal import models as error_notebook_models 
 from app.modules.exam_import.internal import models as exam_import_models  # noqa: F401
 from app.modules.extraction.internal import models as extraction_models  # noqa: F401
 from app.modules.frameworks.internal import models as frameworks_models  # noqa: F401
+from app.modules.gradebook.internal import models as gradebook_models  # noqa: F401
 from app.modules.grading.internal import models as grading_models  # noqa: F401
 from app.modules.ingestion.internal import models as ingestion_models  # noqa: F401
 from app.modules.knowledge_graph.internal import models as knowledge_graph_models  # noqa: F401
 from app.modules.layout.internal import models as layout_models  # noqa: F401
 from app.modules.learning_path.internal import models as learning_path_models  # noqa: F401
+from app.modules.notifications.internal import models as notifications_models  # noqa: F401
 from app.modules.outbox.internal import models as outbox_models  # noqa: F401
 from app.modules.parsers.internal import models as parsers_models  # noqa: F401
 from app.modules.practice.internal import models as practice_models  # noqa: F401
