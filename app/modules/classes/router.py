@@ -303,7 +303,7 @@ async def create_class_endpoint(
         )
     except ClassConflictError as exc:
         return _problem_response(
-            code=PlatformErrorCode.CONFLICT,
+            code=PlatformErrorCode.VALIDATION_ERROR,
             detail=str(exc),
             status_code=409,
             instance=str(request.url.path),

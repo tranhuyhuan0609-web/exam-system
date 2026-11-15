@@ -202,7 +202,7 @@ async def remove_search_document(
         sql += " AND doc_type = :doc_type"
         params["doc_type"] = normalized_doc_type
     result = await session.execute(text(sql), params)
-    return int(result.rowcount or 0)
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
 
 async def handle_takedown_for_entity(

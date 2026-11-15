@@ -231,13 +231,15 @@ def _webhook_error_to_problem(exc: BillingError, *, instance: str, correlation_i
     )
 
 
-def _resolve_webhook_secret() -> str:
+def _resolve_webhook_secret() -> str | None:
+    """The webhook HMAC secret; outside dev/test only a dedicated secret counts (never `secret_key`)."""
     settings = get_settings()
-    return (
-        getattr(settings, "payment_webhook_secret", None)
-        or os.environ.get("PAYMENT_WEBHOOK_SECRET")
-        or settings.secret_key
-    )
+    dedicated = getattr(settings, "payment_webhook_secret", None) or os.environ.get("PAYMENT_WEBHOOK_SECRET")
+    if dedicated:
+        return dedicated
+    if settings.app_env.lower() in ("dev", "development", "test", "testing"):
+        return settings.secret_key
+    return None
 
 
 def _parse_webhook_timestamp(raw_ts: str | None) -> datetime:
@@ -357,6 +359,14 @@ async def payment_webhook_endpoint(request: Request) -> JSONResponse:
     provider = request.headers.get("x-webhook-provider", "")
     signature_hex = request.headers.get("x-webhook-signature", "")
     secret = _resolve_webhook_secret()
+    if secret is None:
+        return _problem_response(
+            code=PlatformErrorCode.INTERNAL_ERROR,
+            detail="PAYMENT_WEBHOOK_SECRET is not configured",
+            status_code=503,
+            instance=str(request.url.path),
+            correlation_id=correlation_id,
+        )
 
     try:
         event_ts = _parse_webhook_timestamp(request.headers.get("x-webhook-timestamp"))

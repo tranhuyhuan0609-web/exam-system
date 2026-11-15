@@ -172,10 +172,12 @@ async def update_preferences(
         parsed_cat: list[NotificationCategory] = []
         seen_cat: set[NotificationCategory] = set()
         for cat in muted_categories:
-            val = cat if isinstance(cat, NotificationCategory) else NotificationCategory(str(cat).strip().upper())
-            if val not in seen_cat:
-                seen_cat.add(val)
-                parsed_cat.append(val)
+            category = (
+                cat if isinstance(cat, NotificationCategory) else NotificationCategory(str(cat).strip().upper())
+            )
+            if category not in seen_cat:
+                seen_cat.add(category)
+                parsed_cat.append(category)
         next_muted = tuple(sorted(parsed_cat, key=lambda c: c.value))
 
     payload_json = json.dumps(

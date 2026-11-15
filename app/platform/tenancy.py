@@ -33,6 +33,7 @@ class SystemJob(StrEnum):
     OUTBOX_RELAY = "outbox_relay"
     ATTEMPT_EXPIRY = "attempt_expiry"
     METRIC_ROLLUP = "metric_rollup"
+    IDEMPOTENCY_CLEANUP = "idempotency_cleanup"
 
 
 async def set_tenant(session: AsyncSession, tenant_id: uuid.UUID) -> None:

@@ -465,8 +465,33 @@ def test_vertical_packs_activation_isolation_and_locale_fallback(world: dict[str
     """G06 activates expansion packs non-invasively, blocks overlapping prefixes & resolves locales."""
     client = _api_client()
     ta = world["ta"]
-    headers_adm = _auth_headers(tenant_id=ta, membership_id=world["ma_adm"], user_id=world["ua_adm"], roles=["ADMIN"])
+    # Packs and locale bundles are platform catalogues: only a platform administrator writes them.
+    headers_adm = _auth_headers(
+        tenant_id=ta, membership_id=world["ma_adm"], user_id=world["ua_adm"], roles=["PLATFORM_ADMIN"]
+    )
+    headers_tenant_admin = _auth_headers(
+        tenant_id=ta, membership_id=world["ma_adm"], user_id=world["ua_adm"], roles=["TENANT_ADMIN", "ADMIN"]
+    )
     headers_lrn = _auth_headers(tenant_id=ta, membership_id=world["ma_lrn"], user_id=world["ua_lrn"], roles=["LEARNER"])
+
+    # A tenant administrator is blocked from every write route (valid bodies: only the role can stop it)
+    pack_body = {
+        "code": "TENANT_TRY",
+        "name": "Tenant try",
+        "taxonomy_root_prefix": "TT",
+        "assessment_framework_code": "THPT_2025",
+        "scoring_policy_code": "THPT_025_STEP",
+    }
+    locale_body = {"locale_code": "vi-VN", "namespace": "common", "messages": {"k": "v"}}
+    for method, url, body in (
+        ("post", "/api/v1/vertical-packs", pack_body),
+        ("post", "/api/v1/vertical-packs/K12_VN_KNTT/activate", None),
+        ("post", "/api/v1/vertical-packs/K12_VN_KNTT/deactivate", None),
+        ("put", "/api/v1/vertical-packs/locales", locale_body),
+    ):
+        kwargs = {"json": body} if body is not None else {}
+        blocked = getattr(client, method)(url, headers=headers_tenant_admin, **kwargs)
+        assert blocked.status_code == 403, (method, url, blocked.text)
 
     # Non-admin blocked from registering packs
     forbid = client.post(

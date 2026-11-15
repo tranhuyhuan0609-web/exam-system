@@ -47,9 +47,9 @@ IdempotencyKeyHeader = Annotated[str | None, Header(alias="Idempotency-Key", max
 _PROBLEM_BASE: dict[str, PlatformErrorCode] = {
     "PAYLOAD_HASH_MISMATCH": PlatformErrorCode.PAYLOAD_HASH_MISMATCH,
     "STALE_CLIENT_SEQUENCE": PlatformErrorCode.STALE_CLIENT_SEQUENCE,
-    "ATTEMPT_DEADLINE_EXPIRED": PlatformErrorCode.FORBIDDEN,
-    "ATTEMPT_ALREADY_SUBMITTED_OR_CLOSED": PlatformErrorCode.VALIDATION_ERROR,
-    "OPTIMISTIC_VERSION_CONFLICT": PlatformErrorCode.VALIDATION_ERROR,
+    "ATTEMPT_DEADLINE_EXPIRED": PlatformErrorCode.ATTEMPT_DEADLINE_EXPIRED,
+    "ATTEMPT_ALREADY_SUBMITTED_OR_CLOSED": PlatformErrorCode.ATTEMPT_ALREADY_SUBMITTED_OR_CLOSED,
+    "OPTIMISTIC_VERSION_CONFLICT": PlatformErrorCode.OPTIMISTIC_VERSION_CONFLICT,
 }
 _DETAIL = {
     "PAYLOAD_HASH_MISMATCH": "payload_hash does not match the payload, or the Idempotency-Key was already used "
@@ -181,8 +181,10 @@ async def put_response(
         return _problem(PlatformErrorCode.NOT_FOUND, str(exc), request, correlation_id)
     if not result.ok:
         return _outcome_problem(result, request, correlation_id)
+    assert result.committed_sequence is not None and result.saved_response_version is not None
+    assert result.server_timestamp is not None  # an ok result always carries them
     return AutosaveResponseContract(
-        status=result.code,  # COMMITTED or IDEMPOTENT_REPLAY
+        status="IDEMPOTENT_REPLAY" if result.code == "IDEMPOTENT_REPLAY" else "COMMITTED",
         attempt_id=attempt_id,
         question_version_id=question_version_id,
         committed_sequence=result.committed_sequence,

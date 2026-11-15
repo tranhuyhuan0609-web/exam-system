@@ -33,11 +33,11 @@ from app.platform.auth_context import (
 )
 from app.platform.errors import PlatformErrorCode, build_problem_detail
 from app.platform.pagination import resolve_correlation_id
+from app.platform.roles import is_platform_admin
 from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1/vertical-packs", tags=["vertical-packs"])
 
-_ADMIN_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN"})
 _bearer_scheme = HTTPBearer(auto_error=False)
 OptionalBearer = Annotated[HTTPAuthorizationCredentials | None, Security(_bearer_scheme)]
 
@@ -142,10 +142,10 @@ def _authenticate(
 
 
 def _require_admin(actor: ActorContext, request: Request, correlation_id: str) -> JSONResponse | None:
-    if not any(r.upper() in _ADMIN_ROLES for r in actor.roles):
+    if not is_platform_admin(actor.roles):  # packs and bundles are platform catalogues, the same for every tenant
         return _problem_response(
             code=PlatformErrorCode.FORBIDDEN,
-            detail="Admin role is required to manage vertical packs or locale bundles",
+            detail="Only a platform administrator may manage vertical packs or locale bundles",
             status_code=403,
             instance=str(request.url.path),
             correlation_id=correlation_id,

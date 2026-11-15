@@ -6,7 +6,6 @@ the test database) only creates tenants and the probe table, and reads the privi
 
 import asyncio
 import collections
-import csv
 import uuid
 from pathlib import Path
 
@@ -28,6 +27,7 @@ from app.modules.outbox.public import (
     outbox_stats,
     relay_once,
 )
+from app.ops.alembic_schema_audit import load_grants_manifest
 from app.platform.models import Tenant
 from app.platform.rls import strict_tenant_rls
 from app.platform.tenancy import DbRole, SystemJob, set_role, set_system_job, system_job_transaction, tenant_transaction
@@ -626,7 +626,8 @@ def test_the_relay_may_change_only_the_delivery_status(tenants, statement):
         async with system_job_transaction(SystemJob.OUTBOX_RELAY) as session:
             await session.execute(text(statement))
 
-    with pytest.raises(DBAPIError, match="permission denied"):
+    # The INSERT is refused by the restrictive policy (WAVE-8 B5), the others by missing privileges.
+    with pytest.raises(DBAPIError, match="permission denied|sys_outbox_insert_guard"):
         run(scenario())
 
 
@@ -659,12 +660,7 @@ def test_roles_without_the_privilege_are_refused(tenants, role, statement):
 
 
 def test_granted_privileges_equal_the_manifest():
-    with MANIFEST.open(encoding="utf-8", newline="") as handle:
-        expected = {
-            (r["role"], r["object"], r["privilege"], r["column"])
-            for r in csv.DictReader(handle)
-            if r["object"] in TABLES
-        }
+    expected = {grant for grant in load_grants_manifest(MANIFEST) if grant[1] in TABLES}
     # ulp_app_rw is granted ALL TABLES in the spec, hence absent from the manifest; inbox writes revoked.
     expected |= {("ulp_app_rw", "outbox_events", p, "") for p in ("SELECT", "INSERT", "UPDATE", "DELETE")}
     expected.add(("ulp_app_rw", "inbox_events", "SELECT", ""))
@@ -721,4 +717,6 @@ def test_both_tables_force_row_level_security_with_the_spec_policies():
         ("outbox_events", "tenant_isolation_policy", "ALL", ("public",)),
         ("inbox_events", "tenant_isolation_policy", "ALL", ("public",)),
         ("outbox_events", "sys_outbox_relay", "ALL", ("ulp_system_scheduler",)),
+        ("outbox_events", "sys_attempt_expiry_event", "INSERT", ("ulp_system_scheduler",)),  # WAVE-8 B5
+        ("outbox_events", "sys_outbox_insert_guard", "INSERT", ("ulp_system_scheduler",)),  # WAVE-8 B5 (restrictive)
     }

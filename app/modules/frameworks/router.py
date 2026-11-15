@@ -46,6 +46,7 @@ from app.platform.auth_context import (
 )
 from app.platform.errors import PlatformErrorCode, build_problem_detail
 from app.platform.pagination import resolve_correlation_id
+from app.platform.roles import is_platform_admin
 from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1", tags=["frameworks"])
@@ -264,6 +265,19 @@ def _authenticate(
         )
 
 
+def _require_platform_admin(actor: ActorContext, request: Request, correlation_id: str) -> JSONResponse | None:
+    """The framework catalogue has no tenant: every tenant builds on it, so only platform administrators write it."""
+    if not is_platform_admin(actor.roles):
+        return _problem_response(
+            code=PlatformErrorCode.FORBIDDEN,
+            detail="Only a platform administrator may create or change an assessment framework",
+            status_code=403,
+            instance=str(request.url.path),
+            correlation_id=correlation_id,
+        )
+    return None
+
+
 def _require_author_role(actor: ActorContext, request: Request, correlation_id: str) -> JSONResponse | None:
     if not ({r.upper() for r in actor.roles} & _AUTHOR_ROLES):
         return _problem_response(
@@ -383,7 +397,7 @@ async def create_assessment_framework_endpoint(
     auth = _authenticate(request, credentials, correlation_id)
     if isinstance(auth, JSONResponse):
         return auth
-    role_err = _require_author_role(auth, request, correlation_id)
+    role_err = _require_platform_admin(auth, request, correlation_id)
     if role_err is not None:
         return role_err
 

@@ -564,7 +564,7 @@ async def submit_import(
         raise IngestionValidationError(str(exc)) from exc
 
     effective_external_id = (external_id or f"sha256:{fingerprint.sha256}")[:255]
-    src_doc = (
+    source_doc = (
         await session.execute(
             select(SourceDocument).where(
                 SourceDocument.source_id == source.id,
@@ -572,8 +572,8 @@ async def submit_import(
             )
         )
     ).scalar_one_or_none()
-    if src_doc is None:
-        src_doc = SourceDocument(
+    if source_doc is None:
+        source_doc = SourceDocument(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
             source_id=source.id,
@@ -588,7 +588,7 @@ async def submit_import(
                 "has_ooxml_mathtype_or_drawings": verified.has_ooxml_mathtype_or_drawings,
             },
         )
-        session.add(src_doc)
+        session.add(source_doc)
         await session.flush()
         next_version_no = 1
     else:
@@ -596,7 +596,7 @@ async def submit_import(
             (
                 await session.execute(
                     select(func.coalesce(func.max(DocumentVersion.version_no), 0)).where(
-                        DocumentVersion.source_document_id == src_doc.id
+                        DocumentVersion.source_document_id == source_doc.id
                     )
                 )
             ).scalar_one()
@@ -606,7 +606,7 @@ async def submit_import(
     doc_version = DocumentVersion(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
-        source_document_id=src_doc.id,
+        source_document_id=source_doc.id,
         version_no=next_version_no,
         raw_asset_id=asset_view.id,
         checksum_sha256=fingerprint.sha256,

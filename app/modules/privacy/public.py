@@ -24,6 +24,7 @@ from app.modules.privacy.internal.crypto_shredding import (
     key_service,
     set_key_service,
 )
+from app.modules.privacy.internal.login import LoginPrincipal, authenticate_login
 from app.modules.privacy.internal.scrub import (
     REDACTED_TEXT_MARKER,
     ScrubCounts,
@@ -66,6 +67,7 @@ __all__ = [
     "InMemoryKeyEncryptionService",
     "KeyEncryptionService",
     "KeyShreddedError",
+    "LoginPrincipal",
     "MembershipConflictError",
     "MembershipRecord",
     "ParentalConsentRequiredError",
@@ -74,6 +76,7 @@ __all__ = [
     "ScrubResult",
     "TenantConflictError",
     "TenantRecord",
+    "authenticate_login",
     "bind_user",
     "compute_email_blind_index",
     "consent_state",

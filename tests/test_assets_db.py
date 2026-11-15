@@ -11,10 +11,10 @@ import uuid
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import select, text
+from sqlalchemy import select
 
 from app.config import get_settings
-from app.db import Base, SessionLocal, engine
+from app.db import SessionLocal
 from app.modules.assets.internal.models import Asset
 from app.modules.assets.router import router as assets_router
 from app.modules.outbox.internal.models import OutboxEvent
@@ -61,61 +61,6 @@ def _auth_headers(
         ttl_seconds=900,
     )
     return {"Authorization": f"Bearer {token}"}
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _ensure_assets_schema() -> None:
-    """Create B03 assets table, RLS policies, and runtime grants before _clean_tables truncates."""
-    ddl_statements = (
-        """
-        CREATE TABLE IF NOT EXISTS assets (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
-            parent_asset_id UUID REFERENCES assets(id) ON DELETE SET NULL,
-            asset_role VARCHAR(40) NOT NULL
-                CONSTRAINT ck_assets_asset_role
-                CHECK (asset_role IN (
-                    'RAW_SOURCE', 'BRANDED_PDF', 'PREVIEW_PDF',
-                    'PAGE_RENDER', 'FIGURE_CROP', 'AUDIO', 'THUMBNAIL'
-                )),
-            object_key VARCHAR(512) UNIQUE NOT NULL,
-            mime_type VARCHAR(120) NOT NULL,
-            sha256 CHAR(64) NOT NULL,
-            size_bytes BIGINT NOT NULL
-                CONSTRAINT ck_assets_size_bytes_non_negative CHECK (size_bytes >= 0),
-            is_immutable_bronze BOOLEAN GENERATED ALWAYS AS (asset_role = 'RAW_SOURCE') STORED,
-            metadata_json JSONB NOT NULL DEFAULT '{}',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            CONSTRAINT uq_assets_id_tenant_id UNIQUE (id, tenant_id)
-        )
-        """,
-        "CREATE INDEX IF NOT EXISTS ix_assets_tenant_sha256 ON assets (tenant_id, sha256)",
-        "ALTER TABLE assets ENABLE ROW LEVEL SECURITY",
-        "ALTER TABLE assets FORCE ROW LEVEL SECURITY",
-        "DROP POLICY IF EXISTS hybrid_write_policy ON assets",
-        "DROP POLICY IF EXISTS hybrid_read_policy ON assets",
-        """
-        CREATE POLICY hybrid_write_policy ON assets FOR ALL
-            USING (tenant_id = (SELECT current_app_tenant_id()))
-            WITH CHECK (tenant_id = (SELECT current_app_tenant_id()))
-        """,
-        """
-        CREATE POLICY hybrid_read_policy ON assets FOR SELECT USING (
-            tenant_id = (SELECT current_app_tenant_id())
-            OR (tenant_id = system_public_tenant_id() AND asset_role <> 'RAW_SOURCE')
-        )
-        """,
-        "GRANT SELECT, INSERT, UPDATE, DELETE ON assets TO ulp_app_rw",
-        "GRANT SELECT, INSERT ON assets TO ulp_worker_ingestion",
-    )
-
-    async def create() -> None:
-        async with engine.begin() as conn:
-            for stmt in ddl_statements:
-                await conn.execute(text(stmt))
-            await conn.run_sync(Base.metadata.create_all, checkfirst=True)
-
-    run(create())
 
 
 @pytest.fixture

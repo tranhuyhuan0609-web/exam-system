@@ -174,7 +174,7 @@ async def _spent(session: AsyncSession, tenant_id: uuid.UUID, day: date) -> Deci
             AiTrace.tenant_id == tenant_id, AiTrace.occurred_at >= start, AiTrace.occurred_at < end
         )
     )
-    return Decimal(total)
+    return Decimal(total if total is not None else 0)
 
 
 async def _reserved(session: AsyncSession) -> Decimal:

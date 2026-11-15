@@ -483,10 +483,10 @@ async def _run_sources_stage(
     )
     if docs_ready:
         for start in range(0, len(lib_rows), batch_size):
-            chunk = lib_rows[start : start + batch_size]
+            lib_chunk = lib_rows[start : start + batch_size]
             batches += 1
             await _set_tenant_rls(conn, tenant_id)
-            for doc_id, title, src_label, sf_id, s_key, chk, mime in chunk:
+            for doc_id, title, src_label, sf_id, s_key, chk, mime in lib_chunk:
                 lid = f"libdoc:{doc_id}"
                 source_ids.append(lid)
                 if not s_key or not str(s_key).strip():
@@ -927,20 +927,26 @@ async def _run_content_stage(
             text(f"SELECT id, title, {sum_expr}, {mth_expr}, {tip_expr}, {tier_expr} FROM {ka_table} ORDER BY id")
         )
         for aid, title, sf, mg, nt, tier in res.fetchall():
-            blocks: list[dict[str, Any]] = []
+            article_blocks: list[dict[str, Any]] = []
             if sf:
-                blocks.append({"block_type": "FORMULA_BOX", "markdown": _normalize_unicode_preserve_case(str(sf))})
+                article_blocks.append(
+                    {"block_type": "FORMULA_BOX", "markdown": _normalize_unicode_preserve_case(str(sf))}
+                )
             if mg:
-                blocks.append({"block_type": "METHOD_STEPS", "markdown": _normalize_unicode_preserve_case(str(mg))})
+                article_blocks.append(
+                    {"block_type": "METHOD_STEPS", "markdown": _normalize_unicode_preserve_case(str(mg))}
+                )
             if nt:
-                blocks.append({"block_type": "TIP_WARNING", "markdown": _normalize_unicode_preserve_case(str(nt))})
-            if not blocks:
-                blocks.append(
+                article_blocks.append(
+                    {"block_type": "TIP_WARNING", "markdown": _normalize_unicode_preserve_case(str(nt))}
+                )
+            if not article_blocks:
+                article_blocks.append(
                     {"block_type": "THEORY_SUMMARY", "markdown": _normalize_unicode_preserve_case(str(title or ""))}
                 )
             slug = _to_slug(f"leg-art-{aid}", f"leg-art-{aid}")
             norm_tier = "STUDENT_PRO" if str(tier or "").upper() == "PRO" else "FREE"
-            items.append((f"art:{aid}", "ARTICLE", slug, str(title or "Article"), norm_tier, blocks))
+            items.append((f"art:{aid}", "ARTICLE", slug, str(title or "Article"), norm_tier, article_blocks))
 
     source_ids: list[str] = []
     migrated_ids: list[str] = []

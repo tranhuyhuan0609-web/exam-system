@@ -22,6 +22,9 @@ class PlatformErrorCode(StrEnum):
     PREREQUISITE_CYCLE_DETECTED = "PREREQUISITE_CYCLE_DETECTED"
     PUBLISH_GATE_BLOCKED = "PUBLISH_GATE_BLOCKED"
     PAYLOAD_HASH_MISMATCH = "PAYLOAD_HASH_MISMATCH"
+    ATTEMPT_DEADLINE_EXPIRED = "ATTEMPT_DEADLINE_EXPIRED"
+    ATTEMPT_ALREADY_SUBMITTED_OR_CLOSED = "ATTEMPT_ALREADY_SUBMITTED_OR_CLOSED"
+    OPTIMISTIC_VERSION_CONFLICT = "OPTIMISTIC_VERSION_CONFLICT"
     DAILY_AI_BUDGET_EXCEEDED = "DAILY_AI_BUDGET_EXCEEDED"
     RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED"
     VALIDATION_ERROR = "VALIDATION_ERROR"
@@ -39,6 +42,9 @@ _ERROR_HTTP_SPEC: dict[PlatformErrorCode, tuple[int, str]] = {
     PlatformErrorCode.PREREQUISITE_CYCLE_DETECTED: (422, "Knowledge Graph Cycle Detected"),
     PlatformErrorCode.PUBLISH_GATE_BLOCKED: (422, "Publish Gate Check Failed"),
     PlatformErrorCode.PAYLOAD_HASH_MISMATCH: (422, "Idempotency Key Reused With Different Payload"),
+    PlatformErrorCode.ATTEMPT_DEADLINE_EXPIRED: (403, "Attempt Deadline Expired"),
+    PlatformErrorCode.ATTEMPT_ALREADY_SUBMITTED_OR_CLOSED: (409, "Attempt Already Submitted Or Closed"),
+    PlatformErrorCode.OPTIMISTIC_VERSION_CONFLICT: (409, "Optimistic Response Version Conflict"),
     PlatformErrorCode.DAILY_AI_BUDGET_EXCEEDED: (429, "Tenant Daily AI Budget Exceeded"),
     PlatformErrorCode.RATE_LIMIT_EXCEEDED: (429, "Rate Limit Exceeded"),
     PlatformErrorCode.VALIDATION_ERROR: (422, "Validation Failed"),

@@ -76,10 +76,11 @@ def evaluate_circuit_entry(
         )
 
     if snapshot.state == "OPEN":
-        if snapshot.opened_at_monotonic is None:
+        opened_at = snapshot.opened_at_monotonic
+        if opened_at is None:
             # Malformed OPEN snapshot: fail closed and start a fresh cooldown from now.
             snapshot = CircuitSnapshot("OPEN", snapshot.consecutive_failures, now_monotonic, 0, 0)
-        opened_at = snapshot.opened_at_monotonic
+            opened_at = now_monotonic
         elapsed = max(0.0, now_monotonic - opened_at)
         if elapsed < cfg.cooldown_seconds:
             return AllowDecision(

@@ -77,8 +77,23 @@ class CSRFProtectMiddleware(BaseHTTPMiddleware):
 
     SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 
+    @staticmethod
+    def _is_stateless_bearer_call(request: Request) -> bool:
+        """A /api/v1 call that authenticates with an explicit Bearer token and carries no session cookie.
+
+        A bearer token is not an ambient credential (a browser never attaches it on its own), so a forged
+        cross-site request cannot use it; the Next.js proxy forwards such calls with a foreign Origin.
+        """
+        if not request.url.path.startswith("/api/v1/"):
+            return False
+        if "exam_session" in request.cookies:
+            return False
+        if request.url.path == "/api/v1/auth/login":
+            return True  # carries the credentials in the body, sets no cookie: nothing ambient to forge
+        return request.headers.get("authorization", "").lower().startswith("bearer ")
+
     async def dispatch(self, request: Request, call_next):
-        if request.method not in self.SAFE_METHODS:
+        if request.method not in self.SAFE_METHODS and not self._is_stateless_bearer_call(request):
             origin = request.headers.get("origin")
             referer = request.headers.get("referer")
             host = request.headers.get("host") or request.url.netloc

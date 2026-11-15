@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import UUID
 
 from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field, model_validator
@@ -302,7 +302,7 @@ def build_catalog_envelope(
         raise TypeError(
             f"{event_type} v{schema_version} expects {spec.payload_model.__name__}, got {type(payload).__name__}"
         )
-    tenant_id = payload.tenant_id
+    tenant_id = cast(Any, payload).tenant_id  # every catalog payload model carries tenant_id
     return EventEnvelopeContract(
         event_type=event_type,
         schema_version=schema_version,

@@ -313,8 +313,19 @@ def test_irt_calibration_4tier_gate_and_tenant_scope(world: dict[str, uuid.UUID]
     """D06 persists calibrated IRT parameters only when Tier L2/L3/L4 statistical gates pass."""
     client = _api_client()
     ta, tb = world["ta"], world["tb"]
-    headers_t1 = _auth_headers(tenant_id=ta, membership_id=world["m_t1"], user_id=world["u_t1"], roles=["TEACHER"])
-    headers_tb = _auth_headers(tenant_id=tb, membership_id=world["m_tb"], user_id=world["u_tb"], roles=["TEACHER"])
+    # The calibration is shared by every tenant using the question version: platform administrators only.
+    headers_t1 = _auth_headers(
+        tenant_id=ta, membership_id=world["m_t1"], user_id=world["u_t1"], roles=["PLATFORM_ADMIN"]
+    )
+    headers_tb = _auth_headers(tenant_id=tb, membership_id=world["m_tb"], user_id=world["u_tb"], roles=["SUPER_ADMIN"])
+    calibration = {"question_version_id": str(uuid.uuid4()), "sample_size": 250, "se_b": 0.18, "learner_count": 200}
+    for blocked in (["TEACHER"], ["TENANT_ADMIN"], ["ADMIN", "REVIEWER"]):
+        denied = client.post(
+            "/api/v1/mastery/calibration",
+            headers=_auth_headers(tenant_id=ta, membership_id=world["m_t1"], user_id=world["u_t1"], roles=blocked),
+            json=calibration,
+        )
+        assert denied.status_code == 403, blocked
 
     async def seed_q() -> uuid.UUID:
         tax_id = uuid.uuid4()

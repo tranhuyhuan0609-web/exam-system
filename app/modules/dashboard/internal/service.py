@@ -137,13 +137,13 @@ def _serialize_projection(projection: LearnerDashboardProjection) -> dict[str, A
     }
 
 
-async def _existing_tables(session: AsyncSession, names: Sequence[str]) -> set[str]:
+async def _readable_tables(session: AsyncSession, names: Sequence[str]) -> set[str]:
+    """The tables of `names` the current role may SELECT (the grading worker reads fewer than the API, H-03)."""
     rows = (
         await session.execute(
             text(
-                "SELECT tablename FROM pg_tables "
-                "WHERE schemaname = 'public' AND tablename = ANY(:names) "
-                "AND has_table_privilege(current_user, 'public.' || quote_ident(tablename), 'SELECT')"
+                "SELECT t FROM unnest(CAST(:names AS text[])) AS t "
+                "WHERE has_table_privilege(current_user, 'public.' || quote_ident(t), 'SELECT')"
             ),
             {"names": list(names)},
         )
@@ -222,7 +222,7 @@ async def _gather_live_signals(
     list[ChapterMasterySummary],
 ]:
     """Collect read signals from already-migrated Chapter 4 tables without hard coupling."""
-    present = await _existing_tables(
+    present = await _readable_tables(
         session,
         (
             "activity_events",
@@ -390,7 +390,7 @@ async def recompute_learner_dashboard_projection(
     """Compile and upsert `learner_dashboard_projections` using D01 pure-core builder."""
     resolved_now = _ensure_aware(now)
 
-    readable_activity = await _existing_tables(session, ("activity_events",))
+    readable_activity = await _readable_tables(session, ("activity_events",))
     if "activity_events" in readable_activity:
         activity_timestamps = (
             await session.execute(

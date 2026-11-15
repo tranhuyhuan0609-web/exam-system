@@ -64,7 +64,7 @@ class ErrorNoteResponse(BaseModel):
     tenant_id: uuid.UUID
     membership_id: uuid.UUID
     question_version_id: uuid.UUID
-    primary_taxonomy_node_id: uuid.UUID
+    primary_taxonomy_node_id: uuid.UUID | None
     wrong_count: int
     consecutive_correct_count: int
     status: str

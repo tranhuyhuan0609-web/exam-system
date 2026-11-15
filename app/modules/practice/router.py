@@ -238,7 +238,7 @@ def _serialize_completion(report: PracticeCompletionView) -> CompletePracticeRes
         resolved_remediation_question_ids=list(report.resolved_remediation_question_ids),
         mastery_signals=[
             MasterySignalItem(
-                taxonomy_node_id=sig.taxonomy_node_id,
+                taxonomy_node_id=sig.taxonomy_node_id or "UNSPECIFIED",
                 question_version_id=sig.question_version_id,
                 is_correct=sig.is_correct,
                 hints_used=sig.hints_used,

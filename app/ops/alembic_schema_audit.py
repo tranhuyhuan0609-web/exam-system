@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 
 from app.ops.ddl_rls_audit import (
     ANSWER_TABLES,
@@ -245,13 +245,34 @@ def _extract_pg_array_literals(sql: str, variable_name: str) -> frozenset[str]:
     return frozenset(re.findall(r"'([a-z_][a-z0-9_]*)'", match.group(1)))
 
 
-def load_grants_manifest(manifest_path: Path = DEFAULT_GRANTS_MANIFEST_PATH) -> frozenset[tuple[str, str, str, str]]:
-    """Load `(role, object, privilege, column)` tuples from `tests/security/grants_manifest.csv`."""
+def load_base_grants_manifest(
+    manifest_path: Path = DEFAULT_GRANTS_MANIFEST_PATH,
+) -> frozenset[tuple[str, str, str, str]]:
+    """The `(role, object, privilege, column)` tuples of `tests/security/grants_manifest.csv` (Chapter 4 as is)."""
     with manifest_path.open(encoding="utf-8", newline="") as handle:
         return frozenset(
             (row["role"].strip(), row["object"].strip(), row["privilege"].strip(), row["column"].strip())
             for row in csv.DictReader(handle)
         )
+
+
+def load_grants_manifest(manifest_path: Path = DEFAULT_GRANTS_MANIFEST_PATH) -> frozenset[tuple[str, str, str, str]]:
+    """The manifest in force: the Chapter 4 base plus the reviewed WAVE-8 addenda next to it, if any.
+
+    `grants_manifest_addenda.csv` (columns action, role, object, privilege, column; action ADD or REMOVE) records the
+    hardening grants that deliberately differ from Chapter 4 until the chapter itself is amended.
+    """
+    grants = set(load_base_grants_manifest(manifest_path))
+    addenda = manifest_path.with_name("grants_manifest_addenda.csv")
+    if addenda.exists():
+        with addenda.open(encoding="utf-8", newline="") as handle:
+            for row in csv.DictReader(handle):
+                item = (row["role"].strip(), row["object"].strip(), row["privilege"].strip(), row["column"].strip())
+                if row["action"].strip().upper() == "REMOVE":
+                    grants.discard(item)
+                else:
+                    grants.add(item)
+    return frozenset(grants)
 
 
 def load_chapter4_spec(

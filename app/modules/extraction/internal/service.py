@@ -101,7 +101,7 @@ def _content(row: ContentCandidate) -> ContentCandidateRecord:
     return ContentCandidateRecord(blocks=tuple(row.blocks_json or ()), **values)
 
 
-def _anchors(anchors: Sequence[ProvenanceAnchor]) -> list[dict[str, float | int]]:
+def _anchors(anchors: Sequence[ProvenanceAnchor]) -> list[dict[str, Any]]:
     return [{"page_no": a.page_no, "bbox": [a.x0, a.y0, a.x1, a.y1]} for a in anchors]
 
 
