@@ -9,6 +9,7 @@ from app.modules.access.internal import models as access_models  # noqa: F401
 from app.modules.ai_gateway.internal import models as ai_gateway_models  # noqa: F401
 from app.modules.assembly.internal import models as assembly_models  # noqa: F401
 from app.modules.assets.internal import models as assets_models  # noqa: F401
+from app.modules.attempts.internal import models as attempts_models  # noqa: F401
 from app.modules.audit.internal import models as audit_models  # noqa: F401
 from app.modules.authoring.internal import models as authoring_models  # noqa: F401
 from app.modules.config.internal import models as config_models  # noqa: F401

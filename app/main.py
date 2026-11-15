@@ -18,6 +18,7 @@ from app.modules.access.router import router as access_router
 from app.modules.ai_gateway.router import router as ai_gateway_router
 from app.modules.assembly.router import router as assembly_router
 from app.modules.assets.router import router as assets_router
+from app.modules.attempts.router import router as attempts_router
 from app.modules.audit.router import router as audit_router
 from app.modules.authoring.router import router as authoring_router
 from app.modules.config.router import router as config_router
@@ -148,6 +149,7 @@ for _module_router in (
     frameworks_router,
     assembly_router,
     delivery_router,
+    attempts_router,
 ):
     app.include_router(_module_router)
 
