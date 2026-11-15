@@ -22,6 +22,8 @@ from app.modules.authoring.router import router as authoring_router
 from app.modules.config.router import router as config_router
 from app.modules.content.router import router as content_router
 from app.modules.curriculum.router import router as curriculum_router
+from app.modules.dedup.router import router as dedup_router
+from app.modules.exam_import.router import router as exam_import_router
 from app.modules.extraction.router import router as extraction_router
 from app.modules.ingestion.router import router as ingestion_router
 from app.modules.layout.router import router as layout_router
@@ -136,6 +138,8 @@ for _module_router in (
     review_router,
     quality_router,
     questions_router,
+    dedup_router,
+    exam_import_router,
 ):
     app.include_router(_module_router)
 

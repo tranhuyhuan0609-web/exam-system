@@ -13,6 +13,8 @@ from app.modules.authoring.internal import models as authoring_models  # noqa: F
 from app.modules.config.internal import models as config_models  # noqa: F401
 from app.modules.content.internal import models as content_models  # noqa: F401
 from app.modules.curriculum.internal import models as curriculum_models  # noqa: F401
+from app.modules.dedup.internal import models as dedup_models  # noqa: F401
+from app.modules.exam_import.internal import models as exam_import_models  # noqa: F401
 from app.modules.extraction.internal import models as extraction_models  # noqa: F401
 from app.modules.ingestion.internal import models as ingestion_models  # noqa: F401
 from app.modules.layout.internal import models as layout_models  # noqa: F401

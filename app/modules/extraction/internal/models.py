@@ -1,7 +1,7 @@
 """SQLAlchemy ORM models for A07 extraction (spec chapter 4): content and question candidates.
 
-`provenance_id` and `duplicate_cluster_id` are plain UUID columns until A04/A08 create their parent tables
-(TASK-18 adds the foreign keys); the page/bbox anchors of a candidate live in its JSON payload meanwhile.
+`provenance_id` (A04) and `duplicate_cluster_id` (A08) are composite same-tenant foreign keys since TASK-18; the
+services that predate those tables kept the page/bbox anchors of a candidate in its JSON payload as well.
 """
 
 from __future__ import annotations
@@ -51,6 +51,11 @@ class ContentCandidate(Base):
             ondelete="CASCADE",
             name="fk_content_candidates_run_tenant",
         ),
+        ForeignKeyConstraint(
+            ["provenance_id", "tenant_id"],
+            ["provenance_records.id", "provenance_records.tenant_id"],
+            name="fk_content_candidates_provenance_tenant",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=UUID_V7)
@@ -96,6 +101,16 @@ class QuestionCandidate(Base):
             ["extraction_runs.id", "extraction_runs.tenant_id"],
             ondelete="CASCADE",
             name="fk_question_candidates_run_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["provenance_id", "tenant_id"],
+            ["provenance_records.id", "provenance_records.tenant_id"],
+            name="fk_question_candidates_provenance_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["duplicate_cluster_id", "tenant_id"],
+            ["duplicate_clusters.id", "duplicate_clusters.tenant_id"],
+            name="fk_question_candidates_duplicate_cluster_tenant",
         ),
         Index("ix_question_candidates_content_hash", "tenant_id", "content_hash"),
         Index("ix_question_candidates_struct_hash", "tenant_id", "structural_hash"),

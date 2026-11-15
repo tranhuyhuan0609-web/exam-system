@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 
 from app.config import get_settings
-from app.db import Base, SessionLocal, engine
+from app.db import SessionLocal
 from app.infrastructure.pdf_engine import PDFEngineAdapter
 from app.infrastructure.storage import get_bronze_storage
 from app.modules.dedup.internal.models import DuplicateCluster, DuplicateMember  # noqa: F401
@@ -65,326 +65,6 @@ def _make_close_header_exam_pdf() -> bytes:
     page.text(50, 145, "Cau 2. Gia tri cuc dai cua ham so la bao nhieu?", size=11)
     page.text(50, 170, "A. 4   B. 0   C. 2   D. -2", size=11)
     return sketch.tobytes()
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _ensure_dedup_exam_import_schema() -> None:
-    """Create parent A01/A05/A07 + A08/A04 tables, RLS policies, and grants idempotently."""
-    ddl_statements = (
-        """
-        CREATE TABLE IF NOT EXISTS assets (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
-            parent_asset_id UUID REFERENCES assets(id) ON DELETE SET NULL,
-            asset_role VARCHAR(40) NOT NULL
-                CHECK (asset_role IN (
-                    'RAW_SOURCE', 'BRANDED_PDF', 'PREVIEW_PDF', 'PAGE_RENDER',
-                    'FIGURE_CROP', 'AUDIO', 'THUMBNAIL'
-                )),
-            object_key VARCHAR(512) UNIQUE NOT NULL,
-            mime_type VARCHAR(120) NOT NULL,
-            sha256 CHAR(64) NOT NULL,
-            size_bytes BIGINT NOT NULL CHECK (size_bytes >= 0),
-            is_immutable_bronze BOOLEAN GENERATED ALWAYS AS (asset_role = 'RAW_SOURCE') STORED,
-            metadata_json JSONB NOT NULL DEFAULT '{}',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS sources (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            source_type VARCHAR(40) NOT NULL
-                CHECK (source_type IN ('MANUAL_UPLOAD', 'GOOGLE_DRIVE', 'WEB_CRAWLER', 'PARTNER_API')),
-            name VARCHAR(255) NOT NULL,
-            base_uri VARCHAR(512),
-            adapter_key VARCHAR(80),
-            config_json JSONB NOT NULL DEFAULT '{}',
-            rights_status VARCHAR(40) NOT NULL DEFAULT 'PENDING_REVIEW'
-                CHECK (rights_status IN (
-                    'PENDING_REVIEW', 'OWNED', 'LICENSED', 'ALLOWED_DERIVATIVE', 'RESTRICTED', 'TAKEDOWN'
-                )),
-            attribution_text VARCHAR(500),
-            policy_status VARCHAR(30) NOT NULL DEFAULT 'ACTIVE'
-                CHECK (policy_status IN ('ACTIVE', 'PAUSED_DRIFT', 'PAUSED_MANUAL', 'REVOKED')),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS source_documents (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            source_id UUID NOT NULL,
-            external_id VARCHAR(255),
-            title VARCHAR(500),
-            mime_type VARCHAR(120) NOT NULL,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (source_id, tenant_id) REFERENCES sources(id, tenant_id) ON DELETE RESTRICT
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS document_versions (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            source_document_id UUID NOT NULL,
-            version_no INT NOT NULL,
-            raw_asset_id UUID NOT NULL,
-            checksum_sha256 CHAR(64) NOT NULL,
-            page_count INT,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (source_document_id, version_no),
-            UNIQUE (tenant_id, checksum_sha256),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (source_document_id, tenant_id)
-                REFERENCES source_documents(id, tenant_id) ON DELETE RESTRICT,
-            FOREIGN KEY (raw_asset_id, tenant_id)
-                REFERENCES assets(id, tenant_id) ON DELETE RESTRICT
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS acquisition_jobs (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            source_id UUID,
-            document_version_id UUID,
-            job_type VARCHAR(40) NOT NULL
-                CHECK (job_type IN ('EXAM_IMPORT', 'DRIVE_SYNC', 'WEB_CRAWL', 'REPROCESS_EXTRACTION')),
-            job_status VARCHAR(30) NOT NULL DEFAULT 'QUEUED'
-                CHECK (job_status IN ('QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'DEAD_LETTER', 'CANCELLED')),
-            current_stage VARCHAR(50),
-            idempotency_key VARCHAR(128) UNIQUE NOT NULL,
-            attempt_count INT NOT NULL DEFAULT 0,
-            metrics_json JSONB NOT NULL DEFAULT '{}',
-            last_error_code VARCHAR(80),
-            last_error_detail TEXT,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (source_id, tenant_id) REFERENCES sources(id, tenant_id),
-            FOREIGN KEY (document_version_id, tenant_id) REFERENCES document_versions(id, tenant_id)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS pipeline_stage_runs (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            acquisition_job_id UUID NOT NULL,
-            stage_name VARCHAR(50) NOT NULL,
-            status VARCHAR(30) NOT NULL DEFAULT 'RUNNING'
-                CHECK (status IN ('RUNNING', 'COMPLETED', 'FAILED', 'SKIPPED')),
-            worker_version VARCHAR(40),
-            input_ref VARCHAR(512),
-            output_ref VARCHAR(512),
-            started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            finished_at TIMESTAMPTZ,
-            FOREIGN KEY (acquisition_job_id, tenant_id)
-                REFERENCES acquisition_jobs(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS dead_letter_items (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            acquisition_job_id UUID,
-            source_queue VARCHAR(80) NOT NULL,
-            payload_json JSONB NOT NULL,
-            error_trace TEXT NOT NULL,
-            replayed_at TIMESTAMPTZ,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS extraction_runs (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            document_version_id UUID NOT NULL,
-            acquisition_job_id UUID,
-            profile_code VARCHAR(60) NOT NULL,
-            parser_version VARCHAR(40) NOT NULL,
-            ocr_engine_version VARCHAR(40),
-            confidence_score NUMERIC(4,3),
-            silver_artifact_key VARCHAR(512),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (document_version_id, tenant_id)
-                REFERENCES document_versions(id, tenant_id) ON DELETE CASCADE,
-            FOREIGN KEY (acquisition_job_id, tenant_id)
-                REFERENCES acquisition_jobs(id, tenant_id)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS provenance_records (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            document_version_id UUID NOT NULL,
-            extraction_run_id UUID NOT NULL,
-            page_no INT NOT NULL,
-            bbox_json JSONB,
-            section_label VARCHAR(120),
-            original_question_label VARCHAR(60),
-            raw_snippet_text TEXT,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (document_version_id, tenant_id)
-                REFERENCES document_versions(id, tenant_id) ON DELETE CASCADE,
-            FOREIGN KEY (extraction_run_id, tenant_id)
-                REFERENCES extraction_runs(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS exam_import_sessions (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            extraction_run_id UUID NOT NULL,
-            proposed_structure_json JSONB NOT NULL,
-            status VARCHAR(30) NOT NULL DEFAULT 'PENDING_REVIEW'
-                CHECK (status IN ('PENDING_REVIEW', 'APPROVED', 'REJECTED')),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            FOREIGN KEY (extraction_run_id, tenant_id)
-                REFERENCES extraction_runs(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS duplicate_clusters (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            cluster_type VARCHAR(30) NOT NULL
-                CHECK (cluster_type IN ('EXACT', 'STRUCTURAL_VARIANT', 'SEMANTIC_NEAR')),
-            canonical_question_id UUID,
-            status VARCHAR(30) NOT NULL DEFAULT 'PENDING_REVIEW'
-                CHECK (status IN ('PENDING_REVIEW', 'RESOLVED_MERGED', 'RESOLVED_KEEP_VARIANTS')),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS question_candidates (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            extraction_run_id UUID,
-            provenance_id UUID,
-            parent_candidate_id UUID,
-            acquisition_method VARCHAR(40) NOT NULL DEFAULT 'DOCUMENT_IMPORT'
-                CHECK (acquisition_method IN (
-                    'DOCUMENT_IMPORT', 'WEB_CRAWL', 'DRIVE_SYNC', 'AI_GENERATED', 'MANUAL_AUTHOR'
-                )),
-            item_type VARCHAR(40) NOT NULL DEFAULT 'SINGLE_CHOICE'
-                CHECK (item_type IN (
-                    'SINGLE_CHOICE', 'MULTIPLE_SELECT', 'CLUSTER_TRUE_FALSE',
-                    'SHORT_NUMERIC', 'ESSAY', 'GROUP_STEM'
-                )),
-            payload_json JSONB NOT NULL,
-            content_hash CHAR(64) NOT NULL,
-            structural_hash CHAR(64) NOT NULL,
-            duplicate_cluster_id UUID,
-            extraction_confidence NUMERIC(4,3),
-            acquisition_status VARCHAR(30) NOT NULL DEFAULT 'EXTRACTED'
-                CHECK (acquisition_status IN ('INGESTED', 'EXTRACTED', 'NORMALIZED', 'FAILED')),
-            verification_status VARCHAR(30) NOT NULL DEFAULT 'UNCHECKED'
-                CHECK (verification_status IN ('UNCHECKED', 'AUTO_VERIFIED', 'VERIFIED', 'DISPUTED', 'REJECTED')),
-            rights_status VARCHAR(30) NOT NULL DEFAULT 'PENDING_REVIEW'
-                CHECK (rights_status IN (
-                    'PENDING_REVIEW', 'OWNED', 'LICENSED', 'ALLOWED_DERIVATIVE', 'RESTRICTED', 'TAKEDOWN'
-                )),
-            candidate_status VARCHAR(30) NOT NULL DEFAULT 'NEEDS_REVIEW'
-                CHECK (candidate_status IN ('NEEDS_REVIEW', 'APPROVED', 'REJECTED')),
-            promoted_question_version_id UUID,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (extraction_run_id, tenant_id)
-                REFERENCES extraction_runs(id, tenant_id) ON DELETE CASCADE,
-            FOREIGN KEY (provenance_id, tenant_id)
-                REFERENCES provenance_records(id, tenant_id),
-            FOREIGN KEY (duplicate_cluster_id, tenant_id)
-                REFERENCES duplicate_clusters(id, tenant_id)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS duplicate_members (
-            cluster_id UUID NOT NULL,
-            candidate_id UUID NOT NULL,
-            tenant_id UUID NOT NULL,
-            similarity_score NUMERIC(4,3) NOT NULL DEFAULT 1.000,
-            PRIMARY KEY (cluster_id, candidate_id),
-            FOREIGN KEY (cluster_id, tenant_id)
-                REFERENCES duplicate_clusters(id, tenant_id) ON DELETE CASCADE,
-            FOREIGN KEY (candidate_id, tenant_id)
-                REFERENCES question_candidates(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-    )
-
-    strict_tables = (
-        "sources",
-        "source_documents",
-        "document_versions",
-        "acquisition_jobs",
-        "pipeline_stage_runs",
-        "dead_letter_items",
-        "extraction_runs",
-        "provenance_records",
-        "exam_import_sessions",
-        "duplicate_clusters",
-        "question_candidates",
-        "duplicate_members",
-    )
-
-    async def create() -> None:
-        async with engine.begin() as conn:
-            for stmt in ddl_statements:
-                await conn.execute(text(stmt))
-            await conn.run_sync(Base.metadata.create_all, checkfirst=True)
-
-            await conn.execute(text("ALTER TABLE assets ENABLE ROW LEVEL SECURITY"))
-            await conn.execute(text("ALTER TABLE assets FORCE ROW LEVEL SECURITY"))
-            await conn.execute(text("DROP POLICY IF EXISTS hybrid_write_policy ON assets"))
-            await conn.execute(text("DROP POLICY IF EXISTS hybrid_read_policy ON assets"))
-            await conn.execute(
-                text(
-                    "CREATE POLICY hybrid_write_policy ON assets FOR ALL "
-                    "USING (tenant_id = (SELECT current_app_tenant_id())) "
-                    "WITH CHECK (tenant_id = (SELECT current_app_tenant_id()))"
-                )
-            )
-            await conn.execute(
-                text(
-                    "CREATE POLICY hybrid_read_policy ON assets FOR SELECT USING ("
-                    "tenant_id = (SELECT current_app_tenant_id()) "
-                    "OR (tenant_id = system_public_tenant_id() AND asset_role <> 'RAW_SOURCE')"
-                    ")"
-                )
-            )
-            await conn.execute(text("GRANT SELECT, INSERT, UPDATE, DELETE ON assets TO ulp_app_rw"))
-            await conn.execute(text("GRANT SELECT, INSERT ON assets TO ulp_worker_ingestion"))
-            await conn.execute(text("GRANT SELECT, INSERT, UPDATE, DELETE ON parser_definitions TO ulp_app_rw"))
-
-            for tbl in strict_tables:
-                await conn.execute(text(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"DROP POLICY IF EXISTS tenant_isolation_policy ON {tbl}"))
-                await conn.execute(
-                    text(
-                        f"CREATE POLICY tenant_isolation_policy ON {tbl} "
-                        "USING (tenant_id = (SELECT current_app_tenant_id())) "
-                        "WITH CHECK (tenant_id = (SELECT current_app_tenant_id()))"
-                    )
-                )
-                await conn.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {tbl} TO ulp_app_rw"))
-
-            await conn.execute(
-                text(
-                    "GRANT SELECT, INSERT, UPDATE ON sources, source_documents, document_versions, "
-                    "acquisition_jobs, pipeline_stage_runs, extraction_runs, provenance_records, "
-                    "exam_import_sessions, duplicate_clusters, question_candidates, duplicate_members "
-                    "TO ulp_worker_ingestion"
-                )
-            )
-            await conn.execute(text("GRANT SELECT, INSERT ON outbox_events TO ulp_app_rw"))
-
-    run(create())
 
 
 def _create_tenant(slug_prefix: str = "a04a08") -> uuid.UUID:
@@ -528,12 +208,14 @@ def test_dedup_distinguishes_chemical_formulas_and_clusters_numeric_variants() -
     async def _check_outbox() -> list[str]:
         async with tenant_transaction(tenant_id, role=DbRole.APP_RW) as session:
             evs = (
-                await session.execute(
-                    select(OutboxEvent.event_type).where(
-                        OutboxEvent.aggregate_id == uuid.UUID(cluster_id)
+                (
+                    await session.execute(
+                        select(OutboxEvent.event_type).where(OutboxEvent.aggregate_id == uuid.UUID(cluster_id))
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             return list(evs)
 
     events = run(_check_outbox())
@@ -765,23 +447,29 @@ def test_exam_import_banner_expansion_provenance_and_branded_pdf_rights_gate() -
     async def _verify_branded_pdf() -> tuple[str, float, str, list[str]]:
         async with tenant_transaction(tenant_id, role=DbRole.APP_RW) as session:
             row = (
-                await session.execute(
-                    text("SELECT asset_role, object_key FROM assets WHERE id = :aid"),
-                    {"aid": uuid.UUID(branded_asset_id)},
+                (
+                    await session.execute(
+                        text("SELECT asset_role, object_key FROM assets WHERE id = :aid"),
+                        {"aid": uuid.UUID(branded_asset_id)},
+                    )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
             storage = get_bronze_storage()
             pdf_bytes = await storage.get(str(row["object_key"]))
             with PDFEngineAdapter.open(pdf_bytes) as pdf:
                 _, height = pdf.page_size(0)
                 page_text = pdf.text(0)
             events = (
-                await session.execute(
-                    select(OutboxEvent.event_type).where(
-                        OutboxEvent.aggregate_id == uuid.UUID(owned_id)
+                (
+                    await session.execute(
+                        select(OutboxEvent.event_type).where(OutboxEvent.aggregate_id == uuid.UUID(owned_id))
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             return str(row["asset_role"]), height, page_text, list(events)
 
     role_val, height_pt, text_val, outbox_events = run(_verify_branded_pdf())

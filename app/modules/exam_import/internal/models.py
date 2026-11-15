@@ -6,7 +6,17 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, CheckConstraint, DateTime, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    DateTime,
+    ForeignKeyConstraint,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,6 +32,18 @@ class ProvenanceRecord(Base):
     __tablename__ = "provenance_records"
     __table_args__ = (
         UniqueConstraint("id", "tenant_id", name="uq_provenance_records_id_tenant_id"),
+        ForeignKeyConstraint(
+            ["document_version_id", "tenant_id"],
+            ["document_versions.id", "document_versions.tenant_id"],
+            ondelete="CASCADE",
+            name="fk_provenance_records_document_version_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["extraction_run_id", "tenant_id"],
+            ["extraction_runs.id", "extraction_runs.tenant_id"],
+            ondelete="CASCADE",
+            name="fk_provenance_records_run_tenant",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=UUID_V7)
@@ -47,6 +69,12 @@ class ExamImportSession(Base):
         CheckConstraint(
             "status IN ('PENDING_REVIEW', 'APPROVED', 'REJECTED')",
             name="ck_exam_import_sessions_status",
+        ),
+        ForeignKeyConstraint(
+            ["extraction_run_id", "tenant_id"],
+            ["extraction_runs.id", "extraction_runs.tenant_id"],
+            ondelete="CASCADE",
+            name="fk_exam_import_sessions_run_tenant",
         ),
     )
 

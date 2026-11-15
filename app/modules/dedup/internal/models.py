@@ -6,7 +6,16 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKeyConstraint, Numeric, String, UniqueConstraint, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Numeric,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -34,7 +43,9 @@ class DuplicateCluster(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=UUID_V7)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
     cluster_type: Mapped[str] = mapped_column(String(30), nullable=False)
     canonical_question_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, server_default=text("'PENDING_REVIEW'"))
@@ -51,6 +62,12 @@ class DuplicateMember(Base):
             ["duplicate_clusters.id", "duplicate_clusters.tenant_id"],
             ondelete="CASCADE",
             name="fk_duplicate_members_cluster_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["candidate_id", "tenant_id"],
+            ["question_candidates.id", "question_candidates.tenant_id"],
+            ondelete="CASCADE",
+            name="fk_duplicate_members_candidate_tenant",
         ),
     )
 
