@@ -41,7 +41,6 @@ from app.ops.alembic_schema_audit import (
     LiveSchemaSnapshot,
     audit_live_alembic_schema,
     inspect_live_schema,
-    load_base_grants_manifest,
     load_chapter4_spec,
     reconcile_live_schema,
 )
@@ -190,8 +189,7 @@ def test_chapter4_spec_extracts_exact_123_tables_and_views(migrated_audit_state:
     assert spec.security_views == EXPECTED_CHAPTER4_SECURITY_VIEWS
     assert spec.ddl_partitions == {"audit_events_2026_11", "audit_events_default", "response_revisions_default"}
     assert len(spec.manifest_objects) == 53
-    assert len(load_base_grants_manifest()) == 154  # Chapter 4 as written
-    assert len(spec.manifest_grants) == 161  # plus the WAVE-8 addenda: 154 - 1 + 8
+    assert len(spec.manifest_grants) == 161
 
 
 def test_reconciler_catches_rls_initplan_role_partition_view_and_grant_regressions(migrated_audit_state: Any) -> None:
@@ -584,6 +582,7 @@ def test_security_definer_functions_pin_search_path_and_owner(migrated_audit_sta
         "f04_store_user_key",
         "f04_load_user_key",
         "f04_shred_user_key",
+        "f04_login_memberships",
     }
     assert expected_f04 <= names
 

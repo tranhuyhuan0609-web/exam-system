@@ -1,9 +1,10 @@
 """F04 login: e-mail + password to a tenant membership, for the JWT the API trusts.
 
 The e-mail is never compared in clear: `f04_find_user_id` (SECURITY DEFINER) maps its blind index to a user id, the
-user is then read under their own row policy (`bind_user`). `memberships` is strict tenant RLS, so a person's
-memberships are looked up one tenant at a time, never across tenants at once, and the tenants are the ACTIVE ones
-(optionally narrowed by slug). A wrong e-mail, a wrong password and a user that is not ACTIVE look the same.
+user is then read under their own row policy (`bind_user`). `memberships` is strict tenant RLS, so the membership is
+read through the SECURITY DEFINER function `f04_login_memberships`: one query, the first ACTIVE membership in an
+ACTIVE tenant (optionally narrowed by slug). A wrong e-mail, a wrong password and a user that is not ACTIVE look
+the same.
 """
 
 from __future__ import annotations
@@ -18,10 +19,8 @@ from app.config import get_settings
 from app.db import SessionLocal
 from app.modules.privacy.internal.blind_index import compute_email_blind_index
 from app.modules.privacy.internal.crypto_shredding import blind_index_pepper
-from app.platform.tenancy import DbRole, set_role, tenant_transaction
+from app.platform.tenancy import DbRole, set_role
 from app.security import DUMMY_HASH, verify_password
-
-MAX_TENANTS_PER_LOGIN = 200
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,34 +60,22 @@ async def authenticate_login(email: str, password: str, tenant_slug: str | None 
         return None
     async with SessionLocal() as session, session.begin():
         await set_role(session, DbRole.APP_RW)
-        tenants = (
+        row = (
             await session.execute(
                 text(
-                    "SELECT id, slug FROM tenants "
-                    "WHERE status = 'ACTIVE' AND (CAST(:slug AS text) IS NULL OR slug = :slug) "
-                    "ORDER BY created_at, id LIMIT :n"
+                    "SELECT r_tenant_id, r_tenant_slug, r_membership_id, r_roles, r_entitlement_tier "
+                    "FROM f04_login_memberships(:u, CAST(:slug AS varchar))"
                 ),
-                {"slug": tenant_slug, "n": MAX_TENANTS_PER_LOGIN},
+                {"u": user_id, "slug": tenant_slug},
             )
-        ).all()
-    for tenant in tenants:
-        async with tenant_transaction(tenant.id, role=DbRole.APP_RW) as session:
-            membership = (
-                await session.execute(
-                    text(
-                        "SELECT id, roles, entitlement_tier FROM memberships "
-                        "WHERE user_id = :u AND status = 'ACTIVE' AND left_at IS NULL"
-                    ),
-                    {"u": user_id},
-                )
-            ).one_or_none()
-        if membership is not None:
-            return LoginPrincipal(
-                user_id=user_id,
-                tenant_id=tenant.id,
-                tenant_slug=tenant.slug,
-                membership_id=membership.id,
-                roles=tuple(membership.roles),
-                entitlement_tier=membership.entitlement_tier,
-            )
-    return None
+        ).one_or_none()
+    if row is None:
+        return None
+    return LoginPrincipal(
+        user_id=user_id,
+        tenant_id=row.r_tenant_id,
+        tenant_slug=row.r_tenant_slug,
+        membership_id=row.r_membership_id,
+        roles=tuple(row.r_roles),
+        entitlement_tier=row.r_entitlement_tier,
+    )

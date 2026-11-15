@@ -16,7 +16,7 @@ import asyncpg
 import pytest
 from sqlalchemy.engine import make_url
 
-from app.ops.alembic_schema_audit import load_base_grants_manifest
+from app.ops.alembic_schema_audit import load_grants_manifest
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
@@ -186,7 +186,7 @@ def test_runtime_roles_cannot_create_objects_in_the_schema():
 
 
 def test_worker_role_grants_match_the_manifest_exactly():
-    expected = set(load_base_grants_manifest(GRANTS_MANIFEST))
+    expected = set(load_grants_manifest(GRANTS_MANIFEST))
     rows = owner(
         """
         SELECT grantee, table_name, privilege_type, '' FROM information_schema.role_table_grants
