@@ -18,6 +18,9 @@ GLOBAL_TABLES = frozenset(
         "ai_models",
         "prompt_versions",
         "parser_definitions",
+        "assessment_frameworks",
+        "framework_versions",
+        "scoring_scheme_versions",
     }
 )
 """Platform tables with no tenant of their own."""

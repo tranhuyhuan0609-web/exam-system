@@ -25,6 +25,7 @@ from app.modules.curriculum.router import router as curriculum_router
 from app.modules.dedup.router import router as dedup_router
 from app.modules.exam_import.router import router as exam_import_router
 from app.modules.extraction.router import router as extraction_router
+from app.modules.frameworks.router import router as frameworks_router
 from app.modules.ingestion.router import router as ingestion_router
 from app.modules.layout.router import router as layout_router
 from app.modules.outbox.router import router as outbox_router
@@ -33,6 +34,7 @@ from app.modules.privacy.router import router as privacy_router
 from app.modules.quality.router import router as quality_router
 from app.modules.questions.router import router as questions_router
 from app.modules.review.router import router as review_router
+from app.modules.search.router import router as search_router
 from app.modules.taxonomy.router import router as taxonomy_router
 from app.platform.branding import BRAND_NAME, BRAND_SEO_DESCRIPTION
 from app.routers import admin, auth, library, maker, plans, student, teacher
@@ -140,6 +142,8 @@ for _module_router in (
     questions_router,
     dedup_router,
     exam_import_router,
+    search_router,
+    frameworks_router,
 ):
     app.include_router(_module_router)
 

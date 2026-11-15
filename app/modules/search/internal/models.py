@@ -73,6 +73,10 @@ class SearchDocument(Base):
         ),
         UniqueConstraint("tenant_id", "doc_type", "entity_id", name="uq_search_documents_tenant_doc_entity"),
         Index("ix_search_documents_fts_gin", "search_vector", postgresql_using="gin"),
+        # Typo-tolerant title search that ignores Vietnamese diacritics (pg_trgm over f_unaccent).
+        # alembic cannot compare an expression that carries its operator class and warns; the index is
+        # created by the migration, this declaration only keeps the metadata (and create_all) truthful.
+        Index("ix_search_documents_title_trgm", text("f_unaccent(title) gin_trgm_ops"), postgresql_using="gin"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=UUID_V7)
