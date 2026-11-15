@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 
 from app.ops.ddl_rls_audit import (
     ANSWER_TABLES,

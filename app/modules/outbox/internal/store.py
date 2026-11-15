@@ -46,7 +46,7 @@ async def consume_once(session: AsyncSession, consumer_name: str, event_id: uuid
         .values(consumer_name=consumer_name, event_id=event_id, tenant_id=tenant_id)
         .on_conflict_do_nothing(index_elements=["consumer_name", "event_id"])
     )
-    return result.rowcount == 1
+    return result.rowcount == 1  # type: ignore[attr-defined]
 
 
 @dataclass(frozen=True)

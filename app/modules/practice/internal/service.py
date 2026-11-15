@@ -346,7 +346,7 @@ async def _load_session_and_context(
         immediate_feedback=resolved_immediate,
         items=resolved_items,
         status=PracticeSessionStatus(db_sess.status),
-        hints_revealed=dict(hints_map),
+        hints_revealed=tuple(sorted(hints_map.items())),
         responses=records,
         applied_response_ids=applied_ids,
         graded=graded_pairs,
@@ -481,7 +481,7 @@ async def submit_practice_answer(
             hints_used,
         )
         ctx.hints_revealed = updated_hints
-        state = replace(state, hints_revealed=updated_hints)
+        state = replace(state, hints_revealed=tuple(sorted(updated_hints.items())))
 
     try:
         new_state, record = submit_practice_response(
@@ -517,7 +517,7 @@ async def submit_practice_answer(
             immediate_feedback=True,
             items=state.items,
             status=PracticeSessionStatus.IN_PROGRESS,
-            hints_revealed=dict(state.hints_revealed),
+            hints_revealed=state.hints_revealed,
             responses=(),
         )
         _, eval_record = submit_practice_response(

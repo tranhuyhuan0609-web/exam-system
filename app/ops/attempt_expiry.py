@@ -65,4 +65,4 @@ async def purge_idempotency_registry() -> int:
         result = await session.execute(
             text("DELETE FROM autosave_idempotency_registry WHERE recorded_at < NOW() - INTERVAL '30 days'")
         )
-        return int(result.rowcount or 0)
+        return int(result.rowcount or 0)  # type: ignore[attr-defined]

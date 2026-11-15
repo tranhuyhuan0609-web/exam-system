@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -189,7 +189,7 @@ async def _retrieve_grounded_context(
         ).scalar()
     )
 
-    question_rows = ()
+    question_rows: Sequence[Any] = ()
     if has_v113_questions:
         question_rows = (
             await session.execute(

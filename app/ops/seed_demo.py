@@ -161,6 +161,11 @@ def _bearer(tenant_id: uuid.UUID, user_id: uuid.UUID, membership_id: uuid.UUID, 
     return {"Authorization": f"Bearer {token}"}
 
 
+def _rows(result: Any) -> int:
+    """Rows an INSERT really wrote (0 when ON CONFLICT or NOT EXISTS skipped it)."""
+    return int(result.rowcount or 0)
+
+
 async def _ensure_catalogues() -> dict[str, int]:
     """Global catalogues (no tenant column): plans, AI providers and models, the K12 pack and its bundles."""
     added = {"subscription_plans": 0, "ai_providers": 0, "ai_models": 0, "vertical_packs": 0, "locale_bundles": 0}
@@ -173,13 +178,13 @@ async def _ensure_catalogues() -> dict[str, int]:
                 ),
                 {"c": code, "n": name, "p": price, "q": json.dumps(quotas)},
             )
-            added["subscription_plans"] += result.rowcount or 0
+            added["subscription_plans"] += _rows(result)
         for code, base_url in AI_PROVIDERS:
             result = await session.execute(
                 text("INSERT INTO ai_providers (code, base_url) VALUES (:c, :u) ON CONFLICT (code) DO NOTHING"),
                 {"c": code, "u": base_url},
             )
-            added["ai_providers"] += result.rowcount or 0
+            added["ai_providers"] += _rows(result)
         for provider, model, role, cost_in, cost_out in AI_MODELS:
             result = await session.execute(
                 text(
@@ -190,7 +195,7 @@ async def _ensure_catalogues() -> dict[str, int]:
                 ),
                 {"p": provider, "m": model, "r": role, "ci": cost_in, "co": cost_out},
             )
-            added["ai_models"] += result.rowcount or 0
+            added["ai_models"] += _rows(result)
         result = await session.execute(
             text(
                 "INSERT INTO vertical_packs (code, name, manifest_json, is_enabled) "
@@ -198,7 +203,7 @@ async def _ensure_catalogues() -> dict[str, int]:
             ),
             {"c": PACK["code"], "n": PACK["name"], "m": json.dumps(PACK["manifest"])},
         )
-        added["vertical_packs"] += result.rowcount or 0
+        added["vertical_packs"] += _rows(result)
         for locale, namespace, messages in LOCALE_BUNDLES:
             result = await session.execute(
                 text(
@@ -207,7 +212,7 @@ async def _ensure_catalogues() -> dict[str, int]:
                 ),
                 {"l": locale, "n": namespace, "m": json.dumps(messages)},
             )
-            added["locale_bundles"] += result.rowcount or 0
+            added["locale_bundles"] += _rows(result)
     return added
 
 
@@ -356,7 +361,7 @@ async def _ensure_class(tenant_id: uuid.UUID, teacher: uuid.UUID, learner: uuid.
             )
         ).first()
         made = row is None
-        if made:
+        if row is None:
             row = (
                 await session.execute(
                     text(

@@ -20,7 +20,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Literal, cast
 
 from sqlalchemy import insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -111,7 +111,7 @@ def _appeal(row: Appeal) -> AppealRecord:
 
 def _policy(raw: Mapping[str, Any] | None) -> NumericParsePolicy:
     raw = dict(raw or {})
-    fields = {k: raw[k] for k in ("decimal_sep", "allow_thousand_sep", "max_chars") if k in raw}
+    fields: dict[str, Any] = {k: raw[k] for k in ("decimal_sep", "allow_thousand_sep", "max_chars") if k in raw}
     if "tolerance" in raw:
         fields["tolerance"] = Decimal(str(raw["tolerance"]))
     return NumericParsePolicy(**fields)
@@ -120,7 +120,8 @@ def _policy(raw: Mapping[str, Any] | None) -> NumericParsePolicy:
 def answer_key_for(item_type: str, answer_schema: Mapping[str, Any], numeric_policy: Mapping[str, Any] | None):
     """The typed key of one item from the C01 answer schema; None for types graded by rubric (ESSAY ...)."""
     if item_type == QuestionItemType.SINGLE_CHOICE:
-        return SingleChoiceAnswerKey(correct_key=str(answer_schema["correct_option"]))
+        correct = cast(Literal["A", "B", "C", "D"], str(answer_schema["correct_option"]))
+        return SingleChoiceAnswerKey(correct_key=correct)
     if item_type == QuestionItemType.CLUSTER_TRUE_FALSE:
         return ClusterTrueFalseAnswerKey(sub_items={k: bool(v) for k, v in answer_schema["statements"].items()})
     if item_type == QuestionItemType.SHORT_NUMERIC:

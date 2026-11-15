@@ -122,7 +122,9 @@ def compute_class_analytics(
 
     scores = [score for _, score in submitted]
     total_subs = len(submitted)
-    on_time = sum(1 for g, _ in submitted if g.due_at is None or g.submitted_at <= g.due_at)  # type: ignore[operator]
+    on_time = sum(
+        1 for g, _ in submitted if g.due_at is None or (g.submitted_at is not None and g.submitted_at <= g.due_at)
+    )
 
     bins: dict[str, int] = {"[0, 2)": 0, "[2, 4)": 0, "[4, 6)": 0, "[6, 8)": 0, "[8, 10]": 0}
     for score in scores:

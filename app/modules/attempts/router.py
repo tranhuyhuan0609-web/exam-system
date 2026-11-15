@@ -181,8 +181,10 @@ async def put_response(
         return _problem(PlatformErrorCode.NOT_FOUND, str(exc), request, correlation_id)
     if not result.ok:
         return _outcome_problem(result, request, correlation_id)
+    assert result.committed_sequence is not None and result.saved_response_version is not None
+    assert result.server_timestamp is not None  # an ok result always carries them
     return AutosaveResponseContract(
-        status=result.code,  # COMMITTED or IDEMPOTENT_REPLAY
+        status="IDEMPOTENT_REPLAY" if result.code == "IDEMPOTENT_REPLAY" else "COMMITTED",
         attempt_id=attempt_id,
         question_version_id=question_version_id,
         committed_sequence=result.committed_sequence,

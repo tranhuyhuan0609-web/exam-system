@@ -91,8 +91,9 @@ def apply_resource_limits() -> bool:
     except ImportError:
         return False
     try:
-        resource.setrlimit(resource.RLIMIT_AS, (MEMORY_LIMIT_BYTES, MEMORY_LIMIT_BYTES))
-        resource.setrlimit(resource.RLIMIT_CPU, (CPU_LIMIT_SECONDS, CPU_LIMIT_SECONDS))
+        # POSIX only: on Windows `import resource` fails above and the worker stays fail-closed (H-02).
+        resource.setrlimit(resource.RLIMIT_AS, (MEMORY_LIMIT_BYTES, MEMORY_LIMIT_BYTES))  # type: ignore[attr-defined]
+        resource.setrlimit(resource.RLIMIT_CPU, (CPU_LIMIT_SECONDS, CPU_LIMIT_SECONDS))  # type: ignore[attr-defined]
     except (ValueError, OSError):
         return False
     return True
@@ -100,8 +101,8 @@ def apply_resource_limits() -> bool:
 
 def _evaluate(expr: str) -> dict[str, Any]:
     """Parse and evaluate an already validated expression. Call only after the rlimits are set."""
-    import sympy as sp
-    from sympy.parsing.sympy_parser import parse_expr, standard_transformations
+    import sympy as sp  # type: ignore[import-untyped]
+    from sympy.parsing.sympy_parser import parse_expr, standard_transformations  # type: ignore[import-untyped]
 
     # Minimal namespace: the whitelisted functions/constants plus the constructors that
     # the standard transformations emit (auto_number, auto_symbol, repeated_decimals,

@@ -284,19 +284,19 @@ def audit_ddl_rls_hardening(
                 secure_fn_ok = all(_function_flags(body_match.group(2)))
     literal_secured = set()
     sweep = False
-    for text in (outer, *all_bodies):
+    for segment in (outer, *all_bodies):
         literal_secured |= {
             m.group(1).lower()
-            for m in re.finditer(r"secure_partition\s*\(\s*'([a-zA-Z_][a-zA-Z0-9_]*)'\s*\)", text, re.IGNORECASE)
+            for m in re.finditer(r"secure_partition\s*\(\s*'([a-zA-Z_][a-zA-Z0-9_]*)'\s*\)", segment, re.IGNORECASE)
         }
     for body in do_bodies:
         if re.search(r"pg_inherits", body, re.IGNORECASE) and re.search(r"secure_partition\s*\(", body, re.IGNORECASE):
             sweep = True
-    for part in partitions:
-        if secure_fn_present and secure_fn_ok and (sweep or part in literal_secured):
-            enabled.add(part)
-            forced.add(part)
-            policied.add(part)
+    for partition in partitions:
+        if secure_fn_present and secure_fn_ok and (sweep or partition in literal_secured):
+            enabled.add(partition)
+            forced.add(partition)
+            policied.add(partition)
 
     exempt_lower = {t.lower() for t in exempt_tables}
     missing_enable: list[str] = []

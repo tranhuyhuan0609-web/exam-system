@@ -235,7 +235,7 @@ async def list_audit_events(
         decoded = decode_cursor(
             cursor,
             secret=cursor_secret,
-            allowed_sort_fields=(_AUDIT_SORT_FIELD,),
+            allowed_sort_fields=frozenset({_AUDIT_SORT_FIELD}),
             expected_sort_field=_AUDIT_SORT_FIELD,
             expected_direction="desc",
             tenant_id=str(tenant_id),

@@ -12,6 +12,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
+from typing import Any
 
 from pydantic import ValidationError
 from sqlalchemy import func, or_, select, update
@@ -197,6 +198,7 @@ async def relay_once(
                 # must not keep the event from the others.
                 results = [await _deliver(s, envelope, attempt, stats) for s in registry.subscribers(row.event_type)]
                 delivered, retryable = all(results), True
+            values: dict[str, Any]
             if delivered:
                 values = {"status": PUBLISHED, "published_at": func.now()}
                 stats.published += 1
