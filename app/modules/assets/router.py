@@ -4,18 +4,16 @@ from __future__ import annotations
 
 import base64
 import binascii
-import time
 import uuid
-from typing import Annotated, Literal
+from typing import Literal
 
-from fastapi import APIRouter, Query, Request, Security, status
+from fastapi import APIRouter, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import IntegrityError
 
-from app.config import get_settings
 from app.modules.assets.internal.access import (
     MAX_SIGNED_URL_TTL_SECONDS,
     AssetEntitlementTier,
@@ -35,19 +33,15 @@ from app.platform.auth_context import (
     ActorContext,
     AuthTokenError,
     TenantSpoofingError,
-    decode_and_verify_actor_token,
-    extract_bearer_token,
-    guard_no_tenant_spoofing,
 )
-from app.platform.errors import PlatformErrorCode, build_problem_detail
+from app.platform.errors import PlatformErrorCode
+from app.platform.http_auth import OptionalBearer, problem_json, verify_actor
 from app.platform.models import SYSTEM_PUBLIC_TENANT_ID
 from app.platform.pagination import resolve_correlation_id
 from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1/assets", tags=["assets"])
 
-_bearer_scheme = HTTPBearer(auto_error=False)
-OptionalBearer = Annotated[HTTPAuthorizationCredentials | None, Security(_bearer_scheme)]
 _PUBLIC_PUBLISHER_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN"})
 
 
@@ -157,18 +151,12 @@ def _problem_response(
     correlation_id: str,
     status_override: int | None = None,
 ) -> JSONResponse:
-    problem = build_problem_detail(
+    return problem_json(
         code=code,
         detail=detail,
         instance=request.url.path,
         correlation_id=correlation_id,
         status_override=status_override,
-    )
-    return JSONResponse(
-        status_code=problem.status,
-        content=problem.to_dict(),
-        media_type="application/problem+json",
-        headers={"X-Correlation-Id": correlation_id},
     )
 
 
@@ -177,23 +165,8 @@ def _authenticate_actor(
     credentials: HTTPAuthorizationCredentials | None,
 ) -> tuple[ActorContext | None, str, JSONResponse | None]:
     correlation_id = resolve_correlation_id(request.headers.get("x-correlation-id"))
-    raw_auth = request.headers.get("authorization")
-    if not raw_auth and credentials is not None:
-        raw_auth = f"{credentials.scheme} {credentials.credentials}"
-
-    settings = get_settings()
     try:
-        token = extract_bearer_token(raw_auth)
-        actor = decode_and_verify_actor_token(
-            token,
-            secret=settings.secret_key,
-            now_epoch=int(time.time()),
-        )
-        guard_no_tenant_spoofing(
-            actor,
-            claimed_tenant_header=request.headers.get("x-tenant-id"),
-            claimed_membership_header=request.headers.get("x-membership-id"),
-        )
+        actor = verify_actor(request, credentials)
     except AuthTokenError as exc:
         return None, correlation_id, _problem_response(
             code=PlatformErrorCode.UNAUTHORIZED,

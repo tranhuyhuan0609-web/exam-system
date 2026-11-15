@@ -6,18 +6,16 @@ version and stores the grading key in its own table. None of these routes ever r
 
 from __future__ import annotations
 
-import time
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
-from fastapi import APIRouter, Request, Security, status
+from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.config import get_settings
 from app.modules.assembly.internal.service import (
     AssemblyShortageFailed,
     AssessmentConflictError,
@@ -33,11 +31,9 @@ from app.platform.auth_context import (
     ActorContext,
     AuthTokenError,
     TenantSpoofingError,
-    decode_and_verify_actor_token,
-    extract_bearer_token,
-    guard_no_tenant_spoofing,
 )
-from app.platform.errors import PlatformErrorCode, build_problem_detail
+from app.platform.errors import PlatformErrorCode
+from app.platform.http_auth import OptionalBearer, problem_json, verify_actor
 from app.platform.models import SYSTEM_PUBLIC_TENANT_ID
 from app.platform.pagination import resolve_correlation_id
 from app.platform.tenancy import DbRole, tenant_transaction
@@ -45,8 +41,6 @@ from app.platform.tenancy import DbRole, tenant_transaction
 router = APIRouter(prefix="/api/v1", tags=["assembly"])
 
 EDITOR_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "TEACHER", "CONTENT_AUTHOR"})
-_bearer_scheme = HTTPBearer(auto_error=False)
-OptionalBearer = Annotated[HTTPAuthorizationCredentials | None, Security(_bearer_scheme)]
 
 
 class CreateAssessmentRequest(BaseModel):
@@ -145,7 +139,7 @@ def _problem(
     status_override: int | None = None,
     extensions: dict[str, Any] | None = None,
 ) -> JSONResponse:
-    problem = build_problem_detail(
+    return problem_json(
         code=code,
         detail=detail,
         instance=request.url.path,
@@ -153,30 +147,14 @@ def _problem(
         status_override=status_override,
         extensions=extensions,
     )
-    return JSONResponse(
-        status_code=problem.status,
-        content=problem.to_dict(),
-        media_type="application/problem+json",
-        headers={"X-Correlation-Id": correlation_id},
-    )
 
 
 def _authenticate(
     request: Request, credentials: HTTPAuthorizationCredentials | None
 ) -> tuple[ActorContext | None, str, JSONResponse | None]:
     correlation_id = resolve_correlation_id(request.headers.get("x-correlation-id"))
-    raw_auth = request.headers.get("authorization")
-    if not raw_auth and credentials is not None:
-        raw_auth = f"{credentials.scheme} {credentials.credentials}"
     try:
-        actor = decode_and_verify_actor_token(
-            extract_bearer_token(raw_auth), secret=get_settings().secret_key, now_epoch=int(time.time())
-        )
-        guard_no_tenant_spoofing(
-            actor,
-            claimed_tenant_header=request.headers.get("x-tenant-id"),
-            claimed_membership_header=request.headers.get("x-membership-id"),
-        )
+        actor = verify_actor(request, credentials)
     except AuthTokenError as exc:
         return None, correlation_id, _problem(PlatformErrorCode.UNAUTHORIZED, str(exc), request, correlation_id)
     except TenantSpoofingError as exc:

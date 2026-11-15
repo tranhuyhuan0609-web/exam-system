@@ -7,17 +7,15 @@ administrators may read the flags. Every change is audited through the outbox (s
 from __future__ import annotations
 
 import re
-import time
 import uuid
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Request, Security
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.config import get_settings
 from app.modules.config.internal.service import (
     FeatureFlagRecord,
     list_feature_flags,
@@ -29,11 +27,9 @@ from app.platform.auth_context import (
     ActorContext,
     AuthTokenError,
     TenantSpoofingError,
-    decode_and_verify_actor_token,
-    extract_bearer_token,
-    guard_no_tenant_spoofing,
 )
-from app.platform.errors import PlatformErrorCode, build_problem_detail
+from app.platform.errors import PlatformErrorCode
+from app.platform.http_auth import OptionalBearer, problem_json, verify_actor
 from app.platform.pagination import resolve_correlation_id
 from app.platform.tenancy import DbRole, tenant_transaction
 
@@ -42,8 +38,6 @@ router = APIRouter(prefix="/api/v1/admin", tags=["admin-config"])
 PLATFORM_ADMIN_ROLES = frozenset({"PLATFORM_ADMIN", "SUPER_ADMIN"})
 READER_ROLES = PLATFORM_ADMIN_ROLES | {"ADMIN", "TENANT_ADMIN"}
 KEY_PATTERN = r"^[a-z0-9][a-z0-9_.:-]{0,99}$"
-_bearer_scheme = HTTPBearer(auto_error=False)
-OptionalBearer = Annotated[HTTPAuthorizationCredentials | None, Security(_bearer_scheme)]
 
 
 class FeatureFlagResponse(BaseModel):
@@ -105,12 +99,11 @@ class PlatformSettingPatchResponse(BaseModel):
 
 
 def _problem(code: PlatformErrorCode, detail: str, request: Request, correlation_id: str) -> JSONResponse:
-    problem = build_problem_detail(code=code, detail=detail, instance=request.url.path, correlation_id=correlation_id)
-    return JSONResponse(
-        status_code=problem.status,
-        content=problem.to_dict(),
-        media_type="application/problem+json",
-        headers={"X-Correlation-Id": correlation_id},
+    return problem_json(
+        code=code,
+        detail=detail,
+        instance=request.url.path,
+        correlation_id=correlation_id,
     )
 
 
@@ -118,18 +111,8 @@ def _authenticate(
     request: Request, credentials: HTTPAuthorizationCredentials | None, allowed_roles: frozenset[str]
 ) -> tuple[ActorContext | None, str, JSONResponse | None]:
     correlation_id = resolve_correlation_id(request.headers.get("x-correlation-id"))
-    raw_auth = request.headers.get("authorization")
-    if not raw_auth and credentials is not None:
-        raw_auth = f"{credentials.scheme} {credentials.credentials}"
     try:
-        actor = decode_and_verify_actor_token(
-            extract_bearer_token(raw_auth), secret=get_settings().secret_key, now_epoch=int(time.time())
-        )
-        guard_no_tenant_spoofing(
-            actor,
-            claimed_tenant_header=request.headers.get("x-tenant-id"),
-            claimed_membership_header=request.headers.get("x-membership-id"),
-        )
+        actor = verify_actor(request, credentials)
     except AuthTokenError as exc:
         return None, correlation_id, _problem(PlatformErrorCode.UNAUTHORIZED, str(exc), request, correlation_id)
     except TenantSpoofingError as exc:

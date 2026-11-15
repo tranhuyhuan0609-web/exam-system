@@ -10,11 +10,11 @@ from __future__ import annotations
 import time
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Request, Security, status
+from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
@@ -33,12 +33,10 @@ from app.platform.auth_context import (
     ActorContext,
     AuthTokenError,
     TenantSpoofingError,
-    decode_and_verify_actor_token,
-    extract_bearer_token,
-    guard_no_tenant_spoofing,
     mint_hs256_token,
 )
-from app.platform.errors import PlatformErrorCode, build_problem_detail
+from app.platform.errors import PlatformErrorCode
+from app.platform.http_auth import OptionalBearer, problem_json, verify_actor
 from app.platform.login_throttle import login_throttle
 from app.platform.pagination import resolve_correlation_id
 from app.platform.tenancy import DbRole, tenant_transaction
@@ -46,8 +44,6 @@ from app.platform.tenancy import DbRole, tenant_transaction
 router = APIRouter(prefix="/api/v1", tags=["access"])
 
 ROLE_ADMIN_ROLES = frozenset({"ADMIN", "TENANT_ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN"})
-_bearer_scheme = HTTPBearer(auto_error=False)
-OptionalBearer = Annotated[HTTPAuthorizationCredentials | None, Security(_bearer_scheme)]
 
 
 class PermissionsMeResponse(BaseModel):
@@ -106,18 +102,12 @@ def problem(
     correlation_id: str,
     status_override: int | None = None,
 ) -> JSONResponse:
-    built = build_problem_detail(
+    return problem_json(
         code=code,
         detail=detail,
         instance=request.url.path,
         correlation_id=correlation_id,
         status_override=status_override,
-    )
-    return JSONResponse(
-        status_code=built.status,
-        content=built.to_dict(),
-        media_type="application/problem+json",
-        headers={"X-Correlation-Id": correlation_id},
     )
 
 
@@ -126,18 +116,8 @@ def authenticate(
 ) -> tuple[ActorContext | None, str, JSONResponse | None]:
     """The verified actor, or a problem response (401 bad token, 403 spoofed tenant or missing role)."""
     correlation_id = resolve_correlation_id(request.headers.get("x-correlation-id"))
-    raw_auth = request.headers.get("authorization")
-    if not raw_auth and credentials is not None:
-        raw_auth = f"{credentials.scheme} {credentials.credentials}"
     try:
-        actor = decode_and_verify_actor_token(
-            extract_bearer_token(raw_auth), secret=get_settings().secret_key, now_epoch=int(time.time())
-        )
-        guard_no_tenant_spoofing(
-            actor,
-            claimed_tenant_header=request.headers.get("x-tenant-id"),
-            claimed_membership_header=request.headers.get("x-membership-id"),
-        )
+        actor = verify_actor(request, credentials)
     except AuthTokenError as exc:
         return None, correlation_id, problem(PlatformErrorCode.UNAUTHORIZED, str(exc), request, correlation_id)
     except TenantSpoofingError as exc:

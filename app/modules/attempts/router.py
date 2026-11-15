@@ -10,18 +10,15 @@ Errors are RFC 7807 problems whose `error_code` is the H-04 code itself (`PAYLOA
 
 from __future__ import annotations
 
-import time
 import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Header, Request, Security
-from fastapi.encoders import jsonable_encoder
+from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict
 
-from app.config import get_settings
 from app.contracts.autosave import AutosaveRequestContract, AutosaveResponseContract
 from app.modules.attempts.internal.autosave import AutosaveResult
 from app.modules.attempts.internal.service import AttemptNotFoundError, get_sync_state, save_response
@@ -29,18 +26,14 @@ from app.platform.auth_context import (
     ActorContext,
     AuthTokenError,
     TenantSpoofingError,
-    decode_and_verify_actor_token,
-    extract_bearer_token,
-    guard_no_tenant_spoofing,
 )
-from app.platform.errors import PlatformErrorCode, build_problem_detail
+from app.platform.errors import PlatformErrorCode
+from app.platform.http_auth import OptionalBearer, problem_json, verify_actor
 from app.platform.pagination import resolve_correlation_id
 from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1", tags=["attempts"])
 
-_bearer_scheme = HTTPBearer(auto_error=False)
-OptionalBearer = Annotated[HTTPAuthorizationCredentials | None, Security(_bearer_scheme)]
 IdempotencyKeyHeader = Annotated[str | None, Header(alias="Idempotency-Key", max_length=128)]
 
 # H-04 outcome -> the catalogue code whose title and type describe it best
@@ -92,22 +85,14 @@ def _problem(
     error_code: str | None = None,
     extensions: dict[str, Any] | None = None,
 ) -> JSONResponse:
-    problem = build_problem_detail(
+    return problem_json(
         code=code,
         detail=detail,
         instance=request.url.path,
         correlation_id=correlation_id,
         status_override=status_override,
         extensions=extensions,
-    )
-    body = problem.to_dict()
-    if error_code is not None:
-        body["error_code"] = error_code
-    return JSONResponse(
-        status_code=problem.status,
-        content=jsonable_encoder(body),
-        media_type="application/problem+json",
-        headers={"X-Correlation-Id": correlation_id},
+        error_code=error_code,
     )
 
 
@@ -115,18 +100,8 @@ def _authenticate(
     request: Request, credentials: HTTPAuthorizationCredentials | None
 ) -> tuple[ActorContext | None, str, JSONResponse | None]:
     correlation_id = resolve_correlation_id(request.headers.get("x-correlation-id"))
-    raw_auth = request.headers.get("authorization")
-    if not raw_auth and credentials is not None:
-        raw_auth = f"{credentials.scheme} {credentials.credentials}"
     try:
-        actor = decode_and_verify_actor_token(
-            extract_bearer_token(raw_auth), secret=get_settings().secret_key, now_epoch=int(time.time())
-        )
-        guard_no_tenant_spoofing(
-            actor,
-            claimed_tenant_header=request.headers.get("x-tenant-id"),
-            claimed_membership_header=request.headers.get("x-membership-id"),
-        )
+        actor = verify_actor(request, credentials)
     except AuthTokenError as exc:
         return None, correlation_id, _problem(PlatformErrorCode.UNAUTHORIZED, str(exc), request, correlation_id)
     except TenantSpoofingError as exc:
