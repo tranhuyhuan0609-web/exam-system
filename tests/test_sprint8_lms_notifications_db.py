@@ -26,7 +26,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 
 from app.config import get_settings
-from app.db import SessionLocal, engine
+from app.db import SessionLocal
 from app.modules.assignments.internal.models import AssessmentAssignment  # noqa: F401
 from app.modules.assignments.public import get_assignment
 from app.modules.assignments.router import router as assignments_router
@@ -56,6 +56,13 @@ from app.platform.models import Tenant
 from app.platform.tenancy import DbRole, tenant_transaction
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+# The real `attempts` and `grades` tables (C05, C07) have NOT NULL columns that these LMS tests do not care about.
+ATTEMPT_COLS = "attempt_seed, question_order_ids, deadline_at"
+ATTEMPT_VALS = "1, '{}', NOW() + interval '1 hour'"
+GRADE_COLS = "section_breakdown_json, item_details_json"
+GRADE_VALS = "'{}', '[]'"
 
 
 def run(coro):
@@ -90,305 +97,6 @@ def _auth_headers(
         ttl_seconds=900,
     )
     return {"Authorization": f"Bearer {token}"}
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _ensure_task30_schema(_database: None):
-    """Create F01+F02+F03+F06 tables & missing companion stubs; DROP CASCADE on teardown."""
-    core_tables = (
-        "groups",
-        "classes",
-        "class_members",
-        "assessment_assignments",
-        "gradebook_projections",
-        "notifications",
-        "notification_deliveries",
-    )
-    stub_ddl = {
-        "assessments": """
-            CREATE TABLE IF NOT EXISTS assessments (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-                tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-                title VARCHAR(255) NOT NULL DEFAULT 'Sample Assessment',
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                UNIQUE (id, tenant_id)
-            )
-        """,
-        "assessment_versions": """
-            CREATE TABLE IF NOT EXISTS assessment_versions (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-                tenant_id UUID NOT NULL,
-                assessment_id UUID NOT NULL,
-                version_no INT NOT NULL DEFAULT 1,
-                is_immutable BOOLEAN NOT NULL DEFAULT FALSE,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                UNIQUE (id, tenant_id),
-                FOREIGN KEY (assessment_id, tenant_id) REFERENCES assessments(id, tenant_id) ON DELETE CASCADE
-            )
-        """,
-        "scoring_scheme_versions": """
-            CREATE TABLE IF NOT EXISTS scoring_scheme_versions (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-                tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-                code VARCHAR(60) NOT NULL DEFAULT 'DEFAULT_10',
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                UNIQUE (id, tenant_id)
-            )
-        """,
-        "attempts": """
-            CREATE TABLE IF NOT EXISTS attempts (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-                tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE RESTRICT,
-                assessment_version_id UUID NOT NULL REFERENCES assessment_versions(id) ON DELETE RESTRICT,
-                assignment_id UUID,
-                membership_id UUID NOT NULL,
-                status VARCHAR(30) NOT NULL DEFAULT 'IN_PROGRESS'
-                    CHECK (status IN ('IN_PROGRESS', 'SUBMITTED', 'AUTO_SUBMITTED', 'GRADED', 'VOIDED')),
-                attempt_seed BIGINT NOT NULL DEFAULT 42,
-                question_order_ids UUID[] NOT NULL DEFAULT '{}',
-                option_permutations_json JSONB NOT NULL DEFAULT '{}',
-                started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                deadline_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                submitted_at TIMESTAMPTZ,
-                submit_idempotency_key VARCHAR(128) UNIQUE,
-                UNIQUE (id, tenant_id),
-                FOREIGN KEY (membership_id, tenant_id) REFERENCES memberships(id, tenant_id) ON DELETE RESTRICT
-            )
-        """,
-        "responses": """
-            CREATE TABLE IF NOT EXISTS responses (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-                tenant_id UUID NOT NULL,
-                attempt_id UUID NOT NULL,
-                question_version_id UUID NOT NULL REFERENCES question_versions(id) ON DELETE RESTRICT,
-                current_sequence BIGINT NOT NULL DEFAULT 0,
-                current_revision_no INT NOT NULL DEFAULT 0,
-                last_idempotency_key VARCHAR(128),
-                response_payload JSONB NOT NULL,
-                is_flagged BOOLEAN NOT NULL DEFAULT FALSE,
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                UNIQUE (attempt_id, question_version_id),
-                UNIQUE (id, tenant_id),
-                FOREIGN KEY (attempt_id, tenant_id) REFERENCES attempts(id, tenant_id) ON DELETE CASCADE
-            )
-        """,
-        "grades": """
-            CREATE TABLE IF NOT EXISTS grades (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-                tenant_id UUID NOT NULL,
-                attempt_id UUID NOT NULL,
-                revision_no INT NOT NULL DEFAULT 1,
-                is_current BOOLEAN NOT NULL DEFAULT TRUE,
-                grade_reason VARCHAR(40) NOT NULL DEFAULT 'INITIAL'
-                    CHECK (grade_reason IN ('INITIAL', 'APPEAL_REGRADE', 'ERRATA_REGRADE', 'MANUAL_OVERRIDE')),
-                scoring_scheme_id UUID NOT NULL REFERENCES scoring_scheme_versions(id),
-                total_score NUMERIC(6,2) NOT NULL,
-                section_breakdown_json JSONB NOT NULL DEFAULT '{}',
-                item_details_json JSONB NOT NULL DEFAULT '[]',
-                graded_by UUID REFERENCES users(id),
-                graded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                released_at TIMESTAMPTZ,
-                UNIQUE (attempt_id, revision_no),
-                UNIQUE (id, tenant_id),
-                FOREIGN KEY (attempt_id, tenant_id) REFERENCES attempts(id, tenant_id) ON DELETE RESTRICT
-            )
-        """,
-        "grading_details": """
-            CREATE TABLE IF NOT EXISTS grading_details (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-                tenant_id UUID NOT NULL,
-                grade_id UUID NOT NULL,
-                question_version_id UUID NOT NULL REFERENCES question_versions(id),
-                earned_points NUMERIC(5,2) NOT NULL,
-                max_points NUMERIC(5,2) NOT NULL,
-                is_correct BOOLEAN NOT NULL,
-                sub_item_breakdown_json JSONB NOT NULL DEFAULT '{}',
-                FOREIGN KEY (grade_id, tenant_id) REFERENCES grades(id, tenant_id) ON DELETE CASCADE
-            )
-        """,
-    }
-    module_ddl = (
-        """
-        CREATE TABLE IF NOT EXISTS groups (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            name VARCHAR(255) NOT NULL,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS classes (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            group_id UUID,
-            teacher_membership_id UUID NOT NULL,
-            name VARCHAR(255) NOT NULL,
-            academic_year VARCHAR(30),
-            invite_code VARCHAR(30) UNIQUE,
-            status VARCHAR(30) NOT NULL DEFAULT 'ACTIVE'
-                CHECK (status IN ('ACTIVE', 'ARCHIVED')),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (group_id, tenant_id) REFERENCES groups(id, tenant_id) ON DELETE SET NULL,
-            FOREIGN KEY (teacher_membership_id, tenant_id) REFERENCES memberships(id, tenant_id) ON DELETE RESTRICT
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS class_members (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            class_id UUID NOT NULL,
-            membership_id UUID NOT NULL,
-            role_in_class VARCHAR(30) NOT NULL DEFAULT 'STUDENT'
-                CHECK (role_in_class IN ('STUDENT', 'TEACHING_ASSISTANT')),
-            status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'
-                CHECK (status IN ('ACTIVE', 'INACTIVE')),
-            joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            left_at TIMESTAMPTZ,
-            UNIQUE (class_id, membership_id),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (class_id, tenant_id) REFERENCES classes(id, tenant_id) ON DELETE CASCADE,
-            FOREIGN KEY (membership_id, tenant_id) REFERENCES memberships(id, tenant_id) ON DELETE RESTRICT
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS assessment_assignments (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            assessment_version_id UUID NOT NULL,
-            class_id UUID,
-            group_id UUID,
-            assigned_by UUID NOT NULL REFERENCES users(id),
-            available_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            due_at TIMESTAMPTZ,
-            max_attempts INT NOT NULL DEFAULT 1 CHECK (max_attempts >= 1),
-            reveal_policy VARCHAR(40) NOT NULL DEFAULT 'AFTER_DUE'
-                CHECK (reveal_policy IN ('IMMEDIATE', 'AFTER_DUE', 'MANUAL_RELEASE', 'NEVER')),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (assessment_version_id, tenant_id) REFERENCES assessment_versions(id, tenant_id)
-                ON DELETE RESTRICT,
-            FOREIGN KEY (class_id, tenant_id) REFERENCES classes(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS gradebook_projections (
-            class_id UUID NOT NULL,
-            assignment_id UUID NOT NULL,
-            tenant_id UUID NOT NULL,
-            stats_json JSONB NOT NULL DEFAULT '{}',
-            top_wrong_questions_json JSONB NOT NULL DEFAULT '[]',
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            PRIMARY KEY (class_id, assignment_id),
-            FOREIGN KEY (class_id, tenant_id) REFERENCES classes(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS notifications (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            membership_id UUID NOT NULL,
-            dedup_key VARCHAR(160) UNIQUE NOT NULL,
-            title VARCHAR(255) NOT NULL,
-            body_text TEXT NOT NULL,
-            is_read BOOLEAN NOT NULL DEFAULT FALSE,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (membership_id, tenant_id) REFERENCES memberships(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS notification_deliveries (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            notification_id UUID NOT NULL,
-            channel VARCHAR(30) NOT NULL CHECK (channel IN ('IN_APP', 'EMAIL')),
-            status VARCHAR(30) NOT NULL DEFAULT 'SENT',
-            delivered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (notification_id, channel),
-            FOREIGN KEY (notification_id, tenant_id) REFERENCES notifications(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-    )
-
-    created_stubs: list[str] = []
-
-    async def create() -> None:
-        async with engine.begin() as conn:
-            preexisting = set(
-                (
-                    await conn.execute(
-                        text(
-                            "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename = ANY(:names)"
-                        ),
-                        {"names": list(stub_ddl)},
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            for name, ddl in stub_ddl.items():
-                if name not in preexisting:
-                    created_stubs.append(name)
-                    await conn.execute(text(ddl))
-                    await conn.execute(text(f"ALTER TABLE {name} ENABLE ROW LEVEL SECURITY"))
-                    await conn.execute(text(f"ALTER TABLE {name} FORCE ROW LEVEL SECURITY"))
-                    await conn.execute(text(f"DROP POLICY IF EXISTS tenant_isolation_policy ON {name}"))
-                    await conn.execute(
-                        text(
-                            f"CREATE POLICY tenant_isolation_policy ON {name} "
-                            "USING (tenant_id = (SELECT current_app_tenant_id())) "
-                            "WITH CHECK (tenant_id = (SELECT current_app_tenant_id()))"
-                        )
-                    )
-                    await conn.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {name} TO ulp_app_rw"))
-
-            for ddl in module_ddl:
-                await conn.execute(text(ddl))
-            for tbl in core_tables:
-                await conn.execute(text(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"DROP POLICY IF EXISTS tenant_isolation_policy ON {tbl}"))
-                await conn.execute(
-                    text(
-                        f"CREATE POLICY tenant_isolation_policy ON {tbl} "
-                        "USING (tenant_id = (SELECT current_app_tenant_id())) "
-                        "WITH CHECK (tenant_id = (SELECT current_app_tenant_id()))"
-                    )
-                )
-                await conn.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {tbl} TO ulp_app_rw"))
-
-            await conn.execute(text("GRANT SELECT ON assessment_assignments TO ulp_exam_session_rw"))
-            await conn.execute(text("GRANT SELECT, INSERT, UPDATE ON gradebook_projections TO ulp_worker_grading"))
-            for tbl in ("assessment_versions", "attempts", "responses", "scoring_scheme_versions"):
-                if tbl in created_stubs:
-                    await conn.execute(text(f"GRANT SELECT ON {tbl} TO ulp_worker_grading"))
-            for tbl in ("grades", "grading_details"):
-                if tbl in created_stubs:
-                    await conn.execute(text(f"GRANT SELECT, INSERT, UPDATE ON {tbl} TO ulp_worker_grading"))
-            if "attempts" in created_stubs:
-                await conn.execute(text("GRANT SELECT, INSERT, UPDATE ON attempts TO ulp_exam_session_rw"))
-            if "assessment_versions" in created_stubs:
-                await conn.execute(text("GRANT SELECT ON assessment_versions TO ulp_exam_session_rw"))
-
-    async def drop() -> None:
-        async with engine.begin() as conn:
-            to_drop = [
-                "notification_deliveries",
-                "notifications",
-                "gradebook_projections",
-                "assessment_assignments",
-                "class_members",
-                "classes",
-                "groups",
-                *reversed(created_stubs),
-            ]
-            await conn.execute(text(f"DROP TABLE IF EXISTS {', '.join(to_drop)} CASCADE"))
-
-    run(create())
-    yield
-    run(drop())
 
 
 @pytest.fixture
@@ -519,21 +227,23 @@ async def _seed_assessment_bundle(
         )
         qv_ids.append(qvid)
 
-    assessment_id, assessment_version_id, scheme_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    assessment_id, assessment_version_id = uuid.uuid4(), uuid.uuid4()
+    scheme_id = (
+        await session.execute(text("SELECT id FROM scoring_scheme_versions ORDER BY code LIMIT 1"))
+    ).scalar_one()
     await session.execute(
-        text("INSERT INTO assessments (id, tenant_id, title) VALUES (:aid, :tid, :title)"),
+        text(
+            "INSERT INTO assessments (id, tenant_id, title, subject_code, grade_band, exam_type_code) "
+            "VALUES (:aid, :tid, :title, 'MATH', 'GRADE_12', 'THPTQG')"
+        ),
         {"aid": assessment_id, "tid": tenant_id, "title": f"Exam {stable_prefix}"},
     )
     await session.execute(
         text(
-            "INSERT INTO assessment_versions (id, tenant_id, assessment_id, version_no) "
-            "VALUES (:avid, :tid, :aid, 1)"
+            "INSERT INTO assessment_versions (id, tenant_id, assessment_id, version_no, scoring_scheme_id, "
+            "duration_seconds, structure_snapshot_json) VALUES (:avid, :tid, :aid, 1, :sid, 5400, '{}')"
         ),
-        {"avid": assessment_version_id, "tid": tenant_id, "aid": assessment_id},
-    )
-    await session.execute(
-        text("INSERT INTO scoring_scheme_versions (id, tenant_id, code) VALUES (:sid, :tid, :code)"),
-        {"sid": scheme_id, "tid": tenant_id, "code": f"SC_{stable_prefix}"},
+        {"avid": assessment_version_id, "tid": tenant_id, "aid": assessment_id, "sid": scheme_id},
     )
     return assessment_version_id, scheme_id, qv_ids
 
@@ -613,15 +323,16 @@ def test_f01_classes_soft_delete_preserves_history_and_rls(world: dict[str, uuid
             att_id = uuid.uuid4()
             await session.execute(
                 text(
-                    "INSERT INTO attempts (id, tenant_id, assessment_version_id, membership_id, status, submitted_at) "
-                    "VALUES (:aid, :tid, :avid, :mid, 'GRADED', NOW())"
+                    "INSERT INTO attempts (id, tenant_id, assessment_version_id, membership_id, status, "
+                    f"submitted_at, {ATTEMPT_COLS}) "
+                    f"VALUES (:aid, :tid, :avid, :mid, 'GRADED', NOW(), {ATTEMPT_VALS})"
                 ),
                 {"aid": att_id, "tid": ta, "avid": av_id, "mid": m_s2},
             )
             await session.execute(
                 text(
-                    "INSERT INTO grades (tenant_id, attempt_id, scoring_scheme_id, total_score) "
-                    "VALUES (:tid, :aid, :sid, 8.50)"
+                    f"INSERT INTO grades (tenant_id, attempt_id, scoring_scheme_id, total_score, {GRADE_COLS}) "
+                    f"VALUES (:tid, :aid, :sid, 8.50, {GRADE_VALS})"
                 ),
                 {"tid": ta, "aid": att_id, "sid": scheme_id},
             )
@@ -768,23 +479,23 @@ def test_f02_assignments_windows_attempts_reveal_policies_and_exam_role(world: d
                 await session.execute(
                     text(
                         "INSERT INTO attempts "
-                        "(id, tenant_id, assessment_version_id, assignment_id, membership_id, status, submitted_at) "
-                        "VALUES (:id, :tid, :avid, :aid, :mid, 'GRADED', :sub)"
+                        "(id, tenant_id, assessment_version_id, assignment_id, membership_id, status, submitted_at, "
+                        f"{ATTEMPT_COLS}) VALUES (:id, :tid, :avid, :aid, :mid, 'GRADED', :sub, {ATTEMPT_VALS})"
                     ),
                     {"id": att_id, "tid": ta, "avid": av_id, "aid": assignment_id, "mid": m_s1, "sub": avail},
                 )
                 await session.execute(
                     text(
-                        "INSERT INTO grades (tenant_id, attempt_id, scoring_scheme_id, total_score) "
-                        "VALUES (:tid, :att, :sid, 9.00)"
+                        f"INSERT INTO grades (tenant_id, attempt_id, scoring_scheme_id, total_score, {GRADE_COLS}) "
+                        f"VALUES (:tid, :att, :sid, 9.00, {GRADE_VALS})"
                     ),
                     {"tid": ta, "att": att_id, "sid": scheme_id},
                 )
                 await session.execute(
                     text(
                         "INSERT INTO attempts "
-                        "(tenant_id, assessment_version_id, assignment_id, membership_id, status) "
-                        "VALUES (:tid, :avid, :aid, :mid, 'VOIDED')"
+                        f"(tenant_id, assessment_version_id, assignment_id, membership_id, status, {ATTEMPT_COLS}) "
+                        f"VALUES (:tid, :avid, :aid, :mid, 'VOIDED', {ATTEMPT_VALS})"
                     ),
                     {"tid": ta, "avid": av_id, "aid": assignment_id, "mid": m_s1},
                 )
@@ -792,8 +503,8 @@ def test_f02_assignments_windows_attempts_reveal_policies_and_exam_role(world: d
                 await session.execute(
                     text(
                         "INSERT INTO attempts "
-                        "(tenant_id, assessment_version_id, assignment_id, membership_id, status, submitted_at) "
-                        "VALUES (:tid, :avid, :aid, :mid, 'SUBMITTED', :sub)"
+                        "(tenant_id, assessment_version_id, assignment_id, membership_id, status, submitted_at, "
+                        f"{ATTEMPT_COLS}) VALUES (:tid, :avid, :aid, :mid, 'SUBMITTED', :sub, {ATTEMPT_VALS})"
                     ),
                     {"tid": ta, "avid": av_id, "aid": assignment_id, "mid": m_s1, "sub": avail},
                 )
@@ -992,14 +703,15 @@ def test_f03_gradebook_analytics_worker_grading_inactive_export_and_csv_escape(
                 await session.execute(
                     text(
                         "INSERT INTO attempts (id, tenant_id, assessment_version_id, assignment_id, membership_id, "
-                        "status, submitted_at) VALUES (:id, :tid, :avid, :aid, :mid, 'GRADED', :sub)"
+                        f"status, submitted_at, {ATTEMPT_COLS}) "
+                        f"VALUES (:id, :tid, :avid, :aid, :mid, 'GRADED', :sub, {ATTEMPT_VALS})"
                     ),
                     {"id": att_id, "tid": ta, "avid": av_id, "aid": assignment_id, "mid": mid, "sub": sub_at},
                 )
                 await session.execute(
                     text(
-                        "INSERT INTO grades (id, tenant_id, attempt_id, scoring_scheme_id, total_score) "
-                        "VALUES (:gid, :tid, :att, :sid, :score)"
+                        f"INSERT INTO grades (id, tenant_id, attempt_id, scoring_scheme_id, total_score, {GRADE_COLS}) "
+                        f"VALUES (:gid, :tid, :att, :sid, :score, {GRADE_VALS})"
                     ),
                     {"gid": grade_id, "tid": ta, "att": att_id, "sid": scheme_id, "score": score},
                 )
@@ -1093,12 +805,8 @@ def test_f03_gradebook_analytics_worker_grading_inactive_export_and_csv_escape(
                 tenant_id=ta,
                 class_id=class_id,
                 assignment_id=assignment_id,
-                grades=(
-                    StudentAttemptGrade(str(m_s1), "Nguyễn Minh An", Decimal("9.50"), due_at, due_at),
-                ),
-                item_observations=(
-                    ItemResponseObservation(str(qv_ids[0]), False, "D"),
-                ),
+                grades=(StudentAttemptGrade(str(m_s1), "Nguyễn Minh An", Decimal("9.50"), due_at, due_at),),
+                item_observations=(ItemResponseObservation(str(qv_ids[0]), False, "D"),),
             )
             assert proj.stats_json["total_submissions"] == 1
             assert proj.top_wrong_questions_json[0]["top_wrong_distractor"] == "D"
@@ -1127,24 +835,32 @@ def test_f06_notifications_decision7_dedup_replay_read_and_preferences(
         attempt_id = uuid.uuid4()
         async with tenant_transaction(ta, role=DbRole.APP_RW) as session:
             cols = (
-                await session.execute(
-                    text(
-                        "SELECT column_name, is_nullable FROM information_schema.columns "
-                        "WHERE table_schema = 'public' AND table_name = 'notification_deliveries'"
+                (
+                    await session.execute(
+                        text(
+                            "SELECT column_name, is_nullable FROM information_schema.columns "
+                            "WHERE table_schema = 'public' AND table_name = 'notification_deliveries'"
+                        )
                     )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
             col_map = {r["column_name"]: r["is_nullable"] for r in cols}
             assert col_map["tenant_id"] == "NO"
 
             rls = (
-                await session.execute(
-                    text(
-                        "SELECT relrowsecurity, relforcerowsecurity FROM pg_class "
-                        "WHERE relname = 'notification_deliveries'"
+                (
+                    await session.execute(
+                        text(
+                            "SELECT relrowsecurity, relforcerowsecurity FROM pg_class "
+                            "WHERE relname = 'notification_deliveries'"
+                        )
                     )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
             assert rls["relrowsecurity"] is True and rls["relforcerowsecurity"] is True
 
             first = await handle_attempt_graded_notification(

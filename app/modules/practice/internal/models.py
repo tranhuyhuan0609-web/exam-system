@@ -49,9 +49,9 @@ class PracticeSession(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=UUID_V7)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     membership_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    mode: Mapped[str] = mapped_column(String(30), nullable=False)
+    mode: Mapped[str] = mapped_column(String(40), nullable=False, server_default=text("'TOPIC_DRILL'"))
     status: Mapped[str] = mapped_column(
-        String(20),
+        String(30),
         nullable=False,
         server_default=text("'IN_PROGRESS'"),
     )
@@ -77,7 +77,7 @@ class PracticeResponse(Base):
     practice_session_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     question_version_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("question_versions.id", ondelete="RESTRICT"),
+        ForeignKey("question_versions.id"),
         nullable=False,
     )
     response_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)

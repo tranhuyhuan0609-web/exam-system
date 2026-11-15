@@ -96,7 +96,7 @@ class ClassMember(Base):
         ForeignKeyConstraint(
             ["membership_id", "tenant_id"],
             ["memberships.id", "memberships.tenant_id"],
-            ondelete="CASCADE",
+            ondelete="RESTRICT",
             name="fk_class_members_membership_tenant",
         ),
     )

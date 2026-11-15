@@ -76,256 +76,66 @@ def _auth_headers(
     return headers
 
 
-@pytest.fixture(scope="module", autouse=True)
-def _ensure_task29_schema(_database: None):
-    """Create D02 + D03 + D05 tables & temporary dependency stubs; DROP CASCADE on teardown."""
-    core_tables = (
-        "learning_plans",
-        "plan_tasks",
-        "practice_sessions",
-        "practice_responses",
-        "error_notes",
-        "remediation_tasks",
-    )
-    stub_ddl = {
-        "knowledge_edges": """
-            CREATE TABLE IF NOT EXISTS knowledge_edges (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-                tenant_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'
-                    REFERENCES tenants(id) ON DELETE CASCADE,
-                source_node_id UUID NOT NULL REFERENCES taxonomy_nodes(id) ON DELETE RESTRICT,
-                target_node_id UUID NOT NULL REFERENCES taxonomy_nodes(id) ON DELETE RESTRICT,
-                edge_type VARCHAR(40) NOT NULL CHECK (
-                    edge_type IN (
-                        'PREREQUISITE', 'RELATED_TO', 'EXTENDS', 'APPLIED_IN', 'COMMON_MISCONCEPTION'
-                    )
-                ),
-                confidence NUMERIC(4,3) NOT NULL DEFAULT 1.000 CHECK (confidence BETWEEN 0 AND 1),
-                graph_version INT NOT NULL DEFAULT 1,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                CHECK (source_node_id <> target_node_id),
-                UNIQUE (tenant_id, source_node_id, target_node_id, edge_type, graph_version)
-            )
-        """,
-        "mastery_estimates": """
-            CREATE TABLE IF NOT EXISTS mastery_estimates (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-                tenant_id UUID NOT NULL,
-                membership_id UUID NOT NULL,
-                taxonomy_node_id UUID NOT NULL REFERENCES taxonomy_nodes(id) ON DELETE CASCADE,
-                model_code VARCHAR(40) NOT NULL DEFAULT 'RULE_WEIGHTED_L1',
-                theta_estimate NUMERIC(6,3) NOT NULL DEFAULT 0.000,
-                mastery_probability NUMERIC(5,3) NOT NULL CHECK (mastery_probability BETWEEN 0 AND 1),
-                standard_error NUMERIC(5,3) NOT NULL DEFAULT 0.500,
-                evidence_count INT NOT NULL DEFAULT 0,
-                status VARCHAR(30) NOT NULL DEFAULT 'INSUFFICIENT_DATA',
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                UNIQUE (membership_id, taxonomy_node_id, model_code),
-                FOREIGN KEY (membership_id, tenant_id) REFERENCES memberships(id, tenant_id) ON DELETE CASCADE
-            )
-        """,
-        "question_version_answers": """
-            CREATE TABLE IF NOT EXISTS question_version_answers (
-                question_version_id UUID PRIMARY KEY,
-                tenant_id UUID NOT NULL,
-                answer_schema JSONB NOT NULL,
-                rationale_json JSONB NOT NULL DEFAULT '{}',
-                is_immutable BOOLEAN NOT NULL DEFAULT FALSE,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                FOREIGN KEY (question_version_id, tenant_id)
-                    REFERENCES question_versions(id, tenant_id) ON DELETE CASCADE
-            )
-        """,
-        "assessment_assignments": """
-            CREATE TABLE IF NOT EXISTS assessment_assignments (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-                tenant_id UUID NOT NULL,
-                assessment_version_id UUID NOT NULL,
-                class_id UUID,
-                group_id UUID,
-                assigned_by UUID NOT NULL REFERENCES users(id),
-                available_from TIMESTAMPTZ NOT NULL,
-                due_at TIMESTAMPTZ NOT NULL,
-                max_attempts INT NOT NULL DEFAULT 1,
-                reveal_policy VARCHAR(30) NOT NULL DEFAULT 'AFTER_DUE',
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                UNIQUE (id, tenant_id)
-            )
-        """,
-        "attempts": """
-            CREATE TABLE IF NOT EXISTS attempts (
-                id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-                tenant_id UUID NOT NULL,
-                assignment_id UUID,
-                assessment_version_id UUID NOT NULL,
-                membership_id UUID NOT NULL,
-                attempt_no INT NOT NULL DEFAULT 1,
-                status VARCHAR(30) NOT NULL DEFAULT 'IN_PROGRESS',
-                started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                UNIQUE (id, tenant_id)
-            )
-        """,
-    }
-    module_ddl = (
-        """
-        CREATE TABLE IF NOT EXISTS learning_plans (
+LATER_WAVE_STUBS = {
+    # D06 mastery_estimates arrives with TASK-33; the learning path reads it when it exists.
+    "mastery_estimates": """
+        CREATE TABLE IF NOT EXISTS mastery_estimates (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
             tenant_id UUID NOT NULL,
             membership_id UUID NOT NULL,
-            target_framework_code VARCHAR(60) NOT NULL DEFAULT 'THPTQG_2025',
-            status VARCHAR(30) NOT NULL DEFAULT 'ACTIVE'
-                CHECK (status IN ('ACTIVE', 'COMPLETED', 'ARCHIVED')),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id),
+            taxonomy_node_id UUID NOT NULL REFERENCES taxonomy_nodes(id) ON DELETE CASCADE,
+            model_code VARCHAR(40) NOT NULL DEFAULT 'RULE_WEIGHTED_L1',
+            theta_estimate NUMERIC(6,3) NOT NULL DEFAULT 0.000,
+            mastery_probability NUMERIC(5,3) NOT NULL CHECK (mastery_probability BETWEEN 0 AND 1),
+            standard_error NUMERIC(5,3) NOT NULL DEFAULT 0.500,
+            evidence_count INT NOT NULL DEFAULT 0,
+            status VARCHAR(30) NOT NULL DEFAULT 'INSUFFICIENT_DATA',
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (membership_id, taxonomy_node_id, model_code),
             FOREIGN KEY (membership_id, tenant_id) REFERENCES memberships(id, tenant_id) ON DELETE CASCADE
         )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS plan_tasks (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            learning_plan_id UUID NOT NULL,
-            taxonomy_node_id UUID NOT NULL REFERENCES taxonomy_nodes(id),
-            task_type VARCHAR(40) NOT NULL
-                CHECK (task_type IN ('PREREQUISITE_REVIEW', 'READ_CONCEPT', 'PRACTICE_SET', 'ERROR_REMEDIATION')),
-            rationale_text TEXT NOT NULL,
-            sequence_order INT NOT NULL,
-            status VARCHAR(20) NOT NULL DEFAULT 'PENDING'
-                CHECK (status IN ('PENDING', 'IN_PROGRESS', 'COMPLETED', 'SKIPPED')),
-            FOREIGN KEY (learning_plan_id, tenant_id) REFERENCES learning_plans(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS practice_sessions (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            membership_id UUID NOT NULL,
-            mode VARCHAR(30) NOT NULL
-                CHECK (mode IN ('LESSON_EMBED', 'TOPIC_DRILL', 'REMEDIATION_DRILL')),
-            status VARCHAR(20) NOT NULL DEFAULT 'IN_PROGRESS'
-                CHECK (status IN ('IN_PROGRESS', 'COMPLETED')),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            completed_at TIMESTAMPTZ,
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (membership_id, tenant_id) REFERENCES memberships(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS practice_responses (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            practice_session_id UUID NOT NULL,
-            question_version_id UUID NOT NULL REFERENCES question_versions(id),
-            response_payload JSONB NOT NULL,
-            is_correct BOOLEAN NOT NULL,
-            hints_used INT NOT NULL DEFAULT 0,
-            answered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            FOREIGN KEY (practice_session_id, tenant_id) REFERENCES practice_sessions(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS error_notes (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            membership_id UUID NOT NULL,
-            question_version_id UUID NOT NULL REFERENCES question_versions(id),
-            primary_taxonomy_node_id UUID NOT NULL REFERENCES taxonomy_nodes(id),
-            wrong_count INT NOT NULL DEFAULT 1,
-            consecutive_correct_count INT NOT NULL DEFAULT 0,
-            status VARCHAR(20) NOT NULL DEFAULT 'OPEN'
-                CHECK (status IN ('OPEN', 'IN_REMEDIATION', 'RESOLVED')),
-            last_wrong_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            resolved_at TIMESTAMPTZ,
-            UNIQUE (membership_id, question_version_id),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (membership_id, tenant_id) REFERENCES memberships(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS remediation_tasks (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            error_note_id UUID NOT NULL,
-            recommended_question_version_ids UUID[] NOT NULL,
-            completed_count INT NOT NULL DEFAULT 0,
-            status VARCHAR(20) NOT NULL DEFAULT 'ASSIGNED'
-                CHECK (status IN ('ASSIGNED', 'COMPLETED')),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            FOREIGN KEY (error_note_id, tenant_id) REFERENCES error_notes(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-    )
+    """,
+}
 
-    created_stubs: list[str] = []
+
+@pytest.fixture(scope="module", autouse=True)
+def _ensure_later_wave_tables(_database: None):
+    """The D02 / D03 / D05 tables and the F02 assignments come from Alembic. Only `mastery_estimates` (D06, TASK-33)
+    is stubbed here, and only while no migration creates it (a stub is dropped again on teardown)."""
+    created: list[str] = []
 
     async def create() -> None:
         async with engine.begin() as conn:
-            preexisting = set(
+            present = set(
                 (
                     await conn.execute(
-                        text(
-                            "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename = ANY(:names)"
-                        ),
-                        {"names": list(stub_ddl)},
+                        text("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename = ANY(:n)"),
+                        {"n": list(LATER_WAVE_STUBS)},
                     )
                 )
                 .scalars()
                 .all()
             )
-            for name, ddl in stub_ddl.items():
-                if name not in preexisting:
-                    created_stubs.append(name)
-                    await conn.execute(text(ddl))
-                    await conn.execute(text(f"ALTER TABLE {name} ENABLE ROW LEVEL SECURITY"))
-                    await conn.execute(text(f"ALTER TABLE {name} FORCE ROW LEVEL SECURITY"))
-                    await conn.execute(text(f"DROP POLICY IF EXISTS tenant_isolation_policy ON {name}"))
-                    if name == "knowledge_edges":
-                        await conn.execute(
-                            text(
-                                "CREATE POLICY tenant_isolation_policy ON knowledge_edges "
-                                "USING (tenant_id = (SELECT current_app_tenant_id()) "
-                                "OR tenant_id = system_public_tenant_id()) "
-                                "WITH CHECK (tenant_id = (SELECT current_app_tenant_id()))"
-                            )
-                        )
-                    else:
-                        await conn.execute(
-                            text(
-                                f"CREATE POLICY tenant_isolation_policy ON {name} "
-                                "USING (tenant_id = (SELECT current_app_tenant_id())) "
-                                "WITH CHECK (tenant_id = (SELECT current_app_tenant_id()))"
-                            )
-                        )
-                    await conn.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {name} TO ulp_app_rw"))
-
-            for ddl in module_ddl:
+            for name, ddl in LATER_WAVE_STUBS.items():
+                if name in present:
+                    continue
+                created.append(name)
                 await conn.execute(text(ddl))
-            for tbl in core_tables:
-                await conn.execute(text(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"DROP POLICY IF EXISTS tenant_isolation_policy ON {tbl}"))
+                await conn.execute(text(f"ALTER TABLE {name} ENABLE ROW LEVEL SECURITY"))
+                await conn.execute(text(f"ALTER TABLE {name} FORCE ROW LEVEL SECURITY"))
                 await conn.execute(
                     text(
-                        f"CREATE POLICY tenant_isolation_policy ON {tbl} "
+                        f"CREATE POLICY tenant_isolation_policy ON {name} "
                         "USING (tenant_id = (SELECT current_app_tenant_id())) "
                         "WITH CHECK (tenant_id = (SELECT current_app_tenant_id()))"
                     )
                 )
-                await conn.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {tbl} TO ulp_app_rw"))
-            await conn.execute(text("GRANT SELECT, INSERT, UPDATE ON error_notes TO ulp_worker_grading"))
+                await conn.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {name} TO ulp_app_rw"))
 
     async def drop() -> None:
-        async with engine.begin() as conn:
-            to_drop = [
-                "remediation_tasks",
-                "error_notes",
-                "practice_responses",
-                "practice_sessions",
-                "plan_tasks",
-                "learning_plans",
-                *reversed(created_stubs),
-            ]
-            await conn.execute(text(f"DROP TABLE IF EXISTS {', '.join(to_drop)} CASCADE"))
+        if created:
+            async with engine.begin() as conn:
+                await conn.execute(text(f"DROP TABLE IF EXISTS {', '.join(reversed(created))} CASCADE"))
 
     run(create())
     yield
@@ -476,16 +286,31 @@ def test_d02_learning_plan_prerequisite_order_rationale_recalc_and_teacher_non_o
             session.add_all(
                 [
                     TaxonomyNode(
-                        id=n_a, tenant_id=ta, visibility_scope="TENANT_PRIVATE",
-                        node_type="CONCEPT", code="LIMIT_PREREQ", code_path="TOAN.LIMIT_PREREQ", is_active=True,
+                        id=n_a,
+                        tenant_id=ta,
+                        visibility_scope="TENANT_PRIVATE",
+                        node_type="CONCEPT",
+                        code="LIMIT_PREREQ",
+                        code_path="TOAN.LIMIT_PREREQ",
+                        is_active=True,
                     ),
                     TaxonomyNode(
-                        id=n_b, tenant_id=ta, visibility_scope="TENANT_PRIVATE",
-                        node_type="CONCEPT", code="DERIV_PREREQ", code_path="TOAN.DERIV_PREREQ", is_active=True,
+                        id=n_b,
+                        tenant_id=ta,
+                        visibility_scope="TENANT_PRIVATE",
+                        node_type="CONCEPT",
+                        code="DERIV_PREREQ",
+                        code_path="TOAN.DERIV_PREREQ",
+                        is_active=True,
                     ),
                     TaxonomyNode(
-                        id=n_target, tenant_id=ta, visibility_scope="TENANT_PRIVATE",
-                        node_type="CONCEPT", code="INTEGRAL_TARGET", code_path="TOAN.INTEGRAL_TARGET", is_active=True,
+                        id=n_target,
+                        tenant_id=ta,
+                        visibility_scope="TENANT_PRIVATE",
+                        node_type="CONCEPT",
+                        code="INTEGRAL_TARGET",
+                        code_path="TOAN.INTEGRAL_TARGET",
+                        is_active=True,
                     ),
                 ]
             )
@@ -504,6 +329,22 @@ def test_d02_learning_plan_prerequisite_order_rationale_recalc_and_teacher_non_o
                 ),
                 {"tid": ta, "mid": ma, "n1": n_a, "n2": n_b, "n3": n_target},
             )
+            paper_id, paper_version_id = uuid.uuid4(), uuid.uuid4()
+            await session.execute(
+                text(
+                    "INSERT INTO assessments (id, tenant_id, title, subject_code, grade_band, exam_type_code) "
+                    "VALUES (:a, :t, 'Teacher exam', 'MATH', 'GRADE_12', 'THPTQG')"
+                ),
+                {"a": paper_id, "t": ta},
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO assessment_versions (id, tenant_id, assessment_id, version_no, scoring_scheme_id, "
+                    "duration_seconds, structure_snapshot_json) "
+                    "SELECT :v, :t, :a, 1, id, 5400, '{}' FROM scoring_scheme_versions ORDER BY code LIMIT 1"
+                ),
+                {"v": paper_version_id, "t": ta, "a": paper_id},
+            )
             await session.execute(
                 text(
                     "INSERT INTO assessment_assignments "
@@ -514,7 +355,7 @@ def test_d02_learning_plan_prerequisite_order_rationale_recalc_and_teacher_non_o
                 {
                     "aid": asg_id,
                     "tid": ta,
-                    "avid": uuid.uuid4(),
+                    "avid": paper_version_id,
                     "by": ua2,
                     "avail": datetime(2026, 11, 14, 8, 0, tzinfo=UTC),
                     "due": asg_due,
@@ -613,8 +454,13 @@ def test_d03_practice_modes_hints_idempotency_and_exam_isolation(world: dict[str
         async with SessionLocal() as session, session.begin():
             session.add(
                 TaxonomyNode(
-                    id=node_id, tenant_id=ta, visibility_scope="TENANT_PRIVATE",
-                    node_type="CONCEPT", code="BAYES_PRACTICE", code_path="TOAN.BAYES_PRACTICE", is_active=True,
+                    id=node_id,
+                    tenant_id=ta,
+                    visibility_scope="TENANT_PRIVATE",
+                    node_type="CONCEPT",
+                    code="BAYES_PRACTICE",
+                    code_path="TOAN.BAYES_PRACTICE",
+                    is_active=True,
                 )
             )
             await session.flush()
@@ -803,8 +649,13 @@ def test_d05_error_notebook_capture_remediation_two_streak_and_worker_grading(
         async with SessionLocal() as session, session.begin():
             session.add(
                 TaxonomyNode(
-                    id=node_id, tenant_id=ta, visibility_scope="TENANT_PRIVATE",
-                    node_type="CONCEPT", code="D05_DERIVATIVE", code_path="TOAN.D05_DERIVATIVE", is_active=True,
+                    id=node_id,
+                    tenant_id=ta,
+                    visibility_scope="TENANT_PRIVATE",
+                    node_type="CONCEPT",
+                    code="D05_DERIVATIVE",
+                    code_path="TOAN.D05_DERIVATIVE",
+                    is_active=True,
                 )
             )
             await session.flush()
@@ -909,14 +760,16 @@ def test_d05_error_notebook_capture_remediation_two_streak_and_worker_grading(
     # Tenant B cannot see or mutate Tenant A's error notes
     assert client.get("/api/v1/error-notes", headers=headers_b).json() == []
     assert (
-        client.post(f"/api/v1/error-notes/{note_id}/remediate", headers=headers_b, json={"limit": 3}).status_code
+        client.post(f"/api/v1/error-notes/{note_id}/remediate", headers=headers_b, json={"limit": 3}).status_code == 404
+    )
+    assert (
+        client.post(
+            f"/api/v1/error-notes/{note_id}/resolve",
+            headers=headers_b,
+            json={"is_correct": True},
+        ).status_code
         == 404
     )
-    assert client.post(
-        f"/api/v1/error-notes/{note_id}/resolve",
-        headers=headers_b,
-        json={"is_correct": True},
-    ).status_code == 404
 
     async def verify_remediation_task_and_rls() -> None:
         async with tenant_transaction(ta, role=DbRole.APP_RW) as sa:

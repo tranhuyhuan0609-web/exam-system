@@ -18,22 +18,31 @@ from app.modules.access.router import router as access_router
 from app.modules.ai_gateway.router import router as ai_gateway_router
 from app.modules.assembly.router import router as assembly_router
 from app.modules.assets.router import router as assets_router
+from app.modules.assignments.router import router as assignments_router
 from app.modules.attempts.router import router as attempts_router
 from app.modules.audit.router import router as audit_router
 from app.modules.authoring.router import router as authoring_router
+from app.modules.classes.router import router as classes_router
 from app.modules.config.router import router as config_router
 from app.modules.content.router import router as content_router
 from app.modules.curriculum.router import router as curriculum_router
+from app.modules.dashboard.router import router as dashboard_router
 from app.modules.dedup.router import router as dedup_router
 from app.modules.delivery.router import router as delivery_router
+from app.modules.error_notebook.router import router as error_notebook_router
 from app.modules.exam_import.router import router as exam_import_router
 from app.modules.extraction.router import router as extraction_router
 from app.modules.frameworks.router import router as frameworks_router
+from app.modules.gradebook.router import router as gradebook_router
 from app.modules.grading.router import router as grading_router
 from app.modules.ingestion.router import router as ingestion_router
+from app.modules.knowledge_graph.router import router as knowledge_graph_router
 from app.modules.layout.router import router as layout_router
+from app.modules.learning_path.router import router as learning_path_router
+from app.modules.notifications.router import router as notifications_router
 from app.modules.outbox.router import router as outbox_router
 from app.modules.parsers.router import router as parsers_router
+from app.modules.practice.router import router as practice_router
 from app.modules.privacy.router import router as privacy_router
 from app.modules.quality.router import router as quality_router
 from app.modules.questions.router import router as questions_router
@@ -152,6 +161,15 @@ for _module_router in (
     delivery_router,
     attempts_router,
     grading_router,
+    knowledge_graph_router,
+    dashboard_router,
+    learning_path_router,
+    practice_router,
+    error_notebook_router,
+    classes_router,
+    assignments_router,
+    gradebook_router,
+    notifications_router,
 ):
     app.include_router(_module_router)
 

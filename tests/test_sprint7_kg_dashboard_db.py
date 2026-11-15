@@ -21,7 +21,7 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
 
 from app.config import get_settings
-from app.db import SessionLocal, engine
+from app.db import SessionLocal
 from app.modules.content.internal.models import ContentItem, ContentVersion
 from app.modules.dashboard.internal.models import (  # noqa: F401
     ActivityEvent,
@@ -80,130 +80,6 @@ def _auth_headers(
     if extra:
         headers.update(extra)
     return headers
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _ensure_task28_schema(_database: None):
-    """Create B05 + D01 tables, RLS policies and grants locally; DROP CASCADE on module teardown."""
-    ddl_statements = (
-        """
-        CREATE TABLE IF NOT EXISTS knowledge_edges (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'
-                REFERENCES tenants(id) ON DELETE CASCADE,
-            source_node_id UUID NOT NULL REFERENCES taxonomy_nodes(id) ON DELETE RESTRICT,
-            target_node_id UUID NOT NULL REFERENCES taxonomy_nodes(id) ON DELETE RESTRICT,
-            edge_type VARCHAR(40) NOT NULL
-                CHECK (edge_type IN ('PREREQUISITE', 'RELATED_TO', 'EXTENDS', 'APPLIED_IN', 'COMMON_MISCONCEPTION')),
-            confidence NUMERIC(4,3) NOT NULL DEFAULT 1.000 CHECK (confidence BETWEEN 0 AND 1),
-            graph_version INT NOT NULL DEFAULT 1,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (tenant_id, source_node_id, target_node_id, edge_type, graph_version),
-            CHECK (source_node_id <> target_node_id)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS graph_validation_runs (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            graph_version INT NOT NULL,
-            is_dag_valid BOOLEAN NOT NULL,
-            cycle_path_json JSONB NOT NULL DEFAULT '[]',
-            validated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS activity_events (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            membership_id UUID NOT NULL,
-            activity_type VARCHAR(50) NOT NULL,
-            entity_id UUID NOT NULL,
-            duration_seconds INT NOT NULL DEFAULT 0,
-            occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            FOREIGN KEY (membership_id, tenant_id) REFERENCES memberships(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS learner_dashboard_projections (
-            membership_id UUID PRIMARY KEY,
-            tenant_id UUID NOT NULL,
-            streak_days INT NOT NULL DEFAULT 0,
-            summary_json JSONB NOT NULL DEFAULT '{}',
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            FOREIGN KEY (membership_id, tenant_id) REFERENCES memberships(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-    )
-    strict_tables = ("graph_validation_runs", "activity_events", "learner_dashboard_projections")
-    all_tables = ("knowledge_edges", *strict_tables)
-
-    async def create() -> None:
-        async with engine.begin() as conn:
-            for stmt in ddl_statements:
-                await conn.execute(text(stmt))
-            for table in all_tables:
-                await conn.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
-            await conn.execute(text("DROP POLICY IF EXISTS hybrid_read_policy ON knowledge_edges"))
-            await conn.execute(text("DROP POLICY IF EXISTS hybrid_write_policy ON knowledge_edges"))
-            await conn.execute(
-                text(
-                    """
-                    CREATE POLICY hybrid_read_policy ON knowledge_edges FOR SELECT USING (
-                        tenant_id = (SELECT current_app_tenant_id())
-                        OR (
-                            tenant_id = system_public_tenant_id()
-                            AND EXISTS (
-                                SELECT 1 FROM taxonomy_nodes s
-                                WHERE s.id = knowledge_edges.source_node_id AND s.is_active IS TRUE
-                            )
-                            AND EXISTS (
-                                SELECT 1 FROM taxonomy_nodes t
-                                WHERE t.id = knowledge_edges.target_node_id AND t.is_active IS TRUE
-                            )
-                        )
-                    )
-                    """
-                )
-            )
-            await conn.execute(
-                text(
-                    """
-                    CREATE POLICY hybrid_write_policy ON knowledge_edges FOR ALL
-                    USING (tenant_id = (SELECT current_app_tenant_id()))
-                    WITH CHECK (tenant_id = (SELECT current_app_tenant_id()))
-                    """
-                )
-            )
-            for table in strict_tables:
-                await conn.execute(text(f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table}"))
-                await conn.execute(
-                    text(
-                        f"CREATE POLICY tenant_isolation_policy ON {table} "
-                        "USING (tenant_id = (SELECT current_app_tenant_id())) "
-                        "WITH CHECK (tenant_id = (SELECT current_app_tenant_id()))"
-                    )
-                )
-            for table in all_tables:
-                await conn.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO ulp_app_rw"))
-            await conn.execute(text("GRANT SELECT, INSERT ON activity_events TO ulp_exam_session_rw"))
-            await conn.execute(
-                text("GRANT SELECT, INSERT, UPDATE ON learner_dashboard_projections TO ulp_worker_grading")
-            )
-
-    async def drop() -> None:
-        async with engine.begin() as conn:
-            await conn.execute(
-                text(
-                    "DROP TABLE IF EXISTS learner_dashboard_projections, activity_events, "
-                    "graph_validation_runs, knowledge_edges CASCADE"
-                )
-            )
-
-    run(create())
-    yield
-    run(drop())
 
 
 @pytest.fixture
