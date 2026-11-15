@@ -47,9 +47,9 @@ IdempotencyKeyHeader = Annotated[str | None, Header(alias="Idempotency-Key", max
 _PROBLEM_BASE: dict[str, PlatformErrorCode] = {
     "PAYLOAD_HASH_MISMATCH": PlatformErrorCode.PAYLOAD_HASH_MISMATCH,
     "STALE_CLIENT_SEQUENCE": PlatformErrorCode.STALE_CLIENT_SEQUENCE,
-    "ATTEMPT_DEADLINE_EXPIRED": PlatformErrorCode.FORBIDDEN,
-    "ATTEMPT_ALREADY_SUBMITTED_OR_CLOSED": PlatformErrorCode.VALIDATION_ERROR,
-    "OPTIMISTIC_VERSION_CONFLICT": PlatformErrorCode.VALIDATION_ERROR,
+    "ATTEMPT_DEADLINE_EXPIRED": PlatformErrorCode.ATTEMPT_DEADLINE_EXPIRED,
+    "ATTEMPT_ALREADY_SUBMITTED_OR_CLOSED": PlatformErrorCode.ATTEMPT_ALREADY_SUBMITTED_OR_CLOSED,
+    "OPTIMISTIC_VERSION_CONFLICT": PlatformErrorCode.OPTIMISTIC_VERSION_CONFLICT,
 }
 _DETAIL = {
     "PAYLOAD_HASH_MISMATCH": "payload_hash does not match the payload, or the Idempotency-Key was already used "

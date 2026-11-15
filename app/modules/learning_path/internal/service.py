@@ -153,7 +153,7 @@ async def _load_open_error_nodes(
             text(
                 "SELECT DISTINCT primary_taxonomy_node_id FROM error_notes "
                 "WHERE tenant_id = :tenant_id AND membership_id = :membership_id "
-                "AND status IN ('OPEN', 'IN_REMEDIATION')"
+                "AND status IN ('OPEN', 'IN_REMEDIATION') AND primary_taxonomy_node_id IS NOT NULL"
             ),
             {"tenant_id": tenant_id, "membership_id": membership_id},
         )
