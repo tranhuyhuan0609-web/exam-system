@@ -25,16 +25,19 @@ from app.modules.authoring.router import router as authoring_router
 from app.modules.classes.router import router as classes_router
 from app.modules.config.router import router as config_router
 from app.modules.content.router import router as content_router
+from app.modules.crawler.router import router as crawler_router
 from app.modules.curriculum.router import router as curriculum_router
 from app.modules.dashboard.router import router as dashboard_router
 from app.modules.dedup.router import router as dedup_router
 from app.modules.delivery.router import router as delivery_router
+from app.modules.drive_sync.router import router as drive_sync_router
 from app.modules.error_notebook.router import router as error_notebook_router
 from app.modules.exam_import.router import router as exam_import_router
 from app.modules.explanations.router import router as explanations_router
 from app.modules.extraction.router import router as extraction_router
 from app.modules.flashcards.router import router as flashcards_router
 from app.modules.frameworks.router import router as frameworks_router
+from app.modules.generation.router import router as generation_router
 from app.modules.gradebook.router import router as gradebook_router
 from app.modules.grading.router import router as grading_router
 from app.modules.ingestion.router import router as ingestion_router
@@ -176,6 +179,9 @@ for _module_router in (
     flashcards_router,
     tutor_router,
     explanations_router,
+    crawler_router,
+    drive_sync_router,
+    generation_router,
 ):
     app.include_router(_module_router)
 
