@@ -69,6 +69,15 @@ def upgrade() -> None:
         row_condition="event_type = 'attempt.expired'",
     ):
         op.execute(stmt)
+    # `sys_outbox_relay` is FOR ALL, so with an INSERT grant the relay job could also write events. A RESTRICTIVE
+    # policy narrows every scheduler INSERT to the one event of the one job.
+    op.execute("DROP POLICY IF EXISTS sys_outbox_insert_guard ON outbox_events")
+    op.execute(
+        """
+        CREATE POLICY sys_outbox_insert_guard ON outbox_events AS RESTRICTIVE FOR INSERT TO ulp_system_scheduler
+            WITH CHECK ((SELECT app_system_job()) = 'attempt_expiry' AND event_type = 'attempt.expired')
+        """
+    )
     op.execute("GRANT INSERT ON outbox_events TO ulp_system_scheduler")
 
     # --- B3: the exam room cannot move the deadline --------------------------------------------
@@ -80,6 +89,7 @@ def downgrade() -> None:
     op.execute("REVOKE UPDATE ON attempts FROM ulp_exam_session_rw")
     op.execute("GRANT UPDATE ON attempts TO ulp_exam_session_rw")
     op.execute("REVOKE INSERT ON outbox_events FROM ulp_system_scheduler")
+    op.execute("DROP POLICY IF EXISTS sys_outbox_insert_guard ON outbox_events")
     op.execute("DROP POLICY IF EXISTS sys_attempt_expiry_event ON outbox_events")
     op.execute("REVOKE UPDATE (status, submitted_at) ON attempts FROM ulp_system_scheduler")
     op.execute("DROP POLICY IF EXISTS sys_attempt_expiry_closed ON attempts")

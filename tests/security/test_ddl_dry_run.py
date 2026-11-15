@@ -9,13 +9,14 @@ in the DDL; their tests stay here as regressions.
 """
 
 import asyncio
-import csv
 import os
 from pathlib import Path
 
 import asyncpg
 import pytest
 from sqlalchemy.engine import make_url
+
+from app.ops.alembic_schema_audit import load_base_grants_manifest
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
@@ -185,8 +186,7 @@ def test_runtime_roles_cannot_create_objects_in_the_schema():
 
 
 def test_worker_role_grants_match_the_manifest_exactly():
-    with GRANTS_MANIFEST.open(encoding="utf-8", newline="") as handle:
-        expected = {(r["role"], r["object"], r["privilege"], r["column"]) for r in csv.DictReader(handle)}
+    expected = set(load_base_grants_manifest(GRANTS_MANIFEST))
     rows = owner(
         """
         SELECT grantee, table_name, privilege_type, '' FROM information_schema.role_table_grants
