@@ -385,7 +385,8 @@ def test_grants_follow_the_spec_for_the_api_exam_room_and_grading_roles():
 
     assert has("ulp_worker_grading", "assessment_answer_keys", "SELECT")
     assert not has("ulp_worker_grading", "assessment_answer_keys", "UPDATE")
-    assert has("ulp_exam_session_rw", "attempts", "INSERT") and has("ulp_exam_session_rw", "attempts", "UPDATE")
+    assert has("ulp_exam_session_rw", "attempts", "INSERT")
+    assert not has("ulp_exam_session_rw", "attempts", "UPDATE"), "UPDATE is column-level: the deadline stays fixed"
     assert not has("ulp_exam_session_rw", "assessment_versions", "UPDATE")
     assert not has("ulp_exam_session_rw", "assessments", "INSERT")
     assert has("ulp_app_rw", "assessment_answer_keys", "INSERT")
@@ -405,6 +406,18 @@ def test_grants_follow_the_spec_for_the_api_exam_room_and_grading_roles():
         )
     )
     assert {r.column_name for r in scheduler} == {"id", "tenant_id", "status", "deadline_at"}
+    for grantee, columns in (
+        ("ulp_exam_session_rw", {"status", "submitted_at", "submit_idempotency_key"}),
+        ("ulp_system_scheduler", {"status", "submitted_at"}),
+    ):
+        granted = run(
+            _all(
+                "SELECT column_name FROM information_schema.column_privileges "
+                "WHERE grantee = :g AND table_name = 'attempts' AND privilege_type = 'UPDATE'",
+                g=grantee,
+            )
+        )
+        assert {r.column_name for r in granted} == columns, grantee
 
 
 # --- pure selection --------------------------------------------------------------------------------------------
@@ -1030,3 +1043,78 @@ def test_the_exam_room_role_cannot_read_a_single_answer(client, world):
         with pytest.raises(DBAPIError) as caught:
             run(_as_role(world["a"], DbRole.EXAM_SESSION_RW, sql))
         assert _sqlstate(caught.value) == "42501"
+
+
+# --- WAVE-8 hardening: expiry job (B5), column-level UPDATE (B3), registry cleanup (B2) -------------------------
+
+
+def test_the_exam_room_cannot_move_the_deadline_but_can_still_close_an_attempt(client, world):
+    _seed(world)
+    paper = _published_paper(client, world)
+    started = _start(client, world, paper["assessment"]["id"]).json()
+    tenant = world["a"]
+
+    async def attempt_update(sql: str):
+        async with tenant_transaction(tenant, role=DbRole.EXAM_SESSION_RW) as session:
+            await session.execute(text(sql))
+
+    with pytest.raises(DBAPIError) as denied:
+        run(attempt_update("UPDATE attempts SET deadline_at = deadline_at + interval '1 day'"))
+    assert _sqlstate(denied.value) == "42501"
+    run(attempt_update("UPDATE attempts SET status = 'SUBMITTED', submitted_at = now()"))
+    assert run(_scalar("SELECT status FROM attempts WHERE id = :i", i=uuid.UUID(started["attempt_id"]))) == "SUBMITTED"
+
+
+def test_the_expiry_job_auto_submits_overdue_attempts_and_announces_them(client, world):
+    from app.ops.attempt_expiry import expire_overdue_attempts
+
+    _seed(world)
+    paper = _published_paper(client, world)
+    overdue = _start(client, world, paper["assessment"]["id"], key="a1").json()["attempt_id"]
+    current = _start(client, world, paper["assessment"]["id"], key="a2").json()["attempt_id"]
+    run(_execute("UPDATE attempts SET deadline_at = now() - interval '2 minutes' WHERE id = :i", i=uuid.UUID(overdue)))
+    assert run(expire_overdue_attempts()) == 1
+    assert run(expire_overdue_attempts()) == 0, "a second pass finds nothing"
+    statuses = {str(r.id): r for r in run(_all("SELECT id, status, submitted_at, deadline_at FROM attempts"))}
+    assert statuses[overdue].status == "AUTO_SUBMITTED"
+    assert statuses[overdue].submitted_at == statuses[overdue].deadline_at
+    assert statuses[current].status == "IN_PROGRESS"
+    events = run(_all("SELECT event_type, aggregate_id FROM outbox_events WHERE event_type LIKE 'attempt.%'"))
+    assert [(e.event_type, str(e.aggregate_id)) for e in events] == [("attempt.expired", overdue)]
+
+
+def test_the_expiry_job_cannot_touch_anything_but_overdue_in_progress_attempts(client, world):
+    _seed(world)
+    paper = _published_paper(client, world)
+    _start(client, world, paper["assessment"]["id"])  # still running, deadline in the future
+
+    async def attempt_job(sql: str) -> int:
+        async with system_job_transaction(SystemJob.ATTEMPT_EXPIRY) as session:
+            return (await session.execute(text(sql))).rowcount
+
+    assert run(attempt_job("UPDATE attempts SET status = 'AUTO_SUBMITTED', submitted_at = deadline_at")) == 0
+    with pytest.raises(DBAPIError):
+        run(attempt_job("UPDATE attempts SET deadline_at = deadline_at + interval '1 day'"))
+    with pytest.raises(DBAPIError):
+        run(attempt_job("DELETE FROM attempts"))
+
+
+def test_the_registry_cleanup_runs_as_the_scheduler_and_keeps_recent_keys(client, world):
+    from app.ops.attempt_expiry import purge_idempotency_registry
+
+    _seed(world)
+    paper = _published_paper(client, world)
+    attempt = uuid.UUID(_start(client, world, paper["assessment"]["id"]).json()["attempt_id"])
+    run(
+        _execute(
+            "INSERT INTO autosave_idempotency_registry (tenant_id, attempt_id, idempotency_key, response_id, "
+            "revision_no, client_sequence, payload_sha256, recorded_at) VALUES "
+            "(:t, :a, 'old', uuid_generate_v7(), 1, 1, repeat('a', 64), now() - interval '40 days'), "
+            "(:t, :a, 'new', uuid_generate_v7(), 1, 2, repeat('b', 64), now() - interval '1 day')",
+            t=world["a"],
+            a=attempt,
+        )
+    )
+    assert run(purge_idempotency_registry()) == 1
+    keys = [r.idempotency_key for r in run(_all("SELECT idempotency_key FROM autosave_idempotency_registry"))]
+    assert keys == ["new"]
