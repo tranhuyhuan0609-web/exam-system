@@ -1,5 +1,5 @@
 """Deterministic High-Precision 6-Step Exam Extraction Engine:
-Bóc tách câu hỏi từ mọi định dạng trong kho Google Drive / Upload (.rar, .zip, .doc, .docx, .pdf)
+Bóc tách câu hỏi từ mọi định dạng trong kho Google Drive / Upload (.zip, .doc, .docx, .pdf)
 vào ngân hàng đề với chi phí API AI gần như bằng 0.
 
 Các bước thực hiện:
@@ -28,6 +28,7 @@ from typing import Any
 
 from app.domain.question_hash import normalize_text
 from app.infrastructure.pdf_engine import PDFEngineAdapter, Rect
+from app.modules.drive_sync.public import ArchiveSecurityViolationError, SafeArchivePolicy, extract_zip_safely
 
 log = logging.getLogger(__name__)
 
@@ -108,30 +109,37 @@ def has_mathtype_ole(docx_path: Path | str) -> bool:
     except (OSError, KeyError, zipfile.BadZipFile):
         return False
 
+class UnsupportedArchiveError(RuntimeError):
+    """The archive cannot be unpacked safely: another format than ZIP, or a ZIP that breaks the safety limits."""
+
+
+# What an exam package may hold: papers and keys only. Deeper than the Drive default (4): schools nest folders.
+_EXAM_ARCHIVE_POLICY = SafeArchivePolicy(allowed_extensions=(".docx", ".doc", ".pdf"), max_directory_depth=8)
+
+
 def unpack_archive(archive_path: Path | str, out_dir: Path | str) -> list[Path]:
-    """Giải nén tự động file .zip hoặc .rar bằng zipfile hoặc patool."""
+    """Unpack a ``.zip`` of exam files (papers and keys) with the central-directory checks of A03.
+
+    Only ZIP is read, by the standard library: entry count, depth, path traversal, symlinks, compression ratio and
+    total size are checked before a byte is written (ADR-010: no GPL archive tool, no external binary). ``.rar`` and
+    every other format fail closed with a message that tells the user to send a ZIP.
+    """
     archive_path = Path(archive_path)
     out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
     suffix = archive_path.suffix.lower()
+    if suffix != ".zip":
+        raise UnsupportedArchiveError(
+            f"Không hỗ trợ giải nén file {suffix or 'không có đuôi'}: hãy nén lại đề và đáp án thành file .zip."
+        )
+    try:
+        extracted = extract_zip_safely(archive_path, out_dir, _EXAM_ARCHIVE_POLICY)
+    except ArchiveSecurityViolationError as exc:
+        log.warning("archive %s refused: %s", archive_path.name, exc)
+        raise UnsupportedArchiveError(f"Gói nén {archive_path.name} bị từ chối vì không an toàn: {exc}") from exc
+    except zipfile.BadZipFile as exc:
+        raise UnsupportedArchiveError(f"Gói nén {archive_path.name} không phải file .zip hợp lệ.") from exc
+    return [p for p in extracted if p.is_file() and not p.name.startswith((".", "~$"))]
 
-    if suffix == ".zip":
-        with zipfile.ZipFile(archive_path, "r") as z:
-            z.extractall(out_dir)
-    else:
-        try:
-            import patoolib
-            patoolib.extract_archive(str(archive_path), outdir=str(out_dir), verbosity=-1)
-        except Exception as exc:
-            log.warning("patool could not extract %s: %s", archive_path.name, exc)
-            raise RuntimeError(f"Không thể giải nén file archive {archive_path.name}: {exc}") from exc
-
-    extracted = [
-        p for p in out_dir.rglob("*")
-        if p.is_file() and not p.name.startswith((".", "~$"))
-        and p.suffix.lower() in (".docx", ".doc", ".pdf")
-    ]
-    return extracted
 
 def pair_exam_and_solution_files(files: list[Path], soffice: str = "soffice") -> list[tuple[Path, Path | None]]:
     """Loại bỏ bản trùng .pdf nếu đã có .docx, chuyển .doc thành .docx, và ghép cặp Đề + Đáp án."""

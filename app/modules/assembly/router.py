@@ -9,9 +9,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Query, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field
@@ -25,6 +25,7 @@ from app.modules.assembly.internal.service import (
     PublishGateBlockedError,
     assemble_assessment,
     create_assessment,
+    list_assessments,
     publish_assessment,
 )
 from app.platform.auth_context import (
@@ -40,6 +41,7 @@ from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1", tags=["assembly"])
 
+PublicationStatusName = Literal["DRAFT", "READY", "PUBLISHED", "ARCHIVED", "TAKEN_DOWN"]
 EDITOR_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "TEACHER", "CONTENT_AUTHOR"})
 
 
@@ -237,6 +239,30 @@ async def post_assessment(body: CreateAssessmentRequest, request: Request, crede
             rights_status=body.rights_status,
         )
     return _assessment_response(record)
+
+
+@router.get("/assessments", response_model=list[AssessmentResponse])
+async def get_assessments(
+    request: Request,
+    publication_status: Annotated[PublicationStatusName, Query()] = "PUBLISHED",
+    credentials: OptionalBearer = None,
+) -> Any:
+    """Papers of the tenant plus the SYSTEM_PUBLIC ones. Any signed-in member lists the published ones (that is
+    what a learner picks a paper from); any other status needs an author or administrator role."""
+    correlation_id = resolve_correlation_id(request.headers.get("x-correlation-id"))
+    try:
+        actor = verify_actor(request, credentials)
+    except AuthTokenError as exc:
+        return _problem(PlatformErrorCode.UNAUTHORIZED, str(exc), request, correlation_id)
+    except TenantSpoofingError as exc:
+        return _problem(PlatformErrorCode.FORBIDDEN, str(exc), request, correlation_id)
+    if publication_status != "PUBLISHED" and not ({r.upper() for r in actor.roles} & EDITOR_ROLES):
+        return _problem(
+            PlatformErrorCode.FORBIDDEN, "an author or administrator role is required", request, correlation_id
+        )
+    async with tenant_transaction(actor.tenant_id, role=DbRole.APP_RW) as session:
+        records = await list_assessments(session, publication_status=publication_status)
+    return [_assessment_response(r) for r in records]
 
 
 @router.post("/assessments/{assessment_id}/assemble", response_model=VersionResponse)

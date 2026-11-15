@@ -27,7 +27,9 @@ if TYPE_CHECKING:
     from .internal.service import (
         BrandedPdfRightsDeniedError,
         ExamImportInvalidStateError,
+        ExamImportListItem,
         ExamImportNotFoundError,
+        ExamImportPage,
         ExamImportServiceError,
         ExamImportStructureView,
         ExamImportValidationError,
@@ -39,6 +41,7 @@ if TYPE_CHECKING:
         approve_exam_import,
         create_exam_import_session,
         get_exam_import_structure,
+        list_exam_imports,
         update_exam_import_structure,
     )
 
@@ -48,6 +51,8 @@ _SERVICE_EXPORTS = frozenset(
         "ExamImportInvalidStateError",
         "ExamImportNotFoundError",
         "ExamImportServiceError",
+        "ExamImportListItem",
+        "ExamImportPage",
         "ExamImportStructureView",
         "ExamImportValidationError",
         "ProvenanceInput",
@@ -58,6 +63,7 @@ _SERVICE_EXPORTS = frozenset(
         "approve_exam_import",
         "create_exam_import_session",
         "get_exam_import_structure",
+        "list_exam_imports",
         "update_exam_import_structure",
     }
 )
@@ -80,7 +86,9 @@ __all__ = [
     "BrandedPdfRightsDeniedError",
     "ExamImportError",
     "ExamImportInvalidStateError",
+    "ExamImportListItem",
     "ExamImportNotFoundError",
+    "ExamImportPage",
     "ExamImportServiceError",
     "ExamImportSession",
     "ExamImportStatus",
@@ -101,6 +109,7 @@ __all__ = [
     "create_exam_import_session",
     "get_exam_import_structure",
     "is_branded_pdf_allowed",
+    "list_exam_imports",
     "update_exam_import_structure",
     "validate_exam_import_structure",
 ]

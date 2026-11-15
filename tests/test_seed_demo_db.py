@@ -47,6 +47,8 @@ def test_seeding_builds_everything_once_and_every_account_signs_in():
     assert created["questions"] == 22 and created["class"] is True and created["paper"] is True
     assert created["lesson"] is True and created["subscription_plans"] == 3 and created["vertical_packs"] == 1
     assert created["locale_bundles"] == 2 and created["ai_models"] == 3
+    assert created["c01_questions"] == 4 and created["exam_import"] is True
+    assert len(first["entities"]["c01_question_ids"]) == 4 and len(first["entities"]["exam_import_ids"]) == 1
     assert set(first["accounts"]) == {a[0] for a in ACCOUNTS}
 
     second = run(seed_demo())
@@ -54,6 +56,17 @@ def test_seeding_builds_everything_once_and_every_account_signs_in():
     assert run(_count("SELECT count(*) FROM tenants WHERE slug = 'h2edu-demo'")) == 1
     assert run(_count("SELECT count(*) FROM assessments WHERE title LIKE '%demo%'")) == 1
     assert run(_count("SELECT count(*) FROM questions WHERE stable_code LIKE 'DEMO-BAYES-%'")) == 22
+    assert run(_count("SELECT count(*) FROM questions WHERE stable_code LIKE 'DEMO-C01-%'")) == 4
+    assert (
+        run(
+            _count(
+                "SELECT count(*) FROM questions WHERE stable_code LIKE 'DEMO-C01-%' AND publication_status = 'DRAFT'"
+            )
+        )
+        == 4
+    )
+    assert run(_count("SELECT count(*) FROM exam_import_sessions WHERE status = 'PENDING_REVIEW'")) == 1
+    assert second["entities"] == first["entities"], "the same ids on a second run"
     assert run(_count("SELECT count(*) FROM memberships")) == len(ACCOUNTS)
     assert run(_count("SELECT count(*) FROM assessment_items")) == 22
     assert run(_count("SELECT count(*) FROM assessment_versions WHERE is_immutable")) == 1

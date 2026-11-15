@@ -35,8 +35,8 @@
     <form method="post" action="/admin/ai-imports" enctype="multipart/form-data" class="card">
       <h2>Tải đề lên</h2>
       <label>1. File đề thi <span class="muted small">({{ extensions }}, ≤ {{ max_mb }} MB)</span>
-        <input type="file" name="file" accept=".pdf,.docx,.doc,.zip,.rar,.png,.jpg,.jpeg,.webp" required>
-        <span class="muted small" style="display:block; margin-top:2px;">(Hỗ trợ nén .zip / .rar chứa cả đề + đáp án để tự động ghép cặp)</span>
+        <input type="file" name="file" accept=".pdf,.docx,.doc,.zip,.png,.jpg,.jpeg,.webp" required>
+        <span class="muted small" style="display:block; margin-top:2px;">(Hỗ trợ nén .zip chứa cả đề + đáp án để tự động ghép cặp)</span>
       </label>
       <label>2. File Đáp án / Hướng dẫn chấm <span class="badge" style="background:#e0f2fe; color:#0369a1; font-size:11px;">Tùy chọn</span>
         <input type="file" name="solution_file" accept=".pdf,.docx,.doc,.pdf">
@@ -59,7 +59,7 @@
     <div class="card small">
       <h3>Quy trình bóc tách tự động 6 bước:</h3>
       <ol>
-        <li><strong>Chuẩn hóa &amp; Ghép cặp:</strong> Tự bung nén .zip/.rar, ưu tiên .docx hơn .pdf, nâng cấp .doc lên .docx, tự động nhận diện cặp Đề + Đáp án.</li>
+        <li><strong>Chuẩn hóa &amp; Ghép cặp:</strong> Tự bung nén .zip, ưu tiên .docx hơn .pdf, nâng cấp .doc lên .docx, tự động nhận diện cặp Đề + Đáp án.</li>
         <li><strong>Đọc chữ &amp; Bảng (0 API):</strong> Pandoc OMML chuyển sang LaTeX chuẩn, bảng phức tạp thành HTML Table giữ nguyên cấu trúc.</li>
         <li><strong>Cắt hình vẽ chuẩn xác:</strong> Bắt theo chú thích caption "Hình X" trên PDF (cắt cả Raster và Vector Word Shapes), lọc bỏ logo.</li>
         <li><strong>Tách câu hỏi lớn &amp; ý nhỏ:</strong> Regex State Machine bóc tách phần dẫn (stem) và các ý 1., 2., a), b).</li>

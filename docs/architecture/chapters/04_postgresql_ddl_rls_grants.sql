@@ -2326,10 +2326,13 @@ GRANT SELECT ON
     v_public_question_versions, questions, question_versions, question_options, question_stimuli, question_assets,
     assets, assessments, assessment_versions, assessment_items, assessment_assignments, memberships
 TO ulp_exam_session_rw;
+-- C05/F02: bắt đầu bài theo assignment kiểm tra học sinh là thành viên ACTIVE của lớp (chỉ danh sách lớp, không có đáp án).
+GRANT SELECT ON classes, class_members TO ulp_exam_session_rw;
 GRANT SELECT, INSERT ON attempts TO ulp_exam_session_rw;
 -- WAVE-8 B3: phòng thi chỉ đóng bài (status, submitted_at, submit_idempotency_key), không đổi được deadline_at.
 GRANT UPDATE (status, submitted_at, submit_idempotency_key) ON attempts TO ulp_exam_session_rw;
 GRANT SELECT, INSERT, UPDATE ON responses TO ulp_exam_session_rw;
+-- grants_manifest.csv sau migration Alembic e6f7a8b9c0d1: 55 đối tượng, 163 quyền (thêm classes, class_members cho ulp_exam_session_rw).
 GRANT SELECT, INSERT ON autosave_idempotency_registry, response_revisions, activity_events, outbox_events, audit_events TO ulp_exam_session_rw;
 
 -- 5c. Role Worker Chấm Điểm (ulp_worker_grading): Chỉ có quyền trên các bảng liên quan đến chấm điểm & đáp án

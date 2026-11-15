@@ -7,24 +7,27 @@ import binascii
 import json
 import uuid
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, ValidationError
 from starlette.datastructures import UploadFile
 
+from app.config import get_settings
 from app.modules.ingestion.internal.service import (
     DocumentVersionView,
     DuplicateIdempotencyConflictError,
     ImportJobNotFoundError,
+    ImportJobSummary,
     ImportJobView,
     IngestionTransitionError,
     IngestionValidationError,
     cancel_import_job,
     get_import_job,
+    list_import_jobs,
     retry_import_job,
     submit_import,
 )
@@ -35,10 +38,15 @@ from app.platform.auth_context import (
 )
 from app.platform.errors import PlatformErrorCode
 from app.platform.http_auth import OptionalBearer, problem_json, verify_actor
-from app.platform.pagination import resolve_correlation_id
+from app.platform.pagination import CursorError, resolve_correlation_id
 from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1/imports", tags=["ingestion"])
+
+# Who may put a file into the import pipeline and see its jobs: the same roles as the exam-import review.
+_IMPORT_ROLES = frozenset(
+    {"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "REVIEWER", "TEACHER", "CONTENT_AUTHOR"}
+)
 
 
 
@@ -122,6 +130,34 @@ class ImportJobResponse(BaseModel):
     dead_letter_count: int
 
 
+class ImportJobSummaryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    source_id: uuid.UUID | None
+    document_version_id: uuid.UUID | None
+    job_type: str
+    job_status: str
+    current_stage: str | None
+    attempt_count: int
+    last_error_code: str | None
+    title: str | None
+    mime_type: str | None
+    page_count: int | None
+    rights_status: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ImportJobListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ImportJobSummaryResponse]
+    next_cursor: str | None
+    has_more: bool
+    limit: int
+
+
 class SubmitImportResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -172,6 +208,13 @@ def _authenticate_actor(
             correlation_id=correlation_id,
         )
 
+    if not ({r.upper() for r in actor.roles} & _IMPORT_ROLES):
+        return None, correlation_id, _problem_response(
+            code=PlatformErrorCode.FORBIDDEN,
+            detail="an author, reviewer or administrator role is required for imports",
+            request=request,
+            correlation_id=correlation_id,
+        )
     return actor, correlation_id, None
 
 
@@ -338,6 +381,56 @@ async def post_submit_import(
     )
     return JSONResponse(
         status_code=status.HTTP_200_OK if result.is_duplicate else status.HTTP_201_CREATED,
+        content=jsonable_encoder(payload),
+        headers={"X-Correlation-Id": correlation_id},
+    )
+
+
+def _serialize_summary(item: ImportJobSummary) -> ImportJobSummaryResponse:
+    return ImportJobSummaryResponse(**{f: getattr(item, f) for f in ImportJobSummaryResponse.model_fields})
+
+
+JobStatusName = Literal["QUEUED", "RUNNING", "COMPLETED", "FAILED", "DEAD_LETTER", "CANCELLED"]
+JobTypeName = Literal["EXAM_IMPORT", "DRIVE_SYNC", "WEB_CRAWL", "REPROCESS_EXTRACTION"]
+
+
+@router.get("", response_model=ImportJobListResponse)
+async def get_import_list(
+    request: Request,
+    job_status: Annotated[JobStatusName | None, Query()] = None,
+    job_type: Annotated[JobTypeName | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    cursor: Annotated[str | None, Query(max_length=2048)] = None,
+    credentials: OptionalBearer = None,
+) -> JSONResponse:
+    """The tenant's latest import jobs with their status, stage and file; open one with `GET /imports/{id}`."""
+    actor, correlation_id, err = _authenticate_actor(request, credentials)
+    if err is not None:
+        return err
+    assert actor is not None
+    try:
+        async with tenant_transaction(actor.tenant_id, role=DbRole.APP_RW) as session:
+            page = await list_import_jobs(
+                session,
+                tenant_id=actor.tenant_id,
+                cursor_secret=get_settings().secret_key,
+                job_status=job_status,
+                job_type=job_type,
+                limit=limit,
+                cursor=cursor,
+            )
+    except (CursorError, IngestionValidationError, ValueError) as exc:
+        return _problem_response(
+            code=PlatformErrorCode.VALIDATION_ERROR, detail=str(exc), request=request, correlation_id=correlation_id
+        )
+    payload = ImportJobListResponse(
+        items=[_serialize_summary(i) for i in page.items],
+        next_cursor=page.next_cursor,
+        has_more=page.has_more,
+        limit=page.limit,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
         content=jsonable_encoder(payload),
         headers={"X-Correlation-Id": correlation_id},
     )

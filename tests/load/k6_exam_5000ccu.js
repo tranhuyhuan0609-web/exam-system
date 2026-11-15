@@ -91,8 +91,9 @@ export function runAutosaveLoop() {
 export function runSubmitBurst() {
   const s = sessions[(__VU - 1) % sessions.length];
   const submitUrl = `${BASE_URL}/api/v1/attempts/${s.attempt_id}/submit`;
-  const res = http.post(submitUrl, JSON.stringify({ submit_idempotency_key: `sub:${s.attempt_id}` }), {
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${s.jwt}` },
+  // The API reads the key from the Idempotency-Key header (POST /attempts/{id}/submit takes no body).
+  const res = http.post(submitUrl, null, {
+    headers: { Authorization: `Bearer ${s.jwt}`, "Idempotency-Key": `sub:${s.attempt_id}` },
     tags: { operation: "submit" },
   });
   check(res, { "submit 200": (r) => r.status === 200 });

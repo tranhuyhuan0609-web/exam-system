@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.modules.exam_import.internal.service import (
     BrandedPdfRightsDeniedError,
     ExamImportInvalidStateError,
+    ExamImportListItem,
     ExamImportNotFoundError,
     ExamImportStructureView,
     ExamImportValidationError,
@@ -26,6 +27,7 @@ from app.modules.exam_import.internal.service import (
     approve_exam_import,
     create_exam_import_session,
     get_exam_import_structure,
+    list_exam_imports,
     update_exam_import_structure,
 )
 from app.platform.auth_context import (
@@ -35,7 +37,7 @@ from app.platform.auth_context import (
 )
 from app.platform.errors import PlatformErrorCode
 from app.platform.http_auth import OptionalBearer, problem_json, verify_actor
-from app.platform.pagination import resolve_correlation_id
+from app.platform.pagination import CursorError, resolve_correlation_id
 from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1/exam-imports", tags=["exam_import"])
@@ -156,6 +158,33 @@ class ExamImportStructureResponse(BaseModel):
     branded_pdf_asset_id: uuid.UUID | None
     provenance_records: list[ProvenanceRecordResponse]
     created_at: datetime
+
+
+class ExamImportListItemResponse(BaseModel):
+    """What a review list needs: `id` is the `import_id` of `/studio/imports/{import_id}/review`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    extraction_run_id: uuid.UUID
+    document_version_id: uuid.UUID | None
+    title: str | None
+    mime_type: str | None
+    page_count: int | None
+    status: str
+    rights_status: str
+    section_count: int
+    question_count: int
+    created_at: datetime
+
+
+class ExamImportListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ExamImportListItemResponse]
+    next_cursor: str | None
+    has_more: bool
+    limit: int
 
 
 def _credentials_token(credentials: HTTPAuthorizationCredentials | None) -> str | None:
@@ -293,6 +322,51 @@ def _structure_to_response(view: ExamImportStructureView) -> ExamImportStructure
         branded_pdf_asset_id=view.branded_pdf_asset_id,
         provenance_records=[_prov_response(p) for p in view.provenance_records],
         created_at=view.created_at,
+    )
+
+
+def _list_item_response(item: ExamImportListItem) -> ExamImportListItemResponse:
+    return ExamImportListItemResponse(**{f: getattr(item, f) for f in ExamImportListItemResponse.model_fields})
+
+
+@router.get("", status_code=status.HTTP_200_OK, response_model=ExamImportListResponse)
+async def list_exam_imports_endpoint(
+    request: Request,
+    status_filter: Annotated[Literal["PENDING_REVIEW", "APPROVED", "REJECTED"] | None, Query(alias="status")] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    cursor: Annotated[str | None, Query(max_length=2048)] = None,
+    credentials: OptionalBearer = None,
+) -> ExamImportListResponse | JSONResponse:
+    """The tenant's exam-import review sessions, newest first, to open `/studio/imports/{id}/review`."""
+    correlation_id = resolve_correlation_id(request.headers.get("X-Correlation-ID"))
+    auth = _authenticate(request, credentials, correlation_id)
+    if isinstance(auth, JSONResponse):
+        return auth
+    if role_err := _require_role(auth, request, correlation_id):
+        return role_err
+    try:
+        async with tenant_transaction(auth.tenant_id, role=DbRole.APP_RW) as session:
+            page = await list_exam_imports(
+                session,
+                tenant_id=auth.tenant_id,
+                cursor_secret=get_settings().secret_key,
+                status=status_filter,
+                limit=limit,
+                cursor=cursor,
+            )
+    except (CursorError, ExamImportValidationError, ValueError) as exc:
+        return _problem_response(
+            code=PlatformErrorCode.VALIDATION_ERROR,
+            detail=str(exc),
+            status_code=422,
+            instance=str(request.url.path),
+            correlation_id=correlation_id,
+        )
+    return ExamImportListResponse(
+        items=[_list_item_response(i) for i in page.items],
+        next_cursor=page.next_cursor,
+        has_more=page.has_more,
+        limit=page.limit,
     )
 
 

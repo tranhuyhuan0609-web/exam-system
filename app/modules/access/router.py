@@ -35,9 +35,10 @@ from app.platform.auth_context import (
     TenantSpoofingError,
     mint_hs256_token,
 )
+from app.platform.client_ip import client_ip_of
 from app.platform.errors import PlatformErrorCode
 from app.platform.http_auth import OptionalBearer, problem_json, verify_actor
-from app.platform.login_throttle import login_throttle
+from app.platform.login_throttle import get_login_throttle
 from app.platform.pagination import resolve_correlation_id
 from app.platform.tenancy import DbRole, tenant_transaction
 
@@ -281,8 +282,10 @@ async def login(body: LoginRequest, request: Request) -> Any:
     Wrong e-mail, wrong password, a user that is not ACTIVE and a missing membership all answer the same 401.
     """
     correlation_id = resolve_correlation_id(request.headers.get("x-correlation-id"))
-    client_ip = request.client.host if request.client else "unknown"
-    decision = login_throttle.check(client_ip, body.email)
+    settings = get_settings()
+    client_ip = client_ip_of(request, settings.trusted_proxies)
+    throttle = get_login_throttle()
+    decision = await throttle.check(client_ip, body.email)
     if not decision.allowed:
         blocked = problem(
             PlatformErrorCode.RATE_LIMIT_EXCEEDED,
@@ -294,10 +297,9 @@ async def login(body: LoginRequest, request: Request) -> Any:
         return blocked
     principal = await authenticate_login(body.email, body.password, body.tenant_slug)
     if principal is None:
-        login_throttle.record_failure(client_ip, body.email)
+        await throttle.record_failure(client_ip, body.email)
         return problem(PlatformErrorCode.UNAUTHORIZED, "invalid e-mail, password or tenant", request, correlation_id)
-    login_throttle.clear(client_ip, body.email)
-    settings = get_settings()
+    await throttle.clear_email(body.email)
     token = mint_hs256_token(
         secret=settings.secret_key,
         user_id=principal.user_id,

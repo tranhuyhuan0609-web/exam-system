@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import DateTime, Uuid, bindparam, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contracts.enums import RightsStatus
@@ -45,6 +45,7 @@ from app.modules.exam_import.internal.structure import (
 )
 from app.modules.outbox.public import enqueue_event
 from app.modules.parsers.public import ExtractionRunNotFoundError, get_extraction_run
+from app.platform.pagination import CursorError, clamp_limit, decode_cursor, encode_cursor
 
 DEFAULT_PAGE_HEIGHT_PT = 842.0
 
@@ -746,3 +747,139 @@ async def approve_exam_import(
         )
     ).scalars().all()
     return _to_structure_view(row, provenances)
+
+
+_LIST_EXAM_IMPORTS_ROUTE = "GET /api/v1/exam-imports"
+EXAM_IMPORT_STATUSES = ("PENDING_REVIEW", "APPROVED", "REJECTED")
+
+
+@dataclass(frozen=True, slots=True)
+class ExamImportListItem:
+    """One review session of a list: what to open at `/studio/imports/{id}/review`, and its state."""
+
+    id: uuid.UUID
+    extraction_run_id: uuid.UUID
+    document_version_id: uuid.UUID | None
+    title: str | None
+    mime_type: str | None
+    page_count: int | None
+    status: str
+    rights_status: str
+    section_count: int
+    question_count: int
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ExamImportPage:
+    items: tuple[ExamImportListItem, ...]
+    next_cursor: str | None
+    has_more: bool
+    limit: int
+
+
+async def list_exam_imports(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    cursor_secret: str,
+    status: str | None = None,
+    limit: int | None = None,
+    cursor: str | None = None,
+) -> ExamImportPage:
+    """The tenant's exam-import review sessions, newest first (cursor on created_at, id); no structure is returned."""
+    safe_limit = clamp_limit(limit)
+    if status is not None and status not in EXAM_IMPORT_STATUSES:
+        raise ExamImportValidationError(f"unsupported status: {status!r}")
+    after_at: datetime | None = None
+    after_id: uuid.UUID | None = None
+    if cursor is not None:
+        decoded = decode_cursor(
+            cursor,
+            secret=cursor_secret,
+            allowed_sort_fields=frozenset({"created_at"}),
+            expected_sort_field="created_at",
+            expected_direction="desc",
+            tenant_id=str(tenant_id),
+            route=_LIST_EXAM_IMPORTS_ROUTE,
+        )
+        try:
+            after_at = datetime.fromisoformat(str(decoded.sort_value))
+            after_id = uuid.UUID(decoded.tie_id)
+        except ValueError as exc:
+            raise CursorError("malformed cursor payload") from exc
+    rows = (
+        (
+            await session.execute(
+                text(
+                    """
+                    SELECT s.id, s.extraction_run_id, s.status, s.created_at,
+                           NULLIF(s.proposed_structure_json->>'document_version_id', '')::uuid AS document_version_id,
+                           COALESCE(s.proposed_structure_json->>'rights_status', 'PENDING_REVIEW') AS rights_status,
+                           sd.title, sd.mime_type, dv.page_count,
+                           jsonb_array_length(COALESCE(s.proposed_structure_json->'sections', '[]'::jsonb))
+                               AS section_count,
+                           (SELECT count(*)
+                              FROM jsonb_array_elements(COALESCE(s.proposed_structure_json->'sections', '[]'::jsonb))
+                                   AS sec(v),
+                                   jsonb_array_elements(COALESCE(sec.v->'questions', '[]'::jsonb)) AS q(v)
+                           ) AS question_count
+                    FROM exam_import_sessions s
+                    LEFT JOIN document_versions dv
+                      ON dv.id = NULLIF(s.proposed_structure_json->>'document_version_id', '')::uuid
+                     AND dv.tenant_id = s.tenant_id
+                    LEFT JOIN source_documents sd
+                      ON sd.id = dv.source_document_id AND sd.tenant_id = dv.tenant_id
+                    WHERE s.tenant_id = :tid
+                      AND (CAST(:status AS varchar) IS NULL OR s.status = :status)
+                      AND (CAST(:after_at AS timestamptz) IS NULL
+                           OR s.created_at < :after_at OR (s.created_at = :after_at AND s.id < :after_id))
+                    ORDER BY s.created_at DESC, s.id DESC
+                    LIMIT :n
+                    """
+                ).bindparams(
+                    bindparam("after_at", type_=DateTime(timezone=True)),
+                    bindparam("after_id", type_=Uuid()),
+                ),
+                {
+                    "tid": tenant_id,
+                    "status": status,
+                    "after_at": after_at,
+                    "after_id": after_id,
+                    "n": safe_limit + 1,
+                },
+            )
+        )
+        .mappings()
+        .all()
+    )
+    has_more = len(rows) > safe_limit
+    items = tuple(
+        ExamImportListItem(
+            id=r["id"],
+            extraction_run_id=r["extraction_run_id"],
+            document_version_id=r["document_version_id"],
+            title=r["title"],
+            mime_type=r["mime_type"],
+            page_count=r["page_count"],
+            status=r["status"],
+            rights_status=r["rights_status"],
+            section_count=int(r["section_count"]),
+            question_count=int(r["question_count"]),
+            created_at=r["created_at"],
+        )
+        for r in rows[:safe_limit]
+    )
+    next_cursor: str | None = None
+    if has_more and items:
+        last = items[-1]
+        next_cursor = encode_cursor(
+            sort_field="created_at",
+            sort_value=last.created_at.isoformat(),
+            tie_id=str(last.id),
+            direction="desc",
+            secret=cursor_secret,
+            tenant_id=str(tenant_id),
+            route=_LIST_EXAM_IMPORTS_ROUTE,
+        )
+    return ExamImportPage(items=items, next_cursor=next_cursor, has_more=has_more, limit=safe_limit)

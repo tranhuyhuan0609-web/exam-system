@@ -6,6 +6,11 @@ Idempotent: every step looks before it writes, a second run changes nothing. It 
 * the class ``class-12a1`` (teacher + learner), the lesson ``cong-thuc-bayes`` (published),
 * 22 published, verified Bayes questions (12 single choice, 4 true/false clusters, 6 short numeric) and the paper
   "THPTQG 2025 demo" assembled from them and published, through the real API so every rule applies;
+* four C01 sample questions (drafts, through `POST /api/v1/questions`) and one PENDING_REVIEW exam import (a PDF
+  uploaded, extracted and structured through the API) for the question-bank and BBox-review screens;
+* the assignment of that paper to the class (teacher, through the API), four error notes of the learner (one per
+  stage of the two-correct-in-a-row rule) and the learner's learning plan (learner, through the API), so the web
+  screens list real UUIDs from the database instead of sample ids;
 * the platform catalogues: ``ai_providers`` / ``ai_models``, ``subscription_plans``, the vertical pack ``K12_VN_KNTT``
   with its ``locale_bundles``.
 
@@ -25,13 +30,14 @@ import sys
 import time
 import unicodedata
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import text
 
 from app.config import get_settings
-from app.db import SessionLocal
+from app.db import SessionLocal, engine
 from app.platform.auth_context import mint_hs256_token
 from app.platform.models import SYSTEM_PUBLIC_TENANT_ID
 from app.platform.tenancy import tenant_transaction
@@ -45,6 +51,13 @@ LESSON_SLUG = "cong-thuc-bayes"
 PAPER_TITLE = "Đề thi thử Toán THPT 2025 (demo)"
 QUESTION_CODE_PREFIX = "DEMO-BAYES"
 ASSEMBLY_SEED = 2025
+# (status, wrong_count, consecutive_correct_count): untouched, one correct so far, relapsed, closed.
+ERROR_NOTE_STAGES: tuple[tuple[str, int, int], ...] = (
+    ("OPEN", 1, 0),
+    ("IN_REMEDIATION", 2, 1),
+    ("OPEN", 3, 0),
+    ("RESOLVED", 2, 2),
+)
 
 ACCOUNTS: tuple[tuple[str, str, str, list[str], str], ...] = (
     # key, email, pseudonym, roles, entitlement tier
@@ -414,79 +427,409 @@ def _ok(response: Any) -> Any:
     return response
 
 
-def _ensure_lesson_and_paper(
-    tenant_id: uuid.UUID, teacher: dict[str, Any], taxonomy_id: uuid.UUID, there: dict[str, bool]
-) -> dict[str, bool]:
-    """The lesson and the paper go through the HTTP API (TestClient), so authoring and publishing rules apply."""
+async def _through_api[T](work: Callable[[Any], T]) -> T:
+    """Run `work(client)` against the real app (TestClient, so authoring and publishing rules apply).
+
+    The client lives in a worker thread with its own event loop, and a pooled asyncpg connection cannot cross
+    loops; so the pool is emptied before the thread starts, by the thread before it ends, and again after it.
+    """
     from fastapi.testclient import TestClient
 
     from app.main import app
 
-    headers = _bearer(tenant_id, teacher["user_id"], teacher["membership_id"], teacher["roles"], teacher["tier"])
+    def runner() -> T:
+        with TestClient(app, base_url="http://127.0.0.1:8000") as client:
+            try:
+                return work(client)
+            finally:
+                assert client.portal is not None  # set while inside the `with` block
+                client.portal.call(engine.dispose)
+
+    await engine.dispose()
+    try:
+        return await asyncio.to_thread(runner)
+    finally:
+        await engine.dispose()
+
+
+def _headers(tenant_id: uuid.UUID, account: dict[str, Any]) -> dict[str, str]:
+    return _bearer(tenant_id, account["user_id"], account["membership_id"], account["roles"], account["tier"])
+
+
+async def _ensure_lesson_and_paper(
+    tenant_id: uuid.UUID, teacher: dict[str, Any], taxonomy_id: uuid.UUID, there: dict[str, bool]
+) -> dict[str, bool]:
+    """The lesson and the paper go through the HTTP API, so authoring and publishing rules apply."""
+    headers = _headers(tenant_id, teacher)
     done = {"lesson": False, "paper": False}
-    with TestClient(app, base_url="http://127.0.0.1:8000") as client:
-        if not there["lesson"]:
-            created = client.post(
-                "/api/v1/content",
+
+    def create_lesson(client: Any) -> dict[str, str]:
+        created = client.post(
+            "/api/v1/content",
+            headers=headers,
+            json={
+                "content_type": "LESSON",
+                "slug": LESSON_SLUG,
+                "title": "Công thức Bayes",
+                "summary_md": "Xác suất có điều kiện và công thức Bayes.",
+                "primary_taxonomy_node_id": str(taxonomy_id),
+                "rights_status": "OWNED",
+                "blocks": [
+                    {
+                        "block_order": 0,
+                        "block_type": "THEORY_SUMMARY",
+                        "payload_json": {"text": "P(A|B) cho biết khả năng xảy ra A khi đã biết B xảy ra."},
+                    },
+                    {
+                        "block_order": 1,
+                        "block_type": "FORMULA_BOX",
+                        "payload_json": {"latex": "P(A|B)=\\frac{P(B|A)P(A)}{P(B)}"},
+                    },
+                    {
+                        "block_order": 2,
+                        "block_type": "WORKED_EXAMPLE",
+                        "payload_json": {"text": "P(A)=0,3; P(B|A)=0,8; P(B|Ā)=0,2 ⇒ P(A|B)≈0,632."},
+                    },
+                ],
+            },
+        )
+        _ok(created)
+        return {"item": created.json()["item"]["id"], "version": created.json()["version"]["id"]}
+
+    def publish_lesson(client: Any, version_id: str) -> None:
+        _ok(client.post(f"/api/v1/content-versions/{version_id}/publish", headers=headers))
+
+    def make_paper(client: Any) -> None:
+        made = client.post(
+            "/api/v1/assessments",
+            headers=headers,
+            json={
+                "title": PAPER_TITLE,
+                "subject_code": "math",
+                "grade_band": "GRADE_12",
+                "exam_type_code": "THPTQG",
+                "rights_status": "OWNED",
+            },
+        )
+        _ok(made)
+        assessment_id = made.json()["id"]
+        _ok(
+            client.post(
+                f"/api/v1/assessments/{assessment_id}/assemble", headers=headers, json={"random_seed": ASSEMBLY_SEED}
+            )
+        )
+        _ok(client.post(f"/api/v1/assessments/{assessment_id}/publish", headers=headers))
+
+    if not there["lesson"]:
+        ids = await _through_api(create_lesson)
+        # The reviewer's decision (A09), recorded here as the demo's editorial approval.
+        await _verify_content(tenant_id, uuid.UUID(ids["item"]))
+        await _through_api(lambda client: publish_lesson(client, ids["version"]))
+        done["lesson"] = True
+    if not there["paper"]:
+        await _through_api(make_paper)
+        done["paper"] = True
+    return done
+
+
+async def _lookup_ids(tenant_id: uuid.UUID, learner: uuid.UUID) -> dict[str, Any]:
+    """The published paper's version, the demo class and what is already seeded for them."""
+    async with tenant_transaction(tenant_id) as session:
+        paper = (
+            await session.execute(
+                text("SELECT id, current_version_id FROM assessments WHERE tenant_id = :t AND title = :n"),
+                {"t": tenant_id, "n": PAPER_TITLE},
+            )
+        ).one()
+        class_id = (
+            await session.execute(
+                text("SELECT id FROM classes WHERE tenant_id = :t AND invite_code = :c"),
+                {"t": tenant_id, "c": CLASS_NAME},
+            )
+        ).scalar_one()
+        has_assignment = (
+            await session.execute(
+                text(
+                    "SELECT 1 FROM assessment_assignments "
+                    "WHERE tenant_id = :t AND class_id = :c AND assessment_version_id = :v"
+                ),
+                {"t": tenant_id, "c": class_id, "v": paper.current_version_id},
+            )
+        ).first()
+        has_plan = (
+            await session.execute(
+                text("SELECT 1 FROM learning_plans WHERE tenant_id = :t AND membership_id = :m"),
+                {"t": tenant_id, "m": learner},
+            )
+        ).first()
+    return {
+        "assessment_id": paper.id,
+        "version_id": paper.current_version_id,
+        "class_id": class_id,
+        "has_assignment": has_assignment is not None,
+        "has_plan": has_plan is not None,
+    }
+
+
+async def _ensure_error_notes(tenant_id: uuid.UUID, learner: uuid.UUID) -> int:
+    """Four notes of the learner, one per stage of the rule "two correct in a row closes a note"."""
+    created = 0
+    async with tenant_transaction(tenant_id) as session:
+        for n, (status, wrong, streak) in enumerate(ERROR_NOTE_STAGES, start=1):
+            code = f"{QUESTION_CODE_PREFIX}-{n:02d}"
+            question = (
+                await session.execute(
+                    text(
+                        "SELECT current_version_id, primary_taxonomy_node_id FROM questions "
+                        "WHERE tenant_id = :t AND stable_code = :c"
+                    ),
+                    {"t": tenant_id, "c": code},
+                )
+            ).one()
+            result = await session.execute(
+                text(
+                    "INSERT INTO error_notes (tenant_id, membership_id, question_version_id, "
+                    "primary_taxonomy_node_id, wrong_count, consecutive_correct_count, status, resolved_at) "
+                    "VALUES (:t, :m, :v, :n, :w, :s, CAST(:st AS varchar), "
+                    "CASE WHEN CAST(:st AS varchar) = 'RESOLVED' THEN now() END) "
+                    "ON CONFLICT (membership_id, question_version_id) DO NOTHING"
+                ),
+                {
+                    "t": tenant_id,
+                    "m": learner,
+                    "v": question.current_version_id,
+                    "n": question.primary_taxonomy_node_id,
+                    "w": wrong,
+                    "s": streak,
+                    "st": status,
+                },
+            )
+            created += _rows(result)
+    return created
+
+
+async def _ensure_assignment_and_plan(
+    tenant_id: uuid.UUID, teacher: dict[str, Any], learner: dict[str, Any], ids: dict[str, Any]
+) -> dict[str, bool]:
+    """The class assignment (teacher) and the learner's plan (learner), both through the API."""
+    teacher_headers, learner_headers = _headers(tenant_id, teacher), _headers(tenant_id, learner)
+    done = {"assignment": False, "learning_plan": False}
+
+    def assign(client: Any) -> None:
+        _ok(
+            client.post(
+                "/api/v1/assignments",
+                headers=teacher_headers,
+                json={
+                    "assessment_version_id": str(ids["version_id"]),
+                    "class_id": str(ids["class_id"]),
+                    "max_attempts": 3,
+                    "reveal_policy": "IMMEDIATE",
+                },
+            )
+        )
+
+    def plan(client: Any) -> None:
+        _ok(client.post("/api/v1/learning-plans", headers=learner_headers, json={}))
+
+    if not ids["has_assignment"]:
+        await _through_api(assign)
+        done["assignment"] = True
+    if not ids["has_plan"]:
+        await _through_api(plan)
+        done["learning_plan"] = True
+    return done
+
+
+C01_SAMPLES: tuple[dict[str, Any], ...] = (
+    {
+        "stable_code": "DEMO-C01-01",
+        "item_type": "SINGLE_CHOICE",
+        "difficulty_level": "NB",
+        "stem_text": "Cho hai biến cố A, B với P(B) > 0. Công thức Bayes cho P(A|B) là gì?",
+        "options": [
+            {"key": "A", "text": "P(B|A)·P(A) / P(B)"},
+            {"key": "B", "text": "P(A)·P(B)"},
+            {"key": "C", "text": "P(B|A) / P(A)"},
+            {"key": "D", "text": "P(A) + P(B) - P(A∩B)"},
+        ],
+        "answer_schema": {"correct_option": "A"},
+    },
+    {
+        "stable_code": "DEMO-C01-02",
+        "item_type": "CLUSTER_TRUE_FALSE",
+        "difficulty_level": "TH",
+        "stem_text": "Cho P(A) = 0,4 và P(B|A) = 0,5. Xét các mệnh đề sau.",
+        "options": [
+            {"key": "a", "text": "P(A∩B) = 0,2"},
+            {"key": "b", "text": "P(A|B) luôn bằng P(B|A)"},
+            {"key": "c", "text": "Nếu A, B độc lập thì P(A|B) = P(A)"},
+            {"key": "d", "text": "P(A∩B) có thể lớn hơn P(A)"},
+        ],
+        "answer_schema": {"statements": {"a": True, "b": False, "c": True, "d": False}},
+    },
+    {
+        "stable_code": "DEMO-C01-03",
+        "item_type": "SHORT_NUMERIC",
+        "difficulty_level": "VD",
+        "stem_text": "Một xét nghiệm có P(B|A) = 0,9, P(B|Ā) = 0,1 và tỉ lệ mắc P(A) = 0,5. Tính P(A|B).",
+        "options": [],
+        "answer_schema": {"value": "0,9"},
+    },
+    {
+        "stable_code": "DEMO-C01-04",
+        "item_type": "ESSAY",
+        "difficulty_level": "VDC",
+        "stem_text": "Chứng minh công thức xác suất toàn phần rồi suy ra công thức Bayes.",
+        "options": [],
+        "answer_schema": {
+            "rubric": "1 điểm: phân hoạch không gian mẫu; 1 điểm: công thức xác suất toàn phần",
+            "max_points": 2.0,
+        },
+    },
+)
+EXAM_IMPORT_SECTION_TITLE = "Phan I. Trac nghiem (demo)"
+
+
+def _demo_exam_pdf() -> bytes:
+    """A one-page exam paper, byte-identical on every run (so the upload deduplicates), ASCII text only."""
+    import io
+
+    from reportlab.lib.pagesizes import A4  # type: ignore[import-untyped]
+    from reportlab.pdfgen import canvas  # type: ignore[import-untyped]
+
+    buffer = io.BytesIO()
+    page = canvas.Canvas(buffer, pagesize=A4, invariant=1)
+    top = A4[1]
+    lines = (
+        (200, "Cau 1. Cho P(A) = 0,3; P(B|A) = 0,8. Tinh P(A and B)."),
+        (225, "A. 0,24    B. 0,38    C. 0,11    D. 0,50"),
+        (290, "Cau 2. Hai bien co A, B doc lap thi P(A|B) bang?"),
+        (315, "A. P(A)    B. P(B)    C. 0    D. 1"),
+        (380, "Cau 3. P(A|B) lon nhat bang bao nhieu?"),
+        (405, "A. 0    B. 0,5    C. 1    D. 2"),
+    )
+    for y_from_top, text_line in lines:
+        page.drawString(50, top - y_from_top, text_line)
+    page.save()
+    return buffer.getvalue()
+
+
+async def _ensure_c01_questions(tenant_id: uuid.UUID, teacher: dict[str, Any], taxonomy_id: uuid.UUID) -> int:
+    """Four DRAFT questions written through `POST /api/v1/questions`, so the bank shows drafts beside the published."""
+    async with tenant_transaction(tenant_id) as session:
+        have = {
+            r.stable_code
+            for r in await session.execute(
+                text("SELECT stable_code FROM questions WHERE tenant_id = :t AND stable_code LIKE 'DEMO-C01-%'"),
+                {"t": tenant_id},
+            )
+        }
+    todo = [q for q in C01_SAMPLES if q["stable_code"] not in have]
+    if not todo:
+        return 0
+    headers = _headers(tenant_id, teacher)
+
+    def create(client: Any) -> None:
+        for sample in todo:
+            _ok(
+                client.post(
+                    "/api/v1/questions",
+                    headers=headers,
+                    json={**sample, "primary_taxonomy_node_id": str(taxonomy_id), "rights_status": "OWNED"},
+                )
+            )
+
+    await _through_api(create)
+    return len(todo)
+
+
+async def _ensure_exam_import(tenant_id: uuid.UUID, teacher: dict[str, Any]) -> bool:
+    """One exam paper uploaded, extracted and structured: a PENDING_REVIEW session to open in the BBox review."""
+    async with tenant_transaction(tenant_id) as session:
+        there = (
+            await session.execute(
+                text(
+                    "SELECT 1 FROM exam_import_sessions "
+                    "WHERE tenant_id = :t AND proposed_structure_json->'sections'->0->>'title' = :title"
+                ),
+                {"t": tenant_id, "title": EXAM_IMPORT_SECTION_TITLE},
+            )
+        ).first()
+    if there is not None:
+        return False
+    headers = _headers(tenant_id, teacher)
+    pdf = _demo_exam_pdf()
+
+    def create(client: Any) -> None:
+        uploaded = _ok(
+            client.post(
+                "/api/v1/documents", headers=headers, files={"file": ("de-mau-bayes-demo.pdf", pdf, "application/pdf")}
+            )
+        )
+        extracted = _ok(
+            client.post(f"/api/v1/documents/{uploaded.json()['source_document_id']}/extract", headers=headers)
+        )
+
+        def question(no: int, points: float, y0: int, answer: str) -> dict[str, Any]:
+            return {
+                "question_no": no,
+                "points": points,
+                "page_number": 1,
+                "paired_answer": answer,
+                "stem_md": f"Cau {no}.",
+                "options_md": ["A", "B", "C", "D"],
+                "bbox_json": {"x0": 50, "y0": y0, "x1": 540, "y1": y0 + 55},
+            }
+
+        _ok(
+            client.post(
+                "/api/v1/exam-imports",
                 headers=headers,
                 json={
-                    "content_type": "LESSON",
-                    "slug": LESSON_SLUG,
-                    "title": "Công thức Bayes",
-                    "summary_md": "Xác suất có điều kiện và công thức Bayes.",
-                    "primary_taxonomy_node_id": str(taxonomy_id),
-                    "rights_status": "OWNED",
-                    "blocks": [
+                    "extraction_run_id": extracted.json()["id"],
+                    "rights_status_override": "OWNED",
+                    "expected_total_points": 10.0,
+                    "create_question_candidates": False,
+                    "sections": [
                         {
-                            "block_order": 0,
-                            "block_type": "THEORY_SUMMARY",
-                            "payload_json": {"text": "P(A|B) cho biết khả năng xảy ra A khi đã biết B xảy ra."},
-                        },
-                        {
-                            "block_order": 1,
-                            "block_type": "FORMULA_BOX",
-                            "payload_json": {"latex": "P(A|B)=\\frac{P(B|A)P(A)}{P(B)}"},
-                        },
-                        {
-                            "block_order": 2,
-                            "block_type": "WORKED_EXAMPLE",
-                            "payload_json": {"text": "P(A)=0,3; P(B|A)=0,8; P(B|Ā)=0,2 ⇒ P(A|B)≈0,632."},
-                        },
+                            "section_code": "PART_I_MCQ",
+                            "title": EXAM_IMPORT_SECTION_TITLE,
+                            "questions": [
+                                question(1, 4.0, 190, "A"),
+                                question(2, 3.0, 280, "A"),
+                                question(3, 3.0, 370, "C"),
+                            ],
+                        }
                     ],
                 },
             )
-            _ok(created)
-            # The reviewer's decision (A09), recorded here as the demo's editorial approval.
-            asyncio.run(_verify_content(tenant_id, uuid.UUID(created.json()["item"]["id"])))
-            published = client.post(
-                f"/api/v1/content-versions/{created.json()['version']['id']}/publish", headers=headers
+        )
+
+    await _through_api(create)
+    return True
+
+
+async def _lookup_review_ids(tenant_id: uuid.UUID) -> dict[str, list[str]]:
+    async with tenant_transaction(tenant_id) as session:
+        imports = [
+            str(r.id)
+            for r in await session.execute(
+                text("SELECT id FROM exam_import_sessions WHERE tenant_id = :t ORDER BY created_at, id"),
+                {"t": tenant_id},
             )
-            _ok(published)
-            done["lesson"] = True
-        if not there["paper"]:
-            made = client.post(
-                "/api/v1/assessments",
-                headers=headers,
-                json={
-                    "title": PAPER_TITLE,
-                    "subject_code": "math",
-                    "grade_band": "GRADE_12",
-                    "exam_type_code": "THPTQG",
-                    "rights_status": "OWNED",
-                },
+        ]
+        questions = [
+            str(r.id)
+            for r in await session.execute(
+                text(
+                    "SELECT id FROM questions "
+                    "WHERE tenant_id = :t AND stable_code LIKE 'DEMO-C01-%' ORDER BY stable_code"
+                ),
+                {"t": tenant_id},
             )
-            _ok(made)
-            assessment_id = made.json()["id"]
-            _ok(
-                client.post(
-                    f"/api/v1/assessments/{assessment_id}/assemble",
-                    headers=headers,
-                    json={"random_seed": ASSEMBLY_SEED},
-                )
-            )
-            _ok(client.post(f"/api/v1/assessments/{assessment_id}/publish", headers=headers))
-            done["paper"] = True
-    return done
+        ]
+    return {"exam_import_ids": imports, "c01_question_ids": questions}
 
 
 async def seed_demo(password: str | None = None) -> dict[str, Any]:
@@ -500,11 +843,34 @@ async def seed_demo(password: str | None = None) -> dict[str, Any]:
         tenant_id, accounts["teacher"]["membership_id"], accounts["learner"]["membership_id"]
     )
     there = await _already_there(tenant_id)
-    content = await asyncio.to_thread(_ensure_lesson_and_paper, tenant_id, accounts["teacher"], taxonomy_id, there)
+    content = await _ensure_lesson_and_paper(tenant_id, accounts["teacher"], taxonomy_id, there)
+    learner = accounts["learner"]
+    notes = await _ensure_error_notes(tenant_id, learner["membership_id"])
+    ids = await _lookup_ids(tenant_id, learner["membership_id"])
+    classroom = await _ensure_assignment_and_plan(tenant_id, accounts["teacher"], learner, ids)
+    c01 = await _ensure_c01_questions(tenant_id, accounts["teacher"], taxonomy_id)
+    exam_import = await _ensure_exam_import(tenant_id, accounts["teacher"])
+    review = await _lookup_review_ids(tenant_id)
+    await engine.dispose()
     return {
         "tenant": {"slug": TENANT_SLUG, "id": str(tenant_id)},
         "accounts": {k: v["email"] for k, v in accounts.items()},
-        "created": {"questions": questions, "class": class_created, **content, **catalogues},
+        "entities": {
+            "class_id": str(ids["class_id"]),
+            "assessment_id": str(ids["assessment_id"]),
+            "assessment_version_id": str(ids["version_id"]),
+            **review,
+        },
+        "created": {
+            "questions": questions,
+            "class": class_created,
+            "error_notes": notes,
+            "c01_questions": c01,
+            "exam_import": exam_import,
+            **content,
+            **classroom,
+            **catalogues,
+        },
         "finished_at": datetime.now(UTC).isoformat(),
     }
 

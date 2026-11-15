@@ -389,8 +389,8 @@ async def run_pipeline(
 
         paired_solution_file: Path | None = None
 
-        # Step 1: Chuẩn hóa file nén (.zip, .rar) tự động bung nén và ghép cặp Đề + Đáp án
-        if source.suffix.lower() in (".zip", ".rar"):
+        # Step 1: Chuẩn hóa file nén (.zip) tự động bung nén và ghép cặp Đề + Đáp án
+        if source.suffix.lower() == ".zip":
             from app.ai.extract_engine import pair_exam_and_solution_files, unpack_archive
             archive_dir = work / "unpacked"
             unpacked_files = unpack_archive(source, archive_dir)

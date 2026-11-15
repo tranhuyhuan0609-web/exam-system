@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import insert, select, text, update
+from sqlalchemy import and_, func, insert, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,6 +40,9 @@ from app.modules.questions.internal.authoring import (
     validate_question_draft,
 )
 from app.modules.questions.internal.models import (
+    DIFFICULTY_LEVELS,
+    ITEM_TYPES,
+    PUBLICATION_STATUSES,
     Question,
     QuestionAsset,
     QuestionOption,
@@ -48,6 +51,7 @@ from app.modules.questions.internal.models import (
     QuestionVersionAnswer,
 )
 from app.modules.review.public import PublicationStatus, RightsStatus, VerificationStatus, evaluate_publish_gate
+from app.platform.pagination import CursorError, clamp_limit, decode_cursor, encode_cursor
 
 QUESTION_PUBLISHED_EVENT = "question.version.published"
 DEFAULT_MAX_NUMERIC_CHARS = 4
@@ -689,3 +693,239 @@ async def record_automatic_verification(session: AsyncSession, version_id: uuid.
     if status != question.verification_status:
         await session.execute(update(Question).where(Question.id == question.id).values(verification_status=status))
     return status
+
+
+# --- reading the bank (no answer is ever read here) ----------------------------------------------------------------
+
+_LIST_QUESTIONS_ROUTE = "GET /api/v1/questions"
+_Q_MAX_LENGTH = 200
+
+
+@dataclass(frozen=True, slots=True)
+class QuestionListItem:
+    """A question with the version a list shows: the published (served) one, else the newest draft. No answer."""
+
+    question: QuestionRecord
+    version_id: uuid.UUID
+    version_no: int
+    is_immutable: bool
+    stimulus_id: uuid.UUID | None
+    stem_text: str
+    options: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class QuestionListPage:
+    items: tuple[QuestionListItem, ...]
+    next_cursor: str | None
+    has_more: bool
+    limit: int
+
+
+@dataclass(frozen=True, slots=True)
+class VersionSummary:
+    id: uuid.UUID
+    version_no: int
+    is_immutable: bool
+    is_current: bool
+    change_reason: str | None
+    created_by: uuid.UUID | None
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class QuestionDetail:
+    question: QuestionRecord
+    shown_version: QuestionVersionRecord | None
+    versions: tuple[VersionSummary, ...]
+
+
+def _like_pattern(raw: str) -> str:
+    """A case-insensitive "contains" pattern with the LIKE wildcards of the input made literal."""
+    escaped = raw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+async def _taxonomy_subtree(session: AsyncSession, node_id: uuid.UUID) -> list[uuid.UUID]:
+    """The node and everything under it (ltree), as far as the tenant can see them."""
+    rows = await session.execute(
+        text(
+            "SELECT t.id FROM taxonomy_nodes t "
+            "WHERE t.code_path <@ (SELECT code_path FROM taxonomy_nodes WHERE id = :n)"
+        ),
+        {"n": node_id},
+    )
+    return [r.id for r in rows]
+
+
+async def _curriculum_subtree(session: AsyncSession, node_id: uuid.UUID) -> list[uuid.UUID]:
+    rows = await session.execute(
+        text(
+            "WITH RECURSIVE tree AS ("
+            "  SELECT id FROM curriculum_nodes WHERE id = :n"
+            "  UNION"
+            "  SELECT c.id FROM curriculum_nodes c JOIN tree ON c.parent_id = tree.id"
+            ") SELECT id FROM tree"
+        ),
+        {"n": node_id},
+    )
+    return [r.id for r in rows]
+
+
+async def list_questions(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    cursor_secret: str,
+    q: str | None = None,
+    item_type: str | None = None,
+    difficulty_level: str | None = None,
+    curriculum_node_id: uuid.UUID | None = None,
+    taxonomy_node_id: uuid.UUID | None = None,
+    publication_status: str | None = None,
+    limit: int | None = None,
+    cursor: str | None = None,
+) -> QuestionListPage:
+    """The bank of the tenant plus the SYSTEM_PUBLIC questions, newest first (cursor pagination on created_at, id).
+
+    Row-level security already shows only the tenant's own rows and the published, frozen SYSTEM_PUBLIC ones; the
+    WHERE says it again so a policy change cannot widen this list. `question_version_answers` is not touched:
+    a list item carries the stem and the options, never an answer or a rationale. The taxonomy and curriculum
+    filters include the whole subtree under the node.
+    """
+    safe_limit = clamp_limit(limit)
+    query = (q or "").strip()
+    if len(query) > _Q_MAX_LENGTH:
+        raise ValueError(f"q is longer than {_Q_MAX_LENGTH} characters")
+    for value, allowed, label in (
+        (item_type, ITEM_TYPES, "item_type"),
+        (difficulty_level, DIFFICULTY_LEVELS, "difficulty_level"),
+        (publication_status, PUBLICATION_STATUSES, "publication_status"),
+    ):
+        if value is not None and value not in allowed:
+            raise ValueError(f"unsupported {label}: {value!r}")
+
+    latest_version_id = (
+        select(QuestionVersion.id)
+        .where(QuestionVersion.question_id == Question.id)
+        .order_by(QuestionVersion.version_no.desc())
+        .limit(1)
+        .correlate(Question)
+        .scalar_subquery()
+    )
+    stmt = (
+        select(Question, QuestionVersion)
+        .join(
+            QuestionVersion,
+            and_(
+                QuestionVersion.id == func.coalesce(Question.current_version_id, latest_version_id),
+                QuestionVersion.tenant_id == Question.tenant_id,
+            ),
+        )
+        .where(or_(Question.tenant_id == tenant_id, Question.visibility_scope == "SYSTEM_PUBLIC"))
+    )
+    if query:
+        pattern = _like_pattern(query)
+        stmt = stmt.where(
+            or_(
+                Question.stable_code.ilike(pattern, escape="\\"),
+                QuestionVersion.stem_json["text"].astext.ilike(pattern, escape="\\"),
+            )
+        )
+    if item_type is not None:
+        stmt = stmt.where(Question.item_type == item_type)
+    if difficulty_level is not None:
+        stmt = stmt.where(Question.difficulty_level == difficulty_level)
+    if publication_status is not None:
+        stmt = stmt.where(Question.publication_status == publication_status)
+    if taxonomy_node_id is not None:
+        stmt = stmt.where(Question.primary_taxonomy_node_id.in_(await _taxonomy_subtree(session, taxonomy_node_id)))
+    if curriculum_node_id is not None:
+        stmt = stmt.where(Question.curriculum_node_id.in_(await _curriculum_subtree(session, curriculum_node_id)))
+
+    if cursor is not None:
+        decoded = decode_cursor(
+            cursor,
+            secret=cursor_secret,
+            allowed_sort_fields=frozenset({"created_at"}),
+            expected_sort_field="created_at",
+            expected_direction="desc",
+            tenant_id=str(tenant_id),
+            route=_LIST_QUESTIONS_ROUTE,
+        )
+        try:
+            after_at = datetime.fromisoformat(str(decoded.sort_value))
+            after_id = uuid.UUID(decoded.tie_id)
+        except ValueError as exc:
+            raise CursorError("malformed cursor payload") from exc
+        stmt = stmt.where(
+            or_(Question.created_at < after_at, and_(Question.created_at == after_at, Question.id < after_id))
+        )
+
+    rows = (
+        await session.execute(
+            stmt.order_by(Question.created_at.desc(), Question.id.desc())
+            .limit(safe_limit + 1)
+            .execution_options(populate_existing=True)
+        )
+    ).all()
+    has_more = len(rows) > safe_limit
+    items = tuple(
+        QuestionListItem(
+            question=_question(question),
+            version_id=version.id,
+            version_no=version.version_no,
+            is_immutable=version.is_immutable,
+            stimulus_id=version.stimulus_id,
+            stem_text=str((version.stem_json or {}).get("text", "")),
+            options=tuple(version.options_json or ()),
+        )
+        for question, version in rows[:safe_limit]
+    )
+    next_cursor: str | None = None
+    if has_more and items:
+        last = items[-1].question
+        next_cursor = encode_cursor(
+            sort_field="created_at",
+            sort_value=last.created_at.isoformat(),
+            tie_id=str(last.id),
+            direction="desc",
+            secret=cursor_secret,
+            tenant_id=str(tenant_id),
+            route=_LIST_QUESTIONS_ROUTE,
+        )
+    return QuestionListPage(items=items, next_cursor=next_cursor, has_more=has_more, limit=safe_limit)
+
+
+async def get_question_detail(session: AsyncSession, question_id: uuid.UUID) -> QuestionDetail:
+    """One question with the version the bank shows and the history of its versions (answers are not read)."""
+    row = await session.scalar(
+        select(Question).where(Question.id == question_id).execution_options(populate_existing=True)
+    )
+    if row is None:
+        raise QuestionNotFoundError("question not found")
+    versions = (
+        await session.scalars(
+            select(QuestionVersion)
+            .where(QuestionVersion.question_id == question_id)
+            .order_by(QuestionVersion.version_no.desc())
+            .execution_options(populate_existing=True)
+        )
+    ).all()
+    shown = next((v for v in versions if v.id == row.current_version_id), versions[0] if versions else None)
+    return QuestionDetail(
+        question=_question(row),
+        shown_version=None if shown is None else _version(shown),
+        versions=tuple(
+            VersionSummary(
+                id=v.id,
+                version_no=v.version_no,
+                is_immutable=v.is_immutable,
+                is_current=v.id == row.current_version_id,
+                change_reason=v.change_reason,
+                created_by=v.created_by,
+                created_at=v.created_at,
+            )
+            for v in versions
+        ),
+    )

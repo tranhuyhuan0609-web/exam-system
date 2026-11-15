@@ -59,6 +59,12 @@ class Settings(BaseSettings):
 
     # V11.3 infrastructure (docker-compose services of the same names).
     redis_url: str = "redis://localhost:6379/0"  # public-paper cache and broker only, never a source of truth
+    # Where the sign-in failure counters live: "memory" (one process, dev/test) or "redis" (shared by every API worker,
+    # uses redis_url; if Redis is unreachable each worker falls back to its own memory counters, never fails open).
+    login_throttle_backend: str = "memory"
+    # Addresses/CIDRs of the proxies in front of the API (e.g. the Next.js server: "127.0.0.1,::1"). Only a request
+    # whose TCP peer is one of them may name the client through X-Forwarded-For. Empty: the header is never believed.
+    trusted_proxies: str = ""
     vault_addr: str = "http://localhost:8200"  # Vault Transit: per-user keys for crypto-shredding
     vault_token: str = ""
     clamav_host: str = "localhost"  # clamd: uploads are scanned before they are accepted
@@ -110,6 +116,11 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_production_security(self) -> "Settings":
         """Safety gate: Aborts startup in production if default/insecure keys are used."""
+        from app.platform.client_ip import parse_trusted_proxies
+
+        parse_trusted_proxies(self.trusted_proxies)  # a malformed entry stops the start-up in every environment
+        if self.login_throttle_backend.lower() not in ("memory", "redis"):
+            raise ValueError("login_throttle_backend must be 'memory' or 'redis'")
         is_dev = self.app_env.lower() in ("dev", "development", "test", "testing")
         if not is_dev:
             # 1. Enforce secure secret_key

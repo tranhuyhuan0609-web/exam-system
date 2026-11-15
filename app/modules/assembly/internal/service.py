@@ -185,6 +185,23 @@ async def get_assessment(session: AsyncSession, assessment_id: uuid.UUID) -> Ass
     return None if row is None else _assessment(row)
 
 
+async def list_assessments(
+    session: AsyncSession, *, publication_status: str | None = "PUBLISHED", limit: int = 100
+) -> tuple[AssessmentRecord, ...]:
+    """Papers the caller's tenant may see (its own and the SYSTEM_PUBLIC ones, by RLS), newest first."""
+    stmt = select(Assessment)
+    if publication_status is not None:
+        stmt = stmt.where(Assessment.publication_status == publication_status)
+    rows = (
+        await session.scalars(
+            stmt.order_by(Assessment.created_at.desc(), Assessment.id.desc())
+            .limit(limit)
+            .execution_options(populate_existing=True)
+        )
+    ).all()
+    return tuple(_assessment(r) for r in rows)
+
+
 async def _locked_assessment(session: AsyncSession, assessment_id: uuid.UUID) -> Assessment:
     row = await session.scalar(
         select(Assessment)

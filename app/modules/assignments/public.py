@@ -15,28 +15,34 @@ from app.modules.assignments.internal.schedule import (
 if TYPE_CHECKING:
     from app.modules.assignments.internal.service import (
         AssignmentNotFoundError,
+        AssignmentSummaryView,
         AssignmentValidationError,
         AssignmentView,
         RevealStatusResult,
         StartCheckResult,
+        can_view_assignment,
         check_can_start_assignment,
         create_assignment,
         get_assignment,
         get_assignment_reveal_status,
+        list_assignments,
         update_assignment,
     )
 
 _SERVICE_EXPORTS = frozenset(
     {
         "AssignmentNotFoundError",
+        "AssignmentSummaryView",
         "AssignmentValidationError",
         "AssignmentView",
         "RevealStatusResult",
         "StartCheckResult",
+        "can_view_assignment",
         "check_can_start_assignment",
         "create_assignment",
         "get_assignment",
         "get_assignment_reveal_status",
+        "list_assignments",
         "update_assignment",
     }
 )
@@ -55,6 +61,7 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     "AssignmentNotFoundError",
     "AssignmentSchedule",
+    "AssignmentSummaryView",
     "AssignmentValidationError",
     "AssignmentView",
     "RevealPolicy",
@@ -62,9 +69,11 @@ __all__ = [
     "StartCheckResult",
     "assert_can_start_assignment",
     "can_reveal_assignment_answers",
+    "can_view_assignment",
     "check_can_start_assignment",
     "create_assignment",
     "get_assignment",
     "get_assignment_reveal_status",
+    "list_assignments",
     "update_assignment",
 ]

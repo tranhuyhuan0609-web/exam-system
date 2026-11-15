@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, BinaryIO
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contracts.events import EventEnvelopeContract
@@ -52,6 +52,7 @@ from app.platform.file_magic import (
     FileSignatureError,
     inspect_uploaded_bytes,
 )
+from app.platform.pagination import CursorError, clamp_limit, decode_cursor, encode_cursor
 
 ALLOWED_JOB_TYPES = frozenset({"EXAM_IMPORT", "DRIVE_SYNC", "WEB_CRAWL", "REPROCESS_EXTRACTION"})
 DEFAULT_STAGE_INGEST = "INGEST"
@@ -741,7 +742,130 @@ async def cancel_import_job(
     )
 
 
+_LIST_IMPORTS_ROUTE = "GET /api/v1/imports"
+JOB_STATUSES = ("QUEUED", "RUNNING", "COMPLETED", "FAILED", "DEAD_LETTER", "CANCELLED")
+
+
+@dataclass(frozen=True, slots=True)
+class ImportJobSummary:
+    """One import job of a list (no stage runs: `get_import_job` has them) with what the uploaded file is."""
+
+    id: uuid.UUID
+    source_id: uuid.UUID | None
+    document_version_id: uuid.UUID | None
+    job_type: str
+    job_status: str
+    current_stage: str | None
+    attempt_count: int
+    last_error_code: str | None
+    title: str | None
+    mime_type: str | None
+    page_count: int | None
+    rights_status: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ImportJobPage:
+    items: tuple[ImportJobSummary, ...]
+    next_cursor: str | None
+    has_more: bool
+    limit: int
+
+
+async def list_import_jobs(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    cursor_secret: str,
+    job_status: str | None = None,
+    job_type: str | None = None,
+    limit: int | None = None,
+    cursor: str | None = None,
+) -> ImportJobPage:
+    """The tenant's import jobs, newest first (cursor on created_at, id); another tenant's jobs are never listed."""
+    safe_limit = clamp_limit(limit)
+    if job_status is not None and job_status not in JOB_STATUSES:
+        raise IngestionValidationError(f"unsupported job_status: {job_status!r}")
+    if job_type is not None and job_type not in ALLOWED_JOB_TYPES:
+        raise IngestionValidationError(f"unsupported job_type: {job_type!r}")
+    stmt = (
+        select(AcquisitionJob, DocumentVersion, SourceDocument)
+        .outerjoin(DocumentVersion, DocumentVersion.id == AcquisitionJob.document_version_id)
+        .outerjoin(SourceDocument, SourceDocument.id == DocumentVersion.source_document_id)
+        .where(AcquisitionJob.tenant_id == tenant_id)
+    )
+    if job_status is not None:
+        stmt = stmt.where(AcquisitionJob.job_status == job_status)
+    if job_type is not None:
+        stmt = stmt.where(AcquisitionJob.job_type == job_type)
+    if cursor is not None:
+        decoded = decode_cursor(
+            cursor,
+            secret=cursor_secret,
+            allowed_sort_fields=frozenset({"created_at"}),
+            expected_sort_field="created_at",
+            expected_direction="desc",
+            tenant_id=str(tenant_id),
+            route=_LIST_IMPORTS_ROUTE,
+        )
+        try:
+            after_at = datetime.fromisoformat(str(decoded.sort_value))
+            after_id = uuid.UUID(decoded.tie_id)
+        except ValueError as exc:
+            raise CursorError("malformed cursor payload") from exc
+        stmt = stmt.where(
+            or_(
+                AcquisitionJob.created_at < after_at,
+                and_(AcquisitionJob.created_at == after_at, AcquisitionJob.id < after_id),
+            )
+        )
+    rows = (
+        await session.execute(
+            stmt.order_by(AcquisitionJob.created_at.desc(), AcquisitionJob.id.desc()).limit(safe_limit + 1)
+        )
+    ).all()
+    has_more = len(rows) > safe_limit
+    items = tuple(
+        ImportJobSummary(
+            id=job.id,
+            source_id=job.source_id,
+            document_version_id=job.document_version_id,
+            job_type=job.job_type,
+            job_status=job.job_status,
+            current_stage=job.current_stage,
+            attempt_count=job.attempt_count,
+            last_error_code=job.last_error_code,
+            title=None if doc is None else doc.title,
+            mime_type=None if doc is None else doc.mime_type,
+            page_count=None if dv is None else dv.page_count,
+            rights_status=None if doc is None else doc.rights_status,
+            created_at=job.created_at,
+            updated_at=job.updated_at,
+        )
+        for job, dv, doc in rows[:safe_limit]
+    )
+    next_cursor: str | None = None
+    if has_more and items:
+        last = items[-1]
+        next_cursor = encode_cursor(
+            sort_field="created_at",
+            sort_value=last.created_at.isoformat(),
+            tie_id=str(last.id),
+            direction="desc",
+            secret=cursor_secret,
+            tenant_id=str(tenant_id),
+            route=_LIST_IMPORTS_ROUTE,
+        )
+    return ImportJobPage(items=items, next_cursor=next_cursor, has_more=has_more, limit=safe_limit)
+
+
 __all__ = [
+    "ImportJobPage",
+    "ImportJobSummary",
+    "JOB_STATUSES",
+    "list_import_jobs",
     "ALLOWED_JOB_TYPES",
     "DocumentVersionView",
     "DuplicateIdempotencyConflictError",

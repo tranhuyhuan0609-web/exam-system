@@ -188,8 +188,8 @@ def test_chapter4_spec_extracts_exact_123_tables_and_views(migrated_audit_state:
     assert len(spec.tenantless_tables) == 20
     assert spec.security_views == EXPECTED_CHAPTER4_SECURITY_VIEWS
     assert spec.ddl_partitions == {"audit_events_2026_11", "audit_events_default", "response_revisions_default"}
-    assert len(spec.manifest_objects) == 53
-    assert len(spec.manifest_grants) == 161
+    assert len(spec.manifest_objects) == 55
+    assert len(spec.manifest_grants) == 163
 
 
 def test_reconciler_catches_rls_initplan_role_partition_view_and_grant_regressions(migrated_audit_state: Any) -> None:

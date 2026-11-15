@@ -16,14 +16,17 @@ from app.config import get_settings
 from app.modules.assignments.internal.schedule import RevealPolicy
 from app.modules.assignments.internal.service import (
     AssignmentNotFoundError,
+    AssignmentSummaryView,
     AssignmentValidationError,
     AssignmentView,
     RevealStatusResult,
     StartCheckResult,
+    can_view_assignment,
     check_can_start_assignment,
     create_assignment,
     get_assignment,
     get_assignment_reveal_status,
+    list_assignments,
     update_assignment,
 )
 from app.modules.classes.public import ClassroomPolicyError
@@ -40,6 +43,8 @@ from app.platform.tenancy import DbRole, tenant_transaction
 router = APIRouter(prefix="/api/v1/assignments", tags=["assignments"])
 
 _STAFF_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "TEACHER"})
+# Roles that see every assignment of the tenant; a teacher or learner sees those of their own classes.
+_TENANT_WIDE_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN"})
 
 
 class CreateAssignmentRequest(BaseModel):
@@ -89,6 +94,22 @@ class AssignmentResponse(BaseModel):
     manually_released: bool
     created_at: datetime
     active_recipient_membership_ids: list[uuid.UUID]
+
+
+class AssignmentSummaryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    class_id: uuid.UUID | None
+    group_id: uuid.UUID | None
+    assessment_version_id: uuid.UUID
+    assessment_id: uuid.UUID | None
+    assessment_title: str | None
+    available_from: datetime
+    due_at: datetime | None
+    max_attempts: int
+    reveal_policy: str
+    created_at: datetime
 
 
 class StartCheckResponse(BaseModel):
@@ -188,6 +209,22 @@ def _serialize_assignment(view: AssignmentView) -> AssignmentResponse:
     )
 
 
+def _serialize_summary(view: AssignmentSummaryView) -> AssignmentSummaryResponse:
+    return AssignmentSummaryResponse(
+        id=view.id,
+        class_id=view.class_id,
+        group_id=view.group_id,
+        assessment_version_id=view.assessment_version_id,
+        assessment_id=view.assessment_id,
+        assessment_title=view.assessment_title,
+        available_from=view.available_from,
+        due_at=view.due_at,
+        max_attempts=view.max_attempts,
+        reveal_policy=view.reveal_policy,
+        created_at=view.created_at,
+    )
+
+
 def _serialize_start(res: StartCheckResult) -> StartCheckResponse:
     return StartCheckResponse(
         assignment_id=res.assignment_id,
@@ -260,6 +297,33 @@ async def create_assignment_endpoint(
     )
 
 
+@router.get("", response_model=list[AssignmentSummaryResponse])
+async def list_assignments_endpoint(
+    request: Request,
+    class_id: Annotated[uuid.UUID | None, Query()] = None,
+    credentials: OptionalBearer = None,
+) -> JSONResponse:
+    """Assignments of the caller's classes (tenant administrators: all), newest first; `class_id` narrows them."""
+    correlation_id = resolve_correlation_id(request.headers.get("X-Correlation-ID"))
+    auth = _authenticate(request, credentials, correlation_id)
+    if isinstance(auth, JSONResponse):
+        return auth
+
+    tenant_wide = any(role.upper() in _TENANT_WIDE_ROLES for role in auth.roles)
+    async with tenant_transaction(auth.tenant_id, role=DbRole.APP_RW) as session:
+        items = await list_assignments(
+            session,
+            tenant_id=auth.tenant_id,
+            membership_id=None if tenant_wide else auth.membership_id,
+            class_id=class_id,
+        )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=jsonable_encoder([_serialize_summary(i) for i in items]),
+        headers={"X-Correlation-ID": correlation_id},
+    )
+
+
 @router.get("/{assignment_id}", response_model=AssignmentResponse)
 async def get_assignment_endpoint(
     assignment_id: uuid.UUID,
@@ -271,9 +335,20 @@ async def get_assignment_endpoint(
     if isinstance(auth, JSONResponse):
         return auth
 
+    tenant_wide = any(role.upper() in _TENANT_WIDE_ROLES for role in auth.roles)
     try:
         async with tenant_transaction(auth.tenant_id, role=DbRole.APP_RW) as session:
             found = await get_assignment(session, tenant_id=auth.tenant_id, assignment_id=assignment_id)
+            # Same tenant is not enough: an assignment is seen by its author and the people of its class. Anyone
+            # else gets the answer of an assignment that does not exist, so ids are not confirmed.
+            if not tenant_wide and not await can_view_assignment(
+                session,
+                tenant_id=auth.tenant_id,
+                assignment=found,
+                membership_id=auth.membership_id,
+                user_id=auth.user_id,
+            ):
+                raise AssignmentNotFoundError(f"assignment {assignment_id} not found in tenant")
     except AssignmentNotFoundError as exc:
         return _problem_response(
             code=PlatformErrorCode.NOT_FOUND,

@@ -4,6 +4,11 @@ Generates deterministic per-VU attempt payloads matching the fields consumed
 by ``k6_exam_5000ccu.js`` (``attempt_id``, ``tenant_id``, ``membership_id``,
 ``jwt``, ``question_version_ids``) without hitting a live database or embedding
 production secrets.
+
+The tokens carry the claims `app.platform.auth_context.decode_and_verify_actor_token` requires (issuer, audience,
+``jti``, ``nbf``, ``roles``), so the API accepts them once the signing secret is the API's ``SECRET_KEY``
+(`tests/test_load_seed_attempts.py` pins that). The ids are synthetic: the *run* of GATE-05 still needs these
+tenants, memberships and IN_PROGRESS attempts to exist as rows in the target database, otherwise every call is a 404.
 """
 
 from __future__ import annotations
@@ -20,6 +25,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+TOKEN_ISSUER = "ulp-auth"  # `decode_and_verify_actor_token` defaults
+TOKEN_AUDIENCE = "ulp-api"
 DEFAULT_QUESTIONS_PER_ATTEMPT = 22  # THPTQG 2025+ Math exam size
 SECRET_ENV_VAR = "LOAD_TEST_JWT_SECRET"
 MIN_SECRET_LENGTH = 16
@@ -52,8 +59,10 @@ def sign_loadtest_jwt(
     signing_secret: str,
     issued_at: int,
     ttl_seconds: int = 7200,
+    roles: tuple[str, ...] = ("LEARNER",),
+    entitlement_tier: str = "FREE",
 ) -> str:
-    """Sign a compact HS256 JWT token for staging/load-test VUs using stdlib only."""
+    """Sign a compact HS256 JWT for staging/load-test VUs using stdlib only, in the API's own claim format."""
     require_signing_secret(signing_secret)
     if not all(isinstance(v, str) and v for v in (sub, tenant_id, membership_id)):
         raise ValueError("sub, tenant_id and membership_id must be non-empty strings")
@@ -66,9 +75,16 @@ def sign_loadtest_jwt(
                 "sub": sub,
                 "tenant_id": tenant_id,
                 "membership_id": membership_id,
-                "role": "STUDENT",
+                "roles": sorted(roles),
+                "entitlement_tier": entitlement_tier,
+                "sid": f"load-{sub[:8]}",
+                "jti": hashlib.sha256(f"load:{sub}:{issued_at}".encode()).hexdigest()[:32],
+                "iss": TOKEN_ISSUER,
+                "aud": TOKEN_AUDIENCE,
                 "iat": issued_at,
+                "nbf": issued_at,
                 "exp": issued_at + ttl_seconds,
+                "role": "STUDENT",  # legacy single-role claim, kept for old consumers of the sessions file
             },
             separators=(",", ":"),
         ).encode("utf-8")

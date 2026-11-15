@@ -19,7 +19,7 @@ from app.infrastructure.pdf_engine import PDFEngineAdapter, PDFEngineError, PDFP
 PDF_EXTENSIONS = (".pdf",)
 WORD_EXTENSIONS = (".docx", ".doc")
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
-ARCHIVE_EXTENSIONS = (".zip", ".rar")
+ARCHIVE_EXTENSIONS = (".zip",)  # .rar needs a GPL/closed unpacker (ADR-010): send a ZIP
 SUPPORTED_EXTENSIONS = PDF_EXTENSIONS + WORD_EXTENSIONS + IMAGE_EXTENSIONS + ARCHIVE_EXTENSIONS
 
 RENDER_DPI = 300  # sharp subscripts and figure crops; ~2480×3508 px for A4 (AI gets a 1600 px copy)
@@ -141,7 +141,7 @@ async def to_page_images(source: Path, out_dir: Path, soffice: str) -> tuple[lis
             raise NormalizeError("Gói nén không chứa file đề thi (.docx, .doc, .pdf) hợp lệ.")
         primary_exam = pairs[0][0]
         return await to_page_images(primary_exam, out_dir, soffice)
-    raise NormalizeError("Định dạng không hỗ trợ. Hãy tải lên PDF, Word (.docx, .doc), file nén (.zip, .rar) hoặc ảnh.")
+    raise NormalizeError("Định dạng không hỗ trợ. Hãy tải lên PDF, Word (.docx, .doc), file nén .zip hoặc ảnh.")
 
 
 def png_bytes(path: Path) -> bytes:
