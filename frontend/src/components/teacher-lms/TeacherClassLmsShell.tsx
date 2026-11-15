@@ -12,7 +12,7 @@ import {
   SequenceConflictModal,
 } from "@/components/workspace/WorkspaceStateViews";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
-import { shouldHydrateLive, workspaceCall } from "@/lib/workspace-api";
+import { isUuid, shouldHydrateLive, shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
 import { TeacherHeader } from "./TeacherHeader";
 import {
   createDemoTeacherClassData,
@@ -64,7 +64,7 @@ export function TeacherClassLmsShell({
   const [conflictDismissed, setConflictDismissed] = useState(false);
 
   useEffect(() => {
-    if (!shouldHydrateLive({ hasInitialData: Boolean(initialData), apiBase })) return;
+    if (!shouldHydrateLive({ hasInitialData: Boolean(initialData), apiBase, entityIds: [classId] })) return;
     let active = true;
     void workspaceCall<{
       classroom?: { name?: string; join_code?: string; title?: string };
@@ -164,8 +164,22 @@ export function TeacherClassLmsShell({
     setApiErrorStatus(null);
     const localCsv = buildGradebookCsv(classData.students);
     setLastExportCsv(localCsv);
+    const targetClassId = classData.classId || classId;
+    if (
+      !shouldSyncLiveEntity({
+        fetchFn,
+        apiBase,
+        entityIds: [targetClassId, classData.activeAssignmentId],
+      })
+    ) {
+      setStatusFeedback(`Đã xuất bảng điểm CSV demo gồm ${classData.students.length} học sinh (cục bộ).`);
+      return;
+    }
+    const assignmentQuery = isUuid(classData.activeAssignmentId)
+      ? `?assignment_id=${encodeURIComponent(classData.activeAssignmentId)}`
+      : "";
     const result = await workspaceCall<string>({
-      url: `/api/v1/classes/${encodeURIComponent(classId)}/gradebook/export`,
+      url: `/api/v1/classes/${encodeURIComponent(targetClassId)}/gradebook/export${assignmentQuery}`,
       method: "GET",
       fetchFn,
       apiBase,
@@ -187,24 +201,38 @@ export function TeacherClassLmsShell({
     setApiError(null);
     setApiErrorStatus(null);
     try {
-      const result = await workspaceCall({
-        url: "/api/v1/assignments",
-        method: "POST",
-        json: {
-          class_id: classData.classId,
-          topic_id: cluster.topicId,
-          target_student_ids: cluster.studentIds,
-          question_count: cluster.recommendedQuestionCount,
-          source_copilot_cluster_id: cluster.clusterId,
-        },
+      const canSync = shouldSyncLiveEntity({
         fetchFn,
         apiBase,
+        entityIds: [classData.classId, classData.assessmentVersionId],
       });
-      if (!result.ok) {
-        setApiError(result.error);
-        setApiErrorStatus(result.status);
-        setStatusFeedback(null);
-        return;
+      if (canSync) {
+        const useStrictAssignmentPayload =
+          !fetchFn || (isUuid(classData.classId) && isUuid(classData.assessmentVersionId));
+        const result = await workspaceCall({
+          url: "/api/v1/assignments",
+          method: "POST",
+          json: useStrictAssignmentPayload
+            ? {
+                class_id: classData.classId,
+                assessment_version_id: classData.assessmentVersionId,
+              }
+            : {
+                class_id: classData.classId,
+                topic_id: cluster.topicId,
+                target_student_ids: cluster.studentIds,
+                question_count: cluster.recommendedQuestionCount,
+                source_copilot_cluster_id: cluster.clusterId,
+              },
+          fetchFn,
+          apiBase,
+        });
+        if (!result.ok) {
+          setApiError(result.error);
+          setApiErrorStatus(result.status);
+          setStatusFeedback(null);
+          return;
+        }
       }
       setClassData((prev) => ({
         ...prev,
@@ -213,8 +241,9 @@ export function TeacherClassLmsShell({
         ),
       }));
       setConfirmingClusterId(null);
+      const demoSuffix = canSync ? "" : " (mô phỏng demo cục bộ)";
       setStatusFeedback(
-        `Đã giao phiếu bài tập khắc phục ${cluster.recommendedQuestionCount} câu chuyên đề "${cluster.topicName}" cho ${cluster.studentNames.length} học sinh.`,
+        `Đã giao phiếu bài tập khắc phục ${cluster.recommendedQuestionCount} câu chuyên đề "${cluster.topicName}" cho ${cluster.studentNames.length} học sinh.${demoSuffix}`,
       );
     } finally {
       setIsSubmitting(false);

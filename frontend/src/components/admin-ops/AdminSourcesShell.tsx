@@ -12,7 +12,7 @@ import {
 } from "@/components/workspace/WorkspaceStateViews";
 import type { ReviewerRightsStatus as RightsStatus } from "@/lib/bbox-reviewer";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
-import { workspaceCall } from "@/lib/workspace-api";
+import { shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
 import { evaluateDrivePairingCandidate, evaluateParserDriftStatus } from "@/lib/workspace6-admin-ops";
 import { AdminHeader } from "./AdminHeader";
 import { AdminReasonModal } from "./AdminReasonModal";
@@ -75,17 +75,20 @@ export function AdminSourcesShell({
   const handleConfirmPairing = async (pairId: string) => {
     setApiError(null);
     setApiErrorStatus(null);
-    const result = await workspaceCall({
-      url: `/api/v1/drive/pairings/${encodeURIComponent(pairId)}/confirm`,
-      method: "POST",
-      json: { confirmed: true },
-      fetchFn,
-      apiBase,
-    });
-    if (!result.ok) {
-      setApiError(result.error);
-      setApiErrorStatus(result.status);
-      return;
+    const syncLive = shouldSyncLiveEntity({ fetchFn, apiBase, entityIds: [pairId] });
+    if (syncLive) {
+      const result = await workspaceCall({
+        url: `/api/v1/drive/pairings/${encodeURIComponent(pairId)}/confirm`,
+        method: "POST",
+        json: { confirmed: true },
+        fetchFn,
+        apiBase,
+      });
+      if (!result.ok) {
+        setApiError(result.error);
+        setApiErrorStatus(result.status);
+        return;
+      }
     }
     setData((prev) => ({
       ...prev,
@@ -93,7 +96,9 @@ export function AdminSourcesShell({
         p.id === pairId ? { ...p, status: "CONFIRMED" } : p,
       ),
     }));
-    setFeedback(`Đã xác nhận ghép cặp Đề + HDC cho "${pairId}".`);
+    setFeedback(
+      `Đã xác nhận ghép cặp Đề + HDC cho "${pairId}"${syncLive ? "" : " (mô phỏng demo cục bộ)"}.`,
+    );
   };
 
   const handleConfirmRightsChange = async (normalizedReason: string) => {
@@ -101,22 +106,25 @@ export function AdminSourcesShell({
     const { sourceId, sourceName, nextRights } = rightsModalTarget;
     setApiError(null);
     setApiErrorStatus(null);
-    const result = await workspaceCall({
-      url: "/api/v1/rights-records",
-      method: "POST",
-      json: {
-        source_id: sourceId,
-        rights_status: nextRights,
-        reason: normalizedReason,
-      },
-      fetchFn,
-      apiBase,
-    });
-    if (!result.ok) {
-      setApiError(result.error);
-      setApiErrorStatus(result.status);
-      setRightsModalTarget(null);
-      return;
+    const syncLive = shouldSyncLiveEntity({ fetchFn, apiBase, entityIds: [sourceId] });
+    if (syncLive) {
+      const result = await workspaceCall({
+        url: "/api/v1/rights-records",
+        method: "POST",
+        json: {
+          source_id: sourceId,
+          rights_status: nextRights,
+          reason: normalizedReason,
+        },
+        fetchFn,
+        apiBase,
+      });
+      if (!result.ok) {
+        setApiError(result.error);
+        setApiErrorStatus(result.status);
+        setRightsModalTarget(null);
+        return;
+      }
     }
     setData((prev) => ({
       ...prev,
@@ -136,7 +144,9 @@ export function AdminSourcesShell({
       ],
     }));
     setRightsModalTarget(null);
-    setFeedback(`Đã cập nhật bản quyền "${sourceName}" -> ${nextRights} và ghi audit_events.`);
+    setFeedback(
+      `Đã cập nhật bản quyền "${sourceName}" -> ${nextRights} và ghi audit_events${syncLive ? "" : " (mô phỏng demo cục bộ)"}.`,
+    );
   };
 
   const renderMainContent = () => {

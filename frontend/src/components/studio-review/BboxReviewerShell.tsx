@@ -13,7 +13,7 @@ import {
 } from "@/components/workspace/WorkspaceStateViews";
 import type { BoundingBox } from "@/lib/bbox-reviewer";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
-import { shouldHydrateLive, workspaceCall } from "@/lib/workspace-api";
+import { shouldHydrateLive, shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
 import { PdfBboxCanvas } from "./PdfBboxCanvas";
 import { QuestionInspectorPanel } from "./QuestionInspectorPanel";
 import {
@@ -59,7 +59,7 @@ export function BboxReviewerShell({
   const [conflictDismissed, setConflictDismissed] = useState(false);
 
   useEffect(() => {
-    if (!shouldHydrateLive({ hasInitialData: Boolean(initialSession), apiBase })) return;
+    if (!shouldHydrateLive({ hasInitialData: Boolean(initialSession), apiBase, entityIds: [runId] })) return;
     let active = true;
     void workspaceCall<{
       rights_status?: string;
@@ -226,11 +226,20 @@ export function BboxReviewerShell({
     setActionFeedback("Đã xác nhận chuyên môn VERIFIED.");
   };
 
-  const postStudioAction = async (path: string, body: unknown, fallbackMessage: string) => {
+  const postStudioAction = async (
+    path: string,
+    body: unknown,
+    fallbackMessage: string,
+    entityIds: readonly string[],
+  ) => {
     setIsSubmitting(true);
     setApiError(null);
     setApiErrorStatus(null);
     try {
+      if (!shouldSyncLiveEntity({ fetchFn, apiBase, entityIds })) {
+        setActionFeedback(`${fallbackMessage} (mô phỏng demo cục bộ)`);
+        return;
+      }
       const result = await workspaceCall({
         url: path,
         method: path.includes("/structure") ? "PATCH" : "POST",
@@ -358,6 +367,7 @@ export function BboxReviewerShell({
                     `/api/v1/exam-imports/${encodeURIComponent(runId)}/structure`,
                     { items: session.items },
                     `Đã lưu cấu trúc & vùng cắt BBox cho ${selectedItem.stableCode}.`,
+                    [runId],
                   )
                 }
                 onApproveItem={(itemId) =>
@@ -365,6 +375,7 @@ export function BboxReviewerShell({
                     `/api/v1/exam-imports/${encodeURIComponent(runId)}/approve`,
                     { item_id: itemId },
                     `Đã duyệt Approve cho câu ${selectedItem.stableCode}.`,
+                    [runId, itemId],
                   )
                 }
                 onPublishItem={(itemId) =>
@@ -372,6 +383,7 @@ export function BboxReviewerShell({
                     `/api/v1/review-tasks/${encodeURIComponent(itemId)}/decisions`,
                     { decision: "PUBLISH" },
                     `Đã Publish câu ${selectedItem.stableCode} lên Kho chuẩn.`,
+                    [itemId],
                   )
                 }
               />

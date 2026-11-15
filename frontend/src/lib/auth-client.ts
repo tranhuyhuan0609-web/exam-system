@@ -515,6 +515,42 @@ export function navigateToLogin(nextPath?: string): void {
   }
 }
 
+function extractProblemDetailText(
+  parsed: Record<string, unknown>,
+  fallbackDetail: string,
+): string {
+  if (typeof parsed.detail === "string" && parsed.detail.trim()) {
+    return parsed.detail;
+  }
+  if (Array.isArray(parsed.detail)) {
+    const formatted = parsed.detail
+      .map((entry) => {
+        if (typeof entry === "string" && entry.trim()) return entry.trim();
+        if (!entry || typeof entry !== "object") return "";
+        const rec = entry as { loc?: unknown; msg?: unknown };
+        const msg = typeof rec.msg === "string" ? rec.msg.trim() : "";
+        const rawLoc = Array.isArray(rec.loc)
+          ? rec.loc.filter((part): part is string | number => typeof part === "string" || typeof part === "number")
+          : [];
+        const cleanLoc =
+          rawLoc.length > 1 && (rawLoc[0] === "body" || rawLoc[0] === "query" || rawLoc[0] === "path")
+            ? rawLoc.slice(1)
+            : rawLoc;
+        const field = cleanLoc.join(".");
+        if (field && msg) return `${field}: ${msg}`;
+        return msg || field;
+      })
+      .filter((item) => item.length > 0);
+    if (formatted.length > 0) {
+      return formatted.join("; ");
+    }
+  }
+  if (typeof parsed.message === "string" && parsed.message.trim()) {
+    return parsed.message;
+  }
+  return fallbackDetail;
+}
+
 export async function parseProblemDetail(response: Response): Promise<ProblemDetail> {
   const status = response.status || 500;
   const fallback = STATUS_FALLBACK_GUIDANCE[status] ?? {
@@ -550,12 +586,7 @@ export async function parseProblemDetail(response: Response): Promise<ProblemDet
           type: typeof parsed.type === "string" ? parsed.type : undefined,
           title: typeof parsed.title === "string" && parsed.title ? parsed.title : fallback.title,
           status: typeof parsed.status === "number" ? parsed.status : status,
-          detail:
-            typeof parsed.detail === "string" && parsed.detail
-              ? parsed.detail
-              : typeof parsed.message === "string"
-                ? parsed.message
-                : fallback.detail,
+          detail: extractProblemDetailText(parsed, fallback.detail),
           instance: typeof parsed.instance === "string" ? parsed.instance : undefined,
           error_code:
             typeof parsed.error_code === "string"

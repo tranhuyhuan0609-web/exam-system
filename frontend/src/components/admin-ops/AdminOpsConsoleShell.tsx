@@ -11,7 +11,7 @@ import {
   SequenceConflictModal,
 } from "@/components/workspace/WorkspaceStateViews";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
-import { shouldHydrateLive, workspaceCall } from "@/lib/workspace-api";
+import { shouldHydrateLive, shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
 import { evaluateOutboxQueueHealth, type CriticalAdminAction } from "@/lib/workspace6-admin-ops";
 import { AdminHeader } from "./AdminHeader";
 import { AdminReasonModal } from "./AdminReasonModal";
@@ -168,18 +168,21 @@ export function AdminOpsConsoleShell({
     setApiErrorStatus(null);
 
     if (action === "REPLAY_DLQ") {
-      const result = await workspaceCall({
-        url: `/api/v1/admin/dlq/${encodeURIComponent(targetId)}/replay`,
-        method: "POST",
-        json: { reason: normalizedReason },
-        fetchFn,
-        apiBase,
-      });
-      if (!result.ok) {
-        setApiError(result.error);
-        setApiErrorStatus(result.status);
-        setPendingAction(null);
-        return;
+      const syncLive = shouldSyncLiveEntity({ fetchFn, apiBase, entityIds: [targetId] });
+      if (syncLive) {
+        const result = await workspaceCall({
+          url: `/api/v1/admin/dlq/${encodeURIComponent(targetId)}/replay`,
+          method: "POST",
+          json: { reason: normalizedReason },
+          fetchFn,
+          apiBase,
+        });
+        if (!result.ok) {
+          setApiError(result.error);
+          setApiErrorStatus(result.status);
+          setPendingAction(null);
+          return;
+        }
       }
       setData((prev) => ({
         ...prev,
@@ -196,7 +199,9 @@ export function AdminOpsConsoleShell({
           ...prev.auditEvents,
         ],
       }));
-      setFeedback(`Đã Replay DLQ "${targetLabel}" và ghi nhận audit_events.`);
+      setFeedback(
+        `Đã Replay DLQ "${targetLabel}" và ghi nhận audit_events${syncLive ? "" : " (mô phỏng demo cục bộ)"}.`,
+      );
     } else if (action === "OVERRIDE_GRADE") {
       if (!extras?.totalScore) {
         setApiError("Thiếu total_score: backend (OverrideRequest) bắt buộc cả total_score lẫn reason.");
@@ -204,18 +209,21 @@ export function AdminOpsConsoleShell({
         setPendingAction(null);
         return;
       }
-      const result = await workspaceCall({
-        url: `/api/v1/grades/${encodeURIComponent(targetId)}/override`,
-        method: "POST",
-        json: { total_score: extras.totalScore, reason: normalizedReason },
-        fetchFn,
-        apiBase,
-      });
-      if (!result.ok) {
-        setApiError(result.error);
-        setApiErrorStatus(result.status);
-        setPendingAction(null);
-        return;
+      const syncLive = shouldSyncLiveEntity({ fetchFn, apiBase, entityIds: [targetId] });
+      if (syncLive) {
+        const result = await workspaceCall({
+          url: `/api/v1/grades/${encodeURIComponent(targetId)}/override`,
+          method: "POST",
+          json: { total_score: extras.totalScore, reason: normalizedReason },
+          fetchFn,
+          apiBase,
+        });
+        if (!result.ok) {
+          setApiError(result.error);
+          setApiErrorStatus(result.status);
+          setPendingAction(null);
+          return;
+        }
       }
       setData((prev) => ({
         ...prev,
@@ -231,7 +239,9 @@ export function AdminOpsConsoleShell({
           ...prev.auditEvents,
         ],
       }));
-      setFeedback(`Đã ghi nhận phiên phúc khảo Override Grade (${targetId}) vào audit_events.`);
+      setFeedback(
+        `Đã ghi nhận phiên phúc khảo Override Grade (${targetId}) vào audit_events${syncLive ? "" : " (mô phỏng demo cục bộ)"}.`,
+      );
     }
     setPendingAction(null);
   };
@@ -242,23 +252,28 @@ export function AdminOpsConsoleShell({
     const nextEnabled = !target.enabled;
     setApiError(null);
     setApiErrorStatus(null);
-    const result = await workspaceCall({
-      url: `/api/v1/admin/feature-flags/${encodeURIComponent(key)}`,
-      method: "PATCH",
-      json: { is_enabled: nextEnabled },
-      fetchFn,
-      apiBase,
-    });
-    if (!result.ok) {
-      setApiError(result.error);
-      setApiErrorStatus(result.status);
-      return;
+    const syncLive = shouldSyncLiveEntity({ fetchFn, apiBase });
+    if (syncLive) {
+      const result = await workspaceCall({
+        url: `/api/v1/admin/feature-flags/${encodeURIComponent(key)}`,
+        method: "PATCH",
+        json: { is_enabled: nextEnabled },
+        fetchFn,
+        apiBase,
+      });
+      if (!result.ok) {
+        setApiError(result.error);
+        setApiErrorStatus(result.status);
+        return;
+      }
     }
     setData((prev) => ({
       ...prev,
       featureFlags: prev.featureFlags.map((f) => (f.key === key ? { ...f, enabled: nextEnabled } : f)),
     }));
-    setFeedback(`Feature flag "${key}" -> ${nextEnabled ? "ENABLED" : "DISABLED"} (< 5s propagation).`);
+    setFeedback(
+      `Feature flag "${key}" -> ${nextEnabled ? "ENABLED" : "DISABLED"} (< 5s propagation)${syncLive ? "" : " (mô phỏng demo cục bộ)"}.`,
+    );
   };
 
   const renderMainContent = () => {

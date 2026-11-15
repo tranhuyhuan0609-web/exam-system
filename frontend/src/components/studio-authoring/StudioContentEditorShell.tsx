@@ -18,7 +18,7 @@ import {
   type StudioBlockInput,
 } from "@/lib/block-studio-linter";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
-import { workspaceCall } from "@/lib/workspace-api";
+import { shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
 import { StudioBlockEditor } from "./StudioBlockEditor";
 import {
   BLOCK_TYPE_META,
@@ -91,6 +91,12 @@ export function StudioContentEditorShell({
     if (!lintReport.valid) return;
     setApiError(null);
     setApiErrorStatus(null);
+    if (!shouldSyncLiveEntity({ fetchFn, apiBase, entityIds: [doc.contentId] })) {
+      setSaveFeedback(
+        `Đã kiểm tra Pre-Submit Validator (0 lỗi) và lưu bản nháp demo '${doc.contentId}' (cục bộ).`,
+      );
+      return;
+    }
     const result = await workspaceCall({
       url: `/api/v1/content/${encodeURIComponent(doc.contentId)}/drafts`,
       method: "POST",

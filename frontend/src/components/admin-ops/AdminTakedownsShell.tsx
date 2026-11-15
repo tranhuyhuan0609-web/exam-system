@@ -11,7 +11,7 @@ import {
   SequenceConflictModal,
 } from "@/components/workspace/WorkspaceStateViews";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
-import { workspaceCall } from "@/lib/workspace-api";
+import { shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
 import { AdminHeader } from "./AdminHeader";
 import { AdminReasonModal } from "./AdminReasonModal";
 import { createDemoAdminTakedownsData, type AdminTakedownsConsoleData, type TakedownCaseRecord } from "./types";
@@ -74,31 +74,38 @@ export function AdminTakedownsShell({
       legalNoticeRef: newLegalRef.trim(),
       status: "OPEN",
     };
-    const result = await workspaceCall<{ id?: string }>({
-      url: "/api/v1/takedown-cases",
-      method: "POST",
-      json: {
-        complainant_name: created.claimantName,
-        target_entity_type: created.targetType,
-        target_entity_id: created.targetId,
-        legal_reason: `${created.targetTitle} (${created.legalNoticeRef})`,
-      },
-      fetchFn,
-      apiBase,
-    });
-    if (!result.ok) {
-      setApiError(result.error);
-      setApiErrorStatus(result.status);
-      return;
+    const syncLive = shouldSyncLiveEntity({ fetchFn, apiBase, entityIds: [created.targetId] });
+    let remoteCaseId: string | undefined;
+    if (syncLive) {
+      const result = await workspaceCall<{ id?: string }>({
+        url: "/api/v1/takedown-cases",
+        method: "POST",
+        json: {
+          complainant_name: created.claimantName,
+          target_entity_type: created.targetType,
+          target_entity_id: created.targetId,
+          legal_reason: `${created.targetTitle} (${created.legalNoticeRef})`,
+        },
+        fetchFn,
+        apiBase,
+      });
+      if (!result.ok) {
+        setApiError(result.error);
+        setApiErrorStatus(result.status);
+        return;
+      }
+      remoteCaseId = result.data?.id ? String(result.data.id) : undefined;
     }
-    const createdWithRemoteId: TakedownCaseRecord = result.data?.id
-      ? { ...created, id: String(result.data.id) }
+    const createdWithRemoteId: TakedownCaseRecord = remoteCaseId
+      ? { ...created, id: remoteCaseId }
       : created;
     setData((prev) => ({ ...prev, cases: [createdWithRemoteId, ...prev.cases] }));
     setNewTargetTitle("");
     setNewTargetId("");
     setNewLegalRef("");
-    setFeedback(`Đã mở hồ sơ pháp lý "${createdWithRemoteId.id}". Vui lòng nhấn Execute Legal Takedown để gỡ khẩn cấp.`);
+    setFeedback(
+      `Đã mở hồ sơ pháp lý "${createdWithRemoteId.id}". Vui lòng nhấn Execute Legal Takedown để gỡ khẩn cấp${syncLive ? "" : " (mô phỏng demo cục bộ)"}.`,
+    );
   };
 
   const handleConfirmExecuteTakedown = async (normalizedReason: string) => {
@@ -106,18 +113,21 @@ export function AdminTakedownsShell({
     const targetCase = pendingTakedown;
     setApiError(null);
     setApiErrorStatus(null);
-    const result = await workspaceCall({
-      url: `/api/v1/takedown-cases/${encodeURIComponent(targetCase.id)}/execute`,
-      method: "POST",
-      json: { reason: normalizedReason },
-      fetchFn,
-      apiBase,
-    });
-    if (!result.ok) {
-      setApiError(result.error);
-      setApiErrorStatus(result.status);
-      setPendingTakedown(null);
-      return;
+    const syncLive = shouldSyncLiveEntity({ fetchFn, apiBase, entityIds: [targetCase.id] });
+    if (syncLive) {
+      const result = await workspaceCall({
+        url: `/api/v1/takedown-cases/${encodeURIComponent(targetCase.id)}/execute`,
+        method: "POST",
+        json: { reason: normalizedReason },
+        fetchFn,
+        apiBase,
+      });
+      if (!result.ok) {
+        setApiError(result.error);
+        setApiErrorStatus(result.status);
+        setPendingTakedown(null);
+        return;
+      }
     }
     setData((prev) => ({
       ...prev,
@@ -144,7 +154,7 @@ export function AdminTakedownsShell({
       ],
     }));
     setFeedback(
-      `Đã thực thi Execute Legal Takedown cho "${targetCase.targetTitle}" -> rights_status=TAKEDOWN, phát sự kiện rights.takedown.executed (< 30s).`,
+      `Đã thực thi Execute Legal Takedown cho "${targetCase.targetTitle}" -> rights_status=TAKEDOWN, phát sự kiện rights.takedown.executed (< 30s)${syncLive ? "" : " (mô phỏng demo cục bộ)"}.`,
     );
     setPendingTakedown(null);
   };

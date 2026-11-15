@@ -278,3 +278,20 @@ describe("DEMO_ACCOUNTS match the accounts of `python -m app.ops.seed_demo`", ()
     }
   });
 });
+
+describe("parseProblemDetail FastAPI validation arrays", () => {
+  it("formats Pydantic 422 validation error arrays instead of hiding field details", async () => {
+    const response = new Response(
+      JSON.stringify({
+        detail: [
+          { loc: ["body", "stem_text"], msg: "Field required", type: "missing" },
+          { loc: ["path", "class_id"], msg: "Input should be a valid UUID", type: "uuid_parsing" },
+        ],
+      }),
+      { status: 422, statusText: "Unprocessable Entity" },
+    );
+    const parsed = await parseProblemDetail(response);
+    expect(parsed.status).toBe(422);
+    expect(parsed.detail).toBe("stem_text: Field required; class_id: Input should be a valid UUID");
+  });
+});

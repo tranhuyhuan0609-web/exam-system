@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import StudioContentPage from "@/app/studio/content/[id]/page";
 import ImportReviewPage from "@/app/studio/imports/[run_id]/review/page";
 import NewQuestionStudioPage from "@/app/studio/questions/new/page";
-import { QuestionAuthoringShell } from "@/components/studio-authoring/QuestionAuthoringShell";
+import { buildCreateQuestionPayload, QuestionAuthoringShell } from "@/components/studio-authoring/QuestionAuthoringShell";
+import { createDemoQuestionAuthoringDraft } from "@/components/studio-authoring/types";
 import { StudioContentEditorShell } from "@/components/studio-authoring/StudioContentEditorShell";
 import { BboxReviewerShell } from "@/components/studio-review/BboxReviewerShell";
 import { createDemoImportReviewSession } from "@/components/studio-review/types";
@@ -252,5 +253,35 @@ describe("Workspace 3 & 4 Next.js Routes & Mandatory 6 UI States", () => {
       expect(screen.getByTestId(s.testId)).toBeTruthy();
       view.unmount();
     }
+  });
+
+  it("QuestionAuthoringShell sends FastAPI CreateQuestionRequest snake_case payload without camelCase extra keys", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ question: { id: "q-1" } }), { status: 201 }));
+    render(<QuestionAuthoringShell fetchFn={fetchMock as unknown as typeof fetch} />);
+    fireEvent.click(screen.getByTestId("ws4-submit-question-btn"));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(firstCall[0]).toContain("/api/v1/questions");
+    const sent = JSON.parse(String(firstCall[1].body)) as Record<string, unknown>;
+    expect(sent.stable_code).toBe("MATH12-BAYES-NEW-01");
+    expect(sent.item_type).toBe("SINGLE_CHOICE");
+    expect(sent.difficulty_level).toBe("VD");
+    expect(typeof sent.stem_text).toBe("string");
+    expect(sent.answer_schema).toEqual({ correct_option: "A" });
+    expect(sent.rights_status).toBe("OWNED");
+    expect(sent).not.toHaveProperty("stemMarkdown");
+    expect(sent).not.toHaveProperty("authorTenantId");
+    expect(sent).not.toHaveProperty("questionType");
+
+    const demoDraft = createDemoQuestionAuthoringDraft();
+    const clusterPayload = buildCreateQuestionPayload({
+      ...demoDraft,
+      questionType: "CLUSTER_TRUE_FALSE",
+    });
+    expect(clusterPayload.options.map((o) => o.key)).toEqual(["a", "b", "c", "d"]);
+    expect(clusterPayload.answer_schema).toEqual({
+      statements: { a: true, b: false, c: true, d: false },
+    });
   });
 });

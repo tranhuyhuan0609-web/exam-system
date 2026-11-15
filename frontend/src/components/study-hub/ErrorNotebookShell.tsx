@@ -10,7 +10,7 @@ import {
 } from "@/components/workspace/WorkspaceStateViews";
 import { hasAuthToken } from "@/lib/auth-client";
 import type { UserTier } from "@/lib/ui-state-machine";
-import { shouldHydrateLive, workspaceCall } from "@/lib/workspace-api";
+import { isUuid, shouldHydrateLive, shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
 import { H2EduHeader } from "./H2EduHeader";
 import { DEFAULT_ERROR_NOTES, type StudyHubErrorNoteItem } from "./types";
 
@@ -110,20 +110,25 @@ export function ErrorNotebookShell({
     }
 
     const isCorrect = picked === note.variantCorrectOptionKey;
-    const nextCount = isCorrect ? note.consecutiveCorrectCount + 1 : 0;
-    const nextStatus: "ACTIVE" | "RESOLVED" = nextCount >= 2 ? "RESOLVED" : "ACTIVE";
+    let nextCount = isCorrect ? note.consecutiveCorrectCount + 1 : 0;
+    let nextStatus: "ACTIVE" | "RESOLVED" = nextCount >= 2 ? "RESOLVED" : "ACTIVE";
+    const syncLive = shouldSyncLiveEntity({
+      fetchFn,
+      apiBase,
+      entityIds: [note.id],
+    });
 
-    if (fetchFn || hasAuthToken()) {
-      setApiError(null);
-      setApiErrorStatus(null);
-      const endpoint =
-        nextStatus === "RESOLVED"
-          ? `/api/v1/error-notes/${encodeURIComponent(note.id)}/resolve`
-          : `/api/v1/error-notes/${encodeURIComponent(note.id)}/remediate`;
-      const result = await workspaceCall({
-        url: endpoint,
+    setApiError(null);
+    setApiErrorStatus(null);
+
+    if (syncLive) {
+      const result = await workspaceCall<{
+        consecutive_correct_count?: number;
+        status?: "ACTIVE" | "RESOLVED";
+      }>({
+        url: `/api/v1/error-notes/${encodeURIComponent(note.id)}/resolve`,
         method: "POST",
-        json: nextStatus === "RESOLVED" ? {} : { is_correct: isCorrect },
+        json: { is_correct: isCorrect },
         fetchFn,
         apiBase,
       });
@@ -131,6 +136,12 @@ export function ErrorNotebookShell({
         setApiError(result.error);
         setApiErrorStatus(result.status);
         return;
+      }
+      if (typeof result.data?.consecutive_correct_count === "number") {
+        nextCount = result.data.consecutive_correct_count;
+      }
+      if (result.data?.status === "ACTIVE" || result.data?.status === "RESOLVED") {
+        nextStatus = result.data.status;
       }
     }
 
@@ -146,18 +157,20 @@ export function ErrorNotebookShell({
       ),
     );
 
+    const demoNoteSuffix = !syncLive && !isUuid(note.id) && hasAuthToken() ? " (dữ liệu mẫu demo cục bộ)" : "";
     if (isCorrect) {
       setLastAttemptMessage((prev) => ({
         ...prev,
         [note.id]:
-          nextCount >= 2
+          (nextCount >= 2
             ? "Đúng câu biến thể! Đã đạt 2 lần đúng liên tiếp — chuyển sang RESOLVED."
-            : "Đúng 1 câu biến thể (1/2). Cần đúng liên tiếp thêm 1 câu tương tự để đóng lỗi.",
+            : "Đúng 1 câu biến thể (1/2). Cần đúng liên tiếp thêm 1 câu tương tự để đóng lỗi.") + demoNoteSuffix,
       }));
     } else {
       setLastAttemptMessage((prev) => ({
         ...prev,
-        [note.id]: "Chưa chính xác — chuỗi liên tiếp đặt lại về 0/2. Hãy xem lại chẩn đoán và thử lại.",
+        [note.id]:
+          "Chưa chính xác — chuỗi liên tiếp đặt lại về 0/2. Hãy xem lại chẩn đoán và thử lại." + demoNoteSuffix,
       }));
     }
   };

@@ -11,7 +11,7 @@ import {
 } from "@/components/workspace/WorkspaceStateViews";
 import { hasAuthToken } from "@/lib/auth-client";
 import type { UserTier } from "@/lib/ui-state-machine";
-import { shouldHydrateLive, workspaceCall } from "@/lib/workspace-api";
+import { shouldHydrateLive, shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
 import { resolveMasteryIndicator } from "@/lib/workspace1-study-hub";
 import { H2EduHeader } from "./H2EduHeader";
 import { DEFAULT_LEARNING_PATH, type LearningPathTaskItem } from "./types";
@@ -99,7 +99,7 @@ export function LearningPathShell({
   const handleRecalculate = async () => {
     setApiError(null);
     setApiErrorStatus(null);
-    if (activePlanId || fetchFn || hasAuthToken()) {
+    if (shouldSyncLiveEntity({ fetchFn, apiBase, entityIds: [activePlanId] })) {
       const targetPlanId = activePlanId ?? "active";
       const result = await workspaceCall<{ tasks?: BackendPlanTaskDto[] }>({
         url: `/api/v1/learning-plans/${encodeURIComponent(targetPlanId)}/recalculate`,

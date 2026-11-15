@@ -17,7 +17,7 @@ import {
   type SubjectGroup2025,
 } from "@/lib/matrix-builder";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
-import { workspaceCall } from "@/lib/workspace-api";
+import { isUuid, shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
 import { TeacherHeader } from "./TeacherHeader";
 import {
   createDemoMatrixBuilderData,
@@ -166,19 +166,48 @@ export function MatrixExamBuilderShell({
 
   const handleAssembleExam = () => {
     if (!shortageReport.readyToAssemble || !presetValidation.valid) return;
+    const totalCount =
+      partCounts.part1SingleChoice + partCounts.part2ClusterTrueFalse + partCounts.part3ShortNumeric;
+    if (!shouldSyncLiveEntity({ fetchFn, apiBase, entityIds: [data.examId] })) {
+      setApiError(null);
+      setApiErrorStatus(null);
+      setStatusFeedback(
+        `Đã bốc tự động đề thi mẫu ${totalCount} câu (seed=${randomSeed}) đúng chuẩn THPTQG 2025+ (mô phỏng demo cục bộ).`,
+      );
+      return;
+    }
+    const useStrictAssemblePayload = !fetchFn || isUuid(data.examId);
     void runApiMutation(
       `/api/v1/assessments/${encodeURIComponent(data.examId)}/assemble`,
-      {
-        random_seed: randomSeed,
-        subject_group: data.subjectGroup,
-        cells: cells.filter((c) => c.desiredCount > 0),
-      },
-      `Đã bốc tự động đề thi ${partCounts.part1SingleChoice + partCounts.part2ClusterTrueFalse + partCounts.part3ShortNumeric} câu (seed=${randomSeed}) đúng chuẩn THPTQG 2025+.`,
+      useStrictAssemblePayload
+        ? {
+            framework_code: "THPTQG_2025",
+            subject_code: data.subjectGroup === "MATH" ? "math" : "physics",
+            random_seed: randomSeed,
+            taxonomy_node_ids: [],
+          }
+        : {
+            random_seed: randomSeed,
+            subject_group: data.subjectGroup,
+            cells: cells.filter((c) => c.desiredCount > 0),
+          },
+      `Đã bốc tự động đề thi ${totalCount} câu (seed=${randomSeed}) đúng chuẩn THPTQG 2025+.`,
     );
   };
 
   const handleQueueAiGapFill = () => {
     if (shortageReport.shortages.length === 0) return;
+    const firstTopicId = shortageReport.shortages[0]?.topicId;
+    // Backend POST /api/v1/ai/generations requires CreateGenerationRequest (grounded DB anchors + draft_stem),
+    // which the matrix gap-fill widget does not supply directly from browser demo fixtures.
+    if (!shouldSyncLiveEntity({ fetchFn, apiBase, entityIds: [firstTopicId] }) || !fetchFn) {
+      setApiError(null);
+      setApiErrorStatus(null);
+      setStatusFeedback(
+        `Đã tạo ${shortageReport.totalShortage} đề xuất E03 ở chế độ demo cục bộ (cần nguồn anchor DB thật và taxonomy UUID để đẩy lên hàng đợi duyệt A09).`,
+      );
+      return;
+    }
     void runApiMutation(
       "/api/v1/ai/generations",
       {

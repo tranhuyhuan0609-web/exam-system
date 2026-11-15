@@ -20,15 +20,42 @@ export type WorkspaceCallResult<T = unknown> =
   | { ok: true; data?: T; skippedOffline?: boolean }
   | { ok: false; status: number; error: string; problem: ProblemDetail };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuid(value: string | null | undefined): value is string {
+  return typeof value === "string" && UUID_PATTERN.test(value.trim());
+}
+
 export function shouldHydrateLive(options: {
   hasInitialData: boolean;
   apiBase?: string;
   isDemoMode?: boolean;
+  entityIds?: ReadonlyArray<string | null | undefined>;
 }): boolean {
   if (options.hasInitialData) return false;
   if (options.apiBase === "__OFFLINE__") return false;
   if (isDemoModeClient(options.isDemoMode)) return false;
-  return hasAuthToken();
+  if (!hasAuthToken()) return false;
+  if (options.entityIds && options.entityIds.length > 0) {
+    return options.entityIds.every((id) => isUuid(id));
+  }
+  return true;
+}
+
+export function shouldSyncLiveEntity(options: {
+  fetchFn?: typeof fetch;
+  apiBase?: string;
+  isDemoMode?: boolean;
+  entityIds?: ReadonlyArray<string | null | undefined>;
+}): boolean {
+  if (options.apiBase === "__OFFLINE__") return false;
+  if (options.fetchFn) return true;
+  if (isDemoModeClient(options.isDemoMode)) return false;
+  if (!hasAuthToken()) return false;
+  if (options.entityIds && options.entityIds.length > 0) {
+    return options.entityIds.every((id) => isUuid(id));
+  }
+  return true;
 }
 
 export async function workspaceCall<T = unknown>({

@@ -22,7 +22,7 @@ import {
 } from "@/lib/block-studio-linter";
 import { validateShortNumericInput } from "@/lib/exam-input-policy";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
-import { workspaceCall } from "@/lib/workspace-api";
+import { shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
 import { StudioBlockEditor } from "./StudioBlockEditor";
 import {
   BLOCK_TYPE_META,
@@ -38,6 +38,75 @@ export interface QuestionAuthoringShellProps {
   initialUiOverrides?: Partial<WorkspaceUiInput>;
   fetchFn?: typeof fetch;
   apiBase?: string;
+}
+
+export function buildCreateQuestionPayload(draft: StudioQuestionDraftData): {
+  stable_code: string;
+  item_type: StudioQuestionDraftData["questionType"];
+  difficulty_level: StudioQuestionDraftData["difficulty"];
+  stem_text: string;
+  options: Array<{ key: string; text: string }>;
+  answer_schema: Record<string, unknown>;
+  rationale: Record<string, unknown> | null;
+  exam_framework_tags: string[];
+  access_tier: "FREE" | "TEACHER_PRO";
+  rights_status: "OWNED";
+} {
+  const clusterKeys = ["a", "b", "c", "d"] as const;
+  let options: Array<{ key: string; text: string }> = draft.options.map((opt) => ({
+    key: opt.key.trim(),
+    text: opt.label.trim(),
+  }));
+  let answerSchema: Record<string, unknown>;
+
+  if (draft.questionType === "SINGLE_CHOICE") {
+    answerSchema = { correct_option: draft.correctChoice };
+  } else if (draft.questionType === "MULTIPLE_SELECT") {
+    answerSchema = { correct_options: [draft.correctChoice] };
+  } else if (draft.questionType === "CLUSTER_TRUE_FALSE") {
+    options = clusterKeys.map((key, idx) => ({
+      key,
+      text: draft.options[idx]?.label.trim() || `Mệnh đề ${key}`,
+    }));
+    answerSchema = {
+      statements: {
+        a: Boolean(draft.clusterTargets.a),
+        b: Boolean(draft.clusterTargets.b),
+        c: Boolean(draft.clusterTargets.c),
+        d: Boolean(draft.clusterTargets.d),
+      },
+    };
+  } else if (draft.questionType === "SHORT_NUMERIC") {
+    options = [];
+    answerSchema = { value: draft.shortNumericAnswer.trim() };
+  } else if (draft.questionType === "ESSAY") {
+    options = [];
+    answerSchema = {
+      rubric:
+        draft.solutionBlocks
+          .map((b) => (b.markdown ?? "").trim())
+          .filter(Boolean)
+          .join("\n\n") || "Đáp án tự luận chuẩn",
+      max_points: 1,
+    };
+  } else {
+    options = [];
+    answerSchema = { child_question_ids: [] };
+  }
+
+  const trimmedFramework = draft.frameworkTag.trim();
+  return {
+    stable_code: draft.stableCode.trim(),
+    item_type: draft.questionType,
+    difficulty_level: draft.difficulty,
+    stem_text: draft.stemMarkdown.trim(),
+    options,
+    answer_schema: answerSchema,
+    rationale: draft.solutionBlocks.length > 0 ? { blocks: draft.solutionBlocks } : null,
+    exam_framework_tags: [trimmedFramework || "SGK_KNTT"],
+    access_tier: draft.requiresProAsset ? "TEACHER_PRO" : "FREE",
+    rights_status: "OWNED",
+  };
 }
 
 export function QuestionAuthoringShell({
@@ -125,10 +194,16 @@ export function QuestionAuthoringShell({
     if (!validatorIssues.valid) return;
     setApiError(null);
     setApiErrorStatus(null);
+    if (!shouldSyncLiveEntity({ fetchFn, apiBase })) {
+      setSubmitFeedback(
+        `Đã kiểm định Pre-Submit Validator và lưu bản nháp cục bộ '${draft.stableCode}' (đăng nhập để lưu lên hệ thống).`,
+      );
+      return;
+    }
     const result = await workspaceCall({
       url: "/api/v1/questions",
       method: "POST",
-      json: draft,
+      json: buildCreateQuestionPayload(draft),
       fetchFn,
       apiBase,
     });

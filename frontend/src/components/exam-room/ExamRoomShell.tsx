@@ -39,6 +39,7 @@ import {
   resolveWorkspaceUiState,
   type WorkspaceUiInput,
 } from "@/lib/ui-state-machine";
+import { isUuid } from "@/lib/workspace-api";
 import { ExamQuestionCard } from "./ExamQuestionCard";
 import { ExamQuestionPalette } from "./ExamQuestionPalette";
 import { ExamSubmitModal } from "./ExamSubmitModal";
@@ -226,6 +227,10 @@ export function ExamRoomShell({
     injectedClock ?? new ServerClock({ fetchFn }),
   );
   const storeRef = useRef<ExamAutosaveStore | null>(injectedStore ?? null);
+  const isLocalDemoExam =
+    !fetchFn &&
+    !injectedStore &&
+    (Boolean(isDemoMode) || hasDemoQueryFlag() || !isUuid(attemptId));
   const answersRef = useRef<AnswerMap>(answers);
   answersRef.current = answers;
   const attemptRef = useRef<ExamAttemptData | null>(attempt);
@@ -234,6 +239,7 @@ export function ExamRoomShell({
   const conflictServerPayloadRef = useRef<Map<string, unknown>>(new Map());
 
   const ensureStore = useCallback((): ExamAutosaveStore | null => {
+    if (isLocalDemoExam) return null;
     if (storeRef.current) return storeRef.current;
     if (typeof indexedDB === "undefined") return null;
     storeRef.current = createExamAutosaveStore({
@@ -251,7 +257,7 @@ export function ExamRoomShell({
       },
     });
     return storeRef.current;
-  }, [apiBase, fetchFn]);
+  }, [apiBase, fetchFn, isLocalDemoExam]);
 
   const refreshQueueAndConflicts = useCallback(async () => {
     const store = ensureStore();
@@ -286,6 +292,9 @@ export function ExamRoomShell({
     return new ExamSubmissionCoordinator({
       attemptId,
       flushPendingAutosaves: async () => {
+        if (isLocalDemoExam) {
+          return { flushedCount: 0, remainingPendingCount: 0, status: "ok" };
+        }
         const store = ensureStore();
         if (!store) {
           return { flushedCount: 0, remainingPendingCount: 0, status: "ok" };
@@ -325,6 +334,13 @@ export function ExamRoomShell({
         return { flushedCount: 1, remainingPendingCount: 0, status: "ok" };
       },
       submitAttempt: async (req: SubmitAttemptRequest): Promise<SubmitAttemptResponse> => {
+        if (isLocalDemoExam) {
+          return {
+            status: "submitted",
+            receiptId: `DEMO-RCPT-${attemptId.slice(0, 8)}`,
+            submittedAtServerIso: new Date().toISOString(),
+          };
+        }
         try {
           const res = await apiFetch(
             `${apiBase}/api/v1/attempts/${attemptId}/submit`,
@@ -402,7 +418,7 @@ export function ExamRoomShell({
         setSubmissionState(snapshot);
       },
     });
-  }, [apiBase, attemptId, ensureStore, fetchFn, refreshQueueAndConflicts]);
+  }, [apiBase, attemptId, ensureStore, fetchFn, isLocalDemoExam, refreshQueueAndConflicts]);
 
   const loadAttempt = useCallback(async () => {
     if (initialAttempt !== undefined) {
@@ -410,7 +426,7 @@ export function ExamRoomShell({
       setLoading(false);
       return;
     }
-    if (isDemoMode || hasDemoQueryFlag()) {
+    if (isDemoMode || hasDemoQueryFlag() || (!fetchFn && !isUuid(attemptId))) {
       setAttempt(createDemoExamAttempt(attemptId));
       setLoading(false);
       return;

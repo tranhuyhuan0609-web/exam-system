@@ -76,6 +76,7 @@ export interface TeacherClassLmsData {
   readonly inviteCode: string;
   readonly activeAssessmentTitle: string;
   readonly assessmentVersionId: string;
+  readonly activeAssignmentId?: string;
   readonly requiresProAsset: boolean;
   readonly previewPdfUrl: string;
   readonly rawAssetUrl: string;
