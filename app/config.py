@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     # Set to true in production (HTTPS) so the session cookie is never sent over plain HTTP.
     session_https_only: bool = False
     session_max_age_seconds: int = 7 * 24 * 3600
+    access_token_ttl_seconds: int = 8 * 3600  # JWT of POST /api/v1/auth/login
 
     # Files: uploads, rendered pages and cropped figures.
     data_dir: str = "data"

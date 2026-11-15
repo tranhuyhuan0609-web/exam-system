@@ -88,6 +88,8 @@ class CSRFProtectMiddleware(BaseHTTPMiddleware):
             return False
         if "exam_session" in request.cookies:
             return False
+        if request.url.path == "/api/v1/auth/login":
+            return True  # carries the credentials in the body, sets no cookie: nothing ambient to forge
         return request.headers.get("authorization", "").lower().startswith("bearer ")
 
     async def dispatch(self, request: Request, call_next):
