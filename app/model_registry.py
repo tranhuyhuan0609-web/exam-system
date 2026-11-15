@@ -20,6 +20,7 @@ from app.modules.delivery.internal import models as delivery_models  # noqa: F40
 from app.modules.exam_import.internal import models as exam_import_models  # noqa: F401
 from app.modules.extraction.internal import models as extraction_models  # noqa: F401
 from app.modules.frameworks.internal import models as frameworks_models  # noqa: F401
+from app.modules.grading.internal import models as grading_models  # noqa: F401
 from app.modules.ingestion.internal import models as ingestion_models  # noqa: F401
 from app.modules.layout.internal import models as layout_models  # noqa: F401
 from app.modules.outbox.internal import models as outbox_models  # noqa: F401

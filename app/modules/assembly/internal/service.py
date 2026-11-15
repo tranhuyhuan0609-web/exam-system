@@ -9,9 +9,10 @@
   current version, logs the publication and announces `assessment.published`, all in the caller's transaction.
   A paper is VERIFIED when every question in it is (checked again at publish time); rights are the paper's own claim.
 
-Answers: the key of a question of the tenant is copied into the key payload (`answer_source = SNAPSHOT`). A question of
-the system tenant cannot be read by the API role (strict RLS on `question_version_answers`); its entry only names the
-question version (`answer_source = SYSTEM_QUESTION_VERSION`) and the grading worker resolves it, which it may.
+The key payload is self-contained for C07: per item the type, section, position, points and numeric parse policy, plus
+the version's scoring scheme. Answers: the key of a question of the tenant is copied (`answer_source = SNAPSHOT`).
+A question of the system tenant cannot be read by the API role (strict RLS on `question_version_answers`); its entry
+only names the question version (`answer_source = SYSTEM_QUESTION_VERSION`) and the grading worker resolves it.
 """
 
 from __future__ import annotations
@@ -439,7 +440,7 @@ async def publish_assessment(
             text(
                 "SELECT i.question_version_id, i.section_code, i.sequence_order, i.points, "
                 "       v.tenant_id AS question_tenant_id, v.question_id, q.item_type, q.current_version_id, "
-                "       q.publication_status, q.verification_status, q.rights_status "
+                "       q.publication_status, q.verification_status, q.rights_status, v.numeric_parse_policy_json "
                 "FROM assessment_items i "
                 "JOIN question_versions v ON v.id = i.question_version_id "
                 "JOIN questions q ON q.id = v.question_id "
@@ -498,7 +499,9 @@ async def publish_assessment(
         entry: dict[str, Any] = {
             "item_type": item.item_type,
             "section_code": item.section_code,
+            "sequence_order": item.sequence_order,
             "points": str(item.points),
+            "numeric_parse_policy": item.numeric_parse_policy_json,
         }
         if item.question_tenant_id == assessment.tenant_id:
             if item.question_version_id not in answers:
@@ -510,7 +513,14 @@ async def publish_assessment(
         else:
             entry["answer_source"] = "SYSTEM_QUESTION_VERSION"
         key_items[str(item.question_version_id)] = entry
-    payload = {"assessment_version_id": str(draft.id), "items": key_items}
+    # Self-contained: C07 grades from this key alone (plus the answers of system questions), so a regrade years
+    # later sees exactly what was published, whatever happened to the versions and items meanwhile.
+    payload = {
+        "assessment_version_id": str(draft.id),
+        "scoring_scheme_id": str(draft.scoring_scheme_id),
+        "total_points": str(draft.total_points),
+        "items": key_items,
+    }
     checksum = _checksum(payload)
 
     await session.execute(

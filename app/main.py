@@ -29,6 +29,7 @@ from app.modules.delivery.router import router as delivery_router
 from app.modules.exam_import.router import router as exam_import_router
 from app.modules.extraction.router import router as extraction_router
 from app.modules.frameworks.router import router as frameworks_router
+from app.modules.grading.router import router as grading_router
 from app.modules.ingestion.router import router as ingestion_router
 from app.modules.layout.router import router as layout_router
 from app.modules.outbox.router import router as outbox_router
@@ -150,6 +151,7 @@ for _module_router in (
     assembly_router,
     delivery_router,
     attempts_router,
+    grading_router,
 ):
     app.include_router(_module_router)
 
