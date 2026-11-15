@@ -37,6 +37,7 @@ from app.platform.auth_context import (
 )
 from app.platform.errors import PlatformErrorCode, build_problem_detail
 from app.platform.pagination import resolve_correlation_id
+from app.platform.roles import is_platform_admin
 from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1", tags=["mastery"])
@@ -310,10 +311,10 @@ async def calibrate_irt_endpoint(
     actor = _authenticate(request, credentials, correlation_id)
     if isinstance(actor, JSONResponse):
         return actor
-    if not any(r.upper() in _STAFF_ROLES for r in actor.roles):
+    if not is_platform_admin(actor.roles):  # the calibration is shared by every tenant using the question version
         return _problem_response(
             code=PlatformErrorCode.FORBIDDEN,
-            detail="Staff role required to calibrate IRT parameters",
+            detail="Only a platform administrator may calibrate IRT parameters",
             status_code=403,
             instance=str(request.url.path),
             correlation_id=correlation_id,
