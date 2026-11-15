@@ -83,14 +83,14 @@ class PlanTask(Base):
     learning_plan_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     taxonomy_node_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("taxonomy_nodes.id", ondelete="RESTRICT"),
+        ForeignKey("taxonomy_nodes.id"),
         nullable=False,
     )
     task_type: Mapped[str] = mapped_column(String(40), nullable=False)
     rationale_text: Mapped[str] = mapped_column(Text, nullable=False)
     sequence_order: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(
-        String(20),
+        String(30),
         nullable=False,
         server_default=text("'PENDING'"),
     )

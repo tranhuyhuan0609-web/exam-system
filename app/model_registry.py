@@ -18,6 +18,7 @@ from app.modules.curriculum.internal import models as curriculum_models  # noqa:
 from app.modules.dashboard.internal import models as dashboard_models  # noqa: F401
 from app.modules.dedup.internal import models as dedup_models  # noqa: F401
 from app.modules.delivery.internal import models as delivery_models  # noqa: F401
+from app.modules.error_notebook.internal import models as error_notebook_models  # noqa: F401
 from app.modules.exam_import.internal import models as exam_import_models  # noqa: F401
 from app.modules.extraction.internal import models as extraction_models  # noqa: F401
 from app.modules.frameworks.internal import models as frameworks_models  # noqa: F401
@@ -25,8 +26,10 @@ from app.modules.grading.internal import models as grading_models  # noqa: F401
 from app.modules.ingestion.internal import models as ingestion_models  # noqa: F401
 from app.modules.knowledge_graph.internal import models as knowledge_graph_models  # noqa: F401
 from app.modules.layout.internal import models as layout_models  # noqa: F401
+from app.modules.learning_path.internal import models as learning_path_models  # noqa: F401
 from app.modules.outbox.internal import models as outbox_models  # noqa: F401
 from app.modules.parsers.internal import models as parsers_models  # noqa: F401
+from app.modules.practice.internal import models as practice_models  # noqa: F401
 from app.modules.privacy.internal import models as privacy_models  # noqa: F401
 from app.modules.quality.internal import models as quality_models  # noqa: F401
 from app.modules.questions.internal import models as questions_models  # noqa: F401

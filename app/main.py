@@ -27,6 +27,7 @@ from app.modules.curriculum.router import router as curriculum_router
 from app.modules.dashboard.router import router as dashboard_router
 from app.modules.dedup.router import router as dedup_router
 from app.modules.delivery.router import router as delivery_router
+from app.modules.error_notebook.router import router as error_notebook_router
 from app.modules.exam_import.router import router as exam_import_router
 from app.modules.extraction.router import router as extraction_router
 from app.modules.frameworks.router import router as frameworks_router
@@ -34,8 +35,10 @@ from app.modules.grading.router import router as grading_router
 from app.modules.ingestion.router import router as ingestion_router
 from app.modules.knowledge_graph.router import router as knowledge_graph_router
 from app.modules.layout.router import router as layout_router
+from app.modules.learning_path.router import router as learning_path_router
 from app.modules.outbox.router import router as outbox_router
 from app.modules.parsers.router import router as parsers_router
+from app.modules.practice.router import router as practice_router
 from app.modules.privacy.router import router as privacy_router
 from app.modules.quality.router import router as quality_router
 from app.modules.questions.router import router as questions_router
@@ -156,6 +159,9 @@ for _module_router in (
     grading_router,
     knowledge_graph_router,
     dashboard_router,
+    learning_path_router,
+    practice_router,
+    error_notebook_router,
 ):
     app.include_router(_module_router)
 

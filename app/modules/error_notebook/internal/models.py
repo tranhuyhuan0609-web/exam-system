@@ -50,18 +50,19 @@ class ErrorNote(Base):
     membership_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     question_version_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("question_versions.id", ondelete="RESTRICT"),
+        ForeignKey("question_versions.id"),
         nullable=False,
     )
-    primary_taxonomy_node_id: Mapped[uuid.UUID] = mapped_column(
+    # Nullable as in chapter 4; the service always resolves a topic when it captures a note.
+    primary_taxonomy_node_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("taxonomy_nodes.id", ondelete="RESTRICT"),
-        nullable=False,
+        ForeignKey("taxonomy_nodes.id"),
+        nullable=True,
     )
     wrong_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     consecutive_correct_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     status: Mapped[str] = mapped_column(
-        String(20),
+        String(30),
         nullable=False,
         server_default=text("'OPEN'"),
     )
@@ -95,7 +96,7 @@ class RemediationTask(Base):
     )
     completed_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     status: Mapped[str] = mapped_column(
-        String(20),
+        String(30),
         nullable=False,
         server_default=text("'ASSIGNED'"),
     )
