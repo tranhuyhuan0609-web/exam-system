@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { StudioHeader } from "@/components/studio/StudioHeader";
+import { WorkspaceApiAlert } from "@/components/workspace/WorkspaceApiAlert";
 import {
   EmptyState,
   ErrorBoundary,
@@ -12,6 +13,7 @@ import {
 } from "@/components/workspace/WorkspaceStateViews";
 import type { BoundingBox } from "@/lib/bbox-reviewer";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
+import { shouldHydrateLive, workspaceCall } from "@/lib/workspace-api";
 import { PdfBboxCanvas } from "./PdfBboxCanvas";
 import { QuestionInspectorPanel } from "./QuestionInspectorPanel";
 import {
@@ -51,8 +53,98 @@ export function BboxReviewerShell({
   const [activeRegionKind, setActiveRegionKind] = useState<BboxRegionKind>("QUESTION");
   const [zoomPercent, setZoomPercent] = useState<number>(100);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiErrorStatus, setApiErrorStatus] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [conflictDismissed, setConflictDismissed] = useState(false);
+
+  useEffect(() => {
+    if (!shouldHydrateLive({ hasInitialData: Boolean(initialSession), apiBase })) return;
+    let active = true;
+    void workspaceCall<{
+      rights_status?: string;
+      status?: string;
+      proposed_structure_json?: {
+        sections?: Array<{
+          questions?: Array<{
+            question_no?: number;
+            page_number?: number;
+            item_type?: string;
+            stem_md?: string | null;
+            options_md?: string[];
+            paired_answer?: string | null;
+            bbox_json?: BoundingBox | null;
+            original_question_label?: string | null;
+          }>;
+        }>;
+      };
+    }>({
+      url: `/api/v1/exam-imports/${encodeURIComponent(runId)}/structure`,
+      method: "GET",
+      fetchFn,
+      apiBase,
+      redirectOn401: false,
+    }).then((result) => {
+      if (!active) return;
+      if (!result.ok) {
+        if (result.status !== 404) {
+          setApiError(result.error);
+          setApiErrorStatus(result.status);
+        }
+        return;
+      }
+      const remote = result.data;
+      if (!remote?.proposed_structure_json?.sections) return;
+      const flattened = remote.proposed_structure_json.sections.flatMap((sec) => sec.questions ?? []);
+      if (flattened.length === 0) return;
+      const mappedItems: ReviewQuestionItem[] = flattened.map((q, idx) => {
+        const rawType = String(q.item_type ?? "SINGLE_CHOICE").toUpperCase();
+        const questionType: ReviewQuestionItem["questionType"] =
+          rawType === "CLUSTER_TRUE_FALSE" || rawType === "SHORT_NUMERIC" || rawType === "ESSAY"
+            ? rawType
+            : "SINGLE_CHOICE";
+        const optionLetters = ["A", "B", "C", "D"];
+        const options = (q.options_md ?? []).slice(0, 4).map((label, optIdx) => ({
+          key: optionLetters[optIdx] ?? String(optIdx + 1),
+          label,
+        }));
+        return {
+          id: `import-q-${q.question_no ?? idx + 1}`,
+          orderIndex: q.question_no ?? idx + 1,
+          pageNo: q.page_number ?? 1,
+          stableCode: q.original_question_label || `Q${q.question_no ?? idx + 1}`,
+          questionType,
+          stemMarkdown: q.stem_md || `Câu ${q.question_no ?? idx + 1}`,
+          options,
+          sourceAnswer: q.paired_answer ?? "",
+          sympyAnswer: q.paired_answer ?? "",
+          sympyTraceSummary: "Đã tải từ /api/v1/exam-imports/{run_id}/structure",
+          verificationStatus: "AUTO_VERIFIED",
+          rightsStatus:
+            (remote.rights_status as ReviewQuestionItem["rightsStatus"]) || "PENDING_REVIEW",
+          regions: q.bbox_json
+            ? [
+                {
+                  id: `reg-${idx + 1}`,
+                  kind: "QUESTION",
+                  label: q.original_question_label || `Câu ${q.question_no ?? idx + 1}`,
+                  box: q.bbox_json,
+                },
+              ]
+            : [],
+        };
+      });
+      setSession((prev) => ({
+        ...prev,
+        items: mappedItems,
+      }));
+      setSelectedItemId(mappedItems[0]?.id ?? "");
+      setActivePageNo(mappedItems[0]?.pageNo ?? 1);
+    });
+    return () => {
+      active = false;
+    };
+  }, [apiBase, fetchFn, initialSession, runId]);
 
   const selectedItem = useMemo(
     () => session.items.find((item) => item.id === selectedItemId) ?? session.items[0] ?? null,
@@ -136,22 +228,23 @@ export function BboxReviewerShell({
 
   const postStudioAction = async (path: string, body: unknown, fallbackMessage: string) => {
     setIsSubmitting(true);
+    setApiError(null);
+    setApiErrorStatus(null);
     try {
-      const caller = fetchFn ?? (typeof fetch === "function" ? fetch : null);
-      if (caller && apiBase !== "__OFFLINE__") {
-        const res = await caller(`${apiBase}${path}`, {
-          method: path.includes("/structure") ? "PATCH" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (res.ok) {
-          setActionFeedback(fallbackMessage);
-          return;
-        }
+      const result = await workspaceCall({
+        url: path,
+        method: path.includes("/structure") ? "PATCH" : "POST",
+        json: body,
+        fetchFn,
+        apiBase,
+      });
+      if (!result.ok) {
+        setApiError(result.error);
+        setApiErrorStatus(result.status);
+        setActionFeedback(null);
+        return;
       }
       setActionFeedback(fallbackMessage);
-    } catch {
-      setActionFeedback(`${fallbackMessage} (lưu cục bộ khi mất kết nối API).`);
     } finally {
       setIsSubmitting(false);
     }
@@ -212,6 +305,15 @@ export function BboxReviewerShell({
           />
         ) : (
           <main data-testid="ws3-split-layout" className="mx-auto max-w-[1600px] px-4 py-5">
+            {apiError && (
+              <div className="mb-4">
+                <WorkspaceApiAlert
+                  message={apiError}
+                  status={apiErrorStatus}
+                  onDismiss={() => setApiError(null)}
+                />
+              </div>
+            )}
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-xs">
               <div>
                 <h1 className="text-lg font-extrabold text-slate-900">{session.documentTitle}</h1>

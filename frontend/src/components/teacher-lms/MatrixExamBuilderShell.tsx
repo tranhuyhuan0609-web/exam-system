@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { WorkspaceApiAlert } from "@/components/workspace/WorkspaceApiAlert";
 import {
   EmptyState,
   ErrorBoundary,
@@ -16,6 +17,7 @@ import {
   type SubjectGroup2025,
 } from "@/lib/matrix-builder";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
+import { workspaceCall } from "@/lib/workspace-api";
 import { TeacherHeader } from "./TeacherHeader";
 import {
   createDemoMatrixBuilderData,
@@ -51,6 +53,8 @@ export function MatrixExamBuilderShell({
     () => (initialData ?? createDemoMatrixBuilderData("MATH")).randomSeed,
   );
   const [statusFeedback, setStatusFeedback] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiErrorStatus, setApiErrorStatus] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [conflictDismissed, setConflictDismissed] = useState(false);
 
@@ -138,18 +142,23 @@ export function MatrixExamBuilderShell({
 
   const runApiMutation = async (urlPath: string, body: unknown, fallbackMessage: string) => {
     setIsSubmitting(true);
+    setApiError(null);
+    setApiErrorStatus(null);
     try {
-      const caller = fetchFn ?? (typeof fetch === "function" ? fetch : null);
-      if (caller) {
-        await caller(`${apiBase}${urlPath}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
+      const result = await workspaceCall({
+        url: urlPath,
+        method: "POST",
+        json: body,
+        fetchFn,
+        apiBase,
+      });
+      if (!result.ok) {
+        setApiError(result.error);
+        setApiErrorStatus(result.status);
+        setStatusFeedback(null);
+        return;
       }
       setStatusFeedback(fallbackMessage);
-    } catch {
-      setStatusFeedback(`${fallbackMessage} (Đã ghi nhận ở chế độ demo/offline).`);
     } finally {
       setIsSubmitting(false);
     }
@@ -214,6 +223,13 @@ export function MatrixExamBuilderShell({
 
     return (
       <div className="mx-auto max-w-[1600px] space-y-5 px-4 py-5">
+        {apiError && (
+          <WorkspaceApiAlert
+            message={apiError}
+            status={apiErrorStatus}
+            onDismiss={() => setApiError(null)}
+          />
+        )}
         {uiResolution.kind === "OfflineRetryBanner" && (
           <OfflineRetryBanner pendingCount={initialUiOverrides?.pendingAutosaveCount ?? 0} />
         )}

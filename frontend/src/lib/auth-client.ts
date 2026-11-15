@@ -287,6 +287,44 @@ export function buildSessionFromRawToken(rawToken: string): AuthSession | null {
   };
 }
 
+let memorySessionCache: AuthSession | null = null;
+
+function getSafeStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const candidate = window.localStorage;
+    if (
+      candidate &&
+      typeof candidate.getItem === "function" &&
+      typeof candidate.setItem === "function" &&
+      typeof candidate.removeItem === "function"
+    ) {
+      return candidate;
+    }
+  } catch {
+    // Ignore restricted/uninitialized localStorage
+  }
+  return null;
+}
+
+function readTokenFromCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  try {
+    const rawCookie = document.cookie || "";
+    const prefix = `${AUTH_COOKIE_NAME}=`;
+    for (const part of rawCookie.split(";")) {
+      const trimmed = part.trim();
+      if (trimmed.startsWith(prefix)) {
+        const val = decodeURIComponent(trimmed.slice(prefix.length)).trim();
+        return val || null;
+      }
+    }
+  } catch {
+    // Ignore cookie parse failures
+  }
+  return null;
+}
+
 function dispatchAuthChanged(): void {
   if (typeof window === "undefined") return;
   try {
@@ -298,28 +336,57 @@ function dispatchAuthChanged(): void {
 
 export function getAuthSession(): AuthSession | null {
   if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage?.getItem(AUTH_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as AuthSession;
-    if (!parsed || typeof parsed.accessToken !== "string" || !parsed.accessToken.trim()) {
-      return null;
+
+  const storage = getSafeStorage();
+  if (storage) {
+    try {
+      const raw = storage.getItem(AUTH_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as AuthSession;
+        if (parsed && typeof parsed.accessToken === "string" && parsed.accessToken.trim()) {
+          if (isSessionExpired(parsed)) {
+            memorySessionCache = null;
+            return null;
+          }
+          memorySessionCache = parsed;
+          return parsed;
+        }
+      }
+    } catch {
+      // Fall back to in-memory / cookie session
     }
-    if (isSessionExpired(parsed)) {
-      return null;
-    }
-    return parsed;
-  } catch {
-    return null;
   }
+
+  if (memorySessionCache) {
+    if (isSessionExpired(memorySessionCache)) {
+      memorySessionCache = null;
+      return null;
+    }
+    return memorySessionCache;
+  }
+
+  const cookieToken = readTokenFromCookie();
+  if (cookieToken) {
+    const rebuilt = buildSessionFromRawToken(cookieToken);
+    if (rebuilt && !isSessionExpired(rebuilt)) {
+      memorySessionCache = rebuilt;
+      return rebuilt;
+    }
+  }
+
+  return null;
 }
 
 export function setAuthSession(session: AuthSession): void {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage?.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
-  } catch {
-    // Ignore storage quota / disabled storage
+  memorySessionCache = session;
+  const storage = getSafeStorage();
+  if (storage) {
+    try {
+      storage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+    } catch {
+      // Ignore storage quota / disabled storage
+    }
   }
   if (typeof document !== "undefined") {
     try {
@@ -337,11 +404,15 @@ export function setAuthSession(session: AuthSession): void {
 }
 
 export function clearAuthSession(): void {
+  memorySessionCache = null;
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage?.removeItem(AUTH_STORAGE_KEY);
-  } catch {
-    // Ignore storage errors
+  const storage = getSafeStorage();
+  if (storage) {
+    try {
+      storage.removeItem(AUTH_STORAGE_KEY);
+    } catch {
+      // Ignore storage errors
+    }
   }
   if (typeof document !== "undefined") {
     try {

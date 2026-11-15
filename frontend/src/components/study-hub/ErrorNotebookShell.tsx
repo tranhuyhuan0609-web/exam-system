@@ -1,13 +1,16 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { SafeKatexText } from "@/components/workspace/SafeKatexText";
+import { WorkspaceApiAlert } from "@/components/workspace/WorkspaceApiAlert";
 import {
   EmptyState,
   ErrorBoundary,
   LoadingSkeleton,
 } from "@/components/workspace/WorkspaceStateViews";
+import { hasAuthToken } from "@/lib/auth-client";
 import type { UserTier } from "@/lib/ui-state-machine";
+import { shouldHydrateLive, workspaceCall } from "@/lib/workspace-api";
 import { H2EduHeader } from "./H2EduHeader";
 import { DEFAULT_ERROR_NOTES, type StudyHubErrorNoteItem } from "./types";
 
@@ -16,6 +19,8 @@ export interface ErrorNotebookShellProps {
   initialUserTier?: UserTier;
   isLoading?: boolean;
   errorCode?: string | null;
+  fetchFn?: typeof fetch;
+  apiBase?: string;
 }
 
 export function ErrorNotebookShell({
@@ -23,12 +28,69 @@ export function ErrorNotebookShell({
   initialUserTier = "FREE",
   isLoading = false,
   errorCode = null,
+  fetchFn,
+  apiBase = "",
 }: ErrorNotebookShellProps) {
   const [userTier, setUserTier] = useState<UserTier>(initialUserTier);
   const [notes, setNotes] = useState<readonly StudyHubErrorNoteItem[]>(initialNotes);
   const [filter, setFilter] = useState<"ALL" | "ACTIVE" | "RESOLVED">("ALL");
   const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({});
   const [lastAttemptMessage, setLastAttemptMessage] = useState<Record<string, string>>({});
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiErrorStatus, setApiErrorStatus] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!shouldHydrateLive({ hasInitialData: initialNotes !== DEFAULT_ERROR_NOTES, apiBase })) {
+      return;
+    }
+    let active = true;
+    void workspaceCall<
+      Array<{
+        id: string;
+        question_version_id?: string;
+        wrong_count?: number;
+        consecutive_correct_count?: number;
+        status?: string;
+      }>
+    >({
+      url: "/api/v1/error-notes",
+      method: "GET",
+      fetchFn,
+      apiBase,
+      redirectOn401: false,
+    }).then((result) => {
+      if (!active) return;
+      if (!result.ok) {
+        if (result.status !== 404) {
+          setApiError(result.error);
+          setApiErrorStatus(result.status);
+        }
+        return;
+      }
+      if (Array.isArray(result.data) && result.data.length > 0) {
+        setNotes(
+          result.data.map((n, idx) => ({
+            id: n.id,
+            questionCode: String(n.question_version_id ?? `Q-${idx + 1}`).slice(0, 12),
+            topicTitle: "Sổ tay câu sai (D05)",
+            summaryLatex: `Đã ghi nhận ${n.wrong_count ?? 1} lần làm sai — hoàn thành 2 câu biến thể đúng liên tiếp.`,
+            diagnosis: "Đồng bộ trực tiếp từ backend /api/v1/error-notes.",
+            consecutiveCorrectCount: n.consecutive_correct_count ?? 0,
+            status: n.status === "RESOLVED" ? "RESOLVED" : "ACTIVE",
+            variantDrillPrompt: "Chọn đáp án chính xác cho biến thể ôn tập:",
+            variantCorrectOptionKey: "A",
+            variantOptions: [
+              { key: "A", label: "Đáp án đúng" },
+              { key: "B", label: "Phương án nhiễu" },
+            ],
+          })),
+        );
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [apiBase, fetchFn, initialNotes]);
 
   const visibleNotes = useMemo(() => {
     if (filter === "ALL") {
@@ -37,7 +99,7 @@ export function ErrorNotebookShell({
     return notes.filter((n) => n.status === filter);
   }, [notes, filter]);
 
-  const handleSubmitRemediation = (note: StudyHubErrorNoteItem) => {
+  const handleSubmitRemediation = async (note: StudyHubErrorNoteItem) => {
     const picked = selectedOptions[note.id];
     if (!picked) {
       setLastAttemptMessage((prev) => ({
@@ -48,23 +110,43 @@ export function ErrorNotebookShell({
     }
 
     const isCorrect = picked === note.variantCorrectOptionKey;
+    const nextCount = isCorrect ? note.consecutiveCorrectCount + 1 : 0;
+    const nextStatus: "ACTIVE" | "RESOLVED" = nextCount >= 2 ? "RESOLVED" : "ACTIVE";
+
+    if (fetchFn || hasAuthToken()) {
+      setApiError(null);
+      setApiErrorStatus(null);
+      const endpoint =
+        nextStatus === "RESOLVED"
+          ? `/api/v1/error-notes/${encodeURIComponent(note.id)}/resolve`
+          : `/api/v1/error-notes/${encodeURIComponent(note.id)}/remediate`;
+      const result = await workspaceCall({
+        url: endpoint,
+        method: "POST",
+        json: nextStatus === "RESOLVED" ? {} : { is_correct: isCorrect },
+        fetchFn,
+        apiBase,
+      });
+      if (!result.ok) {
+        setApiError(result.error);
+        setApiErrorStatus(result.status);
+        return;
+      }
+    }
+
     setNotes((prev) =>
-      prev.map((item) => {
-        if (item.id !== note.id) {
-          return item;
-        }
-        const nextCount = isCorrect ? item.consecutiveCorrectCount + 1 : 0;
-        const nextStatus: "ACTIVE" | "RESOLVED" = nextCount >= 2 ? "RESOLVED" : "ACTIVE";
-        return {
-          ...item,
-          consecutiveCorrectCount: nextCount,
-          status: nextStatus,
-        };
-      }),
+      prev.map((item) =>
+        item.id !== note.id
+          ? item
+          : {
+              ...item,
+              consecutiveCorrectCount: nextCount,
+              status: nextStatus,
+            },
+      ),
     );
 
     if (isCorrect) {
-      const nextCount = note.consecutiveCorrectCount + 1;
       setLastAttemptMessage((prev) => ({
         ...prev,
         [note.id]:
@@ -94,6 +176,13 @@ export function ErrorNotebookShell({
           />
         ) : (
           <main data-testid="error-notebook-main" className="mx-auto max-w-5xl space-y-6 px-4 py-6">
+            {apiError && (
+              <WorkspaceApiAlert
+                message={apiError}
+                status={apiErrorStatus}
+                onDismiss={() => setApiError(null)}
+              />
+            )}
             <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
               <div>
                 <div className="text-xs font-bold uppercase tracking-wider text-blue-700">
