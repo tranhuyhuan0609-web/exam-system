@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { WorkspaceApiAlert } from "@/components/workspace/WorkspaceApiAlert";
 import {
   EmptyState,
   ErrorBoundary,
@@ -10,6 +11,7 @@ import {
   SequenceConflictModal,
 } from "@/components/workspace/WorkspaceStateViews";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
+import { workspaceCall } from "@/lib/workspace-api";
 import { AdminHeader } from "./AdminHeader";
 import { AdminReasonModal } from "./AdminReasonModal";
 import { createDemoAdminTakedownsData, type AdminTakedownsConsoleData, type TakedownCaseRecord } from "./types";
@@ -37,6 +39,8 @@ export function AdminTakedownsShell({
   const [newLegalRef, setNewLegalRef] = useState("");
   const [pendingTakedown, setPendingTakedown] = useState<TakedownCaseRecord | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiErrorStatus, setApiErrorStatus] = useState<number | null>(null);
   const [conflictDismissed, setConflictDismissed] = useState(false);
 
   const uiResolution = useMemo(
@@ -57,6 +61,8 @@ export function AdminTakedownsShell({
   const handleCreateCase = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTargetTitle.trim() || !newLegalRef.trim()) return;
+    setApiError(null);
+    setApiErrorStatus(null);
     const caseId = `td-2026-${data.cases.length + 1}`;
     const created: TakedownCaseRecord = {
       id: caseId,
@@ -68,39 +74,50 @@ export function AdminTakedownsShell({
       legalNoticeRef: newLegalRef.trim(),
       status: "OPEN",
     };
-    const caller = fetchFn ?? (typeof fetch === "function" ? fetch : null);
-    if (caller) {
-      try {
-        await caller(`${apiBase}/api/v1/takedown-cases`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(created),
-        });
-      } catch {
-        // Fallback offline/demo preservation
-      }
+    const result = await workspaceCall<{ id?: string }>({
+      url: "/api/v1/takedown-cases",
+      method: "POST",
+      json: {
+        complainant_name: created.claimantName,
+        target_entity_type: created.targetType,
+        target_entity_id: created.targetId,
+        legal_reason: `${created.targetTitle} (${created.legalNoticeRef})`,
+      },
+      fetchFn,
+      apiBase,
+    });
+    if (!result.ok) {
+      setApiError(result.error);
+      setApiErrorStatus(result.status);
+      return;
     }
-    setData((prev) => ({ ...prev, cases: [created, ...prev.cases] }));
+    const createdWithRemoteId: TakedownCaseRecord = result.data?.id
+      ? { ...created, id: String(result.data.id) }
+      : created;
+    setData((prev) => ({ ...prev, cases: [createdWithRemoteId, ...prev.cases] }));
     setNewTargetTitle("");
     setNewTargetId("");
     setNewLegalRef("");
-    setFeedback(`Đã mở hồ sơ pháp lý "${caseId}". Vui lòng nhấn Execute Legal Takedown để gỡ khẩn cấp.`);
+    setFeedback(`Đã mở hồ sơ pháp lý "${createdWithRemoteId.id}". Vui lòng nhấn Execute Legal Takedown để gỡ khẩn cấp.`);
   };
 
   const handleConfirmExecuteTakedown = async (normalizedReason: string) => {
     if (!pendingTakedown) return;
     const targetCase = pendingTakedown;
-    const caller = fetchFn ?? (typeof fetch === "function" ? fetch : null);
-    if (caller) {
-      try {
-        await caller(`${apiBase}/api/v1/takedown-cases/${encodeURIComponent(targetCase.id)}/execute`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reason: normalizedReason }),
-        });
-      } catch {
-        // Demo update preserved cleanly
-      }
+    setApiError(null);
+    setApiErrorStatus(null);
+    const result = await workspaceCall({
+      url: `/api/v1/takedown-cases/${encodeURIComponent(targetCase.id)}/execute`,
+      method: "POST",
+      json: { reason: normalizedReason },
+      fetchFn,
+      apiBase,
+    });
+    if (!result.ok) {
+      setApiError(result.error);
+      setApiErrorStatus(result.status);
+      setPendingTakedown(null);
+      return;
     }
     setData((prev) => ({
       ...prev,
@@ -146,6 +163,13 @@ export function AdminTakedownsShell({
 
     return (
       <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-5">
+        {apiError && (
+          <WorkspaceApiAlert
+            message={apiError}
+            status={apiErrorStatus}
+            onDismiss={() => setApiError(null)}
+          />
+        )}
         {uiResolution.kind === "OfflineRetryBanner" && (
           <OfflineRetryBanner pendingCount={initialUiOverrides?.pendingAutosaveCount ?? 0} />
         )}

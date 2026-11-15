@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { SafeKatexText } from "@/components/workspace/SafeKatexText";
+import { WorkspaceApiAlert } from "@/components/workspace/WorkspaceApiAlert";
 import {
   EmptyState,
   ErrorBoundary,
@@ -11,6 +12,7 @@ import {
   SequenceConflictModal,
 } from "@/components/workspace/WorkspaceStateViews";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
+import { shouldHydrateLive, workspaceCall } from "@/lib/workspace-api";
 import { TeacherHeader } from "./TeacherHeader";
 import {
   createDemoTeacherClassData,
@@ -55,9 +57,64 @@ export function TeacherClassLmsShell({
   const [filterMode, setFilterMode] = useState<"ALL" | "SUBMITTED" | "UNSUBMITTED" | "LATE">("ALL");
   const [confirmingClusterId, setConfirmingClusterId] = useState<string | null>(null);
   const [statusFeedback, setStatusFeedback] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiErrorStatus, setApiErrorStatus] = useState<number | null>(null);
   const [lastExportCsv, setLastExportCsv] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [conflictDismissed, setConflictDismissed] = useState(false);
+
+  useEffect(() => {
+    if (!shouldHydrateLive({ hasInitialData: Boolean(initialData), apiBase })) return;
+    let active = true;
+    void workspaceCall<{
+      classroom?: { name?: string; join_code?: string; title?: string };
+      members?: Array<{
+        membership_id?: string;
+        display_name?: string | null;
+        role_in_class?: string;
+        status?: string;
+      }>;
+    }>({
+      url: `/api/v1/classes/${encodeURIComponent(classId)}`,
+      method: "GET",
+      fetchFn,
+      apiBase,
+      redirectOn401: false,
+    }).then((result) => {
+      if (!active) return;
+      if (!result.ok) {
+        if (result.status !== 404 && result.status !== 422) {
+          setApiError(result.error);
+          setApiErrorStatus(result.status);
+        }
+        return;
+      }
+      const remote = result.data;
+      if (!remote?.classroom) return;
+      const studentMembers = (remote.members ?? [])
+        .filter((m) => (m.role_in_class ?? "STUDENT") === "STUDENT")
+        .map<StudentGradeRow>((m, idx) => ({
+          studentId: m.membership_id ?? `mem-${idx + 1}`,
+          studentCode: (m.membership_id ?? `HS${idx + 1}`).slice(0, 8),
+          studentName: m.display_name || `Học sinh ${idx + 1}`,
+          submitted: false,
+          submittedAt: null,
+          isLate: false,
+          score: null,
+          attemptId: null,
+          weakTopicIds: [],
+        }));
+      setClassData((prev) => ({
+        ...prev,
+        className: remote.classroom?.name || remote.classroom?.title || prev.className,
+        inviteCode: remote.classroom?.join_code || prev.inviteCode,
+        ...(studentMembers.length > 0 ? { students: studentMembers } : {}),
+      }));
+    });
+    return () => {
+      active = false;
+    };
+  }, [apiBase, classId, fetchFn, initialData]);
 
   const uiResolution = useMemo(
     () =>
@@ -103,35 +160,51 @@ export function TeacherClassLmsShell({
   }, [classData.students]);
 
   const handleExportCsv = async () => {
-    const csv = buildGradebookCsv(classData.students);
-    setLastExportCsv(csv);
-    const caller = fetchFn ?? (typeof fetch === "function" ? fetch : null);
-    if (caller) {
-      try {
-        await caller(`${apiBase}/api/v1/classes/${encodeURIComponent(classId)}/gradebook/export`);
-      } catch {
-        // Offline/demo fallback already generated CSV string cleanly.
-      }
+    setApiError(null);
+    setApiErrorStatus(null);
+    const localCsv = buildGradebookCsv(classData.students);
+    setLastExportCsv(localCsv);
+    const result = await workspaceCall<string>({
+      url: `/api/v1/classes/${encodeURIComponent(classId)}/gradebook/export`,
+      method: "GET",
+      fetchFn,
+      apiBase,
+    });
+    if (!result.ok) {
+      setApiError(result.error);
+      setApiErrorStatus(result.status);
+      setStatusFeedback(null);
+      return;
+    }
+    if (typeof result.data === "string" && result.data.includes(",")) {
+      setLastExportCsv(result.data);
     }
     setStatusFeedback(`Đã xuất bảng điểm CSV gồm ${classData.students.length} học sinh.`);
   };
 
   const handleConfirmRemediation = async (cluster: CopilotRemediationCluster) => {
     setIsSubmitting(true);
+    setApiError(null);
+    setApiErrorStatus(null);
     try {
-      const caller = fetchFn ?? (typeof fetch === "function" ? fetch : null);
-      if (caller) {
-        await caller(`${apiBase}/api/v1/assignments`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            class_id: classData.classId,
-            topic_id: cluster.topicId,
-            target_student_ids: cluster.studentIds,
-            question_count: cluster.recommendedQuestionCount,
-            source_copilot_cluster_id: cluster.clusterId,
-          }),
-        });
+      const result = await workspaceCall({
+        url: "/api/v1/assignments",
+        method: "POST",
+        json: {
+          class_id: classData.classId,
+          topic_id: cluster.topicId,
+          target_student_ids: cluster.studentIds,
+          question_count: cluster.recommendedQuestionCount,
+          source_copilot_cluster_id: cluster.clusterId,
+        },
+        fetchFn,
+        apiBase,
+      });
+      if (!result.ok) {
+        setApiError(result.error);
+        setApiErrorStatus(result.status);
+        setStatusFeedback(null);
+        return;
       }
       setClassData((prev) => ({
         ...prev,
@@ -143,8 +216,6 @@ export function TeacherClassLmsShell({
       setStatusFeedback(
         `Đã giao phiếu bài tập khắc phục ${cluster.recommendedQuestionCount} câu chuyên đề "${cluster.topicName}" cho ${cluster.studentNames.length} học sinh.`,
       );
-    } catch {
-      setStatusFeedback("Không thể kết nối máy chủ F02 Assignments; phiếu vẫn ở trạng thái nháp.");
     } finally {
       setIsSubmitting(false);
     }
@@ -184,6 +255,13 @@ export function TeacherClassLmsShell({
 
     return (
       <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-5">
+        {apiError && (
+          <WorkspaceApiAlert
+            message={apiError}
+            status={apiErrorStatus}
+            onDismiss={() => setApiError(null)}
+          />
+        )}
         {uiResolution.kind === "OfflineRetryBanner" && (
           <OfflineRetryBanner pendingCount={initialUiOverrides?.pendingAutosaveCount ?? 0} />
         )}

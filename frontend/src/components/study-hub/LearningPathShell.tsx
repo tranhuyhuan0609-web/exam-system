@@ -1,14 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { SafeKatexText } from "@/components/workspace/SafeKatexText";
+import { WorkspaceApiAlert } from "@/components/workspace/WorkspaceApiAlert";
 import {
   EmptyState,
   ErrorBoundary,
   LoadingSkeleton,
 } from "@/components/workspace/WorkspaceStateViews";
+import { hasAuthToken } from "@/lib/auth-client";
 import type { UserTier } from "@/lib/ui-state-machine";
+import { shouldHydrateLive, workspaceCall } from "@/lib/workspace-api";
 import { resolveMasteryIndicator } from "@/lib/workspace1-study-hub";
 import { H2EduHeader } from "./H2EduHeader";
 import { DEFAULT_LEARNING_PATH, type LearningPathTaskItem } from "./types";
@@ -18,6 +21,32 @@ export interface LearningPathShellProps {
   initialUserTier?: UserTier;
   isLoading?: boolean;
   errorCode?: string | null;
+  fetchFn?: typeof fetch;
+  apiBase?: string;
+}
+
+interface BackendPlanTaskDto {
+  id: string;
+  taxonomy_node_id?: string;
+  task_type: string;
+  rationale_text: string;
+  sequence_order: number;
+  status: string;
+}
+
+function mapBackendPlanTasks(apiTasks: readonly BackendPlanTaskDto[]): LearningPathTaskItem[] {
+  return apiTasks.map((t, idx) => ({
+    id: t.id,
+    order: t.sequence_order ?? idx + 1,
+    targetSlug: "cong-thuc-bayes",
+    targetTitle: `Nhiệm vụ #${t.sequence_order ?? idx + 1} (${t.task_type})`,
+    nodeCode: t.taxonomy_node_id ? t.taxonomy_node_id.slice(0, 8) : `NODE-${idx + 1}`,
+    teacherAssigned: t.task_type === "TEACHER_ASSIGNED",
+    isPrerequisiteRemediation: t.task_type === "PREREQUISITE_REVIEW",
+    rationaleText: t.rationale_text,
+    dueDateLabel: t.status === "COMPLETED" ? "Hoàn thành" : "Đang học",
+    mastery: { masteryRatio: 0.65, answeredCount: 10, standardError: 0.12 },
+  }));
 }
 
 export function LearningPathShell({
@@ -25,17 +54,75 @@ export function LearningPathShell({
   initialUserTier = "FREE",
   isLoading = false,
   errorCode = null,
+  fetchFn,
+  apiBase = "",
 }: LearningPathShellProps) {
   const [userTier, setUserTier] = useState<UserTier>(initialUserTier);
   const [tasks, setTasks] = useState<readonly LearningPathTaskItem[]>(initialTasks);
+  const [activePlanId, setActivePlanId] = useState<string | null>(null);
   const [recalculatedNotice, setRecalculatedNotice] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiErrorStatus, setApiErrorStatus] = useState<number | null>(null);
 
-  const handleRecalculate = () => {
-    setTasks((prev) => {
-      const teacherTasks = prev.filter((t) => t.teacherAssigned);
-      const adaptiveTasks = prev.filter((t) => !t.teacherAssigned);
-      return [...adaptiveTasks, ...teacherTasks];
+  useEffect(() => {
+    if (!shouldHydrateLive({ hasInitialData: initialTasks !== DEFAULT_LEARNING_PATH, apiBase })) {
+      return;
+    }
+    let active = true;
+    void workspaceCall<Array<{ id: string; tasks?: BackendPlanTaskDto[] }>>({
+      url: "/api/v1/learning-plans",
+      method: "GET",
+      fetchFn,
+      apiBase,
+      redirectOn401: false,
+    }).then((result) => {
+      if (!active) return;
+      if (!result.ok) {
+        if (result.status !== 404) {
+          setApiError(result.error);
+          setApiErrorStatus(result.status);
+        }
+        return;
+      }
+      const plan = Array.isArray(result.data) ? result.data[0] : null;
+      if (!plan) return;
+      setActivePlanId(plan.id);
+      if (Array.isArray(plan.tasks) && plan.tasks.length > 0) {
+        setTasks(mapBackendPlanTasks(plan.tasks));
+      }
     });
+    return () => {
+      active = false;
+    };
+  }, [apiBase, fetchFn, initialTasks]);
+
+  const handleRecalculate = async () => {
+    setApiError(null);
+    setApiErrorStatus(null);
+    if (activePlanId || fetchFn || hasAuthToken()) {
+      const targetPlanId = activePlanId ?? "active";
+      const result = await workspaceCall<{ tasks?: BackendPlanTaskDto[] }>({
+        url: `/api/v1/learning-plans/${encodeURIComponent(targetPlanId)}/recalculate`,
+        method: "POST",
+        json: {},
+        fetchFn,
+        apiBase,
+      });
+      if (!result.ok) {
+        setApiError(result.error);
+        setApiErrorStatus(result.status);
+        return;
+      }
+      if (result.data?.tasks && result.data.tasks.length > 0) {
+        setTasks(mapBackendPlanTasks(result.data.tasks));
+      }
+    } else {
+      setTasks((prev) => {
+        const teacherTasks = prev.filter((t) => t.teacherAssigned);
+        const adaptiveTasks = prev.filter((t) => !t.teacherAssigned);
+        return [...adaptiveTasks, ...teacherTasks];
+      });
+    }
     setRecalculatedNotice(
       "Đã tính toán lại lộ trình theo cây tiên quyết Knowledge Graph (bảo toàn 100% bài tập bắt buộc của Giáo viên).",
     );
@@ -76,6 +163,14 @@ export function LearningPathShell({
                 Cập nhật lại lộ trình
               </button>
             </div>
+
+            {apiError && (
+              <WorkspaceApiAlert
+                message={apiError}
+                status={apiErrorStatus}
+                onDismiss={() => setApiError(null)}
+              />
+            )}
 
             {recalculatedNotice && (
               <div

@@ -12,6 +12,7 @@
 
 import Dexie, { type Table } from "dexie";
 
+import { getAccessToken } from "./auth-client.js";
 import { computePayloadHash } from "./canonical-json.js";
 
 export type ExamPayloadScalar = string | number | boolean | null;
@@ -129,7 +130,7 @@ export class ExamAutosaveStore {
   constructor(options: ExamAutosaveStoreOptions = {}) {
     this.db = new ExamDatabase(options.dbName ?? "ulp_exam_offline_db");
     this.apiBase = options.apiBase ?? "";
-    this.getToken = options.getToken ?? (() => "");
+    this.getToken = options.getToken ?? (() => getAccessToken() ?? "");
     this.fetchFn = options.fetchFn ?? ((...args) => globalThis.fetch(...args));
     this.baseBackoffMs = options.baseBackoffMs ?? 500;
     this.maxBackoffMs = options.maxBackoffMs ?? 30_000;

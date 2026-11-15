@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import React from "react";
+import { AuthStatusBadge } from "@/components/auth/AuthStatusBadge";
 import type { UserTier } from "@/lib/ui-state-machine";
 
 export interface StudioHeaderProps {
@@ -99,6 +100,7 @@ export function StudioHeader({
               {userTier === "FREE" ? "Mở góc nhìn TEACHER_PRO" : "Thử góc nhìn FREE"}
             </button>
           )}
+          <AuthStatusBadge />
         </div>
       </div>
     </header>

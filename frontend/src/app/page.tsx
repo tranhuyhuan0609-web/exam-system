@@ -1,12 +1,16 @@
 import React from "react";
 import Link from "next/link";
+import { AuthStatusBadge } from "@/components/auth/AuthStatusBadge";
 
 export default function HomePage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-4xl flex-col justify-center px-6 py-16">
       <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-        <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-          H2Edu • Học thông minh - Thi bứt phá
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+            H2Edu • Học thông minh - Thi bứt phá
+          </div>
+          <AuthStatusBadge compact={false} />
         </div>
         <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900">
           Cổng học liệu &amp; Luyện thi THPTQG 2025

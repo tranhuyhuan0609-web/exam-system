@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { WorkspaceApiAlert } from "@/components/workspace/WorkspaceApiAlert";
 import {
   EmptyState,
   ErrorBoundary,
@@ -11,6 +12,7 @@ import {
 } from "@/components/workspace/WorkspaceStateViews";
 import type { ReviewerRightsStatus as RightsStatus } from "@/lib/bbox-reviewer";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
+import { workspaceCall } from "@/lib/workspace-api";
 import { evaluateDrivePairingCandidate, evaluateParserDriftStatus } from "@/lib/workspace6-admin-ops";
 import { AdminHeader } from "./AdminHeader";
 import { AdminReasonModal } from "./AdminReasonModal";
@@ -39,6 +41,8 @@ export function AdminSourcesShell({
     nextRights: RightsStatus;
   } | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiErrorStatus, setApiErrorStatus] = useState<number | null>(null);
   const [conflictDismissed, setConflictDismissed] = useState(false);
 
   const uiResolution = useMemo(
@@ -69,17 +73,19 @@ export function AdminSourcesShell({
   };
 
   const handleConfirmPairing = async (pairId: string) => {
-    const caller = fetchFn ?? (typeof fetch === "function" ? fetch : null);
-    if (caller) {
-      try {
-        await caller(`${apiBase}/api/v1/drive/pairings/${encodeURIComponent(pairId)}/confirm`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ confirmed: true }),
-        });
-      } catch {
-        // Fallback offline/demo state transition
-      }
+    setApiError(null);
+    setApiErrorStatus(null);
+    const result = await workspaceCall({
+      url: `/api/v1/drive/pairings/${encodeURIComponent(pairId)}/confirm`,
+      method: "POST",
+      json: { confirmed: true },
+      fetchFn,
+      apiBase,
+    });
+    if (!result.ok) {
+      setApiError(result.error);
+      setApiErrorStatus(result.status);
+      return;
     }
     setData((prev) => ({
       ...prev,
@@ -93,21 +99,24 @@ export function AdminSourcesShell({
   const handleConfirmRightsChange = async (normalizedReason: string) => {
     if (!rightsModalTarget) return;
     const { sourceId, sourceName, nextRights } = rightsModalTarget;
-    const caller = fetchFn ?? (typeof fetch === "function" ? fetch : null);
-    if (caller) {
-      try {
-        await caller(`${apiBase}/api/v1/rights-records`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            source_id: sourceId,
-            rights_status: nextRights,
-            reason: normalizedReason,
-          }),
-        });
-      } catch {
-        // Demo update preserved
-      }
+    setApiError(null);
+    setApiErrorStatus(null);
+    const result = await workspaceCall({
+      url: "/api/v1/rights-records",
+      method: "POST",
+      json: {
+        source_id: sourceId,
+        rights_status: nextRights,
+        reason: normalizedReason,
+      },
+      fetchFn,
+      apiBase,
+    });
+    if (!result.ok) {
+      setApiError(result.error);
+      setApiErrorStatus(result.status);
+      setRightsModalTarget(null);
+      return;
     }
     setData((prev) => ({
       ...prev,
@@ -144,6 +153,13 @@ export function AdminSourcesShell({
 
     return (
       <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-5">
+        {apiError && (
+          <WorkspaceApiAlert
+            message={apiError}
+            status={apiErrorStatus}
+            onDismiss={() => setApiError(null)}
+          />
+        )}
         {uiResolution.kind === "OfflineRetryBanner" && (
           <OfflineRetryBanner pendingCount={initialUiOverrides?.pendingAutosaveCount ?? 0} />
         )}

@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { StudioHeader } from "@/components/studio/StudioHeader";
 import { SafeKatexText } from "@/components/workspace/SafeKatexText";
+import { WorkspaceApiAlert } from "@/components/workspace/WorkspaceApiAlert";
 import {
   EmptyState,
   ErrorBoundary,
@@ -21,6 +22,7 @@ import {
 } from "@/lib/block-studio-linter";
 import { validateShortNumericInput } from "@/lib/exam-input-policy";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
+import { workspaceCall } from "@/lib/workspace-api";
 import { StudioBlockEditor } from "./StudioBlockEditor";
 import {
   BLOCK_TYPE_META,
@@ -52,6 +54,8 @@ export function QuestionAuthoringShell({
   );
   const [previewViewport, setPreviewViewport] = useState<"DESKTOP" | "MOBILE">("DESKTOP");
   const [submitFeedback, setSubmitFeedback] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiErrorStatus, setApiErrorStatus] = useState<number | null>(null);
   const [conflictDismissed, setConflictDismissed] = useState(false);
 
   const catalog = useMemo(() => assetCatalog ?? createDefaultStudioAssetCatalog(), [assetCatalog]);
@@ -119,17 +123,20 @@ export function QuestionAuthoringShell({
 
   const handleSubmitQuestion = async () => {
     if (!validatorIssues.valid) return;
-    const caller = fetchFn ?? (typeof fetch === "function" ? fetch : null);
-    if (caller && apiBase !== "__OFFLINE__") {
-      try {
-        await caller(`${apiBase}/api/v1/questions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(draft),
-        });
-      } catch {
-        // Offline-safe optimistic confirmation
-      }
+    setApiError(null);
+    setApiErrorStatus(null);
+    const result = await workspaceCall({
+      url: "/api/v1/questions",
+      method: "POST",
+      json: draft,
+      fetchFn,
+      apiBase,
+    });
+    if (!result.ok) {
+      setApiError(result.error);
+      setApiErrorStatus(result.status);
+      setSubmitFeedback(null);
+      return;
     }
     setSubmitFeedback(`Đã kiểm định Pre-Submit Validator và lưu câu hỏi '${draft.stableCode}'.`);
   };
@@ -185,6 +192,15 @@ export function QuestionAuthoringShell({
           <EmptyState title="Chưa khởi tạo biểu mẫu câu hỏi" />
         ) : (
           <main data-testid="ws4-question-studio-layout" className="mx-auto max-w-[1600px] px-4 py-5">
+            {apiError && (
+              <div className="mb-4">
+                <WorkspaceApiAlert
+                  message={apiError}
+                  status={apiErrorStatus}
+                  onDismiss={() => setApiError(null)}
+                />
+              </div>
+            )}
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-xs">
               <div>
                 <h1 className="text-lg font-extrabold text-slate-900">

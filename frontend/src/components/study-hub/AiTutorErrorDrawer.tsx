@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { SafeKatexText } from "@/components/workspace/SafeKatexText";
+import { WorkspaceApiAlert } from "@/components/workspace/WorkspaceApiAlert";
+import { hasAuthToken } from "@/lib/auth-client";
+import { workspaceCall } from "@/lib/workspace-api";
 import type { AiTutorMode, StudyHubErrorNoteItem } from "./types";
 
 const TUTOR_MODE_OPTIONS: readonly {
@@ -48,14 +51,22 @@ function buildTutorReply(mode: AiTutorMode, questionText: string): string {
 export interface AiTutorErrorDrawerProps {
   errorNotes: readonly StudyHubErrorNoteItem[];
   activeExamAttemptId?: string | null;
+  fetchFn?: typeof fetch;
+  apiBase?: string;
 }
 
 export function AiTutorErrorDrawer({
   errorNotes,
   activeExamAttemptId = null,
+  fetchFn,
+  apiBase = "",
 }: AiTutorErrorDrawerProps) {
   const [mode, setMode] = useState<AiTutorMode>("HINT_MODE");
   const [draft, setDraft] = useState("");
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiErrorStatus, setApiErrorStatus] = useState<number | null>(null);
+  const [isSending, setIsSending] = useState(false);
+  const sessionIdsByModeRef = useRef<Partial<Record<AiTutorMode, string>>>({});
   const [messages, setMessages] = useState<readonly TutorMessage[]>([
     {
       id: "tutor-init-1",
@@ -67,25 +78,86 @@ export function AiTutorErrorDrawer({
 
   const examLocked = Boolean(activeExamAttemptId);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (examLocked || !draft.trim()) {
+    if (examLocked || !draft.trim() || isSending) {
       return;
     }
+    const questionText = draft.trim();
     const learnerMsg: TutorMessage = {
       id: `user-${Date.now()}`,
       sender: "LEARNER",
       mode,
-      text: draft.trim(),
+      text: questionText,
     };
-    const replyMsg: TutorMessage = {
-      id: `ai-${Date.now() + 1}`,
-      sender: "AI",
-      mode,
-      text: buildTutorReply(mode, draft),
-    };
-    setMessages((prev) => [...prev, learnerMsg, replyMsg]);
+
+    const useLiveTutor = Boolean(fetchFn) || hasAuthToken();
+    if (!useLiveTutor) {
+      const replyMsg: TutorMessage = {
+        id: `ai-${Date.now() + 1}`,
+        sender: "AI",
+        mode,
+        text: buildTutorReply(mode, questionText),
+      };
+      setMessages((prev) => [...prev, learnerMsg, replyMsg]);
+      setDraft("");
+      return;
+    }
+
+    setApiError(null);
+    setApiErrorStatus(null);
+    setMessages((prev) => [...prev, learnerMsg]);
     setDraft("");
+    setIsSending(true);
+    try {
+      let sessionId = sessionIdsByModeRef.current[mode];
+      if (!sessionId) {
+        const createdSession = await workspaceCall<{ id?: string }>({
+          url: "/api/v1/tutor/sessions",
+          method: "POST",
+          json: { tutor_mode: mode },
+          fetchFn,
+          apiBase,
+        });
+        if (!createdSession.ok) {
+          setApiError(createdSession.error);
+          setApiErrorStatus(createdSession.status);
+          return;
+        }
+        sessionId = createdSession.data?.id;
+        if (sessionId) {
+          sessionIdsByModeRef.current[mode] = sessionId;
+        }
+      }
+      if (sessionId) {
+        const turnRes = await workspaceCall<{
+          assistant_message?: { message_md?: string };
+        }>({
+          url: `/api/v1/tutor/sessions/${encodeURIComponent(sessionId)}/messages`,
+          method: "POST",
+          json: { message_md: questionText },
+          fetchFn,
+          apiBase,
+        });
+        if (!turnRes.ok) {
+          setApiError(turnRes.error);
+          setApiErrorStatus(turnRes.status);
+          return;
+        }
+        const replyText = turnRes.data?.assistant_message?.message_md || buildTutorReply(mode, questionText);
+        setMessages((prev) => [
+          ...prev,
+          { id: `ai-${Date.now() + 1}`, sender: "AI", mode, text: replyText },
+        ]);
+        return;
+      }
+      setMessages((prev) => [
+        ...prev,
+        { id: `ai-${Date.now() + 1}`, sender: "AI", mode, text: buildTutorReply(mode, questionText) },
+      ]);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -140,6 +212,16 @@ export function AiTutorErrorDrawer({
               className="mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs font-semibold text-rose-900"
             >
               403 EXAM_SESSION_ACTIVE — Đang có phòng thi hoạt động ({activeExamAttemptId}), Gia sư AI tạm khóa cho tới khi nộp bài.
+            </div>
+          )}
+
+          {apiError && (
+            <div className="mt-3">
+              <WorkspaceApiAlert
+                message={apiError}
+                status={apiErrorStatus}
+                onDismiss={() => setApiError(null)}
+              />
             </div>
           )}
 
