@@ -7,13 +7,12 @@ import hashlib
 import time
 import uuid
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 
 from app.config import get_settings
-from app.db import SessionLocal, engine
+from app.db import SessionLocal
 from app.modules.frameworks.internal.models import (  # noqa: F401
     AssessmentFramework,
     Blueprint,
@@ -63,187 +62,6 @@ def _auth_headers(
         ttl_seconds=900,
     )
     return {"Authorization": f"Bearer {token}"}
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _ensure_search_frameworks_schema(_database: None) -> None:
-    """Create B07/C03 tables, helper V11.3 takedown tables, RLS policies, and grants idempotently."""
-    ddl_statements = (
-        """
-        CREATE TABLE IF NOT EXISTS search_documents (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            visibility_scope VARCHAR(20) NOT NULL DEFAULT 'TENANT_PRIVATE',
-            doc_type VARCHAR(30) NOT NULL CHECK (doc_type IN ('CONTENT', 'QUESTION', 'ASSESSMENT')),
-            entity_id UUID NOT NULL,
-            title TEXT NOT NULL,
-            body_plain TEXT NOT NULL,
-            subject_code VARCHAR(50),
-            grade_band VARCHAR(30),
-            taxonomy_path ltree,
-            search_vector tsvector GENERATED ALWAYS AS (
-                setweight(to_tsvector('simple', f_unaccent(coalesce(title, ''))), 'A') ||
-                setweight(to_tsvector('simple', f_unaccent(coalesce(body_plain, ''))), 'B')
-            ) STORED,
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (tenant_id, doc_type, entity_id)
-        )
-        """,
-        "CREATE INDEX IF NOT EXISTS ix_search_documents_fts_gin ON search_documents USING GIN (search_vector)",
-        (
-            "CREATE INDEX IF NOT EXISTS ix_search_documents_title_trgm "
-            "ON search_documents USING GIN (f_unaccent(title) gin_trgm_ops)"
-        ),
-        """
-        CREATE TABLE IF NOT EXISTS collections (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            owner_membership_id UUID NOT NULL,
-            title VARCHAR(255) NOT NULL,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (owner_membership_id, tenant_id) REFERENCES memberships(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS collection_items (
-            collection_id UUID NOT NULL,
-            tenant_id UUID NOT NULL,
-            item_type VARCHAR(30) NOT NULL,
-            item_id UUID NOT NULL,
-            sequence_order INT NOT NULL DEFAULT 0,
-            PRIMARY KEY (collection_id, item_type, item_id),
-            FOREIGN KEY (collection_id, tenant_id) REFERENCES collections(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS assessment_frameworks (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            code VARCHAR(60) UNIQUE NOT NULL,
-            name VARCHAR(255) NOT NULL,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS framework_versions (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            framework_id UUID NOT NULL REFERENCES assessment_frameworks(id) ON DELETE CASCADE,
-            version_code VARCHAR(40) NOT NULL,
-            subject_code VARCHAR(50) NOT NULL,
-            total_questions INT NOT NULL,
-            duration_seconds INT NOT NULL,
-            section_specs_json JSONB NOT NULL,
-            UNIQUE (framework_id, version_code, subject_code)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS scoring_scheme_versions (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            code VARCHAR(80) UNIQUE NOT NULL,
-            rules_json JSONB NOT NULL,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS blueprints (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            framework_id UUID NOT NULL REFERENCES assessment_frameworks(id),
-            name VARCHAR(255) NOT NULL,
-            rules_json JSONB NOT NULL,
-            duration_seconds INT NOT NULL,
-            total_points NUMERIC(6,2) NOT NULL DEFAULT 10.00,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS content_items (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            visibility_scope VARCHAR(20) NOT NULL DEFAULT 'TENANT_PRIVATE',
-            slug VARCHAR(150) NOT NULL,
-            content_type VARCHAR(40) NOT NULL DEFAULT 'LESSON',
-            rights_status VARCHAR(30) NOT NULL DEFAULT 'OWNED',
-            publication_status VARCHAR(30) NOT NULL DEFAULT 'PUBLISHED',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (tenant_id, slug),
-            UNIQUE (id, tenant_id)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS takedown_cases (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            complainant_name VARCHAR(255) NOT NULL,
-            target_entity_type VARCHAR(40) NOT NULL
-                CHECK (target_entity_type IN ('SOURCE_DOCUMENT', 'CONTENT_ITEM', 'QUESTION')),
-            target_entity_id UUID NOT NULL,
-            legal_reason TEXT NOT NULL,
-            status VARCHAR(30) NOT NULL DEFAULT 'OPEN'
-                CHECK (status IN ('OPEN', 'EXECUTED', 'REJECTED')),
-            executed_by UUID,
-            executed_at TIMESTAMPTZ,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-        """,
-    )
-
-    strict_rls_tables = ("collections", "collection_items", "blueprints", "takedown_cases")
-    all_app_tables = (
-        "search_documents",
-        "collections",
-        "collection_items",
-        "assessment_frameworks",
-        "framework_versions",
-        "scoring_scheme_versions",
-        "blueprints",
-        "content_items",
-        "takedown_cases",
-    )
-
-    async def _init() -> None:
-        async with engine.begin() as conn:
-            for ddl in ddl_statements:
-                await conn.execute(text(ddl))
-
-            for tbl in strict_rls_tables:
-                await conn.execute(text(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"DROP POLICY IF EXISTS tenant_isolation_policy ON {tbl}"))
-                await conn.execute(
-                    text(
-                        f"CREATE POLICY tenant_isolation_policy ON {tbl} "
-                        "USING (tenant_id = (SELECT current_app_tenant_id())) "
-                        "WITH CHECK (tenant_id = (SELECT current_app_tenant_id()))"
-                    )
-                )
-
-            for tbl in ("search_documents", "content_items"):
-                await conn.execute(text(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"DROP POLICY IF EXISTS hybrid_write_policy ON {tbl}"))
-                await conn.execute(text(f"DROP POLICY IF EXISTS hybrid_read_policy ON {tbl}"))
-                await conn.execute(
-                    text(
-                        f"CREATE POLICY hybrid_write_policy ON {tbl} FOR ALL "
-                        "USING (tenant_id = (SELECT current_app_tenant_id())) "
-                        "WITH CHECK (tenant_id = (SELECT current_app_tenant_id()))"
-                    )
-                )
-                await conn.execute(
-                    text(
-                        f"CREATE POLICY hybrid_read_policy ON {tbl} FOR SELECT USING ("
-                        "tenant_id = (SELECT current_app_tenant_id()) "
-                        "OR (tenant_id = system_public_tenant_id() AND visibility_scope = 'SYSTEM_PUBLIC')"
-                        ")"
-                    )
-                )
-
-            for tbl in all_app_tables:
-                await conn.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {tbl} TO ulp_app_rw"))
-
-    run(_init())
 
 
 def _create_tenant_with_membership(prefix: str) -> tuple[uuid.UUID, uuid.UUID]:
@@ -398,17 +216,28 @@ def test_search_instant_takedown_and_collections_rls() -> None:
 
     async def _seed() -> None:
         async with tenant_transaction(tenant_a, role=DbRole.APP_RW) as session:
+            # A really published item: the publish gate needs VERIFIED, cleared rights and a current version
+            # (the foreign key to the version is deferred, so item and version go in one transaction).
+            version_id = uuid.uuid4()
             await session.execute(
                 text(
-                    "INSERT INTO content_items "
-                    "(id, tenant_id, visibility_scope, slug, content_type, rights_status, publication_status) "
-                    "VALUES (:cid, :tid, 'TENANT_PRIVATE', :slug, 'LESSON', 'OWNED', 'PUBLISHED')"
+                    "INSERT INTO content_items (id, tenant_id, visibility_scope, slug, content_type, "
+                    "verification_status, rights_status, publication_status, current_version_id) "
+                    "VALUES (:cid, :tid, 'TENANT_PRIVATE', :slug, 'LESSON', 'VERIFIED', 'OWNED', 'PUBLISHED', :vid)"
                 ),
                 {
                     "cid": content_db_takedown,
                     "tid": tenant_a,
                     "slug": f"nguyen-ham-{uuid.uuid4().hex[:6]}",
+                    "vid": version_id,
                 },
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO content_versions (id, tenant_id, content_item_id, version_no, title, status) "
+                    "VALUES (:vid, :tid, :cid, 1, 'Nguyên hàm', 'PUBLISHED')"
+                ),
+                {"vid": version_id, "tid": tenant_a, "cid": content_db_takedown},
             )
             await upsert_search_document(
                 session,
@@ -519,13 +348,6 @@ def test_search_instant_takedown_and_collections_rls() -> None:
         == 404
     )
 
-    async def _cleanup() -> None:
-        async with engine.begin() as conn:
-            await conn.execute(text("DELETE FROM takedown_cases"))
-            await conn.execute(text("DELETE FROM content_items"))
-
-    run(_cleanup())
-
 
 def test_frameworks_seeding_thptqg_2025_blueprint_validate_and_shortage_report() -> None:
     tenant_id, member_id = _create_tenant_with_membership("fw-a")
@@ -544,9 +366,7 @@ def test_frameworks_seeding_thptqg_2025_blueprint_validate_and_shortage_report()
             by_subj = {v.subject_code: (v.total_questions, v.duration_seconds) for v in fw2.versions}
             scoring = (
                 await session.execute(
-                    select(ScoringSchemeVersion).where(
-                        ScoringSchemeVersion.code == THPTQG_2025_SCORING_CODE
-                    )
+                    select(ScoringSchemeVersion).where(ScoringSchemeVersion.code == THPTQG_2025_SCORING_CODE)
                 )
             ).scalar_one()
             return by_subj, scoring.code
