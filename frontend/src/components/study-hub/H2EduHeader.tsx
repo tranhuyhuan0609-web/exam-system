@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import React from "react";
+import { AuthStatusBadge } from "@/components/auth/AuthStatusBadge";
 import type { UserTier } from "@/lib/ui-state-machine";
 import { H2EDU_BRAND } from "./types";
 
@@ -100,6 +101,7 @@ export function H2EduHeader({
               {userTier === "FREE" ? "Thử góc nhìn PRO" : "Về góc nhìn FREE"}
             </button>
           )}
+          <AuthStatusBadge />
         </div>
       </div>
     </header>
