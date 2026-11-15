@@ -138,7 +138,7 @@ describe("LoginShell (/dang-nhap) & AuthStatusBadge E2E", () => {
     expect(screen.getByTestId("demo-accounts-panel")).toBeTruthy();
     fireEvent.click(screen.getByTestId("demo-fill-teacher"));
     expect((screen.getByTestId("login-email-input") as HTMLInputElement).value).toBe(
-      "giaovien.demo@h2edu.vn",
+      "teacher@h2edu.demo",
     );
 
     cleanup();

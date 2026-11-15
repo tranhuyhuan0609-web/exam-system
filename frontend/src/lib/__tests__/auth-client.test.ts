@@ -14,6 +14,9 @@ import {
   buildSessionFromLoginResponse,
   buildSessionFromRawToken,
   clearAuthSession,
+  DEMO_ACCOUNTS,
+  DEMO_PASSWORD,
+  DEMO_TENANT_SLUG,
   decodeJwtClaims,
   formatProblemMessage,
   getAccessToken,
@@ -255,5 +258,23 @@ describe("Auth Client, JWT Session & RFC 7807 Problem+JSON", () => {
     expect(hydrated["qv-1"]?.choice).toBe("A");
     expect(hydrated["qv-1"]?.flagged).toBe(true);
     expect(hydrated["qv-3"]?.shortText).toBe("32");
+  });
+});
+
+describe("DEMO_ACCOUNTS match the accounts of `python -m app.ops.seed_demo`", () => {
+  it("quick-fills the four seeded e-mails, roles, tenant slug and password", () => {
+    expect(DEMO_PASSWORD).toBe("Demo@12345");
+    expect(DEMO_TENANT_SLUG).toBe("h2edu-demo");
+    expect(DEMO_ACCOUNTS.map((a) => [a.id, a.email, a.fallbackSession.roles])).toEqual([
+      ["learner", "learner@h2edu.demo", ["LEARNER"]],
+      ["teacher", "teacher@h2edu.demo", ["TEACHER"]],
+      ["tenant_admin", "tenant_admin@h2edu.demo", ["TENANT_ADMIN"]],
+      ["platform_admin", "platform_admin@h2edu.demo", ["PLATFORM_ADMIN"]],
+    ]);
+    for (const account of DEMO_ACCOUNTS) {
+      expect(account.password).toBe(DEMO_PASSWORD);
+      expect(account.tenantSlug).toBe(DEMO_TENANT_SLUG);
+      expect(account.fallbackSession.email).toBe(account.email);
+    }
   });
 });

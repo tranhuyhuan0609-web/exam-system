@@ -15,7 +15,7 @@ export interface AuthSession {
 }
 
 export interface DemoAccountPreset {
-  id: "student" | "teacher" | "admin";
+  id: "learner" | "teacher" | "tenant_admin" | "platform_admin";
   label: string;
   roleBadge: string;
   email: string;
@@ -25,59 +25,81 @@ export interface DemoAccountPreset {
   fallbackSession: Omit<AuthSession, "accessToken">;
 }
 
+/** The accounts `python -m app.ops.seed_demo` creates in tenant `h2edu-demo` (one password, localhost only). */
+export const DEMO_PASSWORD = "Demo@12345";
+export const DEMO_TENANT_SLUG = "h2edu-demo";
+
 export const DEMO_ACCOUNTS: readonly DemoAccountPreset[] = [
   {
-    id: "student",
+    id: "learner",
     label: "Học sinh THPT",
-    roleBadge: "STUDENT",
-    email: "hocsinh.demo@h2edu.vn",
-    password: "DemoPassword123!",
-    tenantSlug: "h2edu-demo",
+    roleBadge: "LEARNER",
+    email: "learner@h2edu.demo",
+    password: DEMO_PASSWORD,
+    tenantSlug: DEMO_TENANT_SLUG,
     description: "Học liệu 4 cấp, Sổ tay câu sai, Phòng thi THPTQG",
     fallbackSession: {
-      userId: "demo-student-001",
+      userId: "demo-learner-001",
       tenantId: "tenant-h2edu-demo",
-      membershipId: "mem-student-001",
-      roles: ["STUDENT"],
-      entitlementTier: "PRO",
-      email: "hocsinh.demo@h2edu.vn",
-      displayName: "Nguyễn Minh Anh (HS Demo)",
+      membershipId: "mem-learner-001",
+      roles: ["LEARNER"],
+      entitlementTier: "STUDENT_PRO",
+      email: "learner@h2edu.demo",
+      displayName: "Minh (HS Demo)",
     },
   },
   {
     id: "teacher",
     label: "Giáo viên & Biên soạn",
     roleBadge: "TEACHER",
-    email: "giaovien.demo@h2edu.vn",
-    password: "DemoPassword123!",
-    tenantSlug: "h2edu-demo",
+    email: "teacher@h2edu.demo",
+    password: DEMO_PASSWORD,
+    tenantSlug: DEMO_TENANT_SLUG,
     description: "Duyệt BBox, Block Studio, Ma trận đề & Lớp học 12A1",
     fallbackSession: {
       userId: "demo-teacher-001",
       tenantId: "tenant-h2edu-demo",
       membershipId: "mem-teacher-001",
-      roles: ["TEACHER", "REVIEWER", "AUTHOR"],
-      entitlementTier: "ENTERPRISE",
-      email: "giaovien.demo@h2edu.vn",
-      displayName: "Thầy Trần Hoàng Nam (GV Demo)",
+      roles: ["TEACHER"],
+      entitlementTier: "TEACHER_PRO",
+      email: "teacher@h2edu.demo",
+      displayName: "Cô Lan (GV Demo)",
     },
   },
   {
-    id: "admin",
-    label: "Quản trị & Vận hành",
-    roleBadge: "ADMIN",
-    email: "admin.demo@h2edu.vn",
-    password: "DemoPassword123!",
-    tenantSlug: "h2edu-demo",
+    id: "tenant_admin",
+    label: "Quản trị trường",
+    roleBadge: "TENANT_ADMIN",
+    email: "tenant_admin@h2edu.demo",
+    password: DEMO_PASSWORD,
+    tenantSlug: DEMO_TENANT_SLUG,
     description: "Outbox/DLQ, Feature Flags, Drive Pairing & DMCA Takedowns",
     fallbackSession: {
-      userId: "demo-admin-001",
+      userId: "demo-tenant-admin-001",
       tenantId: "tenant-h2edu-demo",
-      membershipId: "mem-admin-001",
-      roles: ["ADMIN", "OPERATOR", "TENANT_ADMIN"],
-      entitlementTier: "ENTERPRISE",
-      email: "admin.demo@h2edu.vn",
-      displayName: "Quản trị viên Hệ thống (Demo)",
+      membershipId: "mem-tenant-admin-001",
+      roles: ["TENANT_ADMIN"],
+      entitlementTier: "SCHOOL_ENTERPRISE",
+      email: "tenant_admin@h2edu.demo",
+      displayName: "Tenant Admin (Demo)",
+    },
+  },
+  {
+    id: "platform_admin",
+    label: "Quản trị nền tảng",
+    roleBadge: "PLATFORM_ADMIN",
+    email: "platform_admin@h2edu.demo",
+    password: DEMO_PASSWORD,
+    tenantSlug: DEMO_TENANT_SLUG,
+    description: "Khung đánh giá, hiệu chuẩn IRT, gói vertical (chỉ quản trị nền tảng)",
+    fallbackSession: {
+      userId: "demo-platform-admin-001",
+      tenantId: "tenant-h2edu-demo",
+      membershipId: "mem-platform-admin-001",
+      roles: ["PLATFORM_ADMIN"],
+      entitlementTier: "SCHOOL_ENTERPRISE",
+      email: "platform_admin@h2edu.demo",
+      displayName: "Platform Admin (Demo)",
     },
   },
 ];

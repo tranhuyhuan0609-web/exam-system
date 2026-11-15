@@ -5,6 +5,7 @@ import {
   evaluateOutboxQueueHealth,
   evaluateParserDriftStatus,
   validateAdminMutationReason,
+  validateOverrideTotalScore,
 } from "../workspace6-admin-ops";
 
 describe("Workspace UI 6-state resolver", () => {
@@ -139,5 +140,30 @@ describe("Workspace 6 Admin Ops policies", () => {
       status: "OK",
       alertCodes: [],
     });
+  });
+});
+
+describe("validateOverrideTotalScore (total_score of POST /api/v1/grades/{id}/override)", () => {
+  it("accepts 0..1000 with at most 2 decimals and turns a comma into a dot", () => {
+    for (const [raw, normalized] of [
+      ["0", "0"],
+      ["7", "7"],
+      ["7.25", "7.25"],
+      [" 7,5 ", "7.5"],
+      ["1000", "1000"],
+      ["1000.00", "1000.00"],
+    ] as const) {
+      expect(validateOverrideTotalScore(raw)).toEqual({ ok: true, normalized, errorCode: null });
+    }
+  });
+
+  it("refuses what OverrideRequest would answer 422 to", () => {
+    expect(validateOverrideTotalScore("").errorCode).toBe("SCORE_REQUIRED");
+    expect(validateOverrideTotalScore("abc").errorCode).toBe("SCORE_NOT_A_NUMBER");
+    expect(validateOverrideTotalScore("7.").errorCode).toBe("SCORE_NOT_A_NUMBER");
+    expect(validateOverrideTotalScore("7.255").errorCode).toBe("SCORE_TOO_MANY_DECIMALS");
+    expect(validateOverrideTotalScore("1000.01").errorCode).toBe("SCORE_OUT_OF_RANGE");
+    expect(validateOverrideTotalScore("-1").errorCode).toBe("SCORE_OUT_OF_RANGE");
+    expect(validateOverrideTotalScore("1e3").errorCode).toBe("SCORE_NOT_A_NUMBER");
   });
 });

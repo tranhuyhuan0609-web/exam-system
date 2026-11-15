@@ -146,11 +146,26 @@ describe("Workspace 6: Admin Ops, Sources Pairing/Drift, & Takedowns Audit (TASK
     fireEvent.change(screen.getByTestId("admin-reason-input"), {
       target: { value: "Phúc khảo biên bản phòng thi 12A1 xác nhận đáp án đúng" },
     });
-    fireEvent.click(screen.getByTestId("admin-reason-confirm-btn"));
+    // The backend (OverrideRequest) needs total_score as well: no score, no confirm; 3 decimals / > 1000 refused.
+    const overrideConfirm = screen.getByTestId("admin-reason-confirm-btn") as HTMLButtonElement;
+    expect(overrideConfirm.disabled).toBe(true);
+    for (const bad of ["", "abc", "7.255", "1000.01", "-1"]) {
+      fireEvent.change(screen.getByTestId("admin-override-score-input"), { target: { value: bad } });
+      expect(overrideConfirm.disabled).toBe(true);
+    }
+    fireEvent.change(screen.getByTestId("admin-override-score-input"), { target: { value: "7,25" } });
+    expect(overrideConfirm.disabled).toBe(false);
+    fireEvent.click(overrideConfirm);
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         expect.stringMatching(/^\/api\/v1\/grades\/.+\/override$/),
-        expect.objectContaining({ method: "POST" }),
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            total_score: "7.25",
+            reason: "Phúc khảo biên bản phòng thi 12A1 xác nhận đáp án đúng",
+          }),
+        }),
       );
     });
   });

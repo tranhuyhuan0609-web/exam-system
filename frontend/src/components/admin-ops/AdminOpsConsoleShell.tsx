@@ -161,7 +161,7 @@ export function AdminOpsConsoleShell({
     [data, initialUserTier, initialUiOverrides, conflictDismissed],
   );
 
-  const handleConfirmReason = async (normalizedReason: string) => {
+  const handleConfirmReason = async (normalizedReason: string, extras?: { totalScore?: string }) => {
     if (!pendingAction) return;
     const { action, targetId, targetLabel } = pendingAction;
     setApiError(null);
@@ -198,10 +198,16 @@ export function AdminOpsConsoleShell({
       }));
       setFeedback(`Đã Replay DLQ "${targetLabel}" và ghi nhận audit_events.`);
     } else if (action === "OVERRIDE_GRADE") {
+      if (!extras?.totalScore) {
+        setApiError("Thiếu total_score: backend (OverrideRequest) bắt buộc cả total_score lẫn reason.");
+        setApiErrorStatus(422);
+        setPendingAction(null);
+        return;
+      }
       const result = await workspaceCall({
         url: `/api/v1/grades/${encodeURIComponent(targetId)}/override`,
         method: "POST",
-        json: { reason: normalizedReason },
+        json: { total_score: extras.totalScore, reason: normalizedReason },
         fetchFn,
         apiBase,
       });
@@ -478,6 +484,7 @@ export function AdminOpsConsoleShell({
           targetLabel={pendingAction.targetLabel}
           confirmLabel={pendingAction.confirmLabel}
           danger={pendingAction.action === "REPLAY_DLQ" || pendingAction.action === "OVERRIDE_GRADE"}
+          requireTotalScore={pendingAction.action === "OVERRIDE_GRADE"}
           onConfirm={handleConfirmReason}
           onCancel={() => setPendingAction(null)}
         />
