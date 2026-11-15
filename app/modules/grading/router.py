@@ -28,6 +28,7 @@ from app.modules.grading.internal.service import (
     check_open_appeal,
     file_appeal,
     grade_attempt,
+    override_grade,
     release_grade,
     resolve_appeal,
 )
@@ -56,6 +57,13 @@ class GradeRequest(BaseModel):
     grade_reason: Literal["INITIAL", "APPEAL_REGRADE", "ERRATA_REGRADE", "MANUAL_OVERRIDE"] = "INITIAL"
     appeal_id: uuid.UUID | None = None
     resolution_note: str | None = Field(default=None, max_length=2000)
+
+
+class OverrideRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    total_score: Decimal = Field(ge=0, le=1000, max_digits=6, decimal_places=2)
+    reason: str = Field(min_length=15, max_length=2000)
 
 
 class AppealRequest(BaseModel):
@@ -228,6 +236,34 @@ async def post_release(grade_id: uuid.UUID, request: Request, credentials: Optio
     except (GradingNotFoundError, GradingConflictError) as exc:
         return _service_error(exc, request, correlation_id)
     return _grade_response(grade)
+
+
+@router.post("/grades/{grade_id}/override", response_model=GradeResponse, status_code=status.HTTP_201_CREATED)
+async def post_override(
+    grade_id: uuid.UUID, body: OverrideRequest, request: Request, credentials: OptionalBearer = None
+) -> Any:
+    """Set the total of the current grade by hand (MANUAL_OVERRIDE, revision + 1): a reason is required, audited."""
+    actor, correlation_id, err = _authenticate(request, credentials, grader=True)
+    if err is not None:
+        return err
+    assert actor is not None
+    try:
+        async with tenant_transaction(actor.tenant_id, role=DbRole.WORKER_GRADING) as session:
+            grade = await override_grade(
+                session,
+                grade_id,
+                total_score=body.total_score,
+                reason=body.reason,
+                actor_id=actor.user_id,
+                correlation_id=correlation_id,
+            )
+    except (GradingNotFoundError, GradingConflictError) as exc:
+        return _service_error(exc, request, correlation_id)
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED,
+        content=jsonable_encoder(_grade_response(grade)),
+        headers={"X-Correlation-Id": correlation_id},
+    )
 
 
 @router.post("/grades/{grade_id}/appeals", response_model=AppealResponse, status_code=status.HTTP_201_CREATED)

@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -158,6 +159,56 @@ async def record_audit_event(
         )
     ).scalar_one()
     return _event(row)
+
+
+async def append_audit_event(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    action: str,
+    target_type: str,
+    target_id: uuid.UUID,
+    reason: str,
+    before: Mapping[str, Any] | None,
+    after: Mapping[str, Any] | None,
+    correlation_id: str,
+    occurred_at: datetime | None = None,
+) -> None:
+    """Append one audit event without reading it back: for roles that may INSERT but not SELECT `audit_events`
+    (the grading worker, 5c), so the audit row and the change it records share one transaction."""
+    spec = build_audit_event_record(
+        tenant_id=str(tenant_id),
+        actor_id=str(actor_id),
+        correlation_id=correlation_id,
+        action=action,
+        target_table=target_type,
+        target_id=str(target_id),
+        reason=reason,
+        before_state=None if before is None else dict(before),
+        after_state=None if after is None else dict(after),
+        occurred_at=occurred_at or datetime.now(UTC),
+    )
+    # Plain SQL: an ORM insert would add RETURNING for the server-default key, which needs a SELECT privilege.
+    await session.execute(
+        text(
+            "INSERT INTO audit_events (tenant_id, actor_id, action, target_type, target_id, reason, before_json, "
+            "after_json, correlation_id, occurred_at) VALUES (:tenant_id, :actor_id, :action, :target_type, "
+            ":target_id, :reason, CAST(:before AS jsonb), CAST(:after AS jsonb), :correlation_id, :occurred_at)"
+        ),
+        {
+            "tenant_id": tenant_id,
+            "actor_id": actor_id,
+            "action": spec.action,
+            "target_type": spec.target_table,
+            "target_id": target_id,
+            "reason": spec.reason,
+            "before": json.dumps(spec.before_json) if spec.before_json else None,
+            "after": json.dumps(spec.after_json) if spec.after_json else None,
+            "correlation_id": spec.correlation_id,
+            "occurred_at": spec.occurred_at,
+        },
+    )
 
 
 async def list_audit_events(
