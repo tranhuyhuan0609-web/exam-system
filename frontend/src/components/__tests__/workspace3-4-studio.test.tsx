@@ -163,7 +163,8 @@ describe("Workspace 3: Side-by-Side Bounding-Box Reviewer (TASK-26)", () => {
         );
       }
       if (url === `/api/v1/exam-imports/${runId}/pages/1.png?dpi=150` && method === "GET") {
-        return new Response(new Blob(["png-bytes"], { type: "image/png" }), {
+        // bytes, not a jsdom Blob: Node 22's Response cannot read a jsdom Blob body ("object.stream is not a function")
+        return new Response(new TextEncoder().encode("png-bytes"), {
           status: 200,
           headers: { "Content-Type": "image/png" },
         });
@@ -192,25 +193,18 @@ describe("Workspace 3: Side-by-Side Bounding-Box Reviewer (TASK-26)", () => {
     try {
       render(<BboxReviewerShell runId={runId} fetchFn={fetchMock as unknown as typeof fetch} />);
 
-      // 5 s: the default 1 s is too tight for a loaded CI runner (this chain does 4 awaited fetches)
-      await waitFor(
-        () => {
-          expect(screen.getByTestId("ws3-pdf-page-image").getAttribute("href")).toBe("blob:mock-page-1-png");
-        },
-        { timeout: 5000 },
-      );
+      await waitFor(() => {
+        expect(screen.getByTestId("ws3-pdf-page-image").getAttribute("href")).toBe("blob:mock-page-1-png");
+      });
 
       fireEvent.click(screen.getByTestId("ws3-quick-ans-B"));
       fireEvent.change(screen.getByTestId("ws3-rights-select"), { target: { value: "OWNED" } });
       fireEvent.click(screen.getByTestId("ws3-mark-verified-btn"));
       fireEvent.click(screen.getByTestId("ws3-approve-btn"));
 
-      await waitFor(
-        () => {
-          expect(screen.getByTestId("ws3-open-question-bank-link").getAttribute("href")).toBe("/studio/questions");
-        },
-        { timeout: 5000 },
-      );
+      await waitFor(() => {
+        expect(screen.getByTestId("ws3-open-question-bank-link").getAttribute("href")).toBe("/studio/questions");
+      });
 
       expect(patchBody).toMatchObject({ expected_total_points: 0.25 });
       const patchSections = (patchBody as unknown as { sections: Array<{ questions: Array<{ paired_answer: string }> }> }).sections;
