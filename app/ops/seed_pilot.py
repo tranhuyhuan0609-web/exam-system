@@ -110,8 +110,14 @@ async def _ensure_tenant(slug: str, name: str) -> uuid.UUID:
         return (await session.execute(text("SELECT id FROM tenants WHERE slug = :s"), {"s": slug})).scalar_one()
 
 
-async def _ensure_accounts(tenant_id: uuid.UUID, plan: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Register every planned account; `password` is set only on the ones created now (None: already there)."""
+async def _ensure_accounts(
+    tenant_id: uuid.UUID, plan: list[dict[str, Any]], *, reset_passwords: bool = False
+) -> dict[str, dict[str, Any]]:
+    """Register every planned account; `password` is set only on the ones created now (None: already there).
+
+    `reset_passwords` gives the accounts that already exist a new password too (a run that failed before the CSV was
+    written, or a password that was lost).
+    """
     settings = get_settings()
     accounts: dict[str, dict[str, Any]] = {}
     async with tenant_transaction(tenant_id) as session:
@@ -125,9 +131,13 @@ async def _ensure_accounts(tenant_id: uuid.UUID, plan: list[dict[str, Any]]) -> 
                     {"b": blind, "h": password_hash, "p": item["name"]},
                 )
             ).one()
-            await session.execute(  # registered earlier without a password: it gets this one, never overwritten
-                text("UPDATE users SET password_hash = :h WHERE id = :u AND password_hash IS NULL"),
-                {"h": password_hash, "u": row.user_id},
+            # registered earlier without a password: it gets this one; an existing password changes only on request
+            await session.execute(
+                text(
+                    "UPDATE users SET password_hash = :h "
+                    "WHERE id = :u AND (password_hash IS NULL OR CAST(:r AS boolean))"
+                ),
+                {"h": password_hash, "u": row.user_id, "r": reset_passwords},
             )
             await session.execute(
                 text(
@@ -291,11 +301,19 @@ def write_credentials(path: Path, tenant_slug: str, accounts: dict[str, dict[str
 
 
 async def seed_pilot(
-    *, tenant_slug: str, tenant_name: str, plan: list[dict[str, Any]], out: Path, papers: bool = True
+    *,
+    tenant_slug: str,
+    tenant_name: str,
+    plan: list[dict[str, Any]],
+    out: Path,
+    papers: bool = True,
+    reset_passwords: bool = False,
 ) -> dict[str, Any]:
     await seed_demo._ensure_catalogues()
     tenant_id = await _ensure_tenant(tenant_slug, tenant_name)
-    accounts = await _ensure_accounts(tenant_id, plan)
+    accounts = await _ensure_accounts(tenant_id, plan, reset_passwords=reset_passwords)
+    # written at once: if a later step fails, the passwords just created are not lost
+    credentials_written = write_credentials(out, tenant_slug, accounts)
     teachers = [a for a in accounts.values() if "TEACHER" in a["roles"]]
     learners = [a["membership_id"] for a in accounts.values() if "LEARNER" in a["roles"]]
     report: dict[str, Any] = {"tenant": {"slug": tenant_slug, "id": str(tenant_id)}, "teachers": len(teachers)}
@@ -316,7 +334,7 @@ async def seed_pilot(
             )
         first = versions.get(PAPERS[0][0])
         report["assignments_created"] = await _ensure_assignments(tenant_id, teachers, classes, first) if first else 0
-    report["credentials_written"] = write_credentials(out, tenant_slug, accounts)
+    report["credentials_written"] = credentials_written
     report["finished_at"] = datetime.now(UTC).isoformat()
     await engine.dispose()
     return report
@@ -334,6 +352,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--no-papers", action="store_true", help="accounts only: no sample questions, papers or classes"
     )
+    parser.add_argument(
+        "--reset-passwords", action="store_true", help="also give the accounts that already exist a new password"
+    )
     args = parser.parse_args(argv)
     emails = None
     if args.emails_file:
@@ -347,6 +368,7 @@ def main(argv: list[str] | None = None) -> int:
             plan=plan,
             out=Path(args.out),
             papers=not args.no_papers,
+            reset_passwords=args.reset_passwords,
         )
     )
     print(json.dumps(report, indent=2, ensure_ascii=False))

@@ -20,6 +20,7 @@ reportlab>=4.2  # text/logo overlays and test fixtures (BSD-3)
 pytesseract>=0.3.10  # OCR of scanned page bands; needs the tesseract binary + vie.traineddata (Apache-2.0)
 playwright>=1.48  # typesets clean exam PDFs (headless Chromium)
 pillow>=10.4
+numpy>=2.0  # table/figure geometry of the Word converter (app/modules/parsers); was only present through a dev dependency
 minio>=7.2
 redis>=5.0  # shared sign-in failure counters across API workers (MIT)
 lxml>=5.2  # HTML pages of the permitted crawler, app/modules/crawler (BSD-3-Clause)

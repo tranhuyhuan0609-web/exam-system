@@ -130,3 +130,38 @@ def test_the_cli_writes_the_file_and_prints_no_password(tmp_path, capsys):
     assert code == 0
     passwords = [r["password"] for r in _read(out)]
     assert len(passwords) == 3 and all(p not in captured.out and p not in captured.err for p in passwords)
+
+
+def test_the_logins_are_written_before_the_slow_steps_and_a_reset_replaces_a_lost_password(tmp_path, monkeypatch):
+    from app.ops import seed_pilot as module
+
+    async def boom(*_a, **_k):
+        raise RuntimeError("the paper step failed")
+
+    plan = plan_accounts(1, 1, "reset.test")
+    out = tmp_path / "first.csv"
+    monkeypatch.setattr(module, "_ensure_papers", boom)
+    try:
+        run(seed_pilot(tenant_slug="pilot-r", tenant_name="R", plan=plan, out=out))
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("the failure must surface")
+    first = _read(out)
+    assert len(first) == 3 and all(r["password"] != "(unchanged)" for r in first), "passwords survive a failed run"
+    monkeypatch.undo()
+
+    plain = tmp_path / "plain.csv"
+    run(seed_pilot(tenant_slug="pilot-r", tenant_name="R", plan=plan, out=plain, papers=False))
+    assert all(r["password"] == "(unchanged)" for r in _read(plain))
+
+    reset = tmp_path / "reset.csv"
+    run(seed_pilot(tenant_slug="pilot-r", tenant_name="R", plan=plan, out=reset, papers=False, reset_passwords=True))
+    renewed = _read(reset)
+    assert all(r["password"] != "(unchanged)" for r in renewed)
+    client = TestClient(app, base_url="http://127.0.0.1:8000")
+    for old, new in zip(first, renewed, strict=True):
+        assert old["password"] != new["password"]
+        body = {"email": new["email"], "tenant_slug": "pilot-r"}
+        assert client.post("/api/v1/auth/login", json={**body, "password": new["password"]}).status_code == 200
+        assert client.post("/api/v1/auth/login", json={**body, "password": old["password"]}).status_code != 200
