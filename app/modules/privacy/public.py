@@ -24,6 +24,14 @@ from app.modules.privacy.internal.crypto_shredding import (
     key_service,
     set_key_service,
 )
+from app.modules.privacy.internal.key_services import (
+    EnvKeyEncryptionService,
+    KeyServiceConfigError,
+    VaultTransitKeyEncryptionService,
+    build_key_service,
+    configure_key_service,
+    decode_master_key,
+)
 from app.modules.privacy.internal.login import LoginPrincipal, authenticate_login
 from app.modules.privacy.internal.scrub import (
     REDACTED_TEXT_MARKER,
@@ -62,10 +70,12 @@ __all__ = [
     "ConsentRecord",
     "ConsentState",
     "EnrollmentResult",
+    "EnvKeyEncryptionService",
     "ErasureCertificateRecord",
     "ErasureForbiddenError",
     "InMemoryKeyEncryptionService",
     "KeyEncryptionService",
+    "KeyServiceConfigError",
     "KeyShreddedError",
     "LoginPrincipal",
     "MembershipConflictError",
@@ -76,11 +86,15 @@ __all__ = [
     "ScrubResult",
     "TenantConflictError",
     "TenantRecord",
+    "VaultTransitKeyEncryptionService",
     "authenticate_login",
     "bind_user",
+    "build_key_service",
     "compute_email_blind_index",
+    "configure_key_service",
     "consent_state",
     "create_tenant",
+    "decode_master_key",
     "enroll_member",
     "erase_user",
     "get_membership",

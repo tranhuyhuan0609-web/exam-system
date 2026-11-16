@@ -51,6 +51,7 @@ from app.modules.notifications.router import router as notifications_router
 from app.modules.outbox.router import router as outbox_router
 from app.modules.parsers.router import router as parsers_router
 from app.modules.practice.router import router as practice_router
+from app.modules.privacy.public import configure_key_service
 from app.modules.privacy.router import router as privacy_router
 from app.modules.quality.router import router as quality_router
 from app.modules.questions.router import router as questions_router
@@ -66,6 +67,9 @@ from app.routers import admin, auth, library, maker, plans, student, teacher
 from app.templating import templates
 
 settings = get_settings()
+# PII keys: the process-wide default stays in memory (dev, tests) unless KEY_SERVICE_BACKEND names a durable one.
+if settings.key_service_backend.strip().lower() != "memory":
+    configure_key_service(settings)
 is_dev = settings.app_env.lower() in ("dev", "development", "test", "testing")
 
 

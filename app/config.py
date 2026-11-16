@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     trusted_proxies: str = ""
     vault_addr: str = "http://localhost:8200"  # Vault Transit: per-user keys for crypto-shredding
     vault_token: str = ""
+    vault_transit_mount: str = "transit"
+    # Where the per-user keys of PII encryption live: "memory" (lost on restart: dev/test only), "env" (a fixed
+    # master key in PII_MASTER_KEY, base64 of >= 32 random bytes: pilot, no shredding of backups) or "vault" (Transit).
+    key_service_backend: str = "memory"
+    pii_master_key: str = ""
     clamav_host: str = "localhost"  # clamd: uploads are scanned before they are accepted
     clamav_port: int = 3310
     secret_key: str = "change-me"
@@ -125,7 +130,15 @@ class Settings(BaseSettings):
         if self.login_throttle_backend.lower() not in ("memory", "redis"):
             raise ValueError("login_throttle_backend must be 'memory' or 'redis'")
         is_dev = self.app_env.lower() in ("dev", "development", "test", "testing")
+        if self.key_service_backend.strip().lower() not in ("memory", "env", "vault"):
+            raise ValueError("key_service_backend must be 'memory', 'env' or 'vault'")
         if not is_dev:
+            # 0. PII keys must outlive the process: an in-memory key service silently loses every enrolled user's data
+            if self.key_service_backend.strip().lower() == "memory":
+                raise ValueError(
+                    f"CRITICAL SECURITY CONFIGURATION: KEY_SERVICE_BACKEND=memory loses every PII key on restart; "
+                    f"use 'env' (pilot) or 'vault' in environment '{self.app_env}'."
+                )
             # 1. Enforce secure secret_key
             if not self.secret_key or self.secret_key in ("change-me", "secret", "default", "changeme"):
                 raise ValueError(
