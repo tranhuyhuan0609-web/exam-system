@@ -123,6 +123,41 @@ export const MATRIX_ITEM_TYPES: readonly {
   { key: "SHORT_NUMERIC", shortLabel: "P.III (TLN)", fullLabel: "Phần III · Trả lời ngắn" },
 ];
 
+/** A builder with nothing in it yet: what a real session starts from until the question bank has answered. */
+export function createEmptyMatrixBuilderData(subjectGroup: SubjectGroup2025 = "MATH"): MatrixBuilderSessionData {
+  return {
+    examId: "",
+    examTitle: subjectGroup === "MATH" ? "Đề thi mới · Toán" : "Đề thi mới · Lý / Hóa / Sinh",
+    subjectGroup,
+    durationMinutes: subjectGroup === "MATH" ? 90 : 50,
+    randomSeed: 20250626,
+    requiresProAsset: false,
+    previewPdfUrl: "",
+    rawAssetUrl: "",
+    topics: [],
+    availability: {},
+    initialDesired: {},
+  };
+}
+
+/** A class with nothing in it yet: what a real session starts from until the API has answered. */
+export function createEmptyTeacherClassData(classId: string): TeacherClassLmsData {
+  return {
+    classId,
+    className: "Lớp học",
+    subjectName: "",
+    inviteCode: "",
+    activeAssessmentTitle: "Chưa giao đề nào",
+    assessmentVersionId: "",
+    requiresProAsset: false,
+    previewPdfUrl: "",
+    rawAssetUrl: "",
+    students: [],
+    topMissedItems: [],
+    copilotClusters: [],
+  };
+}
+
 export function createDemoMatrixBuilderData(
   subjectGroup: SubjectGroup2025 = "MATH",
 ): MatrixBuilderSessionData {

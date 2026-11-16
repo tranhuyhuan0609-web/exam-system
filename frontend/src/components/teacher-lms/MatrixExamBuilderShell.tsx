@@ -16,12 +16,14 @@ import {
   type MatrixCellSpec,
   type SubjectGroup2025,
 } from "@/lib/matrix-builder";
+import { hasAuthToken, isDemoModeClient } from "@/lib/auth-client";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
 import { isUuid, shouldHydrateLive, shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
 import { TeacherHeader } from "./TeacherHeader";
 import { TeacherPdfUploadPanel, type TeacherClassOption } from "./TeacherPdfUploadPanel";
 import {
   createDemoMatrixBuilderData,
+  createEmptyMatrixBuilderData,
   MATRIX_DIFFICULTIES,
   MATRIX_ITEM_TYPES,
   matrixCellKey,
@@ -55,6 +57,10 @@ export interface MatrixExamBuilderShellProps {
   apiBase?: string;
 }
 
+function data0(initialData: MatrixBuilderSessionData | undefined, sampleAllowed: boolean): MatrixBuilderSessionData {
+  return initialData ?? (sampleAllowed ? createDemoMatrixBuilderData("MATH") : createEmptyMatrixBuilderData("MATH"));
+}
+
 export function MatrixExamBuilderShell({
   initialData,
   initialUserTier = "TEACHER_PRO",
@@ -65,14 +71,15 @@ export function MatrixExamBuilderShell({
   const [activeTab, setActiveTab] = useState<BuilderTab>("matrix");
   const [matrixMode, setMatrixMode] = useState<MatrixValidationMode>("THPTQG_2025");
   const [userTier, setUserTier] = useState<UserTier>(initialUserTier);
+  // Sample data only where it is asked for: handed in, a test client, offline, or `?demo=1`. A real session starts empty.
+  const sampleAllowed = Boolean(initialData || fetchFn) || apiBase === "__OFFLINE__";
   const [data, setData] = useState<MatrixBuilderSessionData>(
-    () => initialData ?? createDemoMatrixBuilderData("MATH"),
+    () => initialData ?? (sampleAllowed ? createDemoMatrixBuilderData("MATH") : createEmptyMatrixBuilderData("MATH")),
   );
-  const [desiredMap, setDesiredMap] = useState<Record<string, number>>(
-    () => ({ ...(initialData ?? createDemoMatrixBuilderData("MATH")).initialDesired }),
-  );
-  const [randomSeed, setRandomSeed] = useState<number>(
-    () => (initialData ?? createDemoMatrixBuilderData("MATH")).randomSeed,
+  const [desiredMap, setDesiredMap] = useState<Record<string, number>>(() => ({ ...data0(initialData, sampleAllowed).initialDesired }));
+  const [randomSeed, setRandomSeed] = useState<number>(() => data0(initialData, sampleAllowed).randomSeed);
+  const [sessionKind, setSessionKind] = useState<"checking" | "live" | "sample" | "signed-out">(
+    sampleAllowed ? "sample" : "checking",
   );
   const [newPaperTitle, setNewPaperTitle] = useState("Đề kiểm tra Toán 12 theo chủ đề");
   const [durationMinutes, setDurationMinutes] = useState<number>(45);
@@ -93,7 +100,22 @@ export function MatrixExamBuilderShell({
 
   const activeSubjectCode = data.subjectGroup === "MATH" ? "math" : "physics";
 
+  // Decide, once the browser is there, what this session is: sample data (`?demo=1`), a signed-in teacher, or neither.
   useEffect(() => {
+    if (sessionKind !== "checking") return;
+    if (isDemoModeClient()) {
+      const sample = createDemoMatrixBuilderData("MATH");
+      setData(sample);
+      setDesiredMap({ ...sample.initialDesired });
+      setRandomSeed(sample.randomSeed);
+      setSessionKind("sample");
+      return;
+    }
+    setSessionKind(hasAuthToken() ? "live" : "signed-out");
+  }, [sessionKind]);
+
+  useEffect(() => {
+    if (sessionKind === "checking") return;
     if (!shouldHydrateLive({ hasInitialData: Boolean(initialData), apiBase })) return;
     let active = true;
 
@@ -213,7 +235,7 @@ export function MatrixExamBuilderShell({
     return () => {
       active = false;
     };
-  }, [activeSubjectCode, apiBase, data.subjectGroup, fetchFn, initialData]);
+  }, [activeSubjectCode, apiBase, data.subjectGroup, fetchFn, initialData, sessionKind]);
 
   const cells: MatrixCellSpec[] = useMemo(() => {
     const out: MatrixCellSpec[] = [];
@@ -258,7 +280,8 @@ export function MatrixExamBuilderShell({
     () =>
       resolveWorkspaceUiState({
         isLoading: false,
-        itemCount: data.topics.length,
+        // A real teacher with an empty question bank still gets the builder (the PDF tab works without a matrix).
+        itemCount: sessionKind === "live" ? Math.max(data.topics.length, 1) : data.topics.length,
         requiresProAsset: data.requiresProAsset,
         userTier,
         previewPdfUrl: data.previewPdfUrl,
@@ -266,7 +289,7 @@ export function MatrixExamBuilderShell({
         ...initialUiOverrides,
         ...(conflictDismissed ? { isSequenceConflict409: false } : {}),
       }),
-    [data, userTier, initialUiOverrides, conflictDismissed],
+    [data, userTier, initialUiOverrides, conflictDismissed, sessionKind],
   );
 
   const shortageLookup = useMemo(() => {
@@ -278,6 +301,25 @@ export function MatrixExamBuilderShell({
   }, [shortageReport.shortages]);
 
   const handlePresetSwitch = (group: SubjectGroup2025) => {
+    if (sessionKind === "live") {
+      // The topics and what is available come from the question bank: switching the subject re-reads them (effect above).
+      const empty = createEmptyMatrixBuilderData(group);
+      setData((prev) => ({
+        ...prev,
+        subjectGroup: group,
+        durationMinutes: empty.durationMinutes,
+        topics: [],
+        availability: {},
+      }));
+      setDesiredMap({});
+      setLivePoolTotal(null);
+      setStatusFeedback(
+        group === "MATH"
+          ? "Khung THPTQG 2025+ Môn Toán: 22 câu (12 + 4 + 6), 90 phút. Nhập số câu cần ở mỗi chủ đề."
+          : "Khung THPTQG 2025+ Lý / Hóa / Sinh: 28 câu (18 + 4 + 6), 50 phút. Nhập số câu cần ở mỗi chủ đề.",
+      );
+      return;
+    }
     const next = createDemoMatrixBuilderData(group);
     setData((prev) => ({
       ...next,
@@ -504,8 +546,24 @@ export function MatrixExamBuilderShell({
   };
 
   const renderMainContent = () => {
-    if (uiResolution.kind === "LoadingSkeleton") {
+    if (sessionKind === "checking" || uiResolution.kind === "LoadingSkeleton") {
       return <LoadingSkeleton title="Đang tải Matrix Exam Builder..." />;
+    }
+    if (sessionKind === "signed-out") {
+      return (
+        <div data-testid="builder-signed-out" className="mx-auto my-12 max-w-lg rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <h1 className="text-lg font-extrabold text-slate-900">Đăng nhập để tạo đề</h1>
+          <p className="mt-2 text-sm text-slate-600">
+            Trang này dùng kho câu hỏi của trường bạn, nên cần đăng nhập bằng tài khoản giáo viên.
+          </p>
+          <a
+            href="/dang-nhap?next=/teacher/exam-builder"
+            className="mt-5 inline-block rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white hover:bg-blue-800"
+          >
+            Đăng nhập
+          </a>
+        </div>
+      );
     }
     if (uiResolution.kind === "ErrorBoundary") {
       return (
@@ -787,6 +845,16 @@ export function MatrixExamBuilderShell({
             className="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-900"
           >
             Kho câu hỏi đáp ứng 100% ma trận ({shortageReport.totalDesired} câu). Sẵn sàng bốc đề tự động C04!
+          </section>
+        )}
+
+        {sessionKind === "live" && data.topics.length === 0 && (
+          <section
+            data-testid="empty-question-bank-notice"
+            className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-950"
+          >
+            Kho câu hỏi của bạn chưa có câu hỏi đã xuất bản và gắn chủ đề cho môn này, nên chưa dựng được ma trận. Hãy
+            tải đề lên ở thẻ &quot;2. Upload đề PDF&quot; (hoặc nhập đề ở Studio), duyệt câu hỏi, rồi quay lại đây.
           </section>
         )}
 

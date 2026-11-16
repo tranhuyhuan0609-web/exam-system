@@ -11,12 +11,15 @@ import {
   OfflineRetryBanner,
   SequenceConflictModal,
 } from "@/components/workspace/WorkspaceStateViews";
+import { hasAuthToken, isDemoModeClient } from "@/lib/auth-client";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
 import { isUuid, shouldHydrateLive, shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
 import { TeacherHeader } from "./TeacherHeader";
 import {
   createDemoTeacherClassData,
+  createEmptyTeacherClassData,
   type ClassAssignmentOption,
+  type ClassItemAnalysisRow,
   type CopilotRemediationCluster,
   type PublishedPaperOption,
   type StudentGradeRow,
@@ -72,6 +75,33 @@ export function mapGradebookRows(rows: readonly BackendGradebookRow[]): StudentG
   });
 }
 
+interface BackendHardQuestion {
+  question_id?: string;
+  attempt_count?: number;
+  wrong_count?: number;
+  error_rate?: string | number;
+  top_wrong_distractor?: string | null;
+}
+
+/** `top_5_hardest_questions` of `GET /classes/{id}/item-analysis` as cards (the API gives counts, not stems or per-option shares). */
+export function mapItemAnalysis(rows: readonly BackendHardQuestion[]): ClassItemAnalysisRow[] {
+  return rows.map((row, idx) => {
+    const id = row.question_id ?? `q-${idx + 1}`;
+    const rate = Number(row.error_rate);
+    const top = String(row.top_wrong_distractor ?? "").trim().toUpperCase();
+    return {
+      questionId: id,
+      stableCode: id.slice(0, 8),
+      topicName: `${row.wrong_count ?? 0}/${row.attempt_count ?? 0} lượt làm sai`,
+      stemMd: "",
+      totalResponses: row.attempt_count ?? 0,
+      wrongRatePct: Number.isFinite(rate) ? Math.round(rate * 1000) / 10 : 0,
+      topDistractorKey: top === "A" || top === "B" || top === "C" || top === "D" ? top : "A",
+      distractors: [],
+    };
+  });
+}
+
 export function TeacherClassLmsShell({
   classId,
   initialData,
@@ -81,9 +111,15 @@ export function TeacherClassLmsShell({
   apiBase = "",
 }: TeacherClassLmsShellProps) {
   const [userTier, setUserTier] = useState<UserTier>(initialUserTier);
+  // Sample data only where it is asked for: handed in, a test client, offline, or `?demo=1`. A real session starts empty.
+  const sampleAllowed = Boolean(initialData || fetchFn) || apiBase === "__OFFLINE__";
   const [classData, setClassData] = useState<TeacherClassLmsData>(
-    () => initialData ?? createDemoTeacherClassData(classId),
+    () => initialData ?? (sampleAllowed ? createDemoTeacherClassData(classId) : createEmptyTeacherClassData(classId)),
   );
+  const [sessionKind, setSessionKind] = useState<"checking" | "live" | "sample" | "signed-out">(
+    sampleAllowed ? "sample" : "checking",
+  );
+  const [liveLoaded, setLiveLoaded] = useState(false);
   const [filterMode, setFilterMode] = useState<"ALL" | "SUBMITTED" | "UNSUBMITTED" | "LATE">("ALL");
   const [confirmingClusterId, setConfirmingClusterId] = useState<string | null>(null);
   const [statusFeedback, setStatusFeedback] = useState<string | null>(null);
@@ -143,12 +179,38 @@ export function TeacherClassLmsShell({
         const rows = mapGradebookRows(book.data.rows);
         setClassData((prev) => ({ ...prev, students: rows }));
       }
+      const analysis = await workspaceCall<{ top_5_hardest_questions?: BackendHardQuestion[] }>({
+        url: `/api/v1/classes/${encodeURIComponent(liveClassId)}/item-analysis?assignment_id=${encodeURIComponent(active.id)}`,
+        method: "GET",
+        fetchFn,
+        apiBase,
+        redirectOn401: false,
+      });
+      if (analysis.ok && Array.isArray(analysis.data?.top_5_hardest_questions)) {
+        const items = mapItemAnalysis(analysis.data.top_5_hardest_questions);
+        setClassData((prev) => ({ ...prev, topMissedItems: items }));
+      }
     },
     [apiBase, fetchFn],
   );
 
+  // Decide, once the browser is there, what this session is: sample data (`?demo=1`), a signed-in teacher, or neither.
   useEffect(() => {
-    if (!shouldHydrateLive({ hasInitialData: Boolean(initialData), apiBase, entityIds: [classId] })) return;
+    if (sessionKind !== "checking") return;
+    if (isDemoModeClient()) {
+      setClassData(createDemoTeacherClassData(classId));
+      setSessionKind("sample");
+      return;
+    }
+    setSessionKind(hasAuthToken() ? "live" : "signed-out");
+  }, [sessionKind, classId]);
+
+  useEffect(() => {
+    if (sessionKind === "checking") return;
+    if (!shouldHydrateLive({ hasInitialData: Boolean(initialData), apiBase, entityIds: [classId] })) {
+      setLiveLoaded(true); // nothing to wait for: not signed in, or not a real class id
+      return;
+    }
     let active = true;
     void workspaceCall<{
       classroom?: { id?: string; name?: string; invite_code?: string };
@@ -219,17 +281,20 @@ export function TeacherClassLmsShell({
         }
       }
       await loadAssignmentsAndGradebook(liveClassId);
+    }).finally(() => {
+      if (active) setLiveLoaded(true);
     });
     return () => {
       active = false;
     };
-  }, [apiBase, classId, fetchFn, initialData, loadAssignmentsAndGradebook]);
+  }, [apiBase, classId, fetchFn, initialData, loadAssignmentsAndGradebook, sessionKind]);
 
   const uiResolution = useMemo(
     () =>
       resolveWorkspaceUiState({
-        isLoading: false,
-        itemCount: classData.students.length,
+        isLoading: sessionKind === "live" && !liveLoaded,
+        // A live class with nobody in it yet still shows the page: the teacher can hand out a paper before students join.
+        itemCount: sessionKind === "live" ? Math.max(classData.students.length, 1) : classData.students.length,
         requiresProAsset: classData.requiresProAsset,
         userTier,
         previewPdfUrl: classData.previewPdfUrl,
@@ -237,7 +302,7 @@ export function TeacherClassLmsShell({
         ...initialUiOverrides,
         ...(conflictDismissed ? { isSequenceConflict409: false } : {}),
       }),
-    [classData, userTier, initialUiOverrides, conflictDismissed],
+    [classData, userTier, initialUiOverrides, conflictDismissed, sessionKind, liveLoaded],
   );
 
   const unsubmittedStudents = useMemo(
@@ -390,8 +455,22 @@ export function TeacherClassLmsShell({
   };
 
   const renderMainContent = () => {
-    if (uiResolution.kind === "LoadingSkeleton") {
+    if (sessionKind === "checking" || uiResolution.kind === "LoadingSkeleton") {
       return <LoadingSkeleton title="Đang tải sổ điểm lớp học..." />;
+    }
+    if (sessionKind === "signed-out") {
+      return (
+        <div data-testid="class-signed-out" className="mx-auto my-12 max-w-lg rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <h1 className="text-lg font-extrabold text-slate-900">Đăng nhập để xem lớp học</h1>
+          <p className="mt-2 text-sm text-slate-600">Sổ điểm của lớp chỉ dành cho giáo viên của lớp.</p>
+          <a
+            href={`/dang-nhap?next=${encodeURIComponent(`/teacher/classes/${classId}`)}`}
+            className="mt-5 inline-block rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white hover:bg-blue-800"
+          >
+            Đăng nhập
+          </a>
+        </div>
+      );
     }
     if (uiResolution.kind === "ErrorBoundary") {
       return (
@@ -579,7 +658,18 @@ export function TeacherClassLmsShell({
           </section>
         </div>
 
-        {/* Teacher AI Copilot (E06) */}
+        {sessionKind === "live" && classData.students.length === 0 && (
+          <section
+            data-testid="class-no-students-notice"
+            className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs font-semibold text-blue-950"
+          >
+            Lớp chưa có học sinh. Chia sẻ mã lớp <code className="font-bold">{classData.inviteCode}</code> để học sinh
+            tham gia; bạn có thể giao đề trước.
+          </section>
+        )}
+
+        {/* Teacher AI Copilot (E06): a live class shows it only once there is something to act on */}
+        {(sessionKind !== "live" || classData.copilotClusters.length > 0) && (
         <section
           data-testid="teacher-copilot-panel"
           className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-5 shadow-xs"
@@ -653,8 +743,10 @@ export function TeacherClassLmsShell({
             ))}
           </div>
         </section>
+        )}
 
         {/* Top 5 Item Analysis + Distractor Breakdown */}
+        {(sessionKind !== "live" || classData.topMissedItems.length > 0) && (
         <section
           data-testid="item-analysis-panel"
           className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs"
@@ -685,9 +777,11 @@ export function TeacherClassLmsShell({
                     Tỷ lệ sai: {item.wrongRatePct}% · Bẫy nhiều nhất: Phương án {item.topDistractorKey}
                   </div>
                 </div>
-                <div className="mt-2 rounded-lg bg-white p-3 text-sm text-slate-900">
-                  <SafeKatexText text={item.stemMd} />
-                </div>
+                {item.stemMd && (
+                  <div className="mt-2 rounded-lg bg-white p-3 text-sm text-slate-900">
+                    <SafeKatexText text={item.stemMd} />
+                  </div>
+                )}
                 <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {item.distractors.map((dist) => (
                     <div
@@ -714,6 +808,7 @@ export function TeacherClassLmsShell({
             ))}
           </div>
         </section>
+        )}
 
         {/* Gradebook Table */}
         <section

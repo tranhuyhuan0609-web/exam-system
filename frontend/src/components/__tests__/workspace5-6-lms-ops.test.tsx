@@ -264,6 +264,8 @@ describe("Workspace 5 & 6 Routes, Home Navigation, & Mandatory 6 UI States", () 
     expect(screen.getByTestId("h2edu-teacher-header")).toBeTruthy();
     cleanup();
 
+    // sample data is only for `?demo=1`
+    window.history.pushState({}, "", "/?demo=1");
     const classEl = await TeacherClassPage({
       params: Promise.resolve({ id: "class-12a1" }),
       searchParams: Promise.resolve({}),
@@ -271,6 +273,7 @@ describe("Workspace 5 & 6 Routes, Home Navigation, & Mandatory 6 UI States", () 
     render(classEl);
     expect(screen.getByTestId("gradebook-table-panel")).toBeTruthy();
     cleanup();
+    window.history.pushState({}, "", "/");
 
     render(<AdminOpsPage />);
     expect(screen.getByTestId("outbox-slo-panel")).toBeTruthy();
