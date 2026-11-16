@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { getAccessToken } from "@/lib/auth-client";
 import { normalizeAndClampBBox, type BoundingBox } from "@/lib/bbox-reviewer";
 import {
   BBOX_REGION_COLORS,
@@ -22,6 +23,8 @@ export interface PdfBboxCanvasProps {
   onRecropRegion: (itemId: string, kind: BboxRegionKind, nextBox: BoundingBox) => void;
   zoomPercent: number;
   onZoomChange: (nextZoom: number) => void;
+  fetchFn?: typeof fetch;
+  apiBase?: string;
 }
 
 interface Point2D {
@@ -70,10 +73,52 @@ export function PdfBboxCanvas({
   onRecropRegion,
   zoomPercent,
   onZoomChange,
+  fetchFn,
+  apiBase = "",
 }: PdfBboxCanvasProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [dragStart, setDragStart] = useState<Point2D | null>(null);
   const [dragCurrent, setDragCurrent] = useState<Point2D | null>(null);
+  const [renderedPageUrl, setRenderedPageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const rawUrl = page.previewImageUrl;
+    if (!rawUrl || apiBase === "__OFFLINE__") {
+      setRenderedPageUrl(null);
+      return;
+    }
+    const caller = fetchFn ?? (typeof fetch === "function" ? fetch : null);
+    if (!caller) {
+      setRenderedPageUrl(null);
+      return;
+    }
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    const token = getAccessToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    void caller(`${apiBase}${rawUrl}`, { method: "GET", headers })
+      .then(async (res) => {
+        if (cancelled || !res.ok || typeof res.blob !== "function") return;
+        const blob = await res.blob();
+        if (cancelled || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") return;
+        objectUrl = URL.createObjectURL(blob);
+        setRenderedPageUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setRenderedPageUrl(null);
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [apiBase, fetchFn, page.previewImageUrl]);
 
   const visibleRegions: { readonly itemId: string; readonly region: BboxRegion }[] = [];
   for (const item of pageItems) {
@@ -228,18 +273,32 @@ export function PdfBboxCanvas({
             onMouseMove={(e) => moveDrag(e.clientX, e.clientY)}
             onMouseUp={(e) => endDrag(e.clientX, e.clientY)}
           >
-            {/* Simulated PDF Page Background */}
+            {/* Real PDF Page Raster Image or Demo Text Fallback */}
             <rect x={0} y={0} width={page.width} height={page.height} fill="#ffffff" />
-            <text x={36} y={44} fontSize={13} fontWeight="bold" fill="#334155">
-              {page.heading}
-            </text>
-            <line x1={36} y1={58} x2={page.width - 36} y2={58} stroke="#e2e8f0" strokeWidth={1.5} />
+            {renderedPageUrl ? (
+              <image
+                data-testid="ws3-pdf-page-image"
+                href={renderedPageUrl}
+                x={0}
+                y={0}
+                width={page.width}
+                height={page.height}
+                preserveAspectRatio="none"
+              />
+            ) : (
+              <>
+                <text x={36} y={44} fontSize={13} fontWeight="bold" fill="#334155">
+                  {page.heading}
+                </text>
+                <line x1={36} y1={58} x2={page.width - 36} y2={58} stroke="#e2e8f0" strokeWidth={1.5} />
 
-            {page.previewLines.map((line, idx) => (
-              <text key={idx} x={48} y={84 + idx * 140} fontSize={11} fill="#64748b">
-                {line}
-              </text>
-            ))}
+                {page.previewLines.map((line, idx) => (
+                  <text key={idx} x={48} y={84 + idx * 140} fontSize={11} fill="#64748b">
+                    {line}
+                  </text>
+                ))}
+              </>
+            )}
 
             {/* Existing BBox Regions */}
             {visibleRegions.map(({ itemId, region }) => {

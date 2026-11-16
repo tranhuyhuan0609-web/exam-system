@@ -394,14 +394,27 @@ describe("ImportsHubShell (/studio/imports)", () => {
       expect(screen.getByTestId(`retry-job-${jobId}`)).toBeTruthy();
     });
 
-    // Reject .docx before upload
-    const badFile = new File(["dummy"], "de-cu.docx", {
-      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    // Reject .zip before upload, allow .docx now
+    const badFile = new File(["PK"], "goi-de.zip", {
+      type: "application/zip",
     });
     fireEvent.change(screen.getByTestId("imports-file-input"), { target: { files: [badFile] } });
     fireEvent.click(screen.getByTestId("imports-upload-submit-btn"));
     await waitFor(() => {
-      expect(screen.getByTestId("workspace-api-error").textContent).toContain("/admin/ai-imports");
+      expect(screen.getByTestId("workspace-api-error").textContent).toContain(".zip");
+    });
+
+    // Verify .docx proceeds through /documents -> /extract -> /exam-imports
+    const docxFile = new File(["PK\x03\x04"], "de-cu.docx", {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+    fireEvent.change(screen.getByTestId("imports-file-input"), { target: { files: [docxFile] } });
+    fireEvent.change(screen.getByTestId("imports-title-input"), { target: { value: "Đề Word Test" } });
+    fireEvent.click(screen.getByTestId("imports-upload-submit-btn"));
+    await waitFor(() => {
+      expect(screen.getByTestId("open-created-bbox-link").getAttribute("href")).toBe(
+        `/studio/imports/${createdBboxId}/review`,
+      );
     });
 
     // Upload valid PDF through BBox pipeline
@@ -433,6 +446,101 @@ describe("ImportsHubShell (/studio/imports)", () => {
       expect(calledUrls).toContain("POST /api/v1/imports");
     });
   });
+
+  it("forwards multi-question extracted_structure sections and bbox_json from /extract to POST /api/v1/exam-imports", async () => {
+    signInTeacher();
+    const docId = "66666666-6666-4666-8666-666666666602";
+    const extractId = "77777777-7777-4777-8777-777777777702";
+    const createdBboxId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa02";
+    let postedExamImportBody: Record<string, unknown> | null = null;
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+
+      if ((url.startsWith("/api/v1/exam-imports?") || url.startsWith("/api/v1/imports?")) && method === "GET") {
+        return new Response(
+          JSON.stringify({ items: [], next_cursor: null, has_more: false, limit: 20 }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url === "/api/v1/documents" && method === "POST") {
+        return new Response(
+          JSON.stringify({ source_document_id: docId, document_version_id: "88888888-8888-4888-8888-888888888882" }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url === `/api/v1/documents/${docId}/extract` && method === "POST") {
+        return new Response(
+          JSON.stringify({
+            id: extractId,
+            extracted_structure: {
+              pages: [{ page_no: 1, width_pt: 595, height_pt: 842, heading: "Trang 1" }],
+              sections: [
+                {
+                  section_code: "PART_I_MCQ",
+                  title: "PHẦN I",
+                  questions: [
+                    {
+                      question_no: 1,
+                      points: 0.25,
+                      page_number: 1,
+                      item_type: "SINGLE_CHOICE",
+                      stem_md: "Câu 1: Giá trị của 1 + 1 bằng?",
+                      options_md: ["1", "2", "3", "4"],
+                      paired_answer: "B",
+                      bbox_json: { x0: 42, y0: 100, x1: 520, y1: 185 },
+                      original_question_label: "Câu 1",
+                    },
+                    {
+                      question_no: 2,
+                      points: 0.25,
+                      page_number: 1,
+                      item_type: "SINGLE_CHOICE",
+                      stem_md: "Câu 2: Thủ đô Việt Nam là?",
+                      options_md: ["Huế", "Đà Nẵng", "Hà Nội", "TP.HCM"],
+                      paired_answer: "C",
+                      bbox_json: { x0: 42, y0: 210, x1: 520, y1: 295 },
+                      original_question_label: "Câu 2",
+                    },
+                  ],
+                },
+              ],
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url === "/api/v1/exam-imports" && method === "POST") {
+        postedExamImportBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(JSON.stringify({ id: createdBboxId, status: "PENDING_REVIEW" }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response("{}", { status: 404 });
+    });
+
+    render(<ImportsHubShell fetchFn={fetchMock as unknown as typeof fetch} />);
+    const pdfFile = new File(["%PDF-1.4\n"], "de-minh-hoa.pdf", { type: "application/pdf" });
+    fireEvent.change(screen.getByTestId("imports-file-input"), { target: { files: [pdfFile] } });
+    fireEvent.click(screen.getByTestId("imports-upload-submit-btn"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("open-created-bbox-link").getAttribute("href")).toBe(
+        `/studio/imports/${createdBboxId}/review`,
+      );
+    });
+    expect(postedExamImportBody).not.toBeNull();
+    const sent = postedExamImportBody as unknown as {
+      expected_total_points: number;
+      sections: Array<{ section_code: string; questions: Array<{ question_no: number; paired_answer: string; bbox_json: Record<string, number> }> }>;
+    };
+    expect(sent.expected_total_points).toBe(0.5);
+    expect(sent.sections[0]?.questions).toHaveLength(2);
+    expect(sent.sections[0]?.questions[0]?.paired_answer).toBe("B");
+    expect(sent.sections[0]?.questions[1]?.bbox_json).toEqual({ x0: 42, y0: 210, x1: 520, y1: 295 });
+  });
 });
 
 describe("Unified Studio, Home & Exam Builder Navigation Integration", () => {
@@ -454,6 +562,16 @@ describe("Unified Studio, Home & Exam Builder Navigation Integration", () => {
     );
     cleanup();
 
+    // Teacher-only session hides Studio/Bank/Admin links in TeacherHeader
+    signInTeacher(["TEACHER"]);
+    render(<TeacherHeader activeRoute="exam-builder" userTier="TEACHER_PRO" />);
+    expect(screen.queryByRole("link", { name: "Ngân hàng câu hỏi" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Nạp file đề" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Admin Ops" })).toBeNull();
+    cleanup();
+
+    // Content author / Admin session exposes Studio links
+    signInTeacher(["CONTENT_AUTHOR"]);
     render(<TeacherHeader activeRoute="exam-builder" userTier="TEACHER_PRO" />);
     expect(screen.getByRole("link", { name: "Ngân hàng câu hỏi" }).getAttribute("href")).toBe(
       "/studio/questions",

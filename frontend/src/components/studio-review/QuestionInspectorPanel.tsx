@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { SafeKatexText } from "@/components/workspace/SafeKatexText";
 import {
   evaluatePublishButtonState,
@@ -21,6 +22,7 @@ export interface QuestionInspectorPanelProps {
   onApproveItem: (itemId: string) => void;
   onPublishItem: (itemId: string) => void;
   onSaveStructure: () => void;
+  promotedQuestionCount?: number;
 }
 
 const RIGHTS_OPTIONS: readonly ReviewerRightsStatus[] = [
@@ -51,6 +53,7 @@ export function QuestionInspectorPanel({
   onApproveItem,
   onPublishItem,
   onSaveStructure,
+  promotedQuestionCount = 0,
 }: QuestionInspectorPanelProps) {
   const dispute = inspectAnswerDispute(selectedItem.sourceAnswer, selectedItem.sympyAnswer);
   const publishState = evaluatePublishButtonState({
@@ -172,6 +175,53 @@ export function QuestionInspectorPanel({
           <SafeKatexText text={selectedItem.stemMarkdown} />
         </div>
       </div>
+
+      {/* Options Editor & Quick Answer Selection */}
+      {selectedItem.options.length > 0 && (
+        <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+          <p className="text-xs font-bold uppercase text-slate-600">
+            Lựa chọn ({selectedItem.options.length}) — Bấm chữ cái để chọn đáp án đúng
+          </p>
+          <div className="space-y-1.5">
+            {selectedItem.options.map((opt, idx) => {
+              const isSelectedAnswer =
+                selectedItem.sourceAnswer.trim().toUpperCase() === opt.key.toUpperCase();
+              return (
+                <div key={`${selectedItem.id}-opt-${opt.key}-${idx}`} className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    data-testid={`ws3-quick-ans-${opt.key}`}
+                    onClick={() =>
+                      onUpdateItem(selectedItem.id, {
+                        sourceAnswer: opt.key,
+                        sympyAnswer: opt.key,
+                      })
+                    }
+                    className={`min-w-[28px] rounded-md border px-2 py-1 text-xs font-extrabold transition ${
+                      isSelectedAnswer
+                        ? "border-indigo-700 bg-indigo-700 text-white"
+                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    {opt.key}
+                  </button>
+                  <input
+                    type="text"
+                    value={opt.label}
+                    onChange={(e) => {
+                      const nextOptions = selectedItem.options.map((entry, entryIdx) =>
+                        entryIdx === idx ? { ...entry, label: e.target.value } : entry,
+                      );
+                      onUpdateItem(selectedItem.id, { options: nextOptions });
+                    }}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-900 focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Source Answer vs SymPy Comparison */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -295,9 +345,20 @@ export function QuestionInspectorPanel({
         </div>
 
         {actionFeedback && (
-          <p data-testid="ws3-action-feedback" className="text-xs font-semibold text-indigo-800">
-            {actionFeedback}
-          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <p data-testid="ws3-action-feedback" className="text-xs font-semibold text-indigo-800">
+              {actionFeedback}
+            </p>
+            {promotedQuestionCount > 0 && (
+              <Link
+                href="/studio/questions"
+                data-testid="ws3-open-question-bank-link"
+                className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-800 hover:bg-indigo-100"
+              >
+                Xem {promotedQuestionCount} câu ở Ngân hàng câu hỏi →
+              </Link>
+            )}
+          </div>
         )}
       </div>
     </section>

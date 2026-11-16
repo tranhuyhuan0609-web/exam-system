@@ -27,6 +27,10 @@ export interface ReviewQuestionItem {
   readonly rightsStatus: ReviewerRightsStatus;
   readonly verificationStatus: ReviewerVerificationStatus;
   readonly regions: readonly BboxRegion[];
+  readonly sectionCode?: string;
+  readonly sectionTitle?: string;
+  readonly points?: number;
+  readonly backendQuestionId?: string | null;
 }
 
 export interface ReviewDocumentPage {
@@ -35,6 +39,7 @@ export interface ReviewDocumentPage {
   readonly height: number;
   readonly heading: string;
   readonly previewLines: readonly string[];
+  readonly previewImageUrl?: string | null;
 }
 
 export interface ImportReviewSessionData {

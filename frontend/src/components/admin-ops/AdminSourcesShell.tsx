@@ -16,6 +16,7 @@ import { shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
 import { evaluateDrivePairingCandidate, evaluateParserDriftStatus } from "@/lib/workspace6-admin-ops";
 import { AdminHeader } from "./AdminHeader";
 import { AdminReasonModal } from "./AdminReasonModal";
+import { SourcesLiveIngestPanel } from "./SourcesLiveIngestPanel";
 import { createDemoAdminSourcesData, type AdminSourcesConsoleData } from "./types";
 
 export interface AdminSourcesShellProps {
@@ -389,6 +390,8 @@ export function AdminSourcesShell({
             </table>
           </div>
         </section>
+
+        <SourcesLiveIngestPanel fetchFn={fetchFn} apiBase={apiBase} />
       </div>
     );
   };

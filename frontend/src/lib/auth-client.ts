@@ -15,7 +15,7 @@ export interface AuthSession {
 }
 
 export interface DemoAccountPreset {
-  id: "learner" | "teacher" | "tenant_admin" | "platform_admin";
+  id: "learner" | "teacher" | "content_author" | "tenant_admin" | "platform_admin";
   label: string;
   roleBadge: string;
   email: string;
@@ -50,12 +50,12 @@ export const DEMO_ACCOUNTS: readonly DemoAccountPreset[] = [
   },
   {
     id: "teacher",
-    label: "Giáo viên & Biên soạn",
+    label: "Giáo viên THPT",
     roleBadge: "TEACHER",
     email: "teacher@h2edu.demo",
     password: DEMO_PASSWORD,
     tenantSlug: DEMO_TENANT_SLUG,
-    description: "Duyệt BBox, Block Studio, Ma trận đề & Lớp học 12A1",
+    description: "Ma trận đề theo chủ đề, Upload PDF/AI tạo phòng thi & Lớp học 12A1",
     fallbackSession: {
       userId: "demo-teacher-001",
       tenantId: "tenant-h2edu-demo",
@@ -64,6 +64,24 @@ export const DEMO_ACCOUNTS: readonly DemoAccountPreset[] = [
       entitlementTier: "TEACHER_PRO",
       email: "teacher@h2edu.demo",
       displayName: "Cô Lan (GV Demo)",
+    },
+  },
+  {
+    id: "content_author",
+    label: "Biên tập viên Kho đề",
+    roleBadge: "CONTENT_AUTHOR",
+    email: "content_author@h2edu.demo",
+    password: DEMO_PASSWORD,
+    tenantSlug: DEMO_TENANT_SLUG,
+    description: "Ngân hàng câu hỏi C01, Nạp file đề, Duyệt BBox & Block Studio",
+    fallbackSession: {
+      userId: "demo-author-001",
+      tenantId: "tenant-h2edu-demo",
+      membershipId: "mem-author-001",
+      roles: ["CONTENT_AUTHOR"],
+      entitlementTier: "TEACHER_PRO",
+      email: "content_author@h2edu.demo",
+      displayName: "Biên tập viên (Demo)",
     },
   },
   {
@@ -103,6 +121,47 @@ export const DEMO_ACCOUNTS: readonly DemoAccountPreset[] = [
     },
   },
 ];
+
+const BANK_AUTHOR_ROLES = new Set([
+  "ADMIN",
+  "PLATFORM_ADMIN",
+  "SUPER_ADMIN",
+  "TENANT_ADMIN",
+  "CONTENT_AUTHOR",
+  "REVIEWER",
+  "EDITOR",
+]);
+
+const TEACHER_LMS_ROLES = new Set([
+  "ADMIN",
+  "PLATFORM_ADMIN",
+  "SUPER_ADMIN",
+  "TENANT_ADMIN",
+  "TEACHER",
+]);
+
+const ADMIN_OPS_ROLES = new Set([
+  "ADMIN",
+  "PLATFORM_ADMIN",
+  "SUPER_ADMIN",
+  "TENANT_ADMIN",
+]);
+
+function hasAnyRole(session: Pick<AuthSession, "roles"> | null | undefined, allowed: ReadonlySet<string>): boolean {
+  return Boolean(session?.roles.some((role) => allowed.has(role.toUpperCase())));
+}
+
+export function canAccessStudioBank(session: Pick<AuthSession, "roles"> | null | undefined): boolean {
+  return hasAnyRole(session, BANK_AUTHOR_ROLES);
+}
+
+export function canAccessTeacherLms(session: Pick<AuthSession, "roles"> | null | undefined): boolean {
+  return hasAnyRole(session, TEACHER_LMS_ROLES);
+}
+
+export function canAccessAdminOps(session: Pick<AuthSession, "roles"> | null | undefined): boolean {
+  return hasAnyRole(session, ADMIN_OPS_ROLES);
+}
 
 export interface JwtClaims {
   sub?: string;

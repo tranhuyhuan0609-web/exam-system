@@ -63,8 +63,35 @@ interface UploadDocumentResponse {
   readonly acquisition_job_id?: string | null;
 }
 
+interface ExtractedQuestionPayload {
+  readonly question_no: number;
+  readonly points: number;
+  readonly page_number: number;
+  readonly item_type?: string;
+  readonly stem_md?: string | null;
+  readonly options_md?: readonly string[];
+  readonly paired_answer?: string | null;
+  readonly bbox_json?: Record<string, unknown> | null;
+  readonly original_question_label?: string | null;
+}
+
+interface ExtractedSectionPayload {
+  readonly section_code: string;
+  readonly title: string;
+  readonly questions: readonly ExtractedQuestionPayload[];
+}
+
 interface ExtractDocumentResponse {
   readonly id: string;
+  readonly extracted_structure?: {
+    readonly pages?: ReadonlyArray<{
+      readonly page_no: number;
+      readonly width_pt: number;
+      readonly height_pt: number;
+      readonly heading?: string;
+    }>;
+    readonly sections?: readonly ExtractedSectionPayload[];
+  } | null;
 }
 
 interface CreateExamImportResponse {
@@ -308,32 +335,40 @@ export function ImportsHubShell({
     setCreatedImportId(null);
 
     if (!selectedFile) {
-      setApiError("Vui lòng chọn file đề PDF (.pdf) trước khi tải lên.");
+      setApiError("Vui lòng chọn file đề (.pdf, .docx, .doc, .jpg, .png, .webp) trước khi tải lên.");
       setApiErrorStatus(422);
       return;
     }
 
     const lowerName = selectedFile.name.toLowerCase();
-    if (
-      selectedFile.type &&
-      selectedFile.type !== "application/pdf" &&
-      !lowerName.endsWith(".pdf")
-    ) {
+    const allowedExt = [".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png", ".webp"].some((ext) =>
+      lowerName.endsWith(ext),
+    );
+    const allowedMime = new Set([
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/msword",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ]);
+    if (!allowedExt && !(selectedFile.type && allowedMime.has(selectedFile.type))) {
       setApiError(
-        "Nạp đề V11.3 chỉ hỗ trợ định dạng .pdf (file .docx/.zip sẽ bị từ chối 422). Dùng /admin/ai-imports cho luồng legacy.",
+        "Định dạng chưa hỗ trợ ở luồng Studio (.zip hoặc file khác sẽ bị từ chối 422). Chỉ nhận .pdf, .docx, .doc, .jpg, .png, .webp.",
       );
       setApiErrorStatus(422);
       return;
     }
 
     if (!hasToken) {
-      setApiError("Vui lòng đăng nhập tài khoản biên soạn trước khi tải file đề lên API.");
+      setApiError("Vui lòng đăng nhập tài khoản biên soạn (CONTENT_AUTHOR / ADMIN) trước khi tải file đề lên API.");
       setApiErrorStatus(401);
       return;
     }
 
     setUploading(true);
-    const effectiveTitle = uploadTitle.trim() || selectedFile.name.replace(/\.pdf$/i, "");
+    const effectiveTitle =
+      uploadTitle.trim() || selectedFile.name.replace(/\.(pdf|docx|doc|jpe?g|png|webp)$/i, "");
 
     if (pipelineMode === "A01_QUEUE") {
       setUploadStep("Đang đẩy file PDF vào Hàng đợi A01 (POST /api/v1/imports)...");
@@ -433,14 +468,25 @@ export function ImportsHubShell({
     }
 
     setUploadStep("Bước 3/3: Đang khởi tạo phiên duyệt BBox (POST /api/v1/exam-imports)...");
-    const sessionRes = await workspaceCall<CreateExamImportResponse>({
-      url: "/api/v1/exam-imports",
-      method: "POST",
-      json: {
-        extraction_run_id: extractRes.data.id,
-        expected_total_points: 10.0,
-        create_question_candidates: false,
-        sections: [
+    const extractedSections = extractRes.data.extracted_structure?.sections ?? [];
+    const hasExtractedQuestions = extractedSections.some((sec) => sec.questions.length > 0);
+    const sectionsPayload: ExtractedSectionPayload[] = hasExtractedQuestions
+      ? extractedSections.map((sec) => ({
+          section_code: sec.section_code,
+          title: sec.title,
+          questions: sec.questions.map((q) => ({
+            question_no: q.question_no,
+            points: q.points,
+            page_number: q.page_number,
+            item_type: q.item_type ?? "SINGLE_CHOICE",
+            stem_md: q.stem_md ?? `Câu ${q.question_no}`,
+            options_md: [...(q.options_md ?? [])],
+            paired_answer: q.paired_answer ?? null,
+            bbox_json: q.bbox_json ?? undefined,
+            original_question_label: q.original_question_label ?? `Câu ${q.question_no}`,
+          })),
+        }))
+      : [
           {
             section_code: "PART_I_MCQ",
             title: effectiveTitle,
@@ -449,13 +495,28 @@ export function ImportsHubShell({
                 question_no: 1,
                 points: 10.0,
                 page_number: 1,
+                item_type: "SINGLE_CHOICE",
                 stem_md: "Câu 1 (mới nạp — rà soát & chỉnh BBox)",
                 options_md: ["A", "B", "C", "D"],
+                paired_answer: null,
                 bbox_json: { x0: 40, y0: 120, x1: 550, y1: 240 },
+                original_question_label: "Câu 1",
               },
             ],
           },
-        ],
+        ];
+    const totalPoints = sectionsPayload
+      .flatMap((s) => s.questions)
+      .reduce((acc, q) => acc + (Number.isFinite(q.points) ? q.points : 0), 0);
+
+    const sessionRes = await workspaceCall<CreateExamImportResponse>({
+      url: "/api/v1/exam-imports",
+      method: "POST",
+      json: {
+        extraction_run_id: extractRes.data.id,
+        expected_total_points: totalPoints > 0 ? Number(totalPoints.toFixed(2)) : 10.0,
+        create_question_candidates: false,
+        sections: sectionsPayload,
       },
       fetchFn,
       apiBase,
@@ -576,7 +637,7 @@ export function ImportsHubShell({
             <p className="font-bold">Cần đăng nhập tài khoản biên soạn để nạp đề và quản lý hàng đợi</p>
             <p className="mt-1 text-xs text-amber-900">
               API <code>/api/v1/imports</code> và <code>/api/v1/exam-imports</code> yêu cầu quyền{" "}
-              <code>TEACHER / EDITOR / TENANT_ADMIN</code> (học sinh nhận HTTP 403).
+              <code>CONTENT_AUTHOR / REVIEWER / ADMIN</code> (giáo viên tạo đề từ PDF qua mục Giáo viên LMS, học sinh nhận HTTP 403).
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Link
@@ -596,14 +657,14 @@ export function ImportsHubShell({
         )}
 
         <section
-          aria-label="Form nạp file đề PDF"
+          aria-label="Form nạp file đề PDF, Word hoặc Ảnh"
           className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs"
         >
           <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-2.5 text-xs text-sky-950">
-            <span className="font-bold">Lưu ý định dạng file: </span>
-            Luồng V11.3 (<code>POST /api/v1/imports</code> và <code>/api/v1/documents</code>) hiện chỉ nhận file{" "}
-            <code>.pdf</code> (file <code>.docx</code>/<code>.zip</code> sẽ trả HTTP 422 do{" "}
-            <code>ALLOWED_MIME_TYPES</code> của module <code>assets</code>). Nạp <code>.zip</code>/<code>.docx</code> legacy thực hiện ở cổng backend SSR <code>/admin/ai-imports</code>.
+            <span className="font-bold">Định dạng file hỗ trợ: </span>
+            Luồng V11.3 (<code>/api/v1/documents</code> → <code>/extract</code> → <code>/exam-imports</code>) hỗ trợ{" "}
+            <code>.pdf</code>, <code>.docx</code>, <code>.doc</code> (qua LibreOffice) và ảnh chụp{" "}
+            <code>.jpg</code> / <code>.png</code> / <code>.webp</code> (OCR + làm sạch nền). File <code>.zip</code> sẽ bị từ chối.
           </div>
 
           <form onSubmit={handleUploadSubmit} className="space-y-4">
@@ -660,11 +721,11 @@ export function ImportsHubShell({
             <div className="grid gap-3 md:grid-cols-3">
               <div>
                 <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-600">
-                  Chọn file đề (.pdf)
+                  Chọn file đề (.pdf, .docx, .doc, ảnh)
                 </label>
                 <input
                   type="file"
-                  accept=".pdf,application/pdf"
+                  accept=".pdf,.docx,.doc,.jpg,.jpeg,.png,.webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,image/jpeg,image/png,image/webp"
                   data-testid="imports-file-input"
                   onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
                   className="block w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-700 file:px-2.5 file:py-1 file:text-xs file:font-bold file:text-white"

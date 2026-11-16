@@ -13,6 +13,9 @@ import {
   AUTH_COOKIE_NAME,
   buildSessionFromLoginResponse,
   buildSessionFromRawToken,
+  canAccessAdminOps,
+  canAccessStudioBank,
+  canAccessTeacherLms,
   clearAuthSession,
   DEMO_ACCOUNTS,
   DEMO_PASSWORD,
@@ -262,12 +265,13 @@ describe("Auth Client, JWT Session & RFC 7807 Problem+JSON", () => {
 });
 
 describe("DEMO_ACCOUNTS match the accounts of `python -m app.ops.seed_demo`", () => {
-  it("quick-fills the four seeded e-mails, roles, tenant slug and password", () => {
+  it("quick-fills the five seeded e-mails, roles, tenant slug and password", () => {
     expect(DEMO_PASSWORD).toBe("Demo@12345");
     expect(DEMO_TENANT_SLUG).toBe("h2edu-demo");
     expect(DEMO_ACCOUNTS.map((a) => [a.id, a.email, a.fallbackSession.roles])).toEqual([
       ["learner", "learner@h2edu.demo", ["LEARNER"]],
       ["teacher", "teacher@h2edu.demo", ["TEACHER"]],
+      ["content_author", "content_author@h2edu.demo", ["CONTENT_AUTHOR"]],
       ["tenant_admin", "tenant_admin@h2edu.demo", ["TENANT_ADMIN"]],
       ["platform_admin", "platform_admin@h2edu.demo", ["PLATFORM_ADMIN"]],
     ]);
@@ -276,6 +280,12 @@ describe("DEMO_ACCOUNTS match the accounts of `python -m app.ops.seed_demo`", ()
       expect(account.tenantSlug).toBe(DEMO_TENANT_SLUG);
       expect(account.fallbackSession.email).toBe(account.email);
     }
+
+    expect(canAccessStudioBank({ roles: ["TEACHER"] })).toBe(false);
+    expect(canAccessTeacherLms({ roles: ["TEACHER"] })).toBe(true);
+    expect(canAccessAdminOps({ roles: ["TEACHER"] })).toBe(false);
+    expect(canAccessStudioBank({ roles: ["CONTENT_AUTHOR"] })).toBe(true);
+    expect(canAccessAdminOps({ roles: ["TENANT_ADMIN"] })).toBe(true);
   });
 });
 

@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import React, { useCallback, useEffect, useState } from "react";
-import { AUTH_CHANGED_EVENT, getAuthSession, isDemoModeClient, type AuthSession } from "@/lib/auth-client";
+import {
+  AUTH_CHANGED_EVENT,
+  canAccessStudioBank,
+  canAccessTeacherLms,
+  getAuthSession,
+  isDemoModeClient,
+  type AuthSession,
+} from "@/lib/auth-client";
 import { isUuid, workspaceCall } from "@/lib/workspace-api";
 
 export interface LiveClassItem {
@@ -37,6 +44,7 @@ export interface LiveAttemptItem {
 
 const STAFF_ROLES = new Set([
   "TEACHER",
+  "CONTENT_AUTHOR",
   "EDITOR",
   "REVIEWER",
   "ADMIN",
@@ -110,9 +118,9 @@ export function LiveWorkspacePanel({ fetchFn, apiBase = "", onOpenAttempt }: Liv
       listOf<LiveAttemptItem>("/api/v1/attempts", "attempt_id"),
     ]);
     const currentSession = getAuthSession();
-    const isStaffUser = isStaffSession(currentSession);
+    const canSeeBank = canAccessStudioBank(currentSession);
     let loadedImports: LiveExamImportItem[] = [];
-    if (isStaffUser && !fetchFn) {
+    if (canSeeBank && !fetchFn) {
       const impRes = await workspaceCall<{ items?: readonly LiveExamImportItem[] }>({
         url: "/api/v1/exam-imports?limit=5",
         method: "GET",
@@ -319,29 +327,45 @@ export function LiveWorkspacePanel({ fetchFn, apiBase = "", onOpenAttempt }: Liv
           className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/70 p-3 text-xs"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="font-bold text-indigo-950">Công cụ Studio cho Giáo viên / Biên soạn</span>
+            <span className="font-bold text-indigo-950">
+              {canAccessStudioBank(session)
+                ? "Công cụ Studio & Ngân hàng câu hỏi"
+                : "Công cụ Giảng dạy (Giáo viên)"}
+            </span>
             <div className="flex flex-wrap gap-2">
-              <Link
-                href="/studio/questions"
-                className="rounded-lg bg-white px-2.5 py-1 font-bold text-indigo-800 shadow-2xs hover:bg-indigo-100"
-              >
-                Ngân hàng câu hỏi
-              </Link>
-              <Link
-                href="/studio/imports"
-                className="rounded-lg bg-white px-2.5 py-1 font-bold text-indigo-800 shadow-2xs hover:bg-indigo-100"
-              >
-                Nạp file đề PDF
-              </Link>
-              <Link
-                href="/studio/questions/new"
-                className="rounded-lg bg-indigo-700 px-2.5 py-1 font-bold text-white hover:bg-indigo-800"
-              >
-                + Soạn câu hỏi C01
-              </Link>
+              {canAccessTeacherLms(session) && (
+                <Link
+                  href="/teacher/exam-builder"
+                  className="rounded-lg bg-amber-600 px-2.5 py-1 font-bold text-white hover:bg-amber-700"
+                >
+                  Tạo đề &amp; Upload PDF
+                </Link>
+              )}
+              {canAccessStudioBank(session) && (
+                <>
+                  <Link
+                    href="/studio/questions"
+                    className="rounded-lg bg-white px-2.5 py-1 font-bold text-indigo-800 shadow-2xs hover:bg-indigo-100"
+                  >
+                    Ngân hàng câu hỏi
+                  </Link>
+                  <Link
+                    href="/studio/imports"
+                    className="rounded-lg bg-white px-2.5 py-1 font-bold text-indigo-800 shadow-2xs hover:bg-indigo-100"
+                  >
+                    Nạp file đề
+                  </Link>
+                  <Link
+                    href="/studio/questions/new"
+                    className="rounded-lg bg-indigo-700 px-2.5 py-1 font-bold text-white hover:bg-indigo-800"
+                  >
+                    + Soạn câu hỏi C01
+                  </Link>
+                </>
+              )}
             </div>
           </div>
-          {examImports.length > 0 && (
+          {canAccessStudioBank(session) && examImports.length > 0 && (
             <ul className="mt-2 space-y-1">
               {examImports.map((imp) => (
                 <li key={imp.id} className="flex items-center justify-between gap-2 text-[11px] text-indigo-950">
