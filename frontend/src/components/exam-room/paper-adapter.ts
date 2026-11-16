@@ -5,6 +5,7 @@ import {
   type ClusterSubKey,
   createEmptyAnswerState,
   type ExamAttemptData,
+  type ExamFigure,
   type ExamOptionItem,
   type ExamQuestion,
   type QuestionAnswerState,
@@ -39,6 +40,22 @@ function normalizeClusterKey(rawLabel: unknown, fallbackIndex: number): ClusterS
     return normalized;
   }
   return keys[fallbackIndex] ?? "a";
+}
+
+/** The images a stem carries (`stem_json.media`): entries `{type: "image", asset_id, alt}`. */
+export function extractFigures(raw: unknown): readonly ExamFigure[] {
+  if (!raw || typeof raw !== "object") return [];
+  const media = (raw as Record<string, unknown>).media;
+  if (!Array.isArray(media)) return [];
+  const figures: ExamFigure[] = [];
+  for (const entry of media) {
+    const item = (entry ?? {}) as Record<string, unknown>;
+    if (item.type === "image" && typeof item.asset_id === "string" && item.asset_id) {
+      const alt = typeof item.alt === "string" && item.alt ? item.alt : `Hình ${figures.length + 1}`;
+      figures.push({ assetId: item.asset_id, alt });
+    }
+  }
+  return figures;
 }
 
 export function mapPaperPayloadToExamAttempt(
@@ -78,6 +95,8 @@ export function mapPaperPayloadToExamAttempt(
     const stimulusText = extractRichText(q.stimulus_json);
     const stemBody = extractRichText(q.stem_json) || extractRichText(q.stem) || `Câu ${num}`;
     const stem = stimulusText ? `${stimulusText}\n\n${stemBody}` : stemBody;
+    const figures = extractFigures(q.stem_json);
+    const withFigures = figures.length > 0 ? { figures } : {};
 
     const rawOptions = Array.isArray(q.options) ? q.options : [];
 
@@ -94,6 +113,7 @@ export function mapPaperPayloadToExamAttempt(
         number: num,
         part: "PART_2",
         stem,
+        ...withFigures,
         statements,
       };
     }
@@ -104,6 +124,7 @@ export function mapPaperPayloadToExamAttempt(
         number: num,
         part: "PART_3",
         stem,
+        ...withFigures,
       };
     }
 
@@ -120,6 +141,7 @@ export function mapPaperPayloadToExamAttempt(
       number: num,
       part: "PART_1",
       stem,
+      ...withFigures,
       options,
     };
   });
