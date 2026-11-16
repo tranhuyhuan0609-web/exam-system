@@ -1,0 +1,25 @@
+# HTTPS for the pilot: Caddy gets and renews the certificate of {$PILOT_DOMAIN} by itself (ports 80 and 443 open).
+{$PILOT_DOMAIN} {
+	encode zstd gzip
+
+	# PDF / Word exam uploads
+	request_body {
+		max_size 60MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	reverse_proxy frontend:3000 {
+		# the real client address, overwriting whatever the browser sent (the frontend forwards it to the API)
+		header_up X-Real-IP {remote_host}
+		# AI reading of a long paper can take minutes
+		transport http {
+			response_header_timeout 15m
+		}
+	}
+}
