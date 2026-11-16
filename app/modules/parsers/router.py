@@ -25,6 +25,7 @@ from app.modules.parsers.internal.service import (
     ExtractionRunNotFoundError,
     ExtractionRunView,
     ParserValidationError,
+    get_extraction_run_structure,
     list_document_versions,
     register_and_ingest_document,
     reprocess_extraction_run,
@@ -130,6 +131,16 @@ class ExtractionRunResponse(BaseModel):
     parent_run_id: uuid.UUID | None
     target_pages: list[int]
     created_at: datetime
+    extracted_structure: dict[str, Any] | None = None
+
+
+class ExtractionRunStructureResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: uuid.UUID
+    pages: list[dict[str, Any]]
+    sections: list[dict[str, Any]]
+    raw_line_count: int
 
 
 def _problem_response(
@@ -172,8 +183,20 @@ def _authenticate_actor(
             request=request,
             correlation_id=correlation_id,
         )
+    if not ({r.upper() for r in actor.roles} & _IMPORT_ROLES):
+        return None, correlation_id, _problem_response(
+            code=PlatformErrorCode.FORBIDDEN,
+            detail="an author, reviewer or administrator role is required for document imports",
+            request=request,
+            correlation_id=correlation_id,
+        )
 
     return actor, correlation_id, None
+
+
+# Who may put a document into the import pipeline: the same roles as /imports and /exam-imports (not a teacher,
+# who turns a PDF into a paper through /teacher/assessments/from-pdf, nor a learner).
+_IMPORT_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "REVIEWER", "CONTENT_AUTHOR"})
 
 
 def _serialize_upload(view: DocumentUploadView) -> DocumentUploadResponse:
@@ -224,6 +247,7 @@ def _serialize_run(view: ExtractionRunView) -> ExtractionRunResponse:
         parent_run_id=view.parent_run_id,
         target_pages=list(view.target_pages),
         created_at=view.created_at,
+        extracted_structure=view.extracted_structure,
     )
 
 
@@ -506,5 +530,44 @@ async def reprocess_extraction_run_endpoint(
     return JSONResponse(
         status_code=status.HTTP_201_CREATED,
         content=jsonable_encoder(_serialize_run(run)),
+        headers={"X-Correlation-Id": correlation_id},
+    )
+
+
+@router.get(
+    "/extraction-runs/{run_id}/structure",
+    status_code=status.HTTP_200_OK,
+    response_model=ExtractionRunStructureResponse,
+)
+async def get_extraction_run_structure_endpoint(
+    run_id: uuid.UUID,
+    request: Request,
+    credentials: OptionalBearer = None,
+) -> JSONResponse:
+    actor, correlation_id, err = _authenticate_actor(request, credentials)
+    if err is not None:
+        return err
+    assert actor is not None
+
+    try:
+        async with tenant_transaction(actor.tenant_id, role=DbRole.APP_RW) as session:
+            data = await get_extraction_run_structure(session, run_id=run_id)
+    except ExtractionRunNotFoundError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.NOT_FOUND,
+            detail=str(exc),
+            request=request,
+            correlation_id=correlation_id,
+        )
+
+    payload = ExtractionRunStructureResponse(
+        run_id=run_id,
+        pages=list(data.get("pages") or []),
+        sections=list(data.get("sections") or []),
+        raw_line_count=int(data.get("raw_line_count") or 0),
+    )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=jsonable_encoder(payload),
         headers={"X-Correlation-Id": correlation_id},
     )

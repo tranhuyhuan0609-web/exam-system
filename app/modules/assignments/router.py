@@ -21,6 +21,7 @@ from app.modules.assignments.internal.service import (
     AssignmentView,
     RevealStatusResult,
     StartCheckResult,
+    can_manage_assignment_target,
     can_view_assignment,
     check_can_start_assignment,
     create_assignment,
@@ -258,8 +259,20 @@ async def create_assignment_endpoint(
     if isinstance(auth, JSONResponse):
         return auth
 
+    tenant_wide = any(role.upper() in _TENANT_WIDE_ROLES for role in auth.roles)
     try:
         async with tenant_transaction(auth.tenant_id, role=DbRole.APP_RW) as session:
+            # Same tenant and a teacher role are not enough: a teacher hands out work to the classes they run
+            # (a class or group they do not run answers as one that does not exist).
+            if not tenant_wide and not await can_manage_assignment_target(
+                session,
+                tenant_id=auth.tenant_id,
+                class_id=payload.class_id,
+                group_id=payload.group_id,
+                membership_id=auth.membership_id,
+            ):
+                target = f"class {payload.class_id}" if payload.class_id is not None else f"group {payload.group_id}"
+                raise AssignmentNotFoundError(f"{target} not found in tenant")
             created = await create_assignment(
                 session,
                 tenant_id=auth.tenant_id,
@@ -377,8 +390,19 @@ async def update_assignment_endpoint(
     if isinstance(auth, JSONResponse):
         return auth
 
+    tenant_wide = any(role.upper() in _TENANT_WIDE_ROLES for role in auth.roles)
     try:
         async with tenant_transaction(auth.tenant_id, role=DbRole.APP_RW) as session:
+            if not tenant_wide:
+                current = await get_assignment(session, tenant_id=auth.tenant_id, assignment_id=assignment_id)
+                if not await can_manage_assignment_target(
+                    session,
+                    tenant_id=auth.tenant_id,
+                    class_id=current.class_id,
+                    group_id=current.group_id,
+                    membership_id=auth.membership_id,
+                ):
+                    raise AssignmentNotFoundError(f"assignment {assignment_id} not found in tenant")
             updated = await update_assignment(
                 session,
                 tenant_id=auth.tenant_id,

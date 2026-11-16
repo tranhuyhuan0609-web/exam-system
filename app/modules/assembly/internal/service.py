@@ -21,7 +21,7 @@ import hashlib
 import json
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -36,6 +36,7 @@ from app.modules.assembly.internal.selection import (
     AssemblyShortageError,
     PoolQuestion,
     SectionRequirement,
+    SelectedItem,
     select_items,
 )
 from app.modules.outbox.public import enqueue
@@ -228,6 +229,7 @@ WHERE q.publication_status = 'PUBLISHED'
   AND q.rights_status IN ('OWNED', 'LICENSED', 'ALLOWED_DERIVATIVE')
   AND v.is_immutable IS TRUE
   AND q.item_type = ANY(:item_types)
+  AND (cardinality(CAST(:difficulties AS varchar[])) = 0 OR q.difficulty_level = ANY(CAST(:difficulties AS varchar[])))
   AND (
         q.item_type NOT IN ('SINGLE_CHOICE', 'CLUSTER_TRUE_FALSE')
         OR (SELECT array_agg(o.option_key::text ORDER BY o.option_key) FROM question_options o
@@ -311,12 +313,29 @@ async def assemble_assessment(
     random_seed: int,
     subject_code: str | None = None,
     taxonomy_node_ids: Sequence[uuid.UUID] = (),
+    taxonomy_counts: Sequence[TopicCount] = (),
+    total_points: Decimal | None = None,
+    duration_seconds: int | None = None,
 ) -> AssessmentVersionRecord:
-    """Assemble the paper into a DRAFT version (replacing the previous draft); same seed, same paper."""
+    """Assemble the paper into a DRAFT version (replacing the previous draft); same seed, same paper.
+
+    Without `taxonomy_counts` the framework's sections are filled (item types, counts, points). With them the
+    teacher's matrix is filled instead: N questions of each topic (its whole subtree), optionally of one difficulty
+    and of some item types, `total_points` (10 by default) shared equally; the framework still gives the scoring
+    scheme and the default duration. The pool rules are the same (published, verified, cleared, frozen, no duplicate
+    cluster twice, stimulus clusters whole).
+    """
     assessment = await _locked_assessment(session, assessment_id)
     subject = (subject_code or assessment.subject_code).strip().upper()
     framework = await _framework_version(session, framework_code, subject)
     scheme_id = await _scoring_scheme_id(session, framework.framework_code)
+    duration = duration_seconds or framework.duration_seconds
+    if taxonomy_counts:
+        chosen = await _select_by_topics(session, subject, taxonomy_counts, random_seed, total_points)
+        return await _store_draft_version(
+            session, assessment, framework_code=framework.framework_code, subject=subject, scheme_id=scheme_id,
+            duration_seconds=duration, random_seed=random_seed, chosen=chosen,
+        )  # fmt: skip
     spec = framework.section_specs_json
     sections = [
         SectionRequirement(
@@ -334,6 +353,7 @@ async def assemble_assessment(
                 "item_types": sorted({s.item_type for s in sections}),
                 "subject": subject,
                 "taxonomy_ids": [str(t) for t in taxonomy_node_ids],
+                "difficulties": [],
             },
         )
     ).all()
@@ -353,14 +373,33 @@ async def assemble_assessment(
     except AssemblyShortageError as exc:
         raise AssemblyShortageFailed(exc) from exc
 
-    total_points = sum((i.points for i in chosen), Decimal("0")).quantize(Decimal("0.01"))
+    total = sum((i.points for i in chosen), Decimal("0")).quantize(Decimal("0.01"))
     expected_points = Decimal(spec["total_points"]).quantize(Decimal("0.01"))
-    if total_points != expected_points:
+    if total != expected_points:
         raise AssessmentConflictError(
             "FRAMEWORK_POINTS_MISMATCH",
-            f"sections add up to {total_points} points, the framework says {expected_points}",
+            f"sections add up to {total} points, the framework says {expected_points}",
         )
+    return await _store_draft_version(
+        session, assessment, framework_code=framework.framework_code, subject=subject, scheme_id=scheme_id,
+        duration_seconds=duration, random_seed=random_seed, chosen=chosen,
+    )  # fmt: skip
 
+
+async def _store_draft_version(
+    session: AsyncSession,
+    assessment: Assessment,
+    *,
+    framework_code: str,
+    subject: str,
+    scheme_id: uuid.UUID,
+    duration_seconds: int,
+    random_seed: int,
+    chosen: Sequence[SelectedItem],
+) -> AssessmentVersionRecord:
+    """Write `chosen` as the paper's DRAFT version (replacing the draft there is), with its answer-free snapshot."""
+    assessment_id = assessment.id
+    total_points = sum((i.points for i in chosen), Decimal("0")).quantize(Decimal("0.01"))
     latest = await _latest_version(session, assessment_id)
     if latest is not None and not latest.is_immutable:
         version_id, version_no = latest.id, latest.version_no
@@ -372,9 +411,9 @@ async def assemble_assessment(
     snapshot = AssessmentSnapshotPublicContract.model_validate(
         {
             "assessment_version_id": version_id,
-            "framework_code": framework.framework_code,
+            "framework_code": framework_code,
             "subject_code": subject,
-            "duration_seconds": framework.duration_seconds,
+            "duration_seconds": duration_seconds,
             "total_points": total_points,
             "items": [
                 {
@@ -396,7 +435,7 @@ async def assemble_assessment(
             .where(AssessmentVersion.id == version_id)
             .values(
                 scoring_scheme_id=scheme_id,
-                duration_seconds=framework.duration_seconds,
+                duration_seconds=duration_seconds,
                 total_points=total_points,
                 base_seed=random_seed,
                 structure_snapshot_json=snapshot,
@@ -410,7 +449,7 @@ async def assemble_assessment(
                 assessment_id=assessment.id,
                 version_no=version_no,
                 scoring_scheme_id=scheme_id,
-                duration_seconds=framework.duration_seconds,
+                duration_seconds=duration_seconds,
                 total_points=total_points,
                 base_seed=random_seed,
                 structure_snapshot_json=snapshot,
@@ -430,6 +469,192 @@ async def assemble_assessment(
             )
         )
     return await _load_version(session, version_id)
+
+
+# --- the teacher's matrix (topics x counts) and explicit papers -------------------------------------------------------
+
+DEFAULT_MATRIX_ITEM_TYPES = ("SINGLE_CHOICE", "CLUSTER_TRUE_FALSE", "SHORT_NUMERIC")
+MATRIX_ITEM_TYPES = frozenset({*DEFAULT_MATRIX_ITEM_TYPES, "ESSAY"})
+MAX_MATRIX_QUESTIONS = 200
+# The paper's parts are the THPTQG ones whatever built it: the grader reports per part, the snapshot checks it.
+SECTION_OF_ITEM_TYPE = {
+    "SINGLE_CHOICE": "PART_I_MCQ",
+    "CLUSTER_TRUE_FALSE": "PART_II_TF4",
+    "SHORT_NUMERIC": "PART_III_SHORT",
+    "ESSAY": "PART_IV_ESSAY",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class TopicCount:
+    """One line of a teacher's matrix: `question_count` questions of a topic (and of its subtree)."""
+
+    taxonomy_node_id: uuid.UUID
+    question_count: int
+    difficulty_level: str | None = None
+    item_types: tuple[str, ...] = DEFAULT_MATRIX_ITEM_TYPES
+
+
+def _equal_points(total: Decimal, count: int) -> list[Decimal]:
+    """`total` shared over `count` items to the cent, the remainder on the last ones (10 over 3: 3.33 3.33 3.34)."""
+    base = (total / count).quantize(Decimal("0.01"), rounding="ROUND_DOWN")
+    out = [base] * count
+    remainder = int(((total - base * count) * 100).to_integral_value())
+    for i in range(remainder):
+        out[count - 1 - i] += Decimal("0.01")
+    return out
+
+
+async def _select_by_topics(
+    session: AsyncSession,
+    subject: str,
+    counts: Sequence[TopicCount],
+    random_seed: int,
+    total_points: Decimal | None,
+) -> tuple[SelectedItem, ...]:
+    total_questions = sum(c.question_count for c in counts)
+    if not counts or total_questions <= 0 or total_questions > MAX_MATRIX_QUESTIONS:
+        raise AssessmentConflictError("INVALID_MATRIX", f"a matrix holds 1..{MAX_MATRIX_QUESTIONS} questions")
+    pool: list[PoolQuestion] = []
+    sections: list[SectionRequirement] = []
+    real_type: dict[uuid.UUID, str] = {}
+    points = _equal_points(total_points if total_points is not None else Decimal("10"), total_questions)
+    for index, line in enumerate(counts):
+        types = [t for t in line.item_types if t in MATRIX_ITEM_TYPES]
+        if line.question_count <= 0 or not types:
+            raise AssessmentConflictError("INVALID_MATRIX", f"matrix line {index + 1} asks for nothing")
+        # every line is its own section; the selector keys sections by `item_type`, so the line key goes there
+        key = f"TOPIC_{index + 1}"
+        rows = (
+            await session.execute(
+                text(_POOL_SQL),
+                {
+                    "item_types": sorted(types),
+                    "subject": subject,
+                    "taxonomy_ids": [str(line.taxonomy_node_id)],
+                    "difficulties": [line.difficulty_level] if line.difficulty_level else [],
+                },
+            )
+        ).all()
+        real_type.update({r.question_version_id: r.item_type for r in rows})
+        pool += [
+            PoolQuestion(
+                question_id=r.question_id,
+                question_version_id=r.question_version_id,
+                item_type=key,
+                content_hash=r.content_hash,
+                stimulus_id=r.stimulus_id,
+                duplicate_cluster_id=r.duplicate_cluster_id,
+            )
+            for r in rows
+        ]
+        sections.append(
+            SectionRequirement(section_code=key, item_type=key, question_count=line.question_count,
+                               points_per_question=Decimal("0"))
+        )  # fmt: skip
+    try:
+        chosen = select_items(pool, sections, random_seed)
+    except AssemblyShortageError as exc:
+        raise AssemblyShortageFailed(exc) from exc
+    return tuple(
+        replace(
+            item,
+            points=points[i],
+            item_type=real_type[item.question_version_id],
+            section_code=SECTION_OF_ITEM_TYPE[real_type[item.question_version_id]],
+        )
+        for i, item in enumerate(chosen)
+    )
+
+
+async def assemble_from_question_versions(
+    session: AsyncSession,
+    assessment_id: uuid.UUID,
+    *,
+    items: Sequence[tuple[uuid.UUID, Decimal]],
+    framework_code: str,
+    random_seed: int,
+    duration_seconds: int,
+    snapshot_framework_code: str | None = None,
+) -> AssessmentVersionRecord:
+    """A DRAFT version holding exactly `items` ((question version, points), in order): a teacher's own paper.
+
+    Every version must be the frozen current version of a published, verified, cleared question of the tenant; the
+    publish step checks it again. The framework only gives the scoring scheme.
+    """
+    assessment = await _locked_assessment(session, assessment_id)
+    if not items:
+        raise AssessmentConflictError("EMPTY_PAPER", "a paper needs at least one question")
+    scheme_id = await _scoring_scheme_id(session, framework_code)
+    ids = [i[0] for i in items]
+    rows = {
+        r.id: r
+        for r in (
+            await session.execute(
+                text(
+                    "SELECT v.id, v.question_id, v.content_hash, v.stimulus_id, q.item_type "
+                    "FROM question_versions v JOIN questions q ON q.id = v.question_id "
+                    "WHERE v.id = ANY(:ids) AND v.tenant_id = :t AND q.current_version_id = v.id"
+                ),
+                {"ids": ids, "t": assessment.tenant_id},
+            )
+        ).all()
+    }
+    missing = [str(i) for i in ids if i not in rows]
+    if missing:
+        raise PublishGateBlockedError(["PUBLISH_QUESTION_NOT_PUBLISHED"], [f"not a published question: {missing[:3]}"])
+    chosen = tuple(
+        SelectedItem(
+            question_id=rows[vid].question_id,
+            question_version_id=vid,
+            section_code=SECTION_OF_ITEM_TYPE.get(rows[vid].item_type, "PART_IV_ESSAY"),
+            item_type=rows[vid].item_type,
+            stimulus_id=rows[vid].stimulus_id,
+            points=pts.quantize(Decimal("0.01")),
+            content_hash=rows[vid].content_hash,
+            sequence_order=n,
+        )
+        for n, (vid, pts) in enumerate(items, start=1)
+    )
+    return await _store_draft_version(
+        session, assessment, framework_code=snapshot_framework_code or framework_code,
+        subject=assessment.subject_code, scheme_id=scheme_id, duration_seconds=duration_seconds,
+        random_seed=random_seed, chosen=chosen,
+    )  # fmt: skip
+
+
+@dataclass(frozen=True, slots=True)
+class PoolTopicCount:
+    taxonomy_node_id: uuid.UUID
+    code_path: str
+    item_type: str
+    difficulty_level: str
+    available: int
+
+
+async def pool_summary(session: AsyncSession, *, subject_code: str) -> tuple[PoolTopicCount, ...]:
+    """How many drawable questions each topic holds, per item type and difficulty (what a matrix can ask for)."""
+    rows = await session.execute(
+        text(
+            "SELECT q.primary_taxonomy_node_id AS node, CAST(qn.code_path AS text) AS code_path, q.item_type, "
+            "       q.difficulty_level, count(*) AS n "
+            "FROM questions q JOIN question_versions v ON v.id = q.current_version_id "
+            "JOIN taxonomy_nodes qn ON qn.id = q.primary_taxonomy_node_id "
+            "JOIN taxonomy_nodes sn ON sn.node_type = 'SUBJECT' AND upper(sn.code) = :subject "
+            "  AND qn.code_path <@ sn.code_path "
+            "WHERE q.publication_status = 'PUBLISHED' AND q.verification_status = 'VERIFIED' "
+            "  AND q.rights_status IN ('OWNED', 'LICENSED', 'ALLOWED_DERIVATIVE') AND v.is_immutable IS TRUE "
+            "GROUP BY 1, 2, 3, 4 ORDER BY 2, 3, 4"
+        ),
+        {"subject": subject_code.strip().upper()},
+    )
+    return tuple(
+        PoolTopicCount(
+            taxonomy_node_id=r.node, code_path=r.code_path, item_type=r.item_type,
+            difficulty_level=r.difficulty_level, available=int(r.n),
+        )  # fmt: skip
+        for r in rows
+    )
 
 
 def _checksum(payload: dict[str, Any]) -> str:

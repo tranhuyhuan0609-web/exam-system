@@ -31,7 +31,7 @@ from app.platform.tenancy import DbRole, tenant_transaction
 router = APIRouter(prefix="/api/v1", tags=["review"])
 
 
-REVIEWER_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "TEACHER", "CONTENT_AUTHOR"})
+REVIEWER_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "CONTENT_AUTHOR", "REVIEWER"})
 RIGHTS_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN"})
 
 

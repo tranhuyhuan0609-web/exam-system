@@ -1,5 +1,11 @@
 """Public API of the parsers module (A05)."""
 
+from .internal.pdf_extractor import (
+    ExtractedQuestionDraft,
+    ExtractedSectionDraft,
+    PdfExtractionArtifact,
+    extract_pdf_exam_structure,
+)
 from .internal.routing import (
     DEFAULT_OCR_CHAR_THRESHOLD,
     MAX_DOCUMENT_XML_BYTES,
@@ -25,7 +31,9 @@ from .internal.service import (
     ExtractionRunView,
     ParserValidationError,
     ensure_default_parser_definitions,
+    extract_exam_structure_from_asset,
     get_extraction_run,
+    get_extraction_run_structure,
     list_document_versions,
     register_and_ingest_document,
     reprocess_extraction_run,
@@ -33,6 +41,11 @@ from .internal.service import (
 )
 
 __all__ = [
+    "ExtractedQuestionDraft",
+    "ExtractedSectionDraft",
+    "PdfExtractionArtifact",
+    "extract_exam_structure_from_asset",
+    "extract_pdf_exam_structure",
     "DEFAULT_OCR_CHAR_THRESHOLD",
     "MAX_DOCUMENT_XML_BYTES",
     "DocumentFormat",
@@ -53,6 +66,7 @@ __all__ = [
     "build_libreoffice_job_spec",
     "ensure_default_parser_definitions",
     "get_extraction_run",
+    "get_extraction_run_structure",
     "guard_docx_xml_size",
     "list_document_versions",
     "plan_page_reprocess_run",

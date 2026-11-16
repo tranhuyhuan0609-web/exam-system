@@ -92,7 +92,7 @@ def test_taxonomy_curriculum_auth_roles_and_anti_spoofing(tenants: tuple[uuid.UU
     assert unauth_curr.status_code == 401
 
     # 2. Spoofed X-Tenant-Id header -> 403 FORBIDDEN
-    teacher_a = _auth_headers(tenant_id=tenant_a, roles=["TEACHER"])
+    teacher_a = _auth_headers(tenant_id=tenant_a, roles=["CONTENT_AUTHOR"])
     spoof_resp = client.get(
         "/api/v1/taxonomy/nodes",
         headers={**teacher_a, "X-Tenant-Id": str(tenant_b)},
@@ -156,8 +156,8 @@ def test_taxonomy_ltree_subtree_pagination_and_multi_tenant_rls(tenants: tuple[u
     tenant_a, tenant_b = tenants
     client = _api_client()
     sys_admin = _auth_headers(tenant_id=SYSTEM_PUBLIC_TENANT_ID, roles=["ADMIN"])
-    teacher_a = _auth_headers(tenant_id=tenant_a, roles=["TEACHER"])
-    teacher_b = _auth_headers(tenant_id=tenant_b, roles=["TEACHER"])
+    teacher_a = _auth_headers(tenant_id=tenant_a, roles=["CONTENT_AUTHOR"])
+    teacher_b = _auth_headers(tenant_id=tenant_b, roles=["CONTENT_AUTHOR"])
 
     # Seed active and inactive SYSTEM_PUBLIC nodes via API
     pub_root = client.post(
@@ -304,8 +304,8 @@ def test_node_version_upgrade_preserves_id_code_path_and_curriculum_links(
     tenant_a, tenant_b = tenants
     client = _api_client()
     sys_admin = _auth_headers(tenant_id=SYSTEM_PUBLIC_TENANT_ID, roles=["ADMIN"])
-    teacher_a = _auth_headers(tenant_id=tenant_a, roles=["TEACHER"])
-    teacher_b = _auth_headers(tenant_id=tenant_b, roles=["TEACHER"])
+    teacher_a = _auth_headers(tenant_id=tenant_a, roles=["CONTENT_AUTHOR"])
+    teacher_b = _auth_headers(tenant_id=tenant_b, roles=["CONTENT_AUTHOR"])
 
     # System public node (to verify non-owner cannot version it)
     sys_node = client.post(
@@ -481,8 +481,8 @@ def test_curriculum_version_fork_coverage_report_and_kntt_performance(
 ):
     tenant_a, tenant_b = tenants
     client = _api_client()
-    teacher_a = _auth_headers(tenant_id=tenant_a, roles=["TEACHER"])
-    teacher_b = _auth_headers(tenant_id=tenant_b, roles=["TEACHER"])
+    teacher_a = _auth_headers(tenant_id=tenant_a, roles=["CONTENT_AUTHOR"])
+    teacher_b = _auth_headers(tenant_id=tenant_b, roles=["CONTENT_AUTHOR"])
 
     # Create taxonomy node for mapping
     tax_res = client.post(
@@ -618,3 +618,14 @@ def test_curriculum_version_fork_coverage_report_and_kntt_performance(
     assert kntt_body["mapped_node_count"] == kntt_body["reported_node_count"]
     assert kntt_body["mapping_coverage_ratio"] == 1.0
     assert kntt_body["generated_in_ms"] < 200.0
+
+
+def test_a_teacher_reads_the_taxonomy_but_does_not_write_it(tenants: tuple[uuid.UUID, uuid.UUID]):
+    """A teacher builds papers from the topics (read); the tree itself is run by authors and administrators."""
+    client = _api_client()
+    teacher = _auth_headers(tenant_id=tenants[0], roles=["TEACHER"])
+    assert client.get("/api/v1/taxonomy/nodes", headers=teacher).status_code == 200
+    body = {"node_type": "SUBJECT", "code": "TEACHER_WROTE_THIS", "name": "x"}
+    assert client.post("/api/v1/taxonomy/nodes", headers=teacher, json=body).status_code == 403
+    author = _auth_headers(tenant_id=tenants[0], roles=["CONTENT_AUTHOR"])
+    assert client.post("/api/v1/taxonomy/nodes", headers=author, json=body).status_code == 201

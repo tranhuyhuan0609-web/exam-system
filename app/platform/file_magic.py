@@ -30,6 +30,7 @@ _EXT_TO_KIND: dict[str, str] = {
     ".jpg": "JPEG",
     ".jpeg": "JPEG",
     ".webp": "WEBP",
+    ".zip": "ZIP",
 }
 
 _KIND_TO_MIME: dict[str, str] = {
@@ -39,6 +40,7 @@ _KIND_TO_MIME: dict[str, str] = {
     "PNG": "image/png",
     "JPEG": "image/jpeg",
     "WEBP": "image/webp",
+    "ZIP": "application/zip",
 }
 
 _OOXML_ROUTING_MARKERS = (b"<w:object", b"<v:shape", b"<w:drawing")
@@ -143,32 +145,55 @@ def _inspect_docx_archive(
         raise FileSignatureError("corrupt or unsupported OOXML archive") from exc
 
 
+def _check_zip_entries(zf: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
+    """Entry-level safety shared by OOXML and plain ZIP uploads: count, size, duplicates, unsafe paths, encryption."""
+    infos = zf.infolist()
+    if len(infos) > MAX_ZIP_ENTRIES:
+        raise FileSignatureError("ZIP archive has too many entries")
+    names = [i.filename for i in infos]
+    if len(set(names)) != len(names):
+        raise FileSignatureError("ZIP archive contains duplicate entry names")
+    if sum(i.file_size for i in infos) > MAX_ZIP_TOTAL_UNCOMPRESSED_BYTES:
+        raise FileSignatureError("ZIP archive total uncompressed size exceeds the limit")
+
+    for info in infos:
+        member_name = info.filename
+        normalised = member_name.replace("\\", "/")
+        if (
+            normalised.startswith("/")
+            or _DRIVE_PREFIX_RE.match(normalised)
+            or ".." in normalised.split("/")
+            or "\x00" in member_name
+        ):
+            raise FileSignatureError("unsafe ZIP entry path")
+        if member_name.lower().endswith("vbaproject.bin"):
+            raise FileSignatureError("macro-enabled vbaProject.bin rejected")
+        if info.flag_bits & 0x1:
+            raise FileSignatureError("encrypted ZIP entries rejected")
+    return infos
+
+
+def _inspect_plain_zip(raw_bytes: bytes) -> None:
+    """A `.zip` upload is an archive of exam files: structurally safe, and not a Word package under another name."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw_bytes)) as zf:
+            infos = _check_zip_entries(zf)
+            if not infos:
+                raise FileSignatureError("ZIP archive is empty")
+            names = {i.filename for i in infos}
+            if "[Content_Types].xml" in names and "word/document.xml" in names:
+                raise FileSignatureError("this is a Word package: upload it with the .docx extension")
+    except FileSignatureError:
+        raise
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, zlib.error, EOFError, OSError, RuntimeError, ValueError) as exc:
+        raise FileSignatureError("corrupt or unsupported ZIP archive") from exc
+
+
 def _inspect_docx_archive_unchecked(raw_bytes: bytes, *, max_doc_xml_bytes: int) -> bool:
     zf = zipfile.ZipFile(io.BytesIO(raw_bytes))
     with zf:
-        infos = zf.infolist()
-        if len(infos) > MAX_ZIP_ENTRIES:
-            raise FileSignatureError("ZIP archive has too many entries")
+        infos = _check_zip_entries(zf)
         names = [i.filename for i in infos]
-        if len(set(names)) != len(names):
-            raise FileSignatureError("ZIP archive contains duplicate entry names")
-        if sum(i.file_size for i in infos) > MAX_ZIP_TOTAL_UNCOMPRESSED_BYTES:
-            raise FileSignatureError("ZIP archive total uncompressed size exceeds the limit")
-
-        for info in infos:
-            member_name = info.filename
-            normalised = member_name.replace("\\", "/")
-            if (
-                normalised.startswith("/")
-                or _DRIVE_PREFIX_RE.match(normalised)
-                or ".." in normalised.split("/")
-                or "\x00" in member_name
-            ):
-                raise FileSignatureError("unsafe ZIP entry path")
-            if member_name.lower().endswith("vbaproject.bin"):
-                raise FileSignatureError("macro-enabled vbaProject.bin rejected")
-            if info.flag_bits & 0x1:
-                raise FileSignatureError("encrypted ZIP entries rejected")
 
         name_set = set(names)
         if "[Content_Types].xml" not in name_set or "word/document.xml" not in name_set:
@@ -239,6 +264,16 @@ def inspect_uploaded_bytes(
             mime_type=_KIND_TO_MIME["DOCX"],
             size_bytes=len(raw_bytes),
             has_ooxml_mathtype_or_drawings=has_shapes,
+        )
+
+    if expected_kind == "ZIP":
+        if detected != "ZIP_OR_OOXML":
+            raise FileSignatureError(f"extension {ext} does not match detected signature {detected}")
+        _inspect_plain_zip(raw_bytes)
+        return VerifiedFileInspection(
+            detected_kind="ZIP",
+            mime_type=_KIND_TO_MIME["ZIP"],
+            size_bytes=len(raw_bytes),
         )
 
     if detected != expected_kind:

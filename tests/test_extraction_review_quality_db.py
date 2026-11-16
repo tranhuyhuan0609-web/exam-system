@@ -257,7 +257,7 @@ def _first_candidate(client, headers) -> str:
 
 def test_review_decision_resolves_the_task_and_sets_the_candidate_status(client, world) -> None:
     admin = _headers(world["a"], world["admin_a"])
-    reviewer = _headers(world["a"], world["reviewer_a"], roles=("TEACHER",))
+    reviewer = _headers(world["a"], world["reviewer_a"], roles=("REVIEWER",))
     cand = _first_candidate(client, admin)
     made = client.post(
         "/api/v1/review-tasks",

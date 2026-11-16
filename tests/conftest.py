@@ -135,3 +135,15 @@ def admin_client(client, make_user):
     r = client.post("/login", data={"email": "admin@example.com", "password": "password123"}, follow_redirects=False)
     assert r.status_code == 303
     return client
+
+
+@pytest.fixture
+def admin_csrf(admin_client, make_user):
+    """The CSRF token the admin's pages embed in their forms (the legacy forms refuse a post without it)."""
+    import re
+
+    make_user("csrf-probe@example.com")  # the page only carries forms when it lists someone with a Pro / role form
+    page = admin_client.get("/admin/users", params={"filter": "students"}).text
+    match = re.search(r'name="csrf_token" value="([^"]+)"', page)
+    assert match, "the admin users page carries a csrf_token field"
+    return match.group(1)

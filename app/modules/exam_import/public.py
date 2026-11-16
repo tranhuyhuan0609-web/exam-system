@@ -39,9 +39,12 @@ if TYPE_CHECKING:
         SectionDraftInput,
         StimulusInput,
         approve_exam_import,
+        auto_extract_exam_import_structure,
         create_exam_import_session,
         get_exam_import_structure,
         list_exam_imports,
+        open_review_for_job,
+        render_exam_import_page_png,
         update_exam_import_structure,
     )
 
@@ -61,9 +64,12 @@ _SERVICE_EXPORTS = frozenset(
         "SectionDraftInput",
         "StimulusInput",
         "approve_exam_import",
+        "auto_extract_exam_import_structure",
         "create_exam_import_session",
         "get_exam_import_structure",
         "list_exam_imports",
+        "open_review_for_job",
+        "render_exam_import_page_png",
         "update_exam_import_structure",
     }
 )
@@ -105,11 +111,14 @@ __all__ = [
     "StructureValidationReport",
     "approve_exam_import",
     "approve_exam_import_session",
+    "auto_extract_exam_import_structure",
     "compute_banner_canvas_adjustment",
     "create_exam_import_session",
     "get_exam_import_structure",
     "is_branded_pdf_allowed",
     "list_exam_imports",
+    "open_review_for_job",
+    "render_exam_import_page_png",
     "update_exam_import_structure",
     "validate_exam_import_structure",
 ]

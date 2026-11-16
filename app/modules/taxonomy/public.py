@@ -4,6 +4,7 @@ Other modules import only from here, never from `app.modules.taxonomy.internal`.
 """
 
 from app.modules.taxonomy.internal.service import (
+    TaxonomyHintRecord,
     TaxonomyNodeRecord,
     TaxonomyNodeVersionRecord,
     TaxonomyNodeViewRecord,
@@ -14,6 +15,7 @@ from app.modules.taxonomy.internal.service import (
     get_node_by_id,
     list_node_versions,
     list_subtree,
+    list_taxonomy_hints,
     list_taxonomy_nodes,
     normalize_alias,
     normalize_ltree_label,
@@ -21,6 +23,7 @@ from app.modules.taxonomy.internal.service import (
 )
 
 __all__ = [
+    "TaxonomyHintRecord",
     "TaxonomyNodeRecord",
     "TaxonomyNodeVersionRecord",
     "TaxonomyNodeViewRecord",
@@ -31,6 +34,7 @@ __all__ = [
     "get_node_by_id",
     "list_node_versions",
     "list_subtree",
+    "list_taxonomy_hints",
     "list_taxonomy_nodes",
     "normalize_alias",
     "normalize_ltree_label",

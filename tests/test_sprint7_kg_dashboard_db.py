@@ -173,7 +173,9 @@ def test_knowledge_graph_dag_cycle_detection_and_path_endpoints(world: dict[str,
 
     n1, n2, n3 = run(seed_nodes())
     client = _api_client()
-    teacher_headers = _auth_headers(tenant_id=ta, membership_id=world["ma"], user_id=world["ua"], roles=["TEACHER"])
+    teacher_headers = _auth_headers(  # the graph is edited by an author; a teacher only reads it
+        tenant_id=ta, membership_id=world["ma"], user_id=world["ua"], roles=["CONTENT_AUTHOR"]
+    )
     learner_headers = _auth_headers(tenant_id=ta, membership_id=world["ma"], user_id=world["ua"], roles=["LEARNER"])
 
     forbidden = client.post(

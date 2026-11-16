@@ -9,6 +9,8 @@ from app.modules.ingestion.internal.fingerprint import (
 )
 from app.modules.ingestion.internal.service import (
     ALLOWED_JOB_TYPES,
+    ArchiveMemberResult,
+    ArchiveSkippedMember,
     DocumentVersionView,
     DuplicateIdempotencyConflictError,
     ImportJobNotFoundError,
@@ -17,12 +19,14 @@ from app.modules.ingestion.internal.service import (
     ImportJobView,
     IngestionValidationError,
     PipelineStageRunView,
+    SubmitArchiveResult,
     SubmitImportResult,
     apply_import_job_event,
     cancel_import_job,
     get_import_job,
     list_import_jobs,
     retry_import_job,
+    submit_archive_import,
     submit_import,
 )
 from app.modules.ingestion.internal.state import (
@@ -62,6 +66,10 @@ __all__ = [
     "DuplicateIdempotencyConflictError",
     "FailJobEvent",
     "ImportJobNotFoundError",
+    "ArchiveMemberResult",
+    "ArchiveSkippedMember",
+    "SubmitArchiveResult",
+    "submit_archive_import",
     "ImportJobPage",
     "ImportJobSummary",
     "ImportJobView",

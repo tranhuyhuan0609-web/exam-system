@@ -180,7 +180,8 @@ def _headers(tenant, user, *, membership=None, roles=("TEACHER",), tier="TEACHER
 
 
 def _author(world, who="a"):
-    return _headers(world[who], world[f"author_{who}"])
+    """An author of the bank (C01 writes need it; a teacher only builds papers)."""
+    return _headers(world[who], world[f"author_{who}"], roles=("CONTENT_AUTHOR",))
 
 
 def _student(world, key="a1"):

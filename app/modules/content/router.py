@@ -49,7 +49,7 @@ from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1", tags=["content"])
 
-EDITOR_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "TEACHER", "CONTENT_AUTHOR"})
+EDITOR_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "CONTENT_AUTHOR"})
 SLUG_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
 
 

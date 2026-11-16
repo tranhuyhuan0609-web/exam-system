@@ -37,7 +37,7 @@ from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1/knowledge-graph", tags=["knowledge-graph"])
 
-_EDITOR_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "TEACHER", "CONTENT_AUTHOR"})
+_EDITOR_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "CONTENT_AUTHOR"})
 
 
 class CreateKnowledgeEdgeRequest(BaseModel):

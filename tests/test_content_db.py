@@ -76,7 +76,7 @@ def client() -> TestClient:
     return TestClient(app)
 
 
-def _headers(tenant: uuid.UUID, user: uuid.UUID, roles: tuple[str, ...] = ("TEACHER",)) -> dict[str, str]:
+def _headers(tenant: uuid.UUID, user: uuid.UUID, roles: tuple[str, ...] = ("CONTENT_AUTHOR",)) -> dict[str, str]:
     token = mint_hs256_token(
         secret=get_settings().secret_key,
         user_id=user,
@@ -201,6 +201,8 @@ def test_roles_and_tokens(client, world):
     assert client.post("/api/v1/content", json=payload).status_code == 401
     student = _headers(world["a"], world["user_a"], ("STUDENT",))
     assert client.post("/api/v1/content", headers=student, json=payload).status_code == 403
+    teacher = _headers(world["a"], world["user_a"], ("TEACHER",))
+    assert client.post("/api/v1/content", headers=teacher, json=payload).status_code == 403, "authors write content"
     spoofed = {**_headers(world["a"], world["user_a"]), "X-Tenant-Id": str(world["b"])}
     assert client.post("/api/v1/content", headers=spoofed, json=payload).status_code == 403
     assert run(_scalar("SELECT count(*) FROM content_items")) == 0

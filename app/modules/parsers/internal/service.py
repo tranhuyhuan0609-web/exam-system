@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import io
 import json
@@ -26,11 +27,26 @@ from app.modules.ingestion.public import (
     submit_import,
 )
 from app.modules.outbox.public import enqueue
+from app.modules.parsers.internal.document_converter import (
+    convert_image_bytes_to_pdf,
+    convert_office_bytes_to_pdf,
+    extract_docx_hdc_questions,
+    extract_docx_plain_text,
+    ocr_image_to_text_lines,
+)
 from app.modules.parsers.internal.models import (
     ExtractionRun as ExtractionRunRow,
 )
 from app.modules.parsers.internal.models import (
     ParserDefinition as ParserDefinitionRow,
+)
+from app.modules.parsers.internal.pdf_extractor import (
+    ExtractedPageMetric,
+    ExtractedQuestionDraft,
+    ExtractedSectionDraft,
+    PdfExtractionArtifact,
+    extract_exam_from_text_lines,
+    extract_pdf_exam_structure,
 )
 from app.modules.parsers.internal.routing import (
     MAX_DOCUMENT_XML_BYTES,
@@ -147,6 +163,7 @@ class ExtractionRunView:
     parent_run_id: uuid.UUID | None
     target_pages: tuple[int, ...]
     created_at: datetime
+    extracted_structure: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,7 +200,11 @@ def _parse_reprocess_metadata(silver_artifact_key: str | None) -> tuple[uuid.UUI
     return parent_id, pages
 
 
-def _to_run_view(row: ExtractionRunRow) -> ExtractionRunView:
+def _to_run_view(
+    row: ExtractionRunRow,
+    *,
+    extracted_structure: dict[str, Any] | None = None,
+) -> ExtractionRunView:
     parent_id, pages = _parse_reprocess_metadata(row.silver_artifact_key)
     return ExtractionRunView(
         id=row.id,
@@ -198,6 +219,7 @@ def _to_run_view(row: ExtractionRunRow) -> ExtractionRunView:
         parent_run_id=parent_id,
         target_pages=pages,
         created_at=row.created_at,
+        extracted_structure=extracted_structure,
     )
 
 
@@ -761,6 +783,144 @@ async def list_document_versions(
     ]
 
 
+def _build_artifact_from_plain_text(plain_text: str) -> PdfExtractionArtifact:
+    if not plain_text.strip():
+        return PdfExtractionArtifact(pages=(), sections=(), raw_line_count=0)
+    y = 40.0
+    lines_with_boxes: list[tuple[str, tuple[float, float, float, float]]] = []
+    for raw_line in plain_text.splitlines():
+        txt = raw_line.strip()
+        if txt:
+            lines_with_boxes.append((txt, (40.0, y, 555.0, y + 12.0)))
+            y += 15.0
+    return extract_exam_from_text_lines([(595.0, max(842.0, y + 40.0), lines_with_boxes)])
+
+
+def extract_exam_structure_from_asset(*, mime_type: str, filename: str, raw_bytes: bytes) -> PdfExtractionArtifact:
+    """Questions of an uploaded PDF, Word file or photo, for other modules (blocking: run it in a thread).
+
+    The same reader the BBox review uses; the PDF rendered from a Word file is dropped (only questions are wanted).
+    """
+    artifact, _rendered = _build_artifact_for_asset(mime_type=mime_type, filename=filename, raw_bytes=raw_bytes)
+    return artifact
+
+
+def _build_artifact_for_asset(
+    *,
+    mime_type: str,
+    filename: str,
+    raw_bytes: bytes,
+) -> tuple[PdfExtractionArtifact, bytes | None]:
+    """Extract structured questions/pages for PDF, DOCX, DOC, or raster photo bytes.
+
+    Returns `(artifact, rendered_pdf_bytes)` where `rendered_pdf_bytes` is non-None when a non-PDF asset
+    was converted to PDF so downstream BBox Reviewer can rasterize pages uniformly.
+    """
+    if mime_type == PDF_MIME:
+        artifact = extract_pdf_exam_structure(raw_bytes)
+        if not any(sec.questions for sec in artifact.sections):
+            # Scanned PDF OCR fallback (requires local Tesseract binary).
+            try:
+                ocr_pages: list[tuple[float, float, list[tuple[str, tuple[float, float, float, float]]]]] = []
+                with PDFEngineAdapter.open(raw_bytes) as pdf:
+                    for page_idx in range(min(pdf.page_count, 20)):
+                        png_bytes = pdf.render_png(page_idx, dpi=150.0)
+                        w_pt, h_pt, page_lines = ocr_image_to_text_lines(png_bytes)
+                        ocr_pages.append((w_pt, h_pt, page_lines))
+                if any(lines for _, _, lines in ocr_pages):
+                    ocr_art = extract_exam_from_text_lines(ocr_pages)
+                    if any(sec.questions for sec in ocr_art.sections):
+                        return ocr_art, None
+            except Exception:
+                pass
+        return artifact, None
+
+    if mime_type in (DOCX_MIME, DOC_MIME):
+        rendered_pdf = convert_office_bytes_to_pdf(raw_bytes, filename=filename)
+        if mime_type == DOCX_MIME:
+            hdc_rows = extract_docx_hdc_questions(raw_bytes)
+            if hdc_rows:
+                pages_meta: tuple[ExtractedPageMetric, ...] = (
+                    ExtractedPageMetric(page_no=1, width_pt=595.0, height_pt=842.0, heading=filename[:96]),
+                )
+                if rendered_pdf:
+                    try:
+                        with PDFEngineAdapter.open(rendered_pdf) as pdf:
+                            pages_meta = tuple(
+                                ExtractedPageMetric(
+                                    page_no=i + 1,
+                                    width_pt=round(pdf.page_size(i)[0], 1),
+                                    height_pt=round(pdf.page_size(i)[1], 1),
+                                    heading=f"HDC Trang {i + 1}/{pdf.page_count}",
+                                )
+                                for i in range(pdf.page_count)
+                            )
+                    except Exception:
+                        pass
+                hdc_questions = tuple(
+                    ExtractedQuestionDraft(
+                        question_no=int(r["question_no"]),
+                        page_number=min(max(1, r["question_no"]), len(pages_meta)),
+                        points=float(r["points"]),
+                        item_type="ESSAY",
+                        stem_md=str(r["content_md"]),
+                        options_md=(),
+                        paired_answer=str(r["content_md"])[:4000],
+                        bbox_json={
+                            "x0": 36.0,
+                            "y0": 60.0,
+                            "x1": 559.0,
+                            "y1": 220.0,
+                            "page_width": 595.0,
+                            "page_height": 842.0,
+                        },
+                        original_question_label=str(r["original_question_label"]),
+                        section_code="PART_HDC",
+                        section_title="Hướng dẫn chấm (Bảng 3 cột)",
+                        explicit_points=True,
+                    )
+                    for r in hdc_rows
+                )
+                return (
+                    PdfExtractionArtifact(
+                        pages=pages_meta,
+                        sections=(
+                            ExtractedSectionDraft(
+                                section_code="PART_HDC",
+                                title="Hướng dẫn chấm (Bảng 3 cột)",
+                                questions=hdc_questions,
+                            ),
+                        ),
+                        raw_line_count=len(hdc_questions),
+                    ),
+                    rendered_pdf,
+                )
+
+        if rendered_pdf:
+            return extract_pdf_exam_structure(rendered_pdf), rendered_pdf
+
+        if mime_type == DOCX_MIME:
+            fallback_text = extract_docx_plain_text(raw_bytes)
+            return _build_artifact_from_plain_text(fallback_text), None
+        return PdfExtractionArtifact(pages=(), sections=(), raw_line_count=0), None
+
+    if mime_type in IMAGE_MIMES:
+        rendered_pdf = convert_image_bytes_to_pdf(raw_bytes)
+        w_pt, h_pt, ocr_lines = ocr_image_to_text_lines(raw_bytes)
+        artifact = (
+            extract_exam_from_text_lines([(w_pt, h_pt, ocr_lines)])
+            if ocr_lines
+            else PdfExtractionArtifact(
+                pages=(ExtractedPageMetric(page_no=1, width_pt=w_pt, height_pt=h_pt, heading=filename[:96]),),
+                sections=(),
+                raw_line_count=0,
+            )
+        )
+        return artifact, rendered_pdf
+
+    return PdfExtractionArtifact(pages=(), sections=(), raw_line_count=0), None
+
+
 async def start_document_extraction(
     session: AsyncSession,
     *,
@@ -828,9 +988,11 @@ async def start_document_extraction(
     defs = await ensure_default_parser_definitions(session)
     defs_by_code = {d.code: d for d in defs}
 
+    active_storage = storage or get_bronze_storage()
+    raw_bytes: bytes | None = None
+
     selected_code = profile_code
     if selected_code is None:
-        active_storage = storage or get_bronze_storage()
         asset = await get_asset_by_id(session, asset_id=dv_row["raw_asset_id"])
         raw_bytes = await active_storage.get(asset.object_key)
         _, _, detected_strategy, _, _ = _inspect_and_route(
@@ -845,6 +1007,41 @@ async def start_document_extraction(
         raise ParserValidationError(f"parser definition {selected_code!r} is missing or inactive")
 
     run_id = uuid.uuid4()
+    silver_key: str | None = None
+    extracted_structure: dict[str, Any] | None = None
+    doc_mime = dv_row["mime_type"]
+    if doc_mime in (PDF_MIME, DOCX_MIME, DOC_MIME) or doc_mime in IMAGE_MIMES:
+        try:
+            asset = await get_asset_by_id(session, asset_id=dv_row["raw_asset_id"])
+            if raw_bytes is None:
+                raw_bytes = await active_storage.get(asset.object_key)
+            fname = str((asset.metadata_json or {}).get("filename") or f"doc_{dv_row['id']}")
+            artifact, rendered_pdf = await asyncio.to_thread(
+                _build_artifact_for_asset,
+                mime_type=doc_mime,
+                filename=fname,
+                raw_bytes=raw_bytes,
+            )
+            if artifact.pages or artifact.sections:
+                extracted_structure = artifact.to_dict()
+                if rendered_pdf:
+                    rendered_key = f"parsers/{tenant_id}/{run_id}/rendered.pdf"
+                    await active_storage.put(
+                        rendered_key,
+                        rendered_pdf,
+                        content_type=PDF_MIME,
+                    )
+                    extracted_structure["rendered_pdf_key"] = rendered_key
+                silver_key = f"parsers/{tenant_id}/{run_id}/extracted.json"
+                await active_storage.put(
+                    silver_key,
+                    json.dumps(extracted_structure, ensure_ascii=False).encode("utf-8"),
+                    content_type="application/json",
+                )
+        except Exception:
+            silver_key = None
+            extracted_structure = None
+
     row = ExtractionRunRow(
         id=run_id,
         tenant_id=tenant_id,
@@ -853,6 +1050,7 @@ async def start_document_extraction(
         profile_code=parser_row.code,
         parser_version=parser_row.version,
         ocr_engine_version=ocr_engine_version,
+        silver_artifact_key=silver_key,
     )
     session.add(row)
     await session.flush()
@@ -874,7 +1072,7 @@ async def start_document_extraction(
         ),
     )
     await session.refresh(row)
-    return _to_run_view(row)
+    return _to_run_view(row, extracted_structure=extracted_structure)
 
 
 async def reprocess_extraction_run(
@@ -1001,3 +1199,58 @@ async def get_extraction_run(
         parser_version=row["parser_version"],
         ocr_engine_version=row["ocr_engine_version"],
     )
+
+
+async def get_extraction_run_structure(
+    session: AsyncSession,
+    *,
+    run_id: uuid.UUID,
+    storage: Storage | None = None,
+) -> dict[str, Any]:
+    """Return cached or freshly extracted PDF structure (`pages` + `sections`) for one ExtractionRun."""
+    row = (
+        await session.execute(
+            text(
+                """
+                SELECT er.id, er.silver_artifact_key, dv.raw_asset_id, sd.mime_type
+                FROM extraction_runs er
+                JOIN document_versions dv
+                  ON dv.id = er.document_version_id AND dv.tenant_id = er.tenant_id
+                JOIN source_documents sd
+                  ON sd.id = dv.source_document_id AND sd.tenant_id = dv.tenant_id
+                WHERE er.id = :run_id
+                """
+            ),
+            {"run_id": run_id},
+        )
+    ).mappings().first()
+    if row is None:
+        raise ExtractionRunNotFoundError(f"extraction run {run_id} not found")
+
+    active_storage = storage or get_bronze_storage()
+    silver_key = row["silver_artifact_key"]
+    if isinstance(silver_key, str) and silver_key and not silver_key.startswith("reprocess:"):
+        try:
+            payload = json.loads((await active_storage.get(silver_key)).decode("utf-8"))
+            if isinstance(payload, dict):
+                return payload
+        except Exception:
+            pass
+
+    doc_mime = row["mime_type"]
+    if doc_mime in (PDF_MIME, DOCX_MIME, DOC_MIME) or doc_mime in IMAGE_MIMES:
+        try:
+            asset = await get_asset_by_id(session, asset_id=row["raw_asset_id"])
+            raw_bytes = await active_storage.get(asset.object_key)
+            fname = str((asset.metadata_json or {}).get("filename") or f"doc_{run_id}")
+            artifact, _ = await asyncio.to_thread(
+                _build_artifact_for_asset,
+                mime_type=doc_mime,
+                filename=fname,
+                raw_bytes=raw_bytes,
+            )
+            return artifact.to_dict()
+        except Exception:
+            pass
+
+    return {"pages": [], "sections": [], "raw_line_count": 0}

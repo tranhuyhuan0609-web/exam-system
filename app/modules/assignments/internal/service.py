@@ -23,6 +23,7 @@ from app.modules.classes.public import (
     ClassMemberStatus,
     ClassRole,
     ClassroomPolicyError,
+    can_manage_class,
     filter_active_assignment_recipients,
     get_active_class_recipients,
     get_class_member,
@@ -446,6 +447,35 @@ async def can_view_assignment(
                 "  AND cm.membership_id = :mid AND cm.status = 'ACTIVE')) LIMIT 1"
             ),
             {"tid": tenant_id, "gid": assignment.group_id, "mid": membership_id},
+        )
+        return found.first() is not None
+    return False
+
+
+async def can_manage_assignment_target(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    class_id: uuid.UUID | None,
+    group_id: uuid.UUID | None,
+    membership_id: uuid.UUID,
+) -> bool:
+    """Who may hand out or change an assignment: whoever teaches (or assists) its class, or a class of its group.
+
+    Having written the assignment is not enough: a teacher moved off a class stops steering it.
+    """
+    if class_id is not None:
+        return await can_manage_class(session, tenant_id=tenant_id, class_id=class_id, membership_id=membership_id)
+    if group_id is not None:
+        found = await session.execute(
+            text(
+                "SELECT 1 FROM classes c "
+                "WHERE c.tenant_id = :tid AND c.group_id = :gid AND (c.teacher_membership_id = :mid OR EXISTS ("
+                "  SELECT 1 FROM class_members cm WHERE cm.tenant_id = c.tenant_id AND cm.class_id = c.id "
+                "  AND cm.membership_id = :mid AND cm.status = 'ACTIVE' "
+                "  AND cm.role_in_class = 'TEACHING_ASSISTANT')) LIMIT 1"
+            ),
+            {"tid": tenant_id, "gid": group_id, "mid": membership_id},
         )
         return found.first() is not None
     return False

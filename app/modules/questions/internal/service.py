@@ -552,8 +552,12 @@ async def publish_question_version(
     *,
     approved_by: uuid.UUID,
     correlation_id: str | None = None,
+    require_version_review: bool = False,
 ) -> PublishResult:
     """Make the newest draft version the question's current version and publish the question.
+
+    `require_version_review` adds a gate: the newest review decision on this very version must be APPROVE. The
+    question's own VERIFIED status is not enough for a new version of a published question, which inherits it.
 
     The database freezes the version and its answer in the same statement (trigger). Writes the
     `publications` log row and the `question.version.published` outbox event in the caller's transaction.
@@ -591,6 +595,20 @@ async def publish_question_version(
     )
     if not decision.allowed_publish:
         raise PublishGateBlockedError(decision.blocking_codes, decision.reasons)
+    if require_version_review:
+        latest = await session.scalar(
+            text(
+                "SELECT d.decision FROM review_decisions d JOIN review_tasks t ON t.id = d.review_task_id "
+                "WHERE t.entity_type = 'QUESTION_VERSION' AND t.entity_id = :v AND t.tenant_id = :t "
+                "ORDER BY d.decided_at DESC, d.id DESC LIMIT 1"
+            ),
+            {"v": version.id, "t": question.tenant_id},
+        )
+        if latest != "APPROVE":
+            raise PublishGateBlockedError(
+                ("PUBLISH_VERSION_NOT_REVIEWED",),
+                (f"version {version.version_no} has no approving review decision",),
+            )
 
     await session.execute(
         update(QuestionVersion).where(QuestionVersion.id == version.id).values(approved_by=approved_by)
@@ -929,3 +947,84 @@ async def get_question_detail(session: AsyncSession, question_id: uuid.UUID) -> 
             for v in versions
         ),
     )
+
+
+# --- ingestion of questions found by a machine (crawler, Drive sync, a teacher's PDF) -------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class IngestedQuestion:
+    question: QuestionRecord
+    version: QuestionVersionRecord
+    created: bool  # False: the same content was already in the tenant's bank, that question is returned
+
+
+async def find_question_by_content(
+    session: AsyncSession, *, tenant_id: uuid.UUID, stem_text: str, options: Sequence[OptionInput] = ()
+) -> tuple[QuestionRecord, QuestionVersionRecord] | None:
+    """The tenant's question whose newest version has this content hash (stem + options, normalised by A08)."""
+    content_hash = compute_question_hashes(stem_text, [o.text for o in options]).content_hash
+    version = await session.scalar(
+        select(QuestionVersion)
+        .where(QuestionVersion.tenant_id == tenant_id, QuestionVersion.content_hash == content_hash)
+        .order_by(QuestionVersion.created_at.desc(), QuestionVersion.version_no.desc())
+        .limit(1)
+    )
+    if version is None:
+        return None
+    question = await get_question(session, version.question_id)
+    if question is None:
+        return None
+    versions = await list_question_versions(session, question.id)
+    newest = max(versions, key=lambda v: v.version_no)
+    return question, newest
+
+
+async def ingest_question(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    created_by: uuid.UUID,
+    stable_code: str,
+    item_type: str,
+    stem_text: str,
+    answer_schema: Mapping[str, Any],
+    options: Sequence[OptionInput] = (),
+    difficulty_level: str = "TH",
+    rationale: Mapping[str, Any] | None = None,
+    primary_taxonomy_node_id: uuid.UUID | None = None,
+    exam_framework_tags: Sequence[str] = ("SGK_KNTT",),
+    rights_status: str = "PENDING_REVIEW",
+) -> IngestedQuestion:
+    """Create a DRAFT question unless the tenant already holds the same content (dedup on `content_hash`).
+
+    A stable code taken by another question of different content gets a short content-hash suffix, so two sources
+    numbering their questions the same way do not collide.
+    """
+    found = await find_question_by_content(session, tenant_id=tenant_id, stem_text=stem_text, options=options)
+    if found is not None:
+        return IngestedQuestion(question=found[0], version=found[1], created=False)
+    suffix = compute_question_hashes(stem_text, [o.text for o in options]).content_hash[:8].upper()
+    for code in (stable_code, f"{stable_code[:90]}-{suffix}"):
+        try:
+            question, version = await create_question(
+                session,
+                tenant_id=tenant_id,
+                created_by=created_by,
+                stable_code=code,
+                item_type=item_type,
+                stem_text=stem_text,
+                answer_schema=answer_schema,
+                options=options,
+                difficulty_level=difficulty_level,
+                rationale=rationale,
+                primary_taxonomy_node_id=primary_taxonomy_node_id,
+                exam_framework_tags=exam_framework_tags,
+                rights_status=rights_status,
+            )
+        except QuestionConflictError as exc:
+            if exc.code == "STABLE_CODE_TAKEN":
+                continue
+            raise
+        return IngestedQuestion(question=question, version=version, created=True)
+    raise QuestionConflictError("STABLE_CODE_TAKEN", f"stable_code {stable_code!r} is taken twice over")

@@ -66,21 +66,25 @@ GATE_PLANS: dict[str, GatePlan] = {
         "Dexie offline store (frontend, outside this repository scope) and a chaos run with RPO = 0",
     ),
     # Tooling is tested (tests/test_load_seed_attempts.py, tests/test_load_k6_contract_db.py: the k6 tokens, hash and
-    # calls are accepted by the API on real rows) but that is not the gate: no tests are listed, so it stays SPECIFIED.
+    # calls are accepted by the API on real rows; tests/test_load_materialize_db.py: `seed_attempts.py --materialize`
+    # creates the tenants, memberships and IN_PROGRESS attempts) but that is not the gate: no tests are listed, so it
+    # stays SPECIFIED.
     "GATE-05": GatePlan(
         (),
-        "the 5.000 CCU per-VU k6 run on the target hardware, with its tenants, memberships and attempts "
-        "materialised in the target database (not run; the k6 script's contract with the API is tested)",
+        "the 5.000 CCU per-VU k6 run on the target hardware, on sessions materialised in the target database "
+        "(`seed_attempts.py --materialize`; not run at 5.000 VUs; the script's contract with the API is tested)",
     ),
     "GATE-06a": GatePlan(
         ("tests/test_ops_golden_metrics.py",), "golden and held-out extraction run on real Toán and Vật lí papers"
     ),
-    # app/ops/golden_corpus.py (tests/test_ops_golden_corpus.py) verifies the 41-paper manifest and scores per subject;
-    # the papers themselves are private, so no test is listed and the gate stays SPECIFIED.
+    # app/ops/golden_corpus.py (tests/test_ops_golden_corpus.py) verifies the 41-paper manifest, pulls the papers from
+    # s3://ulp-qa-golden-private/ (`--fixtures-uri`) and judges GATE-06a and GATE-06b each on its own subjects
+    # (`--gate all`); the papers themselves are private, so no test is listed and the gate stays SPECIFIED.
     "GATE-06b": GatePlan(
         (),
         "the 41 papers of the golden corpus (11 golden + 30 held-out, Hóa học and Sinh học included) pulled from the "
-        "private bucket and run through the extraction (not run; the manifest verifier and the verdict are tested)",
+        "private bucket and run through the extraction (not run; the manifest verifier, the bucket fetch and the "
+        "verdict are tested)",
     ),
     "GATE-07": GatePlan(
         ("tests/test_grading_e2e_db.py",), "regression on the full golden corpus against a production-like database"

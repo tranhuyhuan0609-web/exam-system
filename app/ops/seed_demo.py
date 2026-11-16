@@ -64,6 +64,8 @@ ACCOUNTS: tuple[tuple[str, str, str, list[str], str], ...] = (
     ("platform_admin", "platform_admin@h2edu.demo", "Platform Admin", ["PLATFORM_ADMIN"], "SCHOOL_ENTERPRISE"),
     ("tenant_admin", "tenant_admin@h2edu.demo", "Tenant Admin", ["TENANT_ADMIN"], "SCHOOL_ENTERPRISE"),
     ("teacher", "teacher@h2edu.demo", "Cô Lan", ["TEACHER"], "TEACHER_PRO"),
+    # the question bank and the imports are run by an author: a teacher only builds papers from the bank
+    ("content_author", "content_author@h2edu.demo", "Biên tập viên", ["CONTENT_AUTHOR"], "TEACHER_PRO"),
     ("learner", "learner@h2edu.demo", "Minh", ["LEARNER"], "STUDENT_PRO"),
 )
 
@@ -457,16 +459,24 @@ def _headers(tenant_id: uuid.UUID, account: dict[str, Any]) -> dict[str, str]:
 
 
 async def _ensure_lesson_and_paper(
-    tenant_id: uuid.UUID, teacher: dict[str, Any], taxonomy_id: uuid.UUID, there: dict[str, bool]
+    tenant_id: uuid.UUID,
+    teacher: dict[str, Any],
+    author: dict[str, Any],
+    taxonomy_id: uuid.UUID,
+    there: dict[str, bool],
 ) -> dict[str, bool]:
-    """The lesson and the paper go through the HTTP API, so authoring and publishing rules apply."""
+    """The lesson (by the author) and the paper (by the teacher) go through the HTTP API, so the rules apply.
+
+    A teacher no longer writes content or the taxonomy: the lesson belongs to the content author.
+    """
     headers = _headers(tenant_id, teacher)
+    author_headers = _headers(tenant_id, author)
     done = {"lesson": False, "paper": False}
 
     def create_lesson(client: Any) -> dict[str, str]:
         created = client.post(
             "/api/v1/content",
-            headers=headers,
+            headers=author_headers,
             json={
                 "content_type": "LESSON",
                 "slug": LESSON_SLUG,
@@ -497,7 +507,7 @@ async def _ensure_lesson_and_paper(
         return {"item": created.json()["item"]["id"], "version": created.json()["version"]["id"]}
 
     def publish_lesson(client: Any, version_id: str) -> None:
-        _ok(client.post(f"/api/v1/content-versions/{version_id}/publish", headers=headers))
+        _ok(client.post(f"/api/v1/content-versions/{version_id}/publish", headers=author_headers))
 
     def make_paper(client: Any) -> None:
         made = client.post(
@@ -843,13 +853,15 @@ async def seed_demo(password: str | None = None) -> dict[str, Any]:
         tenant_id, accounts["teacher"]["membership_id"], accounts["learner"]["membership_id"]
     )
     there = await _already_there(tenant_id)
-    content = await _ensure_lesson_and_paper(tenant_id, accounts["teacher"], taxonomy_id, there)
+    content = await _ensure_lesson_and_paper(
+        tenant_id, accounts["teacher"], accounts["content_author"], taxonomy_id, there
+    )
     learner = accounts["learner"]
     notes = await _ensure_error_notes(tenant_id, learner["membership_id"])
     ids = await _lookup_ids(tenant_id, learner["membership_id"])
     classroom = await _ensure_assignment_and_plan(tenant_id, accounts["teacher"], learner, ids)
-    c01 = await _ensure_c01_questions(tenant_id, accounts["teacher"], taxonomy_id)
-    exam_import = await _ensure_exam_import(tenant_id, accounts["teacher"])
+    c01 = await _ensure_c01_questions(tenant_id, accounts["content_author"], taxonomy_id)
+    exam_import = await _ensure_exam_import(tenant_id, accounts["content_author"])
     review = await _lookup_review_ids(tenant_id)
     await engine.dispose()
     return {

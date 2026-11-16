@@ -61,6 +61,8 @@ _MIME_TO_MAGIC_KIND: dict[str, str] = {
     "image/png": "PNG",
     "image/jpeg": "JPEG",
     "image/webp": "WEBP",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
+    "application/zip": "ZIP",
 }
 
 _EXT_FOR_MIME: dict[str, str] = {
@@ -68,6 +70,8 @@ _EXT_FOR_MIME: dict[str, str] = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
     "image/webp": ".webp",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/zip": ".zip",
     "audio/mpeg": ".mp3",
 }
 

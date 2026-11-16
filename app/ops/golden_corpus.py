@@ -8,10 +8,17 @@ in Git, so the manifest is the only part of the corpus that can be checked here)
 
     python -m app.ops.golden_corpus --manifest corpus.json [--fixtures-dir /tmp/golden_fixtures] \\
         [--observations runs.json --gate GATE-06b]
+    python -m app.ops.golden_corpus --manifest corpus.json --fixtures-uri s3://ulp-qa-golden-private/corpus/ \\
+        --observations runs.json --gate all
 
-`--fixtures-dir` re-hashes the files the CI runner pulled from the bucket. `--observations` is the extraction run:
-a JSON list of `DocumentExtractionObservation` fields. Exit code 0 passed, 1 not passed, 2 unreadable input.
-What this cannot do: produce the 30 held-out papers or run the extraction on them.
+`--fixtures-dir` re-hashes the files the CI runner pulled from the bucket; `--fixtures-uri` pulls the 41 files from
+the private QA bucket itself (only `s3://ulp-qa-golden-private/`, with `QA_S3_ENDPOINT`, `QA_S3_ACCESS_KEY` and
+`QA_S3_SECRET_KEY` from the environment: no built-in credentials, so a missing one is an error, not a skip) into a
+throwaway directory and re-hashes them. `--observations` is the extraction run: a JSON list of
+`DocumentExtractionObservation` fields. `--gate all` judges GATE-06a (Toán, Vật lí) and GATE-06b (Hóa học, Sinh học)
+each on its own papers and passes only when both do. Exit code 0 passed, 1 not passed, 2 unreadable input or source.
+What this cannot do: produce the 30 held-out papers, nor run the extraction on them (the extraction lives in
+`app.modules`, which offline tooling must not import: the run produces the observations file this reads).
 """
 
 from __future__ import annotations
@@ -19,13 +26,15 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
+import tempfile
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from app.ops.golden_metrics import (
     CANONICAL_GOLDEN_CORPUS,
@@ -46,11 +55,24 @@ GATE_SUBJECTS: dict[str, tuple[str, ...]] = {
     "GATE-06a": ("MATH", "PHYSICS"),
     "GATE-06b": ("CHEMISTRY", "BIOLOGY"),
 }
+GOLDEN_BUCKET = "ulp-qa-golden-private"  # Chapter 9: the corpus lives here and nowhere else, never in Git
+QA_S3_ENV = ("QA_S3_ENDPOINT", "QA_S3_ACCESS_KEY", "QA_S3_SECRET_KEY")
+ALL_GATES = "all"
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 class CorpusManifestError(ValueError):
     """The manifest file is not a list of well-formed entries (nothing can be verified)."""
+
+
+class CorpusSourceError(ValueError):
+    """The place the papers are to be read from is not the QA bucket, or cannot be reached (nothing is verified)."""
+
+
+class ObjectStore(Protocol):
+    """What the fetch needs of an S3 client; `minio.Minio.fget_object` has exactly this shape."""
+
+    def fget_object(self, bucket_name: str, object_name: str, file_path: str) -> object: ...
 
 
 @dataclass(frozen=True)
@@ -95,7 +117,14 @@ def parse_manifest(raw: object) -> tuple[CorpusEntry, ...]:
             )
         except KeyError as exc:
             raise CorpusManifestError(f"entry {index} lacks {exc.args[0]!r}") from exc
-        if not isinstance(entry.corpus_id, str) or not entry.corpus_id.strip() or "/" in entry.corpus_id:
+        if (
+            not isinstance(entry.corpus_id, str)
+            or not entry.corpus_id.strip()
+            or entry.corpus_id != entry.corpus_id.strip()
+            or any(ch in entry.corpus_id for ch in "/" + chr(92))
+            or any(ord(ch) < 32 or ord(ch) == 127 for ch in entry.corpus_id)
+            or entry.corpus_id.startswith(".")
+        ):
             raise CorpusManifestError(f"entry {index}: corpus_id must be a plain file name")
         if not isinstance(entry.subject, str) or not isinstance(entry.sha256, str):
             raise CorpusManifestError(f"entry {index}: subject and sha256 must be strings")
@@ -161,6 +190,48 @@ def verify_corpus(entries: Sequence[CorpusEntry], *, fixtures_dir: Path | None =
     return CorpusVerification(ok=not errors, errors=tuple(errors), counts=counts)
 
 
+def parse_s3_uri(uri: str) -> tuple[str, str]:
+    """`s3://ulp-qa-golden-private/<prefix>` -> (bucket, prefix without a leading slash and with a trailing one)."""
+    match = re.fullmatch(r"s3://([^/]+)/?(.*)", uri.strip())
+    if match is None:
+        raise CorpusSourceError(f"{uri!r} is not an s3://<bucket>/<prefix> address")
+    bucket, prefix = match.group(1), match.group(2)
+    if bucket != GOLDEN_BUCKET:
+        raise CorpusSourceError(f"the golden corpus is read from s3://{GOLDEN_BUCKET}/ only, not from {bucket!r}")
+    if ".." in prefix.split("/"):
+        raise CorpusSourceError("the prefix must not contain '..'")
+    return bucket, (prefix.rstrip("/") + "/") if prefix.strip("/") else ""
+
+
+def minio_client_from_env(environ: dict[str, str] | None = None) -> ObjectStore:
+    """The QA bucket client, from `QA_S3_*` only: there is no default credential to fall back on."""
+    env = os.environ if environ is None else environ
+    missing = [name for name in QA_S3_ENV if not env.get(name, "").strip()]
+    if missing:
+        raise CorpusSourceError(f"{', '.join(missing)} must be set to read s3://{GOLDEN_BUCKET}/")
+    from minio import Minio  # imported late: the offline checks need no S3 client
+
+    secure = env.get("QA_S3_SECURE", "true").strip().lower() not in ("false", "0", "no")
+    return Minio(  # type: ignore[no-any-return]
+        env["QA_S3_ENDPOINT"], access_key=env["QA_S3_ACCESS_KEY"], secret_key=env["QA_S3_SECRET_KEY"], secure=secure
+    )
+
+
+def fetch_corpus(entries: Sequence[CorpusEntry], uri: str, dest: Path, client: ObjectStore) -> tuple[str, ...]:
+    """Download the manifest's files from the QA bucket into `dest`; the names that could not be read, as errors.
+
+    Nothing is trusted from the bucket: `verify_corpus(fixtures_dir=dest)` re-hashes what arrived afterwards.
+    """
+    bucket, prefix = parse_s3_uri(uri)
+    errors: list[str] = []
+    for entry in entries:
+        try:
+            client.fget_object(bucket, f"{prefix}{entry.corpus_id}", str(dest / entry.corpus_id))
+        except Exception as exc:  # the client's own errors (S3Error, network) all mean: this paper is not there
+            errors.append(f"FIXTURE_UNREADABLE:{entry.corpus_id}:{type(exc).__name__}")
+    return tuple(errors)
+
+
 def evaluate_subject_gate(
     gate_id: str,
     entries: Sequence[CorpusEntry],
@@ -214,24 +285,7 @@ def _observations_from(raw: object) -> list[DocumentExtractionObservation]:
         raise CorpusManifestError(f"bad observation: {exc}") from exc
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Verify the golden corpus manifest and score a GATE-06a/06b run.")
-    parser.add_argument("--manifest", type=Path, required=True)
-    parser.add_argument("--fixtures-dir", type=Path, help="directory with the anonymised files, re-hashed")
-    parser.add_argument("--observations", type=Path, help="extraction run: JSON list of observations")
-    parser.add_argument("--gate", choices=sorted(GATE_SUBJECTS), default="GATE-06b")
-    args = parser.parse_args(argv)
-    try:
-        entries = parse_manifest(json.loads(args.manifest.read_text(encoding="utf-8")))
-        if args.observations is None:
-            corpus = verify_corpus(entries, fixtures_dir=args.fixtures_dir)
-            print(json.dumps({"ok": corpus.ok, "errors": corpus.errors, "counts": corpus.counts}, indent=2))
-            return 0 if corpus.ok else 1
-        observations = _observations_from(json.loads(args.observations.read_text(encoding="utf-8")))
-    except (OSError, json.JSONDecodeError, CorpusManifestError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    report = evaluate_subject_gate(args.gate, entries, observations, fixtures_dir=args.fixtures_dir)
+def _summary(report: SubjectGateReport) -> dict[str, Any]:
     summary: dict[str, Any] = {"gate": report.gate_id, "passed": report.passed, "errors": report.errors}
     if report.quality is not None:
         q = report.quality
@@ -242,8 +296,63 @@ def main(argv: list[str] | None = None) -> int:
             "clean_text": q.clean_text_redaction_rate,
             "files_below_threshold": q.files_below_threshold,
         }
-    print(json.dumps(summary, indent=2, ensure_ascii=False))
-    return 0 if report.passed else 1
+    return summary
+
+
+def main(argv: list[str] | None = None, *, s3_client: ObjectStore | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Verify the golden corpus manifest and score a GATE-06a/06b run.")
+    parser.add_argument("--manifest", type=Path, required=True)
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--fixtures-dir", type=Path, help="directory with the anonymised files, re-hashed")
+    source.add_argument("--fixtures-uri", help=f"s3://{GOLDEN_BUCKET}/<prefix>: pull the files from the QA bucket")
+    parser.add_argument("--observations", type=Path, help="extraction run: JSON list of observations")
+    parser.add_argument("--gate", choices=[*sorted(GATE_SUBJECTS), ALL_GATES], default="GATE-06b")
+    args = parser.parse_args(argv)
+    try:
+        entries = parse_manifest(json.loads(args.manifest.read_text(encoding="utf-8")))
+        observations = (
+            None
+            if args.observations is None
+            else _observations_from(json.loads(args.observations.read_text(encoding="utf-8")))
+        )
+        if args.fixtures_uri is None:
+            return _report(args, entries, observations, args.fixtures_dir, ())
+        client = s3_client if s3_client is not None else minio_client_from_env()
+        parse_s3_uri(args.fixtures_uri)  # refuse a foreign bucket before any credential is used
+        with tempfile.TemporaryDirectory(prefix="golden-corpus-") as scratch:
+            fetch_errors = fetch_corpus(entries, args.fixtures_uri, Path(scratch), client)
+            return _report(args, entries, observations, Path(scratch), fetch_errors)
+    except (OSError, json.JSONDecodeError, CorpusManifestError, CorpusSourceError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _report(
+    args: argparse.Namespace,
+    entries: tuple[CorpusEntry, ...],
+    observations: list[DocumentExtractionObservation] | None,
+    fixtures_dir: Path | None,
+    fetch_errors: tuple[str, ...],
+) -> int:
+    """Print the verdict and return the exit code: the fetch errors fail every verdict, whatever the scores."""
+    if observations is None:
+        corpus = verify_corpus(entries, fixtures_dir=fixtures_dir)
+        errors = tuple(dict.fromkeys((*fetch_errors, *corpus.errors)))
+        ok = corpus.ok and not fetch_errors
+        print(json.dumps({"ok": ok, "errors": errors, "counts": corpus.counts}, indent=2))
+        return 0 if ok else 1
+    gates = sorted(GATE_SUBJECTS) if args.gate == ALL_GATES else [args.gate]
+    reports = [evaluate_subject_gate(g, entries, observations, fixtures_dir=fixtures_dir) for g in gates]
+    summaries = []
+    for report in reports:
+        summary = _summary(report)
+        summary["errors"] = tuple(dict.fromkeys((*fetch_errors, *report.errors)))
+        summary["passed"] = report.passed and not fetch_errors
+        summaries.append(summary)
+    passed = all(x["passed"] for x in summaries)
+    out: dict[str, Any] = summaries[0] if args.gate != ALL_GATES else {"passed": passed, "gates": summaries}
+    print(json.dumps(out, indent=2, ensure_ascii=False))
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":

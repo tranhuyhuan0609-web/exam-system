@@ -6,6 +6,7 @@ import base64
 import binascii
 import json
 import uuid
+from dataclasses import replace
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
@@ -29,6 +30,7 @@ from app.modules.ingestion.internal.service import (
     get_import_job,
     list_import_jobs,
     retry_import_job,
+    submit_archive_import,
     submit_import,
 )
 from app.platform.auth_context import (
@@ -45,7 +47,7 @@ router = APIRouter(prefix="/api/v1/imports", tags=["ingestion"])
 
 # Who may put a file into the import pipeline and see its jobs: the same roles as the exam-import review.
 _IMPORT_ROLES = frozenset(
-    {"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "REVIEWER", "TEACHER", "CONTENT_AUTHOR"}
+    {"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "REVIEWER", "CONTENT_AUTHOR"}
 )
 
 
@@ -145,6 +147,7 @@ class ImportJobSummaryResponse(BaseModel):
     mime_type: str | None
     page_count: int | None
     rights_status: str | None
+    exam_import_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
 
@@ -158,6 +161,35 @@ class ImportJobListResponse(BaseModel):
     limit: int
 
 
+class ArchiveMemberResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    archive_path: str
+    job_id: uuid.UUID
+    job_status: str
+    document_version_id: uuid.UUID
+    mime_type: str
+    is_duplicate: bool
+
+
+class ArchiveSkippedResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    archive_path: str
+    reason: str
+
+
+class ArchiveSummaryResponse(BaseModel):
+    """What became of a `.zip` upload: one job per file inside (`job` of the response is the first of them)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    archive_sha256: str
+    members: list[ArchiveMemberResponse]
+    skipped: list[ArchiveSkippedResponse]
+    ignored_entries: int
+
+
 class SubmitImportResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -165,6 +197,7 @@ class SubmitImportResponse(BaseModel):
     idempotent_replay: bool
     job: ImportJobResponse
     document_version: DocumentVersionResponse
+    archive: ArchiveSummaryResponse | None = None
 
 
 def _problem_response(
@@ -340,24 +373,65 @@ async def post_submit_import(
     idem_header = request.headers.get("idempotency-key")
     eff_idem_key = params["idempotency_key"] or (idem_header.strip() if idem_header else None)
 
+    archive_summary: ArchiveSummaryResponse | None = None
     try:
         async with tenant_transaction(actor.tenant_id, role=DbRole.APP_RW) as session:
-            result = await submit_import(
-                session,
-                tenant_id=actor.tenant_id,
-                raw_stream=raw_bytes,
-                filename=params["filename"],
-                mime_type=params["mime_type"],
-                job_type=params["job_type"],
-                source_id=params["source_id"],
-                external_id=params["external_id"],
-                title=params["title"],
-                idempotency_key=eff_idem_key,
-                max_attempts=params["max_attempts"],
-                requires_pro=params["requires_pro"],
-                start_immediately=params["start_immediately"],
-                correlation_id=correlation_id,
-            )
+            if str(params["filename"]).strip().lower().endswith(".zip"):
+                if params["mime_type"] is not None and params["mime_type"].strip().lower() != "application/zip":
+                    raise IngestionValidationError(
+                        f"declared mime_type {params['mime_type']!r} does not match detected 'application/zip'"
+                    )
+                archive = await submit_archive_import(
+                    session,
+                    tenant_id=actor.tenant_id,
+                    raw_bytes=raw_bytes,
+                    filename=params["filename"],
+                    job_type=params["job_type"],
+                    source_id=params["source_id"],
+                    title=params["title"],
+                    idempotency_key=eff_idem_key,
+                    max_attempts=params["max_attempts"],
+                    requires_pro=params["requires_pro"],
+                    start_immediately=params["start_immediately"],
+                    correlation_id=correlation_id,
+                )
+                result = archive.members[0].result
+                archive_summary = ArchiveSummaryResponse(
+                    archive_sha256=archive.archive_sha256,
+                    members=[
+                        ArchiveMemberResponse(
+                            archive_path=m.archive_path,
+                            job_id=m.result.job.id,
+                            job_status=m.result.job.job_status,
+                            document_version_id=m.result.document_version.id,
+                            mime_type=m.result.document_version.mime_type,
+                            is_duplicate=m.result.is_duplicate,
+                        )
+                        for m in archive.members
+                    ],
+                    skipped=[
+                        ArchiveSkippedResponse(archive_path=k.archive_path, reason=k.reason) for k in archive.skipped
+                    ],
+                    ignored_entries=archive.ignored_entries,
+                )
+                result = replace(result, is_duplicate=archive.is_duplicate, idempotent_replay=archive.idempotent_replay)
+            else:
+                result = await submit_import(
+                    session,
+                    tenant_id=actor.tenant_id,
+                    raw_stream=raw_bytes,
+                    filename=params["filename"],
+                    mime_type=params["mime_type"],
+                    job_type=params["job_type"],
+                    source_id=params["source_id"],
+                    external_id=params["external_id"],
+                    title=params["title"],
+                    idempotency_key=eff_idem_key,
+                    max_attempts=params["max_attempts"],
+                    requires_pro=params["requires_pro"],
+                    start_immediately=params["start_immediately"],
+                    correlation_id=correlation_id,
+                )
     except DuplicateIdempotencyConflictError as exc:
         return _problem_response(
             code=PlatformErrorCode.PAYLOAD_HASH_MISMATCH,
@@ -378,6 +452,7 @@ async def post_submit_import(
         idempotent_replay=result.idempotent_replay,
         job=_serialize_job(result.job),
         document_version=_serialize_doc_version(result.document_version),
+        archive=archive_summary,
     )
     return JSONResponse(
         status_code=status.HTTP_200_OK if result.is_duplicate else status.HTTP_201_CREATED,

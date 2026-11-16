@@ -496,3 +496,34 @@ async def is_class_participant(
         .exists()
     )
     return bool(await session.scalar(select(or_(teaches, member))))
+
+
+async def can_manage_class(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    class_id: uuid.UUID,
+    membership_id: uuid.UUID,
+) -> bool:
+    """True when the membership teaches the class or is an ACTIVE teaching assistant of it (students never manage)."""
+    teaches = (
+        select(SchoolClass.id)
+        .where(
+            SchoolClass.tenant_id == tenant_id,
+            SchoolClass.id == class_id,
+            SchoolClass.teacher_membership_id == membership_id,
+        )
+        .exists()
+    )
+    assistant = (
+        select(ClassMember.id)
+        .where(
+            ClassMember.tenant_id == tenant_id,
+            ClassMember.class_id == class_id,
+            ClassMember.membership_id == membership_id,
+            ClassMember.status == ClassMemberStatus.ACTIVE.value,
+            ClassMember.role_in_class == ClassRole.TEACHING_ASSISTANT.value,
+        )
+        .exists()
+    )
+    return bool(await session.scalar(select(or_(teaches, assistant))))

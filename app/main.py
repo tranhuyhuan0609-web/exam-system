@@ -152,13 +152,17 @@ if settings.storage_backend == "local":
     _previews.mkdir(parents=True, exist_ok=True)
     app.mount("/media/previews", StaticFiles(directory=_previews), name="previews")
 
-app.include_router(student.router)
-app.include_router(teacher.router)
-app.include_router(maker.router)
-app.include_router(library.router)
-app.include_router(plans.router)
-app.include_router(auth.router)
-app.include_router(admin.router)
+if settings.legacy_html_enabled:
+    for _legacy_router in (
+        student.router,
+        teacher.router,
+        maker.router,
+        library.router,
+        plans.router,
+        auth.router,
+        admin.router,
+    ):
+        app.include_router(_legacy_router)
 
 # V11.3 /api/v1 modules (JWT bearer auth; tenant context bound per transaction for RLS).
 for _module_router in (

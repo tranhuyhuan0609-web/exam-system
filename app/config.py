@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     blind_index_pepper: str = ""
     # Set to true in production (HTTPS) so the session cookie is never sent over plain HTTP.
     session_https_only: bool = False
+    # The server-rendered HTML site (student / teacher / maker / library / plans / auth / admin routers) predates V11.3.
+    # Set LEGACY_HTML_ENABLED=false when the Next.js app and /api/v1 are the only front: those routers are not mounted.
+    legacy_html_enabled: bool = True
     session_max_age_seconds: int = 7 * 24 * 3600
     access_token_ttl_seconds: int = 8 * 3600  # JWT of POST /api/v1/auth/login
 

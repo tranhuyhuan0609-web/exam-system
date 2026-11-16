@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Request, status
+import httpx
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import get_settings
+from app.infrastructure.ai_solver import AiSolver
+from app.modules.crawler.internal.fetch_import import CrawlFetchError, HostResolver, fetch_and_import
 from app.modules.crawler.internal.politeness import DEFAULT_MIN_INTERVAL_SEC
 from app.modules.crawler.internal.redirects import RobotsPolicy
 from app.modules.crawler.internal.service import (
@@ -25,6 +29,7 @@ from app.modules.crawler.internal.service import (
     register_crawler_source,
     validate_crawl_target,
 )
+from app.modules.questions.public import default_numeric_checker
 from app.platform.auth_context import (
     ActorContext,
     AuthTokenError,
@@ -37,7 +42,27 @@ from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1/crawler/sources", tags=["crawler"])
 
-_STAFF_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "TEACHER", "REVIEWER"})
+# Crawling fills the question bank: authors, reviewers and administrators only (a teacher never feeds the bank).
+_STAFF_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "REVIEWER", "CONTENT_AUTHOR"})
+_IMPORT_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "CONTENT_AUTHOR"})
+
+
+@dataclass(frozen=True, slots=True)
+class CrawlNetwork:
+    """How a fetch reaches the web: the DNS resolver and the HTTP transport (None: the real ones)."""
+
+    resolve_host: HostResolver | None = None
+    transport: httpx.AsyncBaseTransport | None = None
+
+
+def get_crawl_network() -> CrawlNetwork:
+    """The real network; tests override this dependency with an offline resolver and transport."""
+    return CrawlNetwork()
+
+
+def get_crawl_solver() -> AiSolver:
+    """The configured AI solver (Gemini / Groq / OpenRouter keys of the settings); tests override it."""
+    return AiSolver(numeric_checker=default_numeric_checker())
 
 
 class CreateCrawlerSourceRequest(BaseModel):
@@ -66,6 +91,32 @@ class CreateCrawlJobRequest(BaseModel):
     urls: list[str] = Field(min_length=1)
     dns_observations: dict[str, list[str]] = Field(default_factory=dict)
     robots_txt: dict[str, str | None] | None = None
+
+
+class FetchAndImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(min_length=8, max_length=2048)
+    max_questions: int = Field(default=20, ge=1, le=100)
+
+
+class FetchAndImportResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: uuid.UUID
+    url: str
+    http_status: int
+    fetched_bytes: int
+    extracted_count: int
+    created_count: int
+    duplicate_count: int
+    created_question_ids: list[uuid.UUID]
+    duplicate_question_ids: list[uuid.UUID]
+    skipped: list[dict[str, str]]
+    drift_detected: bool
+    source_policy_status: str
+    fetch_id: uuid.UUID
+    warnings: list[str]
 
 
 class PauseCrawlerSourceRequest(BaseModel):
@@ -129,6 +180,7 @@ def _authenticate(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None,
     correlation_id: str,
+    roles: frozenset[str] = _STAFF_ROLES,
 ) -> ActorContext | JSONResponse:
     get_settings()
     try:
@@ -149,7 +201,7 @@ def _authenticate(
             instance=str(request.url.path),
             correlation_id=correlation_id,
         )
-    if not any(r.upper() in _STAFF_ROLES for r in actor.roles):
+    if not any(r.upper() in roles for r in actor.roles):
         return _problem_response(
             code=PlatformErrorCode.FORBIDDEN,
             detail="Staff or admin role required for crawler operations",
@@ -396,5 +448,79 @@ async def pause_source_endpoint(
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content=jsonable_encoder(_serialize_source(updated)),
+        headers={"X-Correlation-ID": correlation_id},
+    )
+
+
+@router.post("/{source_id}/fetch-and-import", response_model=FetchAndImportResponse)
+async def fetch_and_import_endpoint(
+    source_id: uuid.UUID,
+    payload: FetchAndImportRequest,
+    request: Request,
+    credentials: OptionalBearer = None,
+    network: CrawlNetwork = Depends(get_crawl_network),  # noqa: B008
+    solver: AiSolver = Depends(get_crawl_solver),  # noqa: B008
+) -> JSONResponse:
+    """Fetch one permitted page and add the questions on it to the bank as solved, tagged DRAFTs (dedup by hash).
+
+    403 `policy_code` for a gate (SSRF_BLOCKED, ROBOTS_TXT_DISALLOWED, RIGHTS_GATE_BLOCKED, SOURCE_PAUSED, ...),
+    502 when the page cannot be fetched or answers another status than 200 (the fetch is still recorded).
+    """
+    correlation_id = resolve_correlation_id(request.headers.get("X-Correlation-ID"))
+    auth = _authenticate(request, credentials, correlation_id, _IMPORT_ROLES)
+    if isinstance(auth, JSONResponse):
+        return auth
+    instance = str(request.url.path)
+    try:
+        # no transaction here: the function opens short ones around the database steps, never around network or AI
+        result = await fetch_and_import(
+            tenant_id=auth.tenant_id,
+            source_id=source_id,
+            url=payload.url,
+            created_by=auth.user_id,
+            max_questions=payload.max_questions,
+            solver=solver,
+            resolve_host=network.resolve_host,
+            transport=network.transport,
+        )
+    except CrawlerNotFoundError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.NOT_FOUND, detail=str(exc), status_code=404, instance=instance,
+            correlation_id=correlation_id,
+        )  # fmt: skip
+    except CrawlerPolicyBlockedError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.FORBIDDEN, detail=str(exc), status_code=403, instance=instance,
+            correlation_id=correlation_id, extensions={"policy_code": exc.code},
+        )  # fmt: skip
+    except CrawlerValidationError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.VALIDATION_ERROR, detail=str(exc), status_code=422, instance=instance,
+            correlation_id=correlation_id, extensions={"policy_code": exc.code},
+        )  # fmt: skip
+    except CrawlFetchError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.VALIDATION_ERROR, detail=str(exc), status_code=502, instance=instance,
+            correlation_id=correlation_id, extensions={"policy_code": "UPSTREAM_FETCH_FAILED"},
+        )  # fmt: skip
+    body = FetchAndImportResponse(
+        source_id=result.source_id,
+        url=result.url,
+        http_status=result.http_status,
+        fetched_bytes=result.fetched_bytes,
+        extracted_count=result.extracted_count,
+        created_count=len(result.created_question_ids),
+        duplicate_count=len(result.duplicate_question_ids),
+        created_question_ids=list(result.created_question_ids),
+        duplicate_question_ids=list(result.duplicate_question_ids),
+        skipped=[{"label": label, "reason": reason} for label, reason in result.skipped],
+        drift_detected=result.drift_detected,
+        source_policy_status=result.source_policy_status,
+        fetch_id=result.fetch_id,
+        warnings=list(result.warnings),
+    )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK if result.http_status == 200 else status.HTTP_502_BAD_GATEWAY,
+        content=jsonable_encoder(body),
         headers={"X-Correlation-ID": correlation_id},
     )

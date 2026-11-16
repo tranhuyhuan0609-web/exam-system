@@ -23,9 +23,9 @@ from app.platform.tenancy import DbRole, tenant_transaction
 from tests.test_assembly_delivery_db import (  # the TASK-20 world: tenants, authors, students, MATH taxonomy
     _all,
     _assemble,
-    _author,
     _create_assessment,
     _execute,
+    _headers,
     _published_paper,
     _scalar,
     _seed,
@@ -36,8 +36,16 @@ from tests.test_assembly_delivery_db import (  # the TASK-20 world: tenants, aut
     run,
     world,  # noqa: F401  (fixture)
 )
+from tests.test_assembly_delivery_db import (
+    _author as _bank_author,
+)
 
 TF_KEY = {"a": True, "b": False, "c": True, "d": False}
+
+
+def _author(world, who="a"):  # noqa: F811
+    """The teacher of the paper: grades, releases, overrides (an author of the bank writes the questions)."""
+    return _headers(world[who], world[f"author_{who}"])
 
 
 # --- Track 1 helpers -----------------------------------------------------------------------------------------------
@@ -55,7 +63,7 @@ def _author_question(client, world, item_type: str, n: int) -> dict:  # noqa: F8
         body["answer_schema"] = {"statements": TF_KEY}
     else:
         body["answer_schema"] = {"value": "2,5"}
-    response = client.post("/api/v1/questions", headers=_author(world), json=body)
+    response = client.post("/api/v1/questions", headers=_bank_author(world), json=body)
     assert response.status_code == 201, response.text
     return response.json()
 

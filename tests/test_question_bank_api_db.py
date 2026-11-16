@@ -31,26 +31,31 @@ def _login(client, email: str, tenant_slug: str = "h2edu-demo") -> dict[str, str
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
-async def _make_tenant_with_teacher(slug: str) -> uuid.UUID:
+async def _make_tenant_with_author(slug: str) -> uuid.UUID:
+    """Another school with an author (`author@<slug>.test`): who runs a question bank and its imports."""
+    return await _make_tenant_with_teacher(slug, role="CONTENT_AUTHOR", local="author")
+
+
+async def _make_tenant_with_teacher(slug: str, *, role: str = "TEACHER", local: str = "teacher") -> uuid.UUID:
     settings = get_settings()
     async with tenant_transaction(SYSTEM_PUBLIC_TENANT_ID) as session:
         await session.execute(text("INSERT INTO tenants (slug, name) VALUES (:s, :s)"), {"s": slug})
         tenant_id = (await session.execute(text("SELECT id FROM tenants WHERE slug = :s"), {"s": slug})).scalar_one()
-    email = f"teacher@{slug}.test"
+    email = f"{local}@{slug}.test"
     async with tenant_transaction(tenant_id) as session:
         blind = email_blind_index(email, settings.secret_key, settings.blind_index_pepper)
         row = (
             await session.execute(
                 text("SELECT user_id FROM f04_register_user(:b, :h, NULL, :p, NULL, 'ACTIVE')"),
-                {"b": blind, "h": hash_password(DEFAULT_PASSWORD), "p": f"GV {slug}"},
+                {"b": blind, "h": hash_password(DEFAULT_PASSWORD), "p": f"{local} {slug}"},
             )
         ).one()
         await session.execute(
             text(
                 "INSERT INTO memberships (tenant_id, user_id, roles, entitlement_tier) "
-                "VALUES (:t, :u, ARRAY['TEACHER']::varchar[], 'TEACHER_PRO')"
+                "VALUES (:t, :u, ARRAY[CAST(:r AS varchar)], 'TEACHER_PRO')"
             ),
-            {"t": tenant_id, "u": row.user_id},
+            {"t": tenant_id, "u": row.user_id, "r": role},
         )
     return tenant_id
 
@@ -96,6 +101,7 @@ async def _insert_question(
 def world(client):
     seeded = asyncio.run(seed_demo())
     return {
+        "author": _login(client, "content_author@h2edu.demo"),
         "teacher": _login(client, "teacher@h2edu.demo"),
         "learner": _login(client, "learner@h2edu.demo"),
         "tenant_admin": _login(client, "tenant_admin@h2edu.demo"),
@@ -109,7 +115,7 @@ def _codes(body: dict) -> list[str]:
 
 
 def test_the_list_shows_published_and_draft_questions_with_stem_and_options_newest_first(client, world):
-    body = client.get("/api/v1/questions", params={"limit": 100}, headers=world["teacher"]).json()
+    body = client.get("/api/v1/questions", params={"limit": 100}, headers=world["author"]).json()
     assert len(body["items"]) == 26 and body["has_more"] is False and body["next_cursor"] is None
     assert body["limit"] == 100
     created = [i["created_at"] for i in body["items"]]
@@ -134,7 +140,7 @@ def test_the_list_shows_published_and_draft_questions_with_stem_and_options_newe
 
 
 def test_cursor_pages_cover_the_bank_once_in_order_and_reject_foreign_or_bad_cursors(client, world):
-    headers = world["teacher"]
+    headers = world["author"]
     seen: list[str] = []
     cursor = None
     pages = 0
@@ -163,7 +169,7 @@ def test_cursor_pages_cover_the_bank_once_in_order_and_reject_foreign_or_bad_cur
 
 def test_filters_narrow_the_list(client, world):
     def codes(**params) -> list[str]:
-        response = client.get("/api/v1/questions", params={"limit": 100, **params}, headers=world["teacher"])
+        response = client.get("/api/v1/questions", params={"limit": 100, **params}, headers=world["author"])
         assert response.status_code == 200, response.text
         return _codes(response.json())
 
@@ -178,19 +184,19 @@ def test_filters_narrow_the_list(client, world):
     assert codes(q="%") == [] and codes(q="_") == [], "LIKE wildcards in the input are literal"
     assert codes(item_type="CLUSTER_TRUE_FALSE", publication_status="DRAFT") == ["DEMO-C01-02"]
 
-    taxonomy = client.get("/api/v1/questions", params={"limit": 1}, headers=world["teacher"]).json()["items"][0][
+    taxonomy = client.get("/api/v1/questions", params={"limit": 1}, headers=world["author"]).json()["items"][0][
         "primary_taxonomy_node_id"
     ]
     assert len(codes(taxonomy_node_id=taxonomy)) == 26
     assert codes(taxonomy_node_id=str(uuid.uuid4())) == [] and codes(curriculum_node_id=str(uuid.uuid4())) == []
     for bad in ({"item_type": "TRUE_FALSE"}, {"difficulty_level": "XX"}, {"publication_status": "LIVE"}):
-        assert client.get("/api/v1/questions", params=bad, headers=world["teacher"]).status_code == 422
-    assert client.get("/api/v1/questions", params={"q": "x" * 201}, headers=world["teacher"]).status_code == 422
+        assert client.get("/api/v1/questions", params=bad, headers=world["author"]).status_code == 422
+    assert client.get("/api/v1/questions", params={"q": "x" * 201}, headers=world["author"]).status_code == 422
 
 
 def test_the_detail_has_the_shown_version_and_the_version_history_and_no_answer(client, world):
     qid = world["c01_ids"][0]
-    response = client.get(f"/api/v1/questions/{qid}", headers=world["teacher"])
+    response = client.get(f"/api/v1/questions/{qid}", headers=world["author"])
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["question"]["id"] == qid and body["question"]["stable_code"] == "DEMO-C01-01"
@@ -201,28 +207,28 @@ def test_the_detail_has_the_shown_version_and_the_version_history_and_no_answer(
 
     # a published question with a newer draft shows the published version, and lists both
     published = next(
-        i for i in client.get("/api/v1/questions", params={"limit": 100}, headers=world["teacher"]).json()["items"]
+        i for i in client.get("/api/v1/questions", params={"limit": 100}, headers=world["author"]).json()["items"]
         if i["stable_code"] == "DEMO-BAYES-01"
     )  # fmt: skip
     forked = client.post(
         f"/api/v1/questions/{published['id']}/versions",
-        headers=world["teacher"],
+        headers=world["author"],
         json={"change_reason": "Sửa số liệu", "stem_text": "Bản nháp mới"},
     )
     assert forked.status_code == 201, forked.text
-    detail = client.get(f"/api/v1/questions/{published['id']}", headers=world["teacher"]).json()
+    detail = client.get(f"/api/v1/questions/{published['id']}", headers=world["author"]).json()
     assert detail["shown_version"]["version_no"] == 1
     assert detail["question"]["current_version_id"] == published["version_id"]
     assert [(v["version_no"], v["is_current"], v["is_immutable"]) for v in detail["versions"]] == [
         (2, False, False),
         (1, True, True),
     ]
-    found = client.get("/api/v1/questions", params={"q": "DEMO-BAYES-01"}, headers=world["teacher"]).json()
+    found = client.get("/api/v1/questions", params={"q": "DEMO-BAYES-01"}, headers=world["author"]).json()
     listed = found["items"][0]
     assert listed["version_no"] == 1, "the list shows what is served, not the draft"
 
-    assert client.get(f"/api/v1/questions/{uuid.uuid4()}", headers=world["teacher"]).status_code == 404
-    assert client.get("/api/v1/questions/not-a-uuid", headers=world["teacher"]).status_code == 422
+    assert client.get(f"/api/v1/questions/{uuid.uuid4()}", headers=world["author"]).status_code == 404
+    assert client.get("/api/v1/questions/not-a-uuid", headers=world["author"]).status_code == 422
 
 
 def test_no_answer_is_read_or_returned(client, world):
@@ -233,8 +239,8 @@ def test_no_answer_is_read_or_returned(client, world):
 
     event.listen(engine.sync_engine, "before_cursor_execute", spy)
     try:
-        listed = client.get("/api/v1/questions", params={"limit": 100}, headers=world["teacher"])
-        detail = client.get(f"/api/v1/questions/{world['c01_ids'][1]}", headers=world["teacher"])
+        listed = client.get("/api/v1/questions", params={"limit": 100}, headers=world["author"])
+        detail = client.get(f"/api/v1/questions/{world['c01_ids'][1]}", headers=world["author"])
     finally:
         event.remove(engine.sync_engine, "before_cursor_execute", spy)
     assert listed.status_code == 200 and detail.status_code == 200
@@ -256,22 +262,22 @@ def test_a_learner_is_refused_and_a_visitor_is_not_signed_in(client, world):
 
 
 def test_another_tenants_private_questions_are_neither_listed_nor_readable(client, world):
-    other_id = asyncio.run(_make_tenant_with_teacher("other-school"))
+    other_id = asyncio.run(_make_tenant_with_author("other-school"))
     mine = asyncio.run(_insert_question(other_id, "OTHER-PRIVATE-1", scope="TENANT_PRIVATE", publish=True))
     shared = asyncio.run(_insert_question(other_id, "OTHER-PARTNER-1", scope="SHARED_PARTNER", publish=True))
     draft = asyncio.run(_insert_question(other_id, "OTHER-DRAFT-1", scope="TENANT_PRIVATE", publish=False))
-    other = _login(client, "teacher@other-school.test", "other-school")
+    other = _login(client, "author@other-school.test", "other-school")
 
     theirs = client.get("/api/v1/questions", params={"limit": 100}, headers=other).json()
     assert sorted(_codes(theirs)) == ["OTHER-DRAFT-1", "OTHER-PARTNER-1", "OTHER-PRIVATE-1"]
     assert all(i["tenant_id"] == str(other_id) for i in theirs["items"]), "nothing of h2edu-demo, no DEMO question"
 
-    ours = client.get("/api/v1/questions", params={"limit": 100, "q": "OTHER"}, headers=world["teacher"])
+    ours = client.get("/api/v1/questions", params={"limit": 100, "q": "OTHER"}, headers=world["author"])
     assert ours.json()["items"] == []
-    everything = client.get("/api/v1/questions", params={"limit": 100}, headers=world["teacher"]).json()
+    everything = client.get("/api/v1/questions", params={"limit": 100}, headers=world["author"]).json()
     assert len(everything["items"]) == 26 and not any(c.startswith("OTHER") for c in _codes(everything))
     for qid in (mine, shared, draft):
-        assert client.get(f"/api/v1/questions/{qid}", headers=world["teacher"]).status_code == 404
+        assert client.get(f"/api/v1/questions/{qid}", headers=world["author"]).status_code == 404
         assert client.get(f"/api/v1/questions/{qid}", headers=other).status_code == 200
     # and the other tenant cannot read ours
     assert client.get(f"/api/v1/questions/{world['c01_ids'][0]}", headers=other).status_code == 404
@@ -282,9 +288,9 @@ def test_published_system_questions_are_listed_for_every_tenant_but_unpublished_
     unpublished = asyncio.run(
         _insert_question(SYSTEM_PUBLIC_TENANT_ID, "SYS-DRAFT-1", scope="SYSTEM_PUBLIC", publish=False)
     )
-    body = client.get("/api/v1/questions", params={"limit": 100}, headers=world["teacher"]).json()
+    body = client.get("/api/v1/questions", params={"limit": 100}, headers=world["author"]).json()
     assert "SYS-PUB-1" in _codes(body) and "SYS-DRAFT-1" not in _codes(body)
     item = next(i for i in body["items"] if i["stable_code"] == "SYS-PUB-1")
     assert item["visibility_scope"] == "SYSTEM_PUBLIC" and item["tenant_id"] == str(SYSTEM_PUBLIC_TENANT_ID)
-    assert client.get(f"/api/v1/questions/{published}", headers=world["teacher"]).status_code == 200
-    assert client.get(f"/api/v1/questions/{unpublished}", headers=world["teacher"]).status_code == 404
+    assert client.get(f"/api/v1/questions/{published}", headers=world["author"]).status_code == 200
+    assert client.get(f"/api/v1/questions/{unpublished}", headers=world["author"]).status_code == 404

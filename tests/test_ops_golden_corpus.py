@@ -224,3 +224,119 @@ def test_cli_exit_codes_and_output(tmp_path: Path, capsys: pytest.CaptureFixture
     assert main(["--manifest", str(tmp_path / "nope.json")]) == 2
     manifest.write_text("not json", encoding="utf-8")
     assert main(["--manifest", str(manifest)]) == 2
+
+
+# --- the papers pulled from the private QA bucket, and 06a and 06b judged on their own ---------------------------
+
+
+class _FakeBucket:
+    """An S3 client over a dict: `fget_object` writes the object where asked, or fails like a missing key."""
+
+    def __init__(self, objects: dict[str, bytes]) -> None:
+        self.objects = objects
+        self.asked: list[tuple[str, str]] = []
+
+    def fget_object(self, bucket_name: str, object_name: str, file_path: str) -> None:
+        self.asked.append((bucket_name, object_name))
+        if object_name not in self.objects:
+            raise KeyError(object_name)
+        Path(file_path).write_bytes(self.objects[object_name])
+
+
+def _bucket_world(tmp_path: Path, prefix: str = "corpus/") -> tuple[Path, list[CorpusEntry], _FakeBucket]:
+    """A manifest whose digests match the bytes in the fake bucket."""
+    entries = [dataclasses.replace(e, sha256=hashlib.sha256(e.corpus_id.encode()).hexdigest()) for e in _corpus()]
+    bucket = _FakeBucket({f"{prefix}{e.corpus_id}": e.corpus_id.encode() for e in entries})
+    manifest = tmp_path / "corpus.json"
+    manifest.write_text(json.dumps([dataclasses.asdict(e) for e in entries]), encoding="utf-8")
+    return manifest, entries, bucket
+
+
+def test_the_41_papers_are_pulled_from_the_qa_bucket_and_re_hashed(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    manifest, entries, bucket = _bucket_world(tmp_path)
+    uri = "s3://ulp-qa-golden-private/corpus/"
+    assert main(["--manifest", str(manifest), "--fixtures-uri", uri], s3_client=bucket) == 0
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+    assert len(bucket.asked) == 41 and {b for b, _ in bucket.asked} == {"ulp-qa-golden-private"}
+    assert bucket.asked[0][1].startswith("corpus/")
+
+    # a paper that is not in the bucket, or changed in it, fails the corpus whatever the scores
+    del bucket.objects[f"corpus/{entries[0].corpus_id}"]
+    bucket.objects[f"corpus/{entries[1].corpus_id}"] = b"tampered"
+    assert main(["--manifest", str(manifest), "--fixtures-uri", uri], s3_client=bucket) == 1
+    errors = json.loads(capsys.readouterr().out)["errors"]
+    assert f"FIXTURE_UNREADABLE:{entries[0].corpus_id}:KeyError" in errors
+    assert f"FIXTURE_HASH_MISMATCH:{entries[1].corpus_id}" in errors
+
+
+def test_only_the_qa_bucket_is_read_and_only_with_credentials_that_are_given(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+):
+    manifest, _entries, bucket = _bucket_world(tmp_path)
+    for uri in ("s3://exam-media/corpus/", "https://example.com/x", "s3:///corpus/", "s3://ulp-qa-golden-private/../x"):
+        assert main(["--manifest", str(manifest), "--fixtures-uri", uri], s3_client=bucket) == 2, uri
+        assert capsys.readouterr().err.startswith("error:")
+    assert bucket.asked == [], "a foreign address is refused before a single object is read"
+
+    for name in ("QA_S3_ENDPOINT", "QA_S3_ACCESS_KEY", "QA_S3_SECRET_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    assert main(["--manifest", str(manifest), "--fixtures-uri", "s3://ulp-qa-golden-private/"]) == 2
+    assert "QA_S3_ENDPOINT" in capsys.readouterr().err, "no built-in credential to fall back on"
+
+    parser_args = ["--manifest", str(manifest), "--fixtures-dir", str(tmp_path), "--fixtures-uri", "s3://x/"]
+    with pytest.raises(SystemExit):  # a directory and a bucket at once is a mistake, not a choice
+        main(parser_args)
+
+
+def test_gate_all_judges_06a_and_06b_each_on_its_own_papers(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    entries = _corpus()
+    manifest = tmp_path / "corpus.json"
+    manifest.write_text(json.dumps([dataclasses.asdict(e) for e in entries]), encoding="utf-8")
+    runs = tmp_path / "runs.json"
+    observations = _observations(entries)
+    runs.write_text(json.dumps([dataclasses.asdict(o) for o in observations]), encoding="utf-8")
+    assert main(["--manifest", str(manifest), "--observations", str(runs), "--gate", "all"]) == 0
+    both = json.loads(capsys.readouterr().out)
+    assert both["passed"] is True and [g["gate"] for g in both["gates"]] == ["GATE-06a", "GATE-06b"]
+
+    # one Hóa học paper falls apart: 06b fails, 06a still passes, and `all` fails
+    chemistry = next(e.corpus_id for e in entries if e.subject == "CHEMISTRY" and e.is_held_out)
+    broken = [
+        dataclasses.replace(o, true_positive_boundaries=0, false_negative_boundaries=10, clean_text_questions=0)
+        if o.corpus_id == chemistry
+        else o
+        for o in observations
+    ]
+    runs.write_text(json.dumps([dataclasses.asdict(o) for o in broken]), encoding="utf-8")
+    assert main(["--manifest", str(manifest), "--observations", str(runs), "--gate", "all"]) == 1
+    verdicts = {g["gate"]: g["passed"] for g in json.loads(capsys.readouterr().out)["gates"]}
+    assert verdicts == {"GATE-06a": True, "GATE-06b": False}
+    assert main(["--manifest", str(manifest), "--observations", str(runs), "--gate", "GATE-06a"]) == 0
+
+
+def test_a_missing_paper_in_the_bucket_fails_both_gates_even_on_a_perfect_run(tmp_path: Path, capsys):
+    manifest, entries, bucket = _bucket_world(tmp_path)
+    runs = tmp_path / "runs.json"
+    runs.write_text(json.dumps([dataclasses.asdict(o) for o in _observations(entries)]), encoding="utf-8")
+    args = [
+        "--manifest",
+        str(manifest),
+        "--observations",
+        str(runs),
+        "--fixtures-uri",
+        "s3://ulp-qa-golden-private/corpus",
+    ]
+    assert main([*args, "--gate", "all"], s3_client=bucket) == 0
+    capsys.readouterr()
+    del bucket.objects[f"corpus/{entries[-1].corpus_id}"]
+    assert main([*args, "--gate", "all"], s3_client=bucket) == 1
+    gates = json.loads(capsys.readouterr().out)["gates"]
+    assert [g["passed"] for g in gates] == [False, False], "a gate on a corpus that cannot be read is no gate"
+
+
+def test_a_corpus_id_cannot_walk_out_of_the_fixtures_directory():
+    good = {"corpus_id": "a.pdf", "subject": "MATH", "is_held_out": True, "sha256": "0" * 64, "anonymized": True}
+    backslash = chr(92)
+    for name in ("..", ".hidden.pdf", f"a{backslash}b.pdf", " a.pdf", "a/b.pdf", f"a{chr(0)}.pdf", f"a{chr(9)}b.pdf"):
+        with pytest.raises(CorpusManifestError):
+            parse_manifest([{**good, "corpus_id": name}])

@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query, Request, status
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,9 +25,12 @@ from app.modules.exam_import.internal.service import (
     SectionDraftInput,
     StimulusInput,
     approve_exam_import,
+    auto_extract_exam_import_structure,
     create_exam_import_session,
     get_exam_import_structure,
     list_exam_imports,
+    open_review_for_job,
+    render_exam_import_page_png,
     update_exam_import_structure,
 )
 from app.platform.auth_context import (
@@ -43,7 +46,7 @@ from app.platform.tenancy import DbRole, tenant_transaction
 router = APIRouter(prefix="/api/v1/exam-imports", tags=["exam_import"])
 
 _IMPORT_ROLES = frozenset(
-    {"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "REVIEWER", "TEACHER", "CONTENT_AUTHOR"}
+    {"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "REVIEWER", "CONTENT_AUTHOR"}
 )
 
 
@@ -105,6 +108,7 @@ class ApproveExamImportRequest(BaseModel):
     require_answer_keys: bool = True
     generate_branded_pdf: bool = False
     banner_text: str = Field(default="H2Edu - Hoc thong minh - Thi but pha", max_length=200)
+    promote_to_question_bank: bool = False
 
 
 class BannerPlanResponse(BaseModel):
@@ -158,6 +162,7 @@ class ExamImportStructureResponse(BaseModel):
     branded_pdf_asset_id: uuid.UUID | None
     provenance_records: list[ProvenanceRecordResponse]
     created_at: datetime
+    created_question_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 class ExamImportListItemResponse(BaseModel):
@@ -175,6 +180,7 @@ class ExamImportListItemResponse(BaseModel):
     rights_status: str
     section_count: int
     question_count: int
+    acquisition_job_id: uuid.UUID | None
     created_at: datetime
 
 
@@ -322,6 +328,7 @@ def _structure_to_response(view: ExamImportStructureView) -> ExamImportStructure
         branded_pdf_asset_id=view.branded_pdf_asset_id,
         provenance_records=[_prov_response(p) for p in view.provenance_records],
         created_at=view.created_at,
+        created_question_ids=list(view.created_question_ids),
     )
 
 
@@ -420,6 +427,62 @@ async def create_exam_import_endpoint(
         )
 
 
+@router.post("/from-job/{job_id}", response_model=ExamImportStructureResponse)
+async def open_review_for_job_endpoint(
+    job_id: uuid.UUID,
+    request: Request,
+    credentials: OptionalBearer = None,
+) -> ExamImportStructureResponse | JSONResponse:
+    """Open (or find) the review session of an import job: 201 when created, 200 when it already existed.
+
+    The `id` of the answer is the `import_id` of `/studio/imports/{import_id}/review`.
+    """
+    correlation_id = resolve_correlation_id(request.headers.get("X-Correlation-ID"))
+    auth = _authenticate(request, credentials, correlation_id)
+    if isinstance(auth, JSONResponse):
+        return auth
+    if role_err := _require_role(auth, request, correlation_id):
+        return role_err
+
+    try:
+        async with tenant_transaction(auth.tenant_id, role=DbRole.APP_RW) as session:
+            view, created = await open_review_for_job(
+                session,
+                tenant_id=auth.tenant_id,
+                acquisition_job_id=job_id,
+                correlation_id=correlation_id,
+            )
+            return JSONResponse(
+                status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+                content=jsonable_encoder(_structure_to_response(view)),
+                headers={"X-Correlation-ID": correlation_id},
+            )
+    except ExamImportNotFoundError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.NOT_FOUND,
+            detail=str(exc),
+            status_code=404,
+            instance=str(request.url.path),
+            correlation_id=correlation_id,
+        )
+    except ExamImportInvalidStateError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.VALIDATION_ERROR,
+            detail=str(exc),
+            status_code=409,
+            instance=str(request.url.path),
+            correlation_id=correlation_id,
+        )
+    except ExamImportValidationError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.VALIDATION_ERROR,
+            detail=str(exc),
+            status_code=422,
+            instance=str(request.url.path),
+            correlation_id=correlation_id,
+        )
+
+
 @router.get("/{import_id}/structure", status_code=status.HTTP_200_OK, response_model=ExamImportStructureResponse)
 async def get_exam_import_structure_endpoint(
     import_id: uuid.UUID,
@@ -497,6 +560,102 @@ async def update_exam_import_structure_endpoint(
         )
 
 
+@router.get("/{import_id}/pages/{page_no}.png", status_code=status.HTTP_200_OK)
+async def render_exam_import_page_endpoint(
+    import_id: uuid.UUID,
+    page_no: int,
+    request: Request,
+    dpi: Annotated[int, Query(ge=72, le=300)] = 150,
+    credentials: OptionalBearer = None,
+) -> Response:
+    correlation_id = resolve_correlation_id(request.headers.get("X-Correlation-ID"))
+    auth = _authenticate(request, credentials, correlation_id)
+    if isinstance(auth, JSONResponse):
+        return auth
+    if role_err := _require_role(auth, request, correlation_id):
+        return role_err
+
+    try:
+        async with tenant_transaction(auth.tenant_id, role=DbRole.APP_RW) as session:
+            png_bytes = await render_exam_import_page_png(
+                session,
+                import_id=import_id,
+                page_no=page_no,
+                dpi=dpi,
+            )
+            return Response(
+                content=png_bytes,
+                media_type="image/png",
+                headers={
+                    "Cache-Control": "private, max-age=300",
+                    "X-Correlation-ID": correlation_id,
+                },
+            )
+    except ExamImportNotFoundError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.NOT_FOUND,
+            detail=str(exc),
+            status_code=404,
+            instance=str(request.url.path),
+            correlation_id=correlation_id,
+        )
+    except ExamImportValidationError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.VALIDATION_ERROR,
+            detail=str(exc),
+            status_code=422,
+            instance=str(request.url.path),
+            correlation_id=correlation_id,
+        )
+
+
+@router.post("/{import_id}/auto-extract", status_code=status.HTTP_200_OK, response_model=ExamImportStructureResponse)
+async def auto_extract_exam_import_endpoint(
+    import_id: uuid.UUID,
+    request: Request,
+    credentials: OptionalBearer = None,
+) -> ExamImportStructureResponse | JSONResponse:
+    correlation_id = resolve_correlation_id(request.headers.get("X-Correlation-ID"))
+    auth = _authenticate(request, credentials, correlation_id)
+    if isinstance(auth, JSONResponse):
+        return auth
+    if role_err := _require_role(auth, request, correlation_id):
+        return role_err
+
+    try:
+        async with tenant_transaction(auth.tenant_id, role=DbRole.APP_RW) as session:
+            view = await auto_extract_exam_import_structure(session, import_id=import_id)
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content=jsonable_encoder(_structure_to_response(view)),
+                headers={"X-Correlation-ID": correlation_id},
+            )
+    except ExamImportNotFoundError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.NOT_FOUND,
+            detail=str(exc),
+            status_code=404,
+            instance=str(request.url.path),
+            correlation_id=correlation_id,
+        )
+    except ExamImportInvalidStateError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.VALIDATION_ERROR,
+            detail=str(exc),
+            status_code=409,
+            instance=str(request.url.path),
+            correlation_id=correlation_id,
+        )
+    except ExamImportValidationError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.VALIDATION_ERROR,
+            detail=str(exc),
+            status_code=422,
+            instance=str(request.url.path),
+            correlation_id=correlation_id,
+        )
+
+
 @router.post("/{import_id}/approve", status_code=status.HTTP_200_OK, response_model=ExamImportStructureResponse)
 async def approve_exam_import_endpoint(
     import_id: uuid.UUID,
@@ -521,6 +680,7 @@ async def approve_exam_import_endpoint(
                 require_answer_keys=payload.require_answer_keys,
                 generate_branded_pdf=payload.generate_branded_pdf,
                 banner_text=payload.banner_text,
+                promote_to_question_bank=payload.promote_to_question_bank,
                 correlation_id=correlation_id,
             )
             return JSONResponse(

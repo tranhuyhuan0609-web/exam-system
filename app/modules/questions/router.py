@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.config import get_settings
 from app.modules.questions.internal.service import (
     OptionInput,
+    PublishGateBlockedError,
     QuestionConflictError,
     QuestionDetail,
     QuestionListItem,
@@ -29,8 +30,11 @@ from app.modules.questions.internal.service import (
     VersionSummary,
     create_next_version,
     create_question,
+    get_question,
     get_question_detail,
+    list_question_versions,
     list_questions,
+    publish_question_version,
     validate_question_version,
 )
 from app.platform.auth_context import (
@@ -46,7 +50,9 @@ from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1", tags=["questions"])
 
-EDITOR_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "TEACHER", "CONTENT_AUTHOR"})
+# The question bank is run by authors, reviewers and administrators. A teacher builds papers from it (C04) and
+# turns a PDF into a paper (`POST /teacher/assessments/from-pdf`) but never reads or edits the bank itself.
+EDITOR_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "CONTENT_AUTHOR", "REVIEWER"})
 STABLE_CODE_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._:-]*$"
 
 
@@ -86,6 +92,14 @@ class CreateQuestionRequest(BaseModel):
     # What the author may claim; LICENSED and the rest come from a rights review (A09).
     rights_status: Literal["PENDING_REVIEW", "OWNED"] = "PENDING_REVIEW"
     asset_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
+
+
+class PublishQuestionRequest(BaseModel):
+    """`version_id` left out publishes the newest version; it must be the newest (older drafts are superseded)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version_id: uuid.UUID | None = None
 
 
 class CreateVersionRequest(BaseModel):
@@ -185,6 +199,15 @@ class QuestionDetailResponse(BaseModel):
     question: QuestionResponse
     shown_version: QuestionVersionResponse | None
     versions: list[VersionSummaryResponse]
+
+
+class PublishQuestionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question: QuestionResponse
+    version: QuestionVersionResponse
+    publication_id: uuid.UUID
+    event_id: uuid.UUID
 
 
 class CreateQuestionResponse(BaseModel):
@@ -287,6 +310,14 @@ def _service_error(exc: Exception, request: Request, correlation_id: str) -> JSO
             correlation_id,
             status_override=status.HTTP_409_CONFLICT,
             extensions={"reason": exc.code},
+        )
+    if isinstance(exc, PublishGateBlockedError):
+        return _problem(
+            PlatformErrorCode.PUBLISH_GATE_BLOCKED,
+            str(exc),
+            request,
+            correlation_id,
+            extensions={"blocking_codes": list(exc.codes)},
         )
     if isinstance(exc, QuestionValidationFailedError):
         return _problem(
@@ -440,6 +471,62 @@ async def post_question_version(
     except (QuestionNotFoundError, QuestionConflictError, QuestionValidationFailedError, ValueError) as exc:
         return _service_error(exc, request, correlation_id)
     return _version_response(version)
+
+
+@router.post("/questions/{question_id}/publish", response_model=PublishQuestionResponse)
+async def post_publish_question(
+    question_id: uuid.UUID,
+    request: Request,
+    body: PublishQuestionRequest | None = None,
+    credentials: OptionalBearer = None,
+) -> Any:
+    """Publish the newest draft version of a question of the tenant: it is frozen with its answer, and the question
+    becomes PUBLISHED so papers can draw it.
+
+    The gate is the A09 one (the same as `chk_question_publish_gate`): the question must be VERIFIED by a human review
+    decision (`POST /review-tasks` on the version, then `/review-tasks/{id}/decisions` APPROVE), its rights cleared
+    (OWNED, LICENSED or ALLOWED_DERIVATIVE), and the version valid. `422 PUBLISH_GATE_BLOCKED` lists `blocking_codes`.
+    """
+    actor, correlation_id, err = _authenticate(request, credentials)
+    if err is not None:
+        return err
+    assert actor is not None
+    requested = None if body is None else body.version_id
+    try:
+        async with tenant_transaction(actor.tenant_id, role=DbRole.APP_RW) as session:
+            question = await get_question(session, question_id)
+            # SYSTEM_PUBLIC rows are visible to every tenant but are not theirs to publish: same answer as missing.
+            if question is None or question.tenant_id != actor.tenant_id:
+                raise QuestionNotFoundError("question not found")
+            versions = await list_question_versions(session, question_id)
+            if not versions:
+                raise QuestionNotFoundError("question has no version")
+            if requested is None:
+                version_id = max(versions, key=lambda v: v.version_no).id
+            elif any(v.id == requested for v in versions):
+                version_id = requested
+            else:
+                raise QuestionNotFoundError("question version not found")
+            result = await publish_question_version(
+                session,
+                version_id,
+                approved_by=actor.user_id,
+                correlation_id=correlation_id,
+                require_version_review=True,
+            )
+    except (
+        QuestionNotFoundError,
+        QuestionConflictError,
+        QuestionValidationFailedError,
+        PublishGateBlockedError,
+    ) as exc:
+        return _service_error(exc, request, correlation_id)
+    return PublishQuestionResponse(
+        question=_question_response(result.question),
+        version=_version_response(result.version),
+        publication_id=result.publication_id,
+        event_id=result.event_id,
+    )
 
 
 @router.post("/question-versions/{version_id}/validate", response_model=ValidationResponse)
