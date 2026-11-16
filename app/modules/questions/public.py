@@ -14,6 +14,7 @@ from app.modules.questions.internal.authoring import (
     publish_version,
     validate_question_draft,
 )
+from app.modules.questions.internal.figures import pictures_for
 from app.modules.questions.internal.machine_ingest import (
     MachineIngestOutcome,
     PreparedQuestion,
@@ -59,6 +60,7 @@ from app.modules.questions.internal.service import (
 )
 
 __all__ = [
+    "pictures_for",
     "MachineIngestOutcome",
     "PreparedQuestion",
     "solve_many",

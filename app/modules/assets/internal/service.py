@@ -774,3 +774,45 @@ async def register_bronze_asset_from_bytes(
         storage=storage,
     )
     return fin_res.asset, False
+
+
+@dataclass(frozen=True, slots=True)
+class SignedDownload:
+    """The bytes behind a locally signed URL (`/api/v1/assets/{id}/download?...`), with their type and file name."""
+
+    content: bytes
+    mime_type: str
+    filename: str
+
+
+async def read_signed_download(
+    session: AsyncSession,
+    *,
+    asset_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    exp: int,
+    sig: str,
+    variant: str | None,
+    storage: Storage | None = None,
+) -> SignedDownload:
+    """Serve an asset to whoever holds a valid, unexpired signature (the local-storage twin of an S3 presigned URL).
+
+    The signature binds the path, the tenant, the object key, the variant and the expiry, so it cannot be moved to
+    another asset or tenant. Only the original of an asset is served here (a PRO preview slice is not): anything else,
+    and every bad or expired signature, is the same `AssetNotFoundError`.
+    """
+    if exp < int(time.time()) or variant not in (None, "", "ORIGINAL_PDF", "IMAGE", "AUDIO", "DOCUMENT"):
+        raise AssetNotFoundError(f"asset {asset_id} not found")
+    row = (await session.execute(select(Asset).where(Asset.id == asset_id))).scalar_one_or_none()
+    if row is None:
+        raise AssetNotFoundError(f"asset {asset_id} not found")
+    message = f"/api/v1/assets/{asset_id}/download|{tenant_id}|{row.object_key}|{variant or ''}|{exp}".encode()
+    expected = hmac.new(get_settings().secret_key.encode(), message, hashlib.sha256).hexdigest()[:32]
+    if not hmac.compare_digest(expected, sig):
+        raise AssetNotFoundError(f"asset {asset_id} not found")
+    active = storage or get_bronze_storage()
+    if not await active.exists(row.object_key):
+        raise AssetNotFoundError(f"asset {asset_id} not found")
+    meta = dict(row.metadata_json or {})
+    filename = str(meta.get("filename") or f"{row.id}{_EXT_FOR_MIME.get(row.mime_type, '.bin')}")
+    return SignedDownload(content=await active.get(row.object_key), mime_type=row.mime_type, filename=filename)

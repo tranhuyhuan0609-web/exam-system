@@ -78,13 +78,16 @@ class FakeGemini:
         self.script = dict(script)
         self.refuse_keys = refuse_keys
         self.calls: list[tuple[str, str]] = []
+        self.image_counts: list[int] = []  # pictures sent with each call
         self.watch: TxWatch | None = None
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         if self.watch is not None:
             self.watch.probe()
         key = request.url.params.get("key", "")
-        prompt = json.loads(request.content)["contents"][0]["parts"][0]["text"]
+        parts = json.loads(request.content)["contents"][0]["parts"]
+        prompt = parts[0]["text"]
+        self.image_counts.append(len(parts) - 1)
         self.calls.append((key, prompt))
         if key in self.refuse_keys:
             return httpx.Response(429, json={"error": {"message": "quota"}})

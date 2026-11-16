@@ -18,6 +18,7 @@ Without a key, or when every provider fails, the solver does not crash and does 
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
@@ -63,6 +64,9 @@ class SolveRequest:
     existing_answer: Any = None  # the key of the source (PDF answer table, crawled page), when there is one
     taxonomy_nodes: Sequence[TaxonomyHint] = ()
     max_points: float = 1.0  # for an ESSAY rubric
+    # PNGs of the question as printed (its page region, then its figures): the model reads formulas and diagrams from
+    # them instead of from the PDF's text layer, which scrambles fractions, roots and indices. Gemini only.
+    images: Sequence[bytes] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +83,8 @@ class SolveResult:
     answer_conflict: bool = False  # the AI disagreed with the source key (the source key is kept)
     unresolved_reason: str | None = None
     warnings: tuple[str, ...] = field(default_factory=tuple)
+    stem_latex: str | None = None  # the stem read from the image, formulas in $...$
+    options_latex: tuple[str, ...] = ()  # the options read from the image, same count and order as the request's
 
     @property
     def resolved(self) -> bool:
@@ -223,19 +229,54 @@ def build_prompt(req: SolveRequest) -> str:
         ),
         "ESSAY": '"answer": "<hướng dẫn chấm ngắn gọn>"',
     }.get(req.item_type, '"answer": null')
+    seen = bool(req.images)
+    reading = (
+        "Ảnh đính kèm là bản chụp câu hỏi và hình vẽ của nó; văn bản bên dưới được trích từ PDF nên công thức có thể bị "  # noqa: E501
+        "lẫn (phân số, căn, chỉ số). Khi văn bản và ảnh khác nhau, tin ảnh. Đọc cả hình vẽ, đồ thị, sơ đồ khi giải.\n"
+        if seen
+        else ""
+    )
+    transcribe = (
+        '"stem_latex": "<đề bài chép lại từ ảnh, công thức Toán/Lý/Hoá đặt trong $...$, bỏ nhãn \'Câu n\', không chép '
+        'hình, không giải>", "options_latex": ["<từng phương án, bỏ nhãn A. B. C. D., đúng thứ tự>"], '
+        if seen
+        else ""
+    )
     return (
-        "Bạn là giáo viên THPT Việt Nam. Giải câu hỏi sau, chỉ trả về MỘT đối tượng JSON, "
+        "Bạn là giáo viên THPT Việt Nam, giỏi đúng môn của đề. Giải câu hỏi sau, chỉ trả về MỘT đối tượng JSON, "
         "không giải thích ngoài JSON.\n"
+        f"{reading}"
+        "Cách giải: tóm tắt dữ kiện, đổi đơn vị về SI, viết công thức, thay số, tính cẩn thận từng phép tính số rồi mới "  # noqa: E501
+        "chốt đáp án; với câu trắc nghiệm hãy so kết quả với từng phương án. Công thức trong lời giải đặt trong $...$.\n"  # noqa: E501
         f"Loại câu: {req.item_type}\nĐề bài:\n{req.stem_text}\nPhương án:\n{options}\n"
         f"Danh sách chủ đề (id | mã | tên):\n{topics}\n"
         "JSON cần có: {"
-        f"{shape}, "
+        f"{transcribe}{shape}, "
         '"solution_steps": "<lời giải chi tiết>", "difficulty_level": "NB"|"TH"|"VD"|"VDC", '
         '"taxonomy_node_id": "<id trong danh sách hoặc null>"}'
     )
 
 
-# --- the solver ------------------------------------------------------------------------------------------------------
+def _read_transcription(parsed: Mapping[str, Any] | None, req: SolveRequest) -> tuple[str | None, tuple[str, ...]]:
+    """The model's reading of the image: used only when it is complete (a stem, and as many options as the request
+    has), never half of it. Labels a model copies ("A.") are dropped."""
+    if parsed is None:
+        return None, ()
+    stem = parsed.get("stem_latex")
+    stem_text = stem.strip() if isinstance(stem, str) else ""
+    if len(stem_text) < max(8, len(req.stem_text.strip()) // 4):
+        return None, ()  # shorter than a quarter of the text layer: the model cut it, do not trust it
+    raw_options = parsed.get("options_latex")
+    options: tuple[str, ...] = ()
+    if req.options:
+        if not isinstance(raw_options, list) or len(raw_options) != len(req.options):
+            return stem_text, ()
+        cleaned = [re.sub(r"^\s*[A-Ha-h][.)]\s+", "", str(o)).strip() for o in raw_options]
+        options = tuple(cleaned) if all(cleaned) else ()
+    return stem_text, options
+
+
+# --- the solver------------------------------------------------------------------------------------------------------
 
 
 class AiSolver:
@@ -259,9 +300,13 @@ class AiSolver:
         s = self.settings
         return bool(s.gemini_api_key_list or s.groq_api_key_list or (s.openrouter_api_key and s.openrouter_model))
 
-    async def _gemini(self, client: httpx.AsyncClient, prompt: str) -> tuple[str, str]:
+    async def _gemini(self, client: httpx.AsyncClient, prompt: str, images: Sequence[bytes] = ()) -> tuple[str, str]:
+        parts: list[dict[str, Any]] = [{"text": prompt}] + [
+            {"inline_data": {"mime_type": "image/png", "data": base64.b64encode(img).decode("ascii")}}
+            for img in images[:4]
+        ]
         body = {
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "contents": [{"role": "user", "parts": parts}],
             "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
         }
         last: str = "no Gemini key"
@@ -293,13 +338,13 @@ class AiSolver:
             return str(response.json()["choices"][0]["message"]["content"]), f"{name}:{model}"
         raise AiProviderError(last)
 
-    async def _ask(self, prompt: str) -> tuple[dict[str, Any], str]:
+    async def _ask(self, prompt: str, images: Sequence[bytes] = ()) -> tuple[dict[str, Any], str]:
         s = self.settings
         failures: list[str] = []
         async with httpx.AsyncClient(transport=self.transport, timeout=self.timeout) as client:
             attempts: list[Callable[[], Any]] = []
             if s.gemini_api_key_list:
-                attempts.append(lambda: self._gemini(client, prompt))
+                attempts.append(lambda: self._gemini(client, prompt, images))
             if s.groq_api_key_list:
                 attempts.append(
                     lambda: self._openai_compatible(
@@ -355,7 +400,7 @@ class AiSolver:
         ai_error: str | None = None
         if self.has_provider:
             try:
-                parsed, provider = await self._ask(build_prompt(req))
+                parsed, provider = await self._ask(build_prompt(req), req.images)
             except AiProviderError as exc:
                 ai_error = str(exc)
                 log.warning("ai_solver: every provider failed: %s", ai_error)
@@ -398,6 +443,7 @@ class AiSolver:
         if parsed is not None and str(parsed.get("difficulty_level", "")).upper() in DIFFICULTY_LEVELS:
             difficulty = str(parsed["difficulty_level"]).upper()
         steps = parsed.get("solution_steps") if parsed is not None else None
+        stem_latex, options_latex = _read_transcription(parsed, req) if req.images else (None, ())
 
         unresolved = None
         if schema is None and req.item_type in ITEM_TYPES_WITH_KEY | {"ESSAY"}:
@@ -422,4 +468,6 @@ class AiSolver:
             answer_conflict=conflict,
             unresolved_reason=unresolved,
             warnings=tuple(warnings),
+            stem_latex=stem_latex,
+            options_latex=options_latex,
         )

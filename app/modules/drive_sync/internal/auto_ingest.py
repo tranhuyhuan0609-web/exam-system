@@ -53,6 +53,7 @@ from app.modules.questions.public import (
     PreparedQuestion,
     RawQuestion,
     load_taxonomy_hints,
+    pictures_for,
     solve_many,
     store_prepared,
 )
@@ -208,6 +209,8 @@ def _pdf_text(raw: bytes, *, pages: int = 5) -> str:
 
 def _raw_questions(raw: bytes, mime_type: str, filename: str) -> list[RawQuestion]:
     artifact = extract_exam_structure_from_asset(mime_type=mime_type, filename=filename, raw_bytes=raw)
+    drafts = [q for section in artifact.sections for q in section.questions]
+    pictures = pictures_for(raw, drafts) if mime_type == PDF_MIME else [(None, ())] * len(drafts)
     return [
         RawQuestion(
             item_type=q.item_type,
@@ -216,9 +219,10 @@ def _raw_questions(raw: bytes, mime_type: str, filename: str) -> list[RawQuestio
             source_answer=q.paired_answer,
             points=q.points,
             source_label=q.original_question_label,
+            image_png=image,
+            figure_pngs=figures,
         )
-        for section in artifact.sections
-        for q in section.questions
+        for q, (image, figures) in zip(drafts, pictures, strict=True)
     ]
 
 

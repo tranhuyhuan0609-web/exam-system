@@ -31,6 +31,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,17 +48,21 @@ from app.modules.classes.public import can_manage_class
 from app.modules.ingestion.public import IngestionValidationError, submit_import
 from app.modules.parsers.public import extract_exam_structure_from_asset
 from app.modules.questions.public import (
-    PublishGateBlockedError as QuestionPublishBlocked,
-)
-from app.modules.questions.public import (
+    OptionInput,
     QuestionConflictError,
     QuestionValidationFailedError,
     RawQuestion,
+    find_question_by_content,
     get_question,
+    keyed_options,
     load_taxonomy_hints,
+    pictures_for,
     publish_question_version,
     solve_many,
     store_prepared,
+)
+from app.modules.questions.public import (
+    PublishGateBlockedError as QuestionPublishBlocked,
 )
 from app.modules.review.public import ReviewConflictError, create_review_task, decide_review_task
 from app.platform.file_magic import FileSignatureError, inspect_uploaded_bytes
@@ -172,6 +177,12 @@ async def create_paper_from_pdf(
     drafts = [q for section in artifact.sections for q in section.questions]
     if not drafts:
         raise TeacherPaperError("NO_QUESTIONS_FOUND", "no question could be read from this file (Câu 1, Câu 2, ...)")
+    # a PDF's questions are shown to the model as pictures too, and their figures are cut out to be shown to students
+    pictures = (
+        await asyncio.to_thread(pictures_for, raw_pdf, drafts)
+        if verified.mime_type == "application/pdf"
+        else [(None, ())] * len(drafts)
+    )
     raws = [
         RawQuestion(
             item_type=d.item_type,
@@ -180,13 +191,37 @@ async def create_paper_from_pdf(
             source_answer=d.paired_answer,
             points=d.points,
             source_label=d.original_question_label,
+            image_png=image,
+            figure_pngs=figures,
         )
-        for d in drafts
+        for d, (image, figures) in zip(drafts, pictures, strict=True)
     ]
     fits = [_fits_a_paper(r) for r in raws]
-    solved = iter(await solve_many(solver, [r for r, ok in zip(raws, fits, strict=True) if ok], hints,
-                                   concurrency=SOLVE_CONCURRENCY))  # fmt: skip
-    prepared = [next(solved) if ok else None for ok in fits]
+    # a question this school already holds (same text, and its figure when this copy has one) is not solved again:
+    # a short read, so that re-uploading a paper costs no AI call for what is already known
+    known: dict[int, tuple[Any, Any]] = {}
+    async with tenant_transaction(tenant_id, role=DbRole.APP_RW) as session:
+        for index, (raw, ok) in enumerate(zip(raws, fits, strict=True)):
+            if not ok or raw.item_type not in ("SINGLE_CHOICE", "CLUSTER_TRUE_FALSE", "SHORT_NUMERIC", "ESSAY"):
+                continue
+            found = await find_question_by_content(
+                session,
+                tenant_id=tenant_id,
+                stem_text=raw.stem_text.strip(),
+                options=tuple(OptionInput(key=k, text=t) for k, t in keyed_options(raw.item_type.upper(), raw.options)),
+                needs_media=bool(raw.figure_pngs),
+            )
+            if found is not None and found[0].publication_status == "PUBLISHED":
+                known[index] = found
+    to_solve = [index for index, ok in enumerate(fits) if ok and index not in known]
+    solved_by_index = dict(
+        zip(
+            to_solve,
+            await solve_many(solver, [raws[i] for i in to_solve], hints, concurrency=SOLVE_CONCURRENCY),
+            strict=True,
+        )
+    )
+    prepared = [solved_by_index.get(i) for i in range(len(raws))]
 
     # phase 3: store, publish and assign, all or nothing
     paper_code = hashlib.sha256(raw_pdf).hexdigest()[:10].upper()
@@ -201,8 +236,19 @@ async def create_paper_from_pdf(
         items: list[tuple[uuid.UUID, Decimal]] = []
         skipped = 0
         for n, (draft, item) in enumerate(zip(drafts, prepared, strict=True), start=1):
-            if item is None:
+            if item is None and (n - 1) not in known:
                 skipped += 1
+                continue
+            if item is None:
+                question_id, version_id_known = known[n - 1][0].id, known[n - 1][1].id
+                version_id = await _publish_for_paper(
+                    session, tenant_id=tenant_id, teacher_id=teacher_id, question_id=question_id,
+                    version_id=version_id_known, correlation_id=correlation_id,
+                )  # fmt: skip
+                if version_id is None or any(v == version_id for v, _ in items):
+                    skipped += 1
+                    continue
+                items.append((version_id, Decimal(str(draft.points))))
                 continue
             outcome = await store_prepared(
                 session,

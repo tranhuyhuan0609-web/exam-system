@@ -17,6 +17,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.ai_solver import AiSolver, SolveRequest, SolveResult, TaxonomyHint
+from app.modules.questions.internal.figures import media_for, store_figure_assets
 from app.modules.questions.internal.service import (
     IngestedQuestion,
     OptionInput,
@@ -37,6 +38,8 @@ class RawQuestion:
     source_answer: Any = None
     points: float = 1.0
     source_label: str | None = None  # "Câu 3", a URL fragment: only for reports
+    image_png: bytes | None = None  # the question as printed (page region): the solver reads it as well as the text
+    figure_pngs: tuple[bytes, ...] = ()  # its figures, cut from the file: stored with the question and shown with it
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +117,7 @@ async def solve_raw(solver: AiSolver, raw: RawQuestion, taxonomy_hints: Sequence
             existing_answer=raw.source_answer,
             taxonomy_nodes=taxonomy_hints,
             max_points=raw.points,
+            images=[img for img in (raw.image_png, *raw.figure_pngs) if img],
         )
     )
     return PreparedQuestion(
@@ -153,6 +157,19 @@ async def store_prepared(
     result = prepared.solve
     if prepared.skipped_reason is not None or result is None or result.answer_schema is None:
         return MachineIngestOutcome(prepared.raw, result, None, prepared.skipped_reason or "NO_ANSWER")
+    source_stem = prepared.raw.stem_text.strip()
+    source_options = [t for _, t in prepared.options]
+    # What is stored is the model's reading of the printed question when it is complete (formulas as LaTeX), else the
+    # text layer; the identity (dedup hash) stays that of the text layer, so the same file read again is the same
+    # question.
+    stem = result.stem_latex or source_stem
+    option_texts = list(result.options_latex) if len(result.options_latex) == len(source_options) else source_options
+    options = tuple(OptionInput(key=k, text=t) for (k, _), t in zip(prepared.options, option_texts, strict=True))
+    figure_ids = (
+        await store_figure_assets(session, tenant_id=tenant_id, pngs=prepared.raw.figure_pngs)
+        if prepared.raw.figure_pngs
+        else []
+    )
     rationale: dict[str, Any] = {
         "solution_steps": result.solution_steps,
         "answer_source": result.answer_source,
@@ -161,6 +178,9 @@ async def store_prepared(
         "solver_provider": result.provider,
         "numeric_check": result.numeric_check,
         "warnings": list(result.warnings),
+        "read_from_image": bool(result.stem_latex),
+        "figure_count": len(figure_ids),
+        **({"source_text": source_stem} if stem != source_stem else {}),
         **({"provenance": provenance} if provenance else {}),
     }
     try:
@@ -170,14 +190,18 @@ async def store_prepared(
             created_by=created_by,
             stable_code=stable_code,
             item_type=prepared.item_type,
-            stem_text=prepared.raw.stem_text.strip(),
+            stem_text=stem,
             answer_schema=result.answer_schema,
-            options=tuple(OptionInput(key=k, text=t) for k, t in prepared.options),
+            options=options,
             difficulty_level=result.difficulty_level,
             rationale=rationale,
             primary_taxonomy_node_id=result.taxonomy_node_id,
             exam_framework_tags=exam_framework_tags,
             rights_status=rights_status,
+            figure_asset_ids=figure_ids,
+            stem_media=media_for(figure_ids),
+            source_stem_text=source_stem,
+            source_option_texts=source_options,
         )
     except QuestionValidationFailedError as exc:
         return MachineIngestOutcome(prepared.raw, result, None, f"INVALID_QUESTION:{exc.code}")

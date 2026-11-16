@@ -274,7 +274,7 @@ def test_no_database_transaction_is_open_while_the_ai_solves_the_pdf(client, wor
     assert made.status_code == 201, made.text
     assert world["gemini"].calls, "the AI solved the question that had no key"
     assert watch.io_inside_transaction == 0
-    assert watch.opened == 2, "one short transaction before the AI, one after"
+    assert watch.opened == 3, "the class and topics, the questions already known, then the one that stores everything"
 
 
 def test_a_word_file_works_like_a_pdf(client, world):

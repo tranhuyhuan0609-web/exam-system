@@ -256,16 +256,22 @@ async def _insert_version(
     change_reason: str | None,
     asset_ids: Sequence[uuid.UUID],
     numeric_parse_policy: Mapping[str, Any] | None = None,
+    stem_media: Sequence[Mapping[str, Any]] = (),
+    hash_source: tuple[str, Sequence[str]] | None = None,
 ) -> QuestionVersion:
-    """Store a validated version: the version row, its options, its answer (separate table) and its assets."""
-    hashes = compute_question_hashes(stem_text, [o.text for o in options])
+    """Store a validated version: the version row, its options, its answer (separate table) and its assets.
+
+    `stem_media` (images of the question) is kept in `stem_json.media`; `hash_source` is the (stem, option texts) the
+    content hash is computed from when it is not the stored text (a transcription of a PDF's own text: the hash
+    stays that of the source, so the same PDF read again is still the same question)."""
+    hashes = compute_question_hashes(*(hash_source or (stem_text, [o.text for o in options])))
     values: dict[str, Any] = {
         "tenant_id": question.tenant_id,
         "visibility_scope": question.visibility_scope,
         "question_id": question.id,
         "version_no": version_no,
         "stimulus_id": stimulus_id,
-        "stem_json": {"text": stem_text},
+        "stem_json": {"text": stem_text, **({"media": [dict(m) for m in stem_media]} if stem_media else {})},
         "options_json": [{"key": o.key, "text": o.text} for o in options],
         "content_hash": hashes.content_hash,
         "structural_hash": hashes.structural_hash,
@@ -324,6 +330,8 @@ async def create_question(
     access_tier: str = "FREE",
     rights_status: str = "PENDING_REVIEW",
     asset_ids: Sequence[uuid.UUID] = (),
+    stem_media: Sequence[Mapping[str, Any]] = (),
+    hash_source: tuple[str, Sequence[str]] | None = None,
 ) -> tuple[QuestionRecord, QuestionVersionRecord]:
     """Create a question with its first version (`version_no = 1`, a draft). Status axes start fail-closed.
 
@@ -392,6 +400,8 @@ async def create_question(
         created_by=created_by,
         change_reason=None,
         asset_ids=asset_ids,
+        stem_media=stem_media,
+        hash_source=hash_source,
     )
     return _question(question), _version(version)
 
@@ -960,9 +970,17 @@ class IngestedQuestion:
 
 
 async def find_question_by_content(
-    session: AsyncSession, *, tenant_id: uuid.UUID, stem_text: str, options: Sequence[OptionInput] = ()
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    stem_text: str,
+    options: Sequence[OptionInput] = (),
+    needs_media: bool = False,
 ) -> tuple[QuestionRecord, QuestionVersionRecord] | None:
-    """The tenant's question whose newest version has this content hash (stem + options, normalised by A08)."""
+    """The tenant's question whose newest version has this content hash (stem + options, normalised by A08).
+
+    With `needs_media` a match that has no image does not count: the same text with its figure is a better question
+    than the copy stored without one (an older import that could not cut the figure)."""
     content_hash = compute_question_hashes(stem_text, [o.text for o in options]).content_hash
     version = await session.scalar(
         select(QuestionVersion)
@@ -971,6 +989,8 @@ async def find_question_by_content(
         .limit(1)
     )
     if version is None:
+        return None
+    if needs_media and not (version.stem_json or {}).get("media"):
         return None
     question = await get_question(session, version.question_id)
     if question is None:
@@ -995,16 +1015,31 @@ async def ingest_question(
     primary_taxonomy_node_id: uuid.UUID | None = None,
     exam_framework_tags: Sequence[str] = ("SGK_KNTT",),
     rights_status: str = "PENDING_REVIEW",
+    figure_asset_ids: Sequence[uuid.UUID] = (),
+    stem_media: Sequence[Mapping[str, Any]] = (),
+    source_stem_text: str | None = None,
+    source_option_texts: Sequence[str] | None = None,
 ) -> IngestedQuestion:
     """Create a DRAFT question unless the tenant already holds the same content (dedup on `content_hash`).
 
     A stable code taken by another question of different content gets a short content-hash suffix, so two sources
     numbering their questions the same way do not collide.
     """
-    found = await find_question_by_content(session, tenant_id=tenant_id, stem_text=stem_text, options=options)
+    # The identity of a question is the text it was read from, even when what is stored is a better transcription.
+    hash_stem = source_stem_text if source_stem_text is not None else stem_text
+    hash_options = list(source_option_texts) if source_option_texts is not None else [o.text for o in options]
+    found = await find_question_by_content(
+        session,
+        tenant_id=tenant_id,
+        stem_text=hash_stem,
+        options=tuple(OptionInput(key=o.key, text=t) for o, t in zip(options, hash_options, strict=False))
+        if len(hash_options) == len(options)
+        else options,
+        needs_media=bool(stem_media),
+    )
     if found is not None:
         return IngestedQuestion(question=found[0], version=found[1], created=False)
-    suffix = compute_question_hashes(stem_text, [o.text for o in options]).content_hash[:8].upper()
+    suffix = compute_question_hashes(hash_stem, hash_options).content_hash[:8].upper()
     for code in (stable_code, f"{stable_code[:90]}-{suffix}"):
         try:
             question, version = await create_question(
@@ -1021,6 +1056,9 @@ async def ingest_question(
                 primary_taxonomy_node_id=primary_taxonomy_node_id,
                 exam_framework_tags=exam_framework_tags,
                 rights_status=rights_status,
+                asset_ids=figure_asset_ids,
+                stem_media=stem_media,
+                hash_source=(hash_stem, hash_options),
             )
         except QuestionConflictError as exc:
             if exc.code == "STABLE_CODE_TAKEN":

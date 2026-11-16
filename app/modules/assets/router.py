@@ -9,7 +9,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Query, Request, status
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import IntegrityError
@@ -28,6 +28,7 @@ from app.modules.assets.internal.service import (
     finalize_asset_upload,
     get_asset_signed_url,
     initiate_asset_upload_session,
+    read_signed_download,
 )
 from app.platform.auth_context import (
     ActorContext,
@@ -413,4 +414,36 @@ async def get_signed_asset_url(
         status_code=status.HTTP_200_OK,
         content=jsonable_encoder(payload),
         headers={"X-Correlation-Id": correlation_id},
+    )
+
+
+@router.get("/{asset_id}/download")
+async def download_signed_asset(
+    asset_id: uuid.UUID,
+    request: Request,
+    tenant_id: uuid.UUID,
+    exp: int,
+    sig: str = Query(min_length=16, max_length=128),
+    variant: str | None = None,
+) -> Response:
+    """The file behind a signed URL of local storage. The signature is the credential: no token, no cookie."""
+    correlation_id = resolve_correlation_id(request.headers.get("x-correlation-id"))
+    try:
+        async with tenant_transaction(tenant_id, role=DbRole.APP_RW) as session:
+            download = await read_signed_download(
+                session, asset_id=asset_id, tenant_id=tenant_id, exp=exp, sig=sig, variant=variant
+            )
+    except AssetNotFoundError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.NOT_FOUND, detail=str(exc), request=request, correlation_id=correlation_id
+        )
+    # `nosniff` and an attachment-free inline type: images render, nothing else is executed by the browser
+    return Response(
+        content=download.content,
+        media_type=download.mime_type,
+        headers={
+            "Cache-Control": "private, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; img-src 'self'; sandbox",
+        },
     )
