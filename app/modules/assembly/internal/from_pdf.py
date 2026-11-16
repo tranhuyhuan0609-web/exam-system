@@ -161,7 +161,9 @@ async def create_paper_from_pdf(
             )
         ):
             raise AssessmentNotFoundError(f"class {class_id} not found in tenant")
-        hints = await load_taxonomy_hints(session)
+        # only the topics of the paper's own subject: a physics question is never tagged with a maths topic
+        subject_root = subject_code.strip().upper()
+        hints = await load_taxonomy_hints(session, root_path=subject_root if subject_root.isalnum() else None)
 
     # phase 2: read the PDF and solve its questions, no transaction open
     artifact = await asyncio.to_thread(

@@ -108,3 +108,14 @@ def test_an_unusable_ai_reply_falls_back_safely(reply):
 def test_keyword_topics_ignore_accents_and_need_a_shared_word():
     assert keyword_topic("Tính LOGARIT cơ số 2 của 8", NODES) == LOG
     assert keyword_topic("Một câu không liên quan", NODES) is None
+
+
+def test_a_numeric_check_that_cannot_run_keeps_the_answer_flagged_unverified():
+    def broken_sandbox(expr: str, value: str):
+        return SimpleNamespace(matches=False, error="SANDBOX_WORKER_UNAVAILABLE")
+
+    solver, _ = fake_solver({"Nghiệm": {"answer": "3", "numeric_expression": "6/2"}}, numeric_checker=broken_sandbox)
+    result = _solve(solver, stem_text="Nghiệm lớn nhất của x^2 - 5x + 6 = 0", item_type="SHORT_NUMERIC", options=())
+    assert result.answer_schema == {"value": "3"} and result.answer_source == "AI"
+    assert result.numeric_check == "UNVERIFIED:SANDBOX_WORKER_UNAVAILABLE"
+    assert "NUMERIC_CHECK_UNVERIFIED:SANDBOX_WORKER_UNAVAILABLE" in result.warnings

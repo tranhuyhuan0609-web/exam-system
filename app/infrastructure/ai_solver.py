@@ -185,16 +185,31 @@ def keyword_topic(stem_text: str, nodes: Sequence[TaxonomyHint]) -> TaxonomyHint
     return None if best is None else best[1]
 
 
+_BAD_ESCAPE = re.compile(r'\\(?!["\\/bfnrtu])')
+# LaTeX commands that start with a letter JSON also reads as an escape (`\frac` is form feed + "rac"): always LaTeX.
+_LATEX_AS_ESCAPE = re.compile(
+    r"\\(?=(?:frac|theta|text|tan|times|tau|beta|bar|begin|binom|neq|nabla|rho|right|rm|tilde|triangle|therefore"
+    r"|forall|rangle|bigl|bigr|boldsymbol)\b)"
+)
+
+
+def _repair_latex_backslashes(raw: str) -> str:
+    return _BAD_ESCAPE.sub(r"\\\\", _LATEX_AS_ESCAPE.sub(r"\\\\", raw))
+
+
 def _parse_json_object(text: str) -> dict[str, Any] | None:
-    cleaned = text.strip()
-    fence = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
+    """The first JSON object in a model's answer. Models often leave LaTeX backslashes (`\frac`, `\alpha`) unescaped
+    inside strings, which is invalid JSON: a second try doubles every backslash that starts no valid escape."""
+    fence = re.search(r"\{.*\}", text.strip(), flags=re.DOTALL)
     if fence is None:
         return None
-    try:
-        parsed = json.loads(fence.group(0))
-    except json.JSONDecodeError:
-        return None
-    return parsed if isinstance(parsed, dict) else None
+    for candidate in (_repair_latex_backslashes(fence.group(0)), fence.group(0)):
+        try:
+            parsed = json.loads(candidate, strict=False)
+        except json.JSONDecodeError:
+            continue
+        return parsed if isinstance(parsed, dict) else None
+    return None
 
 
 def build_prompt(req: SolveRequest) -> str:
@@ -319,10 +334,14 @@ class AiSolver:
         try:
             check = self.numeric_checker(expr, value)
         except Exception as exc:  # the checker is the caller's: a failure is reported, never raised
-            return f"CHECK_ERROR:{type(exc).__name__}"
+            return f"UNVERIFIED:CHECK_ERROR_{type(exc).__name__}"
         if getattr(check, "matches", False):
             return "MATCH"
-        return str(getattr(check, "error", None) or "MISMATCH")
+        error = getattr(check, "error", None)
+        # Only a number the sandbox computed differently is a mismatch. A check that could not run (no sandbox on
+        # this platform, a timeout, an expression it cannot read) proves nothing either way: the answer is kept,
+        # flagged `UNVERIFIED`, and the caller's review decides.
+        return "MISMATCH" if error in (None, "MISMATCH") else f"UNVERIFIED:{error}"
 
     async def solve(self, req: SolveRequest) -> SolveResult:
         nodes_by_id = {str(n.id): n for n in req.taxonomy_nodes}
@@ -353,7 +372,8 @@ class AiSolver:
                 numeric_check = self._check_numeric(parsed, ai_schema["value"])
                 if numeric_check not in (None, "MATCH"):
                     warnings.append(f"NUMERIC_CHECK_{numeric_check}")
-                    ai_schema = None  # an AI number its own expression does not reproduce is not trusted
+                    if numeric_check == "MISMATCH":
+                        ai_schema = None  # an AI number its own expression does not reproduce is not trusted
 
         conflict = existing is not None and ai_schema is not None and existing != ai_schema
         if conflict:
