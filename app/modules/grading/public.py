@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from app.modules.grading.internal.consumer import (
+    GRADED_ON_EVENTS,
+    GRADING_CONSUMER_NAME,
+    grade_closed_attempt,
+    register_grading_consumers,
+)
 from app.modules.grading.internal.scoring import (
     TF4_SCORING_MAP,
     AnswerKey,
@@ -35,6 +41,8 @@ from app.modules.grading.internal.service import (
 )
 
 __all__ = [
+    "GRADED_ON_EVENTS",
+    "GRADING_CONSUMER_NAME",
     "TF4_SCORING_MAP",
     "AnswerKey",
     "AppealRecord",
@@ -44,7 +52,9 @@ __all__ = [
     "answer_key_for",
     "file_appeal",
     "get_grade",
+    "grade_closed_attempt",
     "grade_attempt",
+    "register_grading_consumers",
     "release_grade",
     "resolve_appeal",
     "student_response_for",

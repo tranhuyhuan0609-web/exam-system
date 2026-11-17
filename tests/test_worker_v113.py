@@ -94,4 +94,13 @@ def test_run_once_does_not_raise_for_either_flag(monkeypatch, flag):
     from app.config import get_settings
 
     monkeypatch.setattr(get_settings(), "legacy_html_enabled", flag)
+    monkeypatch.setattr(worker, "default_registry", ConsumerRegistry())  # keep the process-wide registry untouched
     asyncio.run(worker.run(once=True))
+
+
+def test_run_registers_the_grading_consumer_on_the_registry_the_relay_uses(monkeypatch):
+    registry = ConsumerRegistry()
+    monkeypatch.setattr(worker, "default_registry", registry)
+    asyncio.run(worker.run(once=True))
+    for event_type in ("attempt.submitted", "attempt.expired"):
+        assert [s.consumer_name for s in registry.subscribers(event_type)] == ["grading.grade_attempt"]

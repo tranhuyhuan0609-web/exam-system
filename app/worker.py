@@ -3,7 +3,8 @@
 Always on (V11.3, run as ``ulp_system_scheduler`` through the ops/outbox modules):
 
 * the attempt-expiry sweep: overdue IN_PROGRESS attempts become AUTO_SUBMITTED and announce ``attempt.expired``;
-* the outbox relay: delivers pending events to their registered consumers.
+* the outbox relay: delivers pending events to their registered consumers; the grading consumer (C07) grades every
+  attempt that is submitted or auto-submitted, so a grade exists without a teacher asking for it.
 
 Legacy V1 loops (AI import jobs of the ``import_jobs`` table, the V1 auto-submit sweep, AI essay grading, the two
 bank self-healing audits) run only when ``LEGACY_HTML_ENABLED`` is on. With it off they still run for as long as V1
@@ -40,6 +41,7 @@ from app.config import get_settings
 from app.db import SessionLocal
 from app.infrastructure.storage import StorageError, get_storage
 from app.models import AttemptStatus, ExamAttempt, GradingStatus, ImportJob, JobStatus
+from app.modules.grading.public import register_grading_consumers
 from app.modules.outbox.public import default_registry, run_outbox_relay
 from app.ops.attempt_expiry import expire_overdue_attempts
 from app.pipeline.adapters.ai_chain import DbUsage
@@ -448,6 +450,7 @@ async def _legacy_needed() -> tuple[bool, bool]:
 
 async def run(once: bool = False) -> None:
     log.info("Worker started (models: %s)", get_settings().gemini_models)
+    register_grading_consumers(default_registry)  # attempt.submitted / attempt.expired -> an automatic grade
     enabled, backlog = await _legacy_needed()
     log.info("V1 loops: %s", "on" if enabled else "draining a backlog" if backlog else "off")
     if enabled or backlog:
