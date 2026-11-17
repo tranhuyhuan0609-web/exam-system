@@ -68,6 +68,10 @@ class ConsumerRegistry:
     def subscribers(self, event_type: str) -> tuple[Subscriber, ...]:
         return tuple(self._by_type.get(event_type, ()))
 
+    def has_subscribers(self) -> bool:
+        """True when at least one consumer is registered. A relay with none would mark every event PUBLISHED."""
+        return any(self._by_type.values())
+
 
 default_registry = ConsumerRegistry()
 
