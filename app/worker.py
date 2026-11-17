@@ -1,7 +1,17 @@
-"""Background worker: AI import jobs, plus a once-a-minute sweep that auto-submits expired attempts.
+"""Background worker.
+
+Always on (V11.3, run as ``ulp_system_scheduler`` through the ops/outbox modules):
+
+* the attempt-expiry sweep: overdue IN_PROGRESS attempts become AUTO_SUBMITTED and announce ``attempt.expired``;
+* the outbox relay: delivers pending events to their registered consumers.
+
+Legacy V1 loops (AI import jobs of the ``import_jobs`` table, the V1 auto-submit sweep, AI essay grading, the two
+bank self-healing audits) run only when ``LEGACY_HTML_ENABLED`` is on. With it off they still run for as long as V1
+work is left over (a queued or running import job, an attempt in progress or waiting for AI grading), so nothing a
+student or an admin already started is lost; the audit loops are maintenance of the V1 bank and stay off.
 
     python -m app.worker          # run forever
-    python -m app.worker --once   # auto-submit expired attempts, process queued jobs, then exit
+    python -m app.worker --once   # one pass of each loop that applies, then exit
 
 Jobs are claimed with FOR UPDATE SKIP LOCKED, so several workers can run side by side.
 """
@@ -11,6 +21,7 @@ import asyncio
 import logging
 import sys
 import time
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
 
 from sqlalchemy import func, select, update
@@ -28,7 +39,9 @@ from app.attempts import finalize_expired
 from app.config import get_settings
 from app.db import SessionLocal
 from app.infrastructure.storage import StorageError, get_storage
-from app.models import ImportJob, JobStatus
+from app.models import AttemptStatus, ExamAttempt, GradingStatus, ImportJob, JobStatus
+from app.modules.outbox.public import default_registry, run_outbox_relay
+from app.ops.attempt_expiry import expire_overdue_attempts
 from app.pipeline.adapters.ai_chain import DbUsage
 
 log = logging.getLogger("app.worker")
@@ -37,6 +50,9 @@ POLL_SECONDS = 2
 QUOTA_PAUSE_SECONDS = 60  # all AI models out of quota: retry after 60s instead of waiting 30 minutes
 _paused_until = 0.0
 AUTO_SUBMIT_SECONDS = 60
+V113_EXPIRY_SECONDS = 60  # attempts of the V11.3 `attempts` table: the deadline is exact, a minute of delay is enough
+OUTBOX_RELAY_SECONDS = 2
+OUTBOX_BATCH = 100
 ESSAY_SECONDS = 5
 # A PROCESSING job untouched for this long belongs to a worker that died; put it back in the queue.
 STALE_AFTER = timedelta(minutes=15)
@@ -334,25 +350,120 @@ async def audit_self_healing_once() -> None:
         log.info("Job 2: %s", res2.get("message"))
 
 
+async def v113_expire_attempts_once(batch: int = 500) -> int:
+    """Auto-submit every overdue attempt of the V11.3 tables (one transaction per batch); returns how many."""
+    total = 0
+    while True:
+        done = await expire_overdue_attempts(batch_size=batch)
+        total += done
+        if done < batch:
+            return total
+
+
+async def v113_expiry_loop() -> None:
+    while True:
+        try:
+            if closed := await v113_expire_attempts_once():
+                log.info("Auto-submitted %s expired V11.3 attempt(s)", closed)
+        except Exception:  # never let a DB hiccup stop the loop
+            log.exception("V11.3 attempt expiry failed")
+        await asyncio.sleep(V113_EXPIRY_SECONDS)
+
+
+_warned_no_consumers = False
+
+
+async def outbox_relay_once(batch: int = OUTBOX_BATCH) -> int:
+    """Deliver due outbox events; returns how many were claimed.
+
+    With no consumer registered the relay would mark every event PUBLISHED although nothing handled it, so the
+    events are left PENDING (a consumer registered later still receives them) and a warning is logged once.
+    """
+    global _warned_no_consumers
+    if not default_registry.has_subscribers():
+        if not _warned_no_consumers:
+            log.warning("Outbox relay idle: no consumer is registered, events stay PENDING")
+            _warned_no_consumers = True
+        return 0
+    stats = await run_outbox_relay(batch)
+    if stats.failed or stats.handler_errors:
+        log.warning("Outbox relay: %s", stats)
+    return stats.claimed
+
+
+async def outbox_relay_loop() -> None:
+    while True:
+        try:
+            claimed = await outbox_relay_once()
+        except Exception:
+            log.exception("Outbox relay failed")
+            claimed = 0
+        if claimed < OUTBOX_BATCH:  # a full batch means more is waiting: go on without sleeping
+            await asyncio.sleep(OUTBOX_RELAY_SECONDS)
+
+
+async def legacy_backlog() -> bool:
+    """True while V1 work is left: a queued or running import job, an attempt in progress or waiting for AI grading."""
+    async with SessionLocal() as session:
+        for stmt in (
+            select(ImportJob.id).where(ImportJob.status.in_((JobStatus.QUEUED, JobStatus.PROCESSING))),
+            select(ExamAttempt.id).where(ExamAttempt.status == AttemptStatus.IN_PROGRESS),
+            select(ExamAttempt.id).where(ExamAttempt.grading_status == GradingStatus.PENDING_AI),
+        ):
+            if await session.scalar(stmt.limit(1)) is not None:
+                return True
+    return False
+
+
+Loop = Callable[[], Awaitable[None]]
+
+
+def select_loops(*, legacy_enabled: bool, backlog: bool) -> list[Loop]:
+    """The background loops to run: the V11.3 ones always, the V1 ones as the module docstring says."""
+    loops: list[Loop] = [v113_expiry_loop, outbox_relay_loop]
+    if legacy_enabled:
+        loops += [
+            ai_jobs_loop,
+            ai_jobs_loop,
+            auto_submit_loop,
+            essay_grading_loop,
+            job1_taxonomy_healer_loop,
+            job2_double_blind_loop,
+        ]
+    elif backlog:  # drain what V1 already started; no new maintenance of the V1 bank
+        loops += [ai_jobs_loop, auto_submit_loop, essay_grading_loop]
+    return loops
+
+
+async def _legacy_needed() -> tuple[bool, bool]:
+    enabled = get_settings().legacy_html_enabled
+    if enabled:
+        return True, False
+    try:
+        return False, await legacy_backlog()
+    except Exception:  # cannot tell: keep draining rather than drop work
+        log.exception("Could not check the V1 backlog; running the V1 loops")
+        return False, True
+
+
 async def run(once: bool = False) -> None:
     log.info("Worker started (models: %s)", get_settings().gemini_models)
-    if requeued := await requeue_stale(all_processing=True):
-        log.info("Requeued %s interrupted PROCESSING job(s) on startup", requeued)
+    enabled, backlog = await _legacy_needed()
+    log.info("V1 loops: %s", "on" if enabled else "draining a backlog" if backlog else "off")
+    if enabled or backlog:
+        if requeued := await requeue_stale(all_processing=True):
+            log.info("Requeued %s interrupted PROCESSING job(s) on startup", requeued)
     if once:
-        await auto_submit_once()
-        await essay_grading_once()
-        await audit_self_healing_once()
-        await ai_jobs_loop(once=True)
+        await v113_expire_attempts_once()
+        await outbox_relay_once()
+        if enabled or backlog:
+            await auto_submit_once()
+            await essay_grading_once()
+            if enabled:
+                await audit_self_healing_once()
+            await ai_jobs_loop(once=True)
         return
-    # Independent loops: 2 parallel AI import workers, auto-submit sweep, AI essay grading, and 2 self-healing jobs.
-    await asyncio.gather(
-        ai_jobs_loop(),
-        ai_jobs_loop(),
-        auto_submit_loop(),
-        essay_grading_loop(),
-        job1_taxonomy_healer_loop(),
-        job2_double_blind_loop(),
-    )
+    await asyncio.gather(*(loop() for loop in select_loops(legacy_enabled=enabled, backlog=backlog)))
 
 
 def main() -> None:
