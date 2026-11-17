@@ -22,7 +22,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 
 from app.config import get_settings
-from app.db import SessionLocal, engine
+from app.db import SessionLocal
 from app.modules.error_notebook.internal.models import ErrorNote, RemediationTask  # noqa: F401
 from app.modules.error_notebook.public import record_error_note_attempt
 from app.modules.error_notebook.router import router as error_notebook_router
@@ -74,72 +74,6 @@ def _auth_headers(
     if extra:
         headers.update(extra)
     return headers
-
-
-LATER_WAVE_STUBS = {
-    # D06 mastery_estimates arrives with TASK-33; the learning path reads it when it exists.
-    "mastery_estimates": """
-        CREATE TABLE IF NOT EXISTS mastery_estimates (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            membership_id UUID NOT NULL,
-            taxonomy_node_id UUID NOT NULL REFERENCES taxonomy_nodes(id) ON DELETE CASCADE,
-            model_code VARCHAR(40) NOT NULL DEFAULT 'RULE_WEIGHTED_L1',
-            theta_estimate NUMERIC(6,3) NOT NULL DEFAULT 0.000,
-            mastery_probability NUMERIC(5,3) NOT NULL CHECK (mastery_probability BETWEEN 0 AND 1),
-            standard_error NUMERIC(5,3) NOT NULL DEFAULT 0.500,
-            evidence_count INT NOT NULL DEFAULT 0,
-            status VARCHAR(30) NOT NULL DEFAULT 'INSUFFICIENT_DATA',
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (membership_id, taxonomy_node_id, model_code),
-            FOREIGN KEY (membership_id, tenant_id) REFERENCES memberships(id, tenant_id) ON DELETE CASCADE
-        )
-    """,
-}
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _ensure_later_wave_tables(_database: None):
-    """The D02 / D03 / D05 tables and the F02 assignments come from Alembic. Only `mastery_estimates` (D06, TASK-33)
-    is stubbed here, and only while no migration creates it (a stub is dropped again on teardown)."""
-    created: list[str] = []
-
-    async def create() -> None:
-        async with engine.begin() as conn:
-            present = set(
-                (
-                    await conn.execute(
-                        text("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename = ANY(:n)"),
-                        {"n": list(LATER_WAVE_STUBS)},
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            for name, ddl in LATER_WAVE_STUBS.items():
-                if name in present:
-                    continue
-                created.append(name)
-                await conn.execute(text(ddl))
-                await conn.execute(text(f"ALTER TABLE {name} ENABLE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"ALTER TABLE {name} FORCE ROW LEVEL SECURITY"))
-                await conn.execute(
-                    text(
-                        f"CREATE POLICY tenant_isolation_policy ON {name} "
-                        "USING (tenant_id = (SELECT current_app_tenant_id())) "
-                        "WITH CHECK (tenant_id = (SELECT current_app_tenant_id()))"
-                    )
-                )
-                await conn.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {name} TO ulp_app_rw"))
-
-    async def drop() -> None:
-        if created:
-            async with engine.begin() as conn:
-                await conn.execute(text(f"DROP TABLE IF EXISTS {', '.join(reversed(created))} CASCADE"))
-
-    run(create())
-    yield
-    run(drop())
 
 
 @pytest.fixture

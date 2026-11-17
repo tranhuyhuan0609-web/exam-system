@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import time
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated
 
-from fastapi import APIRouter, Request, Security, status
+from fastapi import APIRouter, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import get_settings
@@ -40,18 +38,15 @@ from app.platform.auth_context import (
     ActorContext,
     AuthTokenError,
     TenantSpoofingError,
-    decode_and_verify_actor_token,
-    extract_bearer_token,
-    guard_no_tenant_spoofing,
 )
-from app.platform.errors import PlatformErrorCode, build_problem_detail
+from app.platform.errors import PlatformErrorCode
+from app.platform.http_auth import OptionalBearer, problem_json, verify_actor
 from app.platform.pagination import resolve_correlation_id
+from app.platform.roles import is_platform_admin
 from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1", tags=["frameworks"])
 
-_bearer_scheme = HTTPBearer(auto_error=False)
-OptionalBearer = Annotated[HTTPAuthorizationCredentials | None, Security(_bearer_scheme)]
 _AUTHOR_ROLES = frozenset({"TEACHER", "EDITOR", "REVIEWER", "ADMIN", "CONTENT_ADMIN", "SYSTEM_ADMIN"})
 
 
@@ -207,18 +202,12 @@ def _problem_response(
     instance: str,
     correlation_id: str,
 ) -> JSONResponse:
-    problem = build_problem_detail(
+    return problem_json(
         code=code,
         detail=detail,
-        status_override=status_code,
         instance=instance,
         correlation_id=correlation_id,
-    )
-    return JSONResponse(
-        status_code=problem.status,
-        content=problem.to_dict(),
-        media_type="application/problem+json",
-        headers={"X-Correlation-ID": correlation_id},
+        status_override=status_code,
     )
 
 
@@ -227,24 +216,9 @@ def _authenticate(
     credentials: HTTPAuthorizationCredentials | None,
     correlation_id: str,
 ) -> ActorContext | JSONResponse:
-    settings = get_settings()
-    raw_auth = request.headers.get("authorization")
-    if not raw_auth and credentials is not None:
-        raw_auth = f"{credentials.scheme} {credentials.credentials}"
-    if not raw_auth and request.cookies.get("ulp_access_token"):
-        raw_auth = f"Bearer {request.cookies['ulp_access_token']}"
+    get_settings()
     try:
-        token = extract_bearer_token(raw_auth)
-        actor = decode_and_verify_actor_token(
-            token,
-            secret=settings.secret_key,
-            now_epoch=int(time.time()),
-        )
-        guard_no_tenant_spoofing(
-            actor,
-            claimed_tenant_header=request.headers.get("x-tenant-id"),
-            claimed_membership_header=request.headers.get("x-membership-id"),
-        )
+        actor = verify_actor(request, credentials, allow_cookie=True)
         return actor
     except TenantSpoofingError as exc:
         return _problem_response(
@@ -262,6 +236,19 @@ def _authenticate(
             instance=str(request.url.path),
             correlation_id=correlation_id,
         )
+
+
+def _require_platform_admin(actor: ActorContext, request: Request, correlation_id: str) -> JSONResponse | None:
+    """The framework catalogue has no tenant: every tenant builds on it, so only platform administrators write it."""
+    if not is_platform_admin(actor.roles):
+        return _problem_response(
+            code=PlatformErrorCode.FORBIDDEN,
+            detail="Only a platform administrator may create or change an assessment framework",
+            status_code=403,
+            instance=str(request.url.path),
+            correlation_id=correlation_id,
+        )
+    return None
 
 
 def _require_author_role(actor: ActorContext, request: Request, correlation_id: str) -> JSONResponse | None:
@@ -383,7 +370,7 @@ async def create_assessment_framework_endpoint(
     auth = _authenticate(request, credentials, correlation_id)
     if isinstance(auth, JSONResponse):
         return auth
-    role_err = _require_author_role(auth, request, correlation_id)
+    role_err = _require_platform_admin(auth, request, correlation_id)
     if role_err is not None:
         return role_err
 

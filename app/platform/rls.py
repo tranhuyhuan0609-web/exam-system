@@ -21,6 +21,11 @@ GLOBAL_TABLES = frozenset(
         "assessment_frameworks",
         "framework_versions",
         "scoring_scheme_versions",
+        "question_irt_parameters",
+        "subscription_plans",
+        "payment_webhooks",
+        "vertical_packs",
+        "locale_bundles",
     }
 )
 """Platform tables with no tenant of their own."""

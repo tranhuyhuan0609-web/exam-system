@@ -16,44 +16,60 @@ from app.db import SessionLocal
 from app.deps import LoginRequired, SessionDep, get_current_user
 from app.modules.access.router import router as access_router
 from app.modules.ai_gateway.router import router as ai_gateway_router
+from app.modules.analytics.router import router as analytics_router
 from app.modules.assembly.router import router as assembly_router
 from app.modules.assets.router import router as assets_router
 from app.modules.assignments.router import router as assignments_router
 from app.modules.attempts.router import router as attempts_router
 from app.modules.audit.router import router as audit_router
 from app.modules.authoring.router import router as authoring_router
+from app.modules.billing.router import router as billing_router
 from app.modules.classes.router import router as classes_router
 from app.modules.config.router import router as config_router
 from app.modules.content.router import router as content_router
+from app.modules.crawler.router import router as crawler_router
 from app.modules.curriculum.router import router as curriculum_router
 from app.modules.dashboard.router import router as dashboard_router
 from app.modules.dedup.router import router as dedup_router
 from app.modules.delivery.router import router as delivery_router
+from app.modules.drive_sync.router import router as drive_sync_router
 from app.modules.error_notebook.router import router as error_notebook_router
 from app.modules.exam_import.router import router as exam_import_router
+from app.modules.explanations.router import router as explanations_router
 from app.modules.extraction.router import router as extraction_router
+from app.modules.flashcards.router import router as flashcards_router
 from app.modules.frameworks.router import router as frameworks_router
+from app.modules.generation.router import router as generation_router
 from app.modules.gradebook.router import router as gradebook_router
 from app.modules.grading.router import router as grading_router
 from app.modules.ingestion.router import router as ingestion_router
 from app.modules.knowledge_graph.router import router as knowledge_graph_router
 from app.modules.layout.router import router as layout_router
 from app.modules.learning_path.router import router as learning_path_router
+from app.modules.mastery.router import router as mastery_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.outbox.router import router as outbox_router
 from app.modules.parsers.router import router as parsers_router
 from app.modules.practice.router import router as practice_router
+from app.modules.privacy.public import configure_key_service
 from app.modules.privacy.router import router as privacy_router
 from app.modules.quality.router import router as quality_router
 from app.modules.questions.router import router as questions_router
+from app.modules.recommendations.router import router as recommendations_router
 from app.modules.review.router import router as review_router
 from app.modules.search.router import router as search_router
 from app.modules.taxonomy.router import router as taxonomy_router
+from app.modules.teacher_copilot.router import router as teacher_copilot_router
+from app.modules.tutor.router import router as tutor_router
+from app.modules.vertical_packs.router import router as vertical_packs_router
 from app.platform.branding import BRAND_NAME, BRAND_SEO_DESCRIPTION
 from app.routers import admin, auth, library, maker, plans, student, teacher
 from app.templating import templates
 
 settings = get_settings()
+# PII keys: the process-wide default stays in memory (dev, tests) unless KEY_SERVICE_BACKEND names a durable one.
+if settings.key_service_backend.strip().lower() != "memory":
+    configure_key_service(settings)
 is_dev = settings.app_env.lower() in ("dev", "development", "test", "testing")
 
 
@@ -65,8 +81,23 @@ class CSRFProtectMiddleware(BaseHTTPMiddleware):
 
     SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 
+    @staticmethod
+    def _is_stateless_bearer_call(request: Request) -> bool:
+        """A /api/v1 call that authenticates with an explicit Bearer token and carries no session cookie.
+
+        A bearer token is not an ambient credential (a browser never attaches it on its own), so a forged
+        cross-site request cannot use it; the Next.js proxy forwards such calls with a foreign Origin.
+        """
+        if not request.url.path.startswith("/api/v1/"):
+            return False
+        if "exam_session" in request.cookies:
+            return False
+        if request.url.path == "/api/v1/auth/login":
+            return True  # carries the credentials in the body, sets no cookie: nothing ambient to forge
+        return request.headers.get("authorization", "").lower().startswith("bearer ")
+
     async def dispatch(self, request: Request, call_next):
-        if request.method not in self.SAFE_METHODS:
+        if request.method not in self.SAFE_METHODS and not self._is_stateless_bearer_call(request):
             origin = request.headers.get("origin")
             referer = request.headers.get("referer")
             host = request.headers.get("host") or request.url.netloc
@@ -125,13 +156,17 @@ if settings.storage_backend == "local":
     _previews.mkdir(parents=True, exist_ok=True)
     app.mount("/media/previews", StaticFiles(directory=_previews), name="previews")
 
-app.include_router(student.router)
-app.include_router(teacher.router)
-app.include_router(maker.router)
-app.include_router(library.router)
-app.include_router(plans.router)
-app.include_router(auth.router)
-app.include_router(admin.router)
+if settings.legacy_html_enabled:
+    for _legacy_router in (
+        student.router,
+        teacher.router,
+        maker.router,
+        library.router,
+        plans.router,
+        auth.router,
+        admin.router,
+    ):
+        app.include_router(_legacy_router)
 
 # V11.3 /api/v1 modules (JWT bearer auth; tenant context bound per transaction for RLS).
 for _module_router in (
@@ -170,6 +205,18 @@ for _module_router in (
     assignments_router,
     gradebook_router,
     notifications_router,
+    flashcards_router,
+    tutor_router,
+    explanations_router,
+    crawler_router,
+    drive_sync_router,
+    generation_router,
+    mastery_router,
+    recommendations_router,
+    teacher_copilot_router,
+    analytics_router,
+    billing_router,
+    vertical_packs_router,
 ):
     app.include_router(_module_router)
 

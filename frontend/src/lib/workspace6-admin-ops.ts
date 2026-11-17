@@ -64,6 +64,38 @@ export function validateAdminMutationReason(
   };
 }
 
+/** Upper bound of `total_score` the API accepts for a manual override (`OverrideRequest`, 0..1000). */
+export const MAX_OVERRIDE_TOTAL_SCORE = 1000;
+
+export interface OverrideScoreValidation {
+  readonly ok: boolean;
+  /** Dot-decimal text for the API (a comma is accepted while typing); "" when not valid. */
+  readonly normalized: string;
+  readonly errorCode:
+    | "SCORE_REQUIRED"
+    | "SCORE_NOT_A_NUMBER"
+    | "SCORE_TOO_MANY_DECIMALS"
+    | "SCORE_OUT_OF_RANGE"
+    | null;
+}
+
+/** `total_score` of POST /api/v1/grades/{id}/override: 0..1000, at most 2 decimal places. */
+export function validateOverrideTotalScore(raw: string): OverrideScoreValidation {
+  const text = (typeof raw === "string" ? raw : "").trim().replace(",", ".");
+  const fail = (errorCode: OverrideScoreValidation["errorCode"]): OverrideScoreValidation => ({
+    ok: false,
+    normalized: "",
+    errorCode,
+  });
+  if (text === "") return fail("SCORE_REQUIRED");
+  if (/^-\d/.test(text)) return fail("SCORE_OUT_OF_RANGE");
+  if (!/^\d+(\.\d+)?$/.test(text)) return fail("SCORE_NOT_A_NUMBER");
+  const decimals = text.split(".")[1] ?? "";
+  if (decimals.length > 2) return fail("SCORE_TOO_MANY_DECIMALS");
+  if (Number(text) > MAX_OVERRIDE_TOTAL_SCORE) return fail("SCORE_OUT_OF_RANGE");
+  return { ok: true, normalized: text, errorCode: null };
+}
+
 export interface DrivePairingSignalsInput {
   readonly filenameSimilarity: number; // 0.0 .. 1.0
   readonly sameFolder: boolean;

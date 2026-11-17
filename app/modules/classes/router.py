@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import time
 import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query, Request, Security, status
+from fastapi import APIRouter, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import get_settings
@@ -19,6 +18,7 @@ from app.modules.classes.internal.service import (
     ClassConflictError,
     ClassMemberView,
     ClassNotFoundError,
+    ClassSummaryView,
     ClassValidationError,
     ClassView,
     GroupView,
@@ -27,6 +27,8 @@ from app.modules.classes.internal.service import (
     create_group,
     get_class,
     get_class_roster,
+    is_class_participant,
+    list_classes,
     list_groups,
     remove_class_member,
 )
@@ -34,19 +36,17 @@ from app.platform.auth_context import (
     ActorContext,
     AuthTokenError,
     TenantSpoofingError,
-    decode_and_verify_actor_token,
-    extract_bearer_token,
-    guard_no_tenant_spoofing,
 )
-from app.platform.errors import PlatformErrorCode, build_problem_detail
+from app.platform.errors import PlatformErrorCode
+from app.platform.http_auth import OptionalBearer, problem_json, verify_actor
 from app.platform.pagination import resolve_correlation_id
 from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1", tags=["classes"])
 
 _STAFF_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "TEACHER"})
-_bearer_scheme = HTTPBearer(auto_error=False)
-OptionalBearer = Annotated[HTTPAuthorizationCredentials | None, Security(_bearer_scheme)]
+# Roles that see every class of the tenant; a teacher or learner sees only the classes they belong to.
+_TENANT_WIDE_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN"})
 
 
 class CreateGroupRequest(BaseModel):
@@ -88,6 +88,10 @@ class ClassResponse(BaseModel):
     created_at: datetime
 
 
+class ClassSummaryResponse(ClassResponse):
+    active_student_count: int
+
+
 class AddClassMemberRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -125,19 +129,13 @@ def _problem_response(
     correlation_id: str,
     extensions: dict[str, Any] | None = None,
 ) -> JSONResponse:
-    problem = build_problem_detail(
+    return problem_json(
         code=code,
         detail=detail,
-        status_override=status_code,
         instance=instance,
         correlation_id=correlation_id,
+        status_override=status_code,
         extensions=extensions,
-    )
-    return JSONResponse(
-        status_code=problem.status,
-        content=problem.to_dict(),
-        media_type="application/problem+json",
-        headers={"X-Correlation-ID": correlation_id},
     )
 
 
@@ -148,20 +146,9 @@ def _authenticate(
     *,
     staff_only: bool = False,
 ) -> ActorContext | JSONResponse:
-    settings = get_settings()
-    raw_auth = request.headers.get("authorization")
-    if not raw_auth and credentials is not None:
-        raw_auth = f"{credentials.scheme} {credentials.credentials}"
-    if not raw_auth and request.cookies.get("ulp_access_token"):
-        raw_auth = f"Bearer {request.cookies['ulp_access_token']}"
+    get_settings()
     try:
-        token = extract_bearer_token(raw_auth)
-        actor = decode_and_verify_actor_token(token, secret=settings.secret_key, now_epoch=int(time.time()))
-        guard_no_tenant_spoofing(
-            actor,
-            claimed_tenant_header=request.headers.get("x-tenant-id"),
-            claimed_membership_header=request.headers.get("x-membership-id"),
-        )
+        actor = verify_actor(request, credentials, allow_cookie=True)
     except TenantSpoofingError as exc:
         return _problem_response(
             code=PlatformErrorCode.FORBIDDEN,
@@ -205,6 +192,21 @@ def _serialize_class(view: ClassView) -> ClassResponse:
         invite_code=view.invite_code,
         status=view.status,
         created_at=view.created_at,
+    )
+
+
+def _serialize_class_summary(view: ClassSummaryView) -> ClassSummaryResponse:
+    return ClassSummaryResponse(
+        id=view.id,
+        tenant_id=view.tenant_id,
+        group_id=view.group_id,
+        teacher_membership_id=view.teacher_membership_id,
+        name=view.name,
+        academic_year=view.academic_year,
+        invite_code=view.invite_code,
+        status=view.status,
+        created_at=view.created_at,
+        active_student_count=view.active_student_count,
     )
 
 
@@ -303,7 +305,7 @@ async def create_class_endpoint(
         )
     except ClassConflictError as exc:
         return _problem_response(
-            code=PlatformErrorCode.CONFLICT,
+            code=PlatformErrorCode.VALIDATION_ERROR,
             detail=str(exc),
             status_code=409,
             instance=str(request.url.path),
@@ -325,6 +327,33 @@ async def create_class_endpoint(
     )
 
 
+@router.get("/classes", response_model=list[ClassSummaryResponse])
+async def list_classes_endpoint(
+    request: Request,
+    include_archived: Annotated[bool, Query()] = False,
+    credentials: OptionalBearer = None,
+) -> JSONResponse:
+    """The caller's classes (taught or joined); tenant administrators get every class of the tenant."""
+    correlation_id = resolve_correlation_id(request.headers.get("X-Correlation-ID"))
+    auth = _authenticate(request, credentials, correlation_id)
+    if isinstance(auth, JSONResponse):
+        return auth
+
+    tenant_wide = any(role.upper() in _TENANT_WIDE_ROLES for role in auth.roles)
+    async with tenant_transaction(auth.tenant_id, role=DbRole.APP_RW) as session:
+        classes = await list_classes(
+            session,
+            tenant_id=auth.tenant_id,
+            membership_id=None if tenant_wide else auth.membership_id,
+            include_archived=include_archived,
+        )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=jsonable_encoder([_serialize_class_summary(c) for c in classes]),
+        headers={"X-Correlation-ID": correlation_id},
+    )
+
+
 @router.get("/classes/{class_id}", response_model=ClassDetailResponse)
 async def get_class_endpoint(
     class_id: uuid.UUID,
@@ -337,9 +366,16 @@ async def get_class_endpoint(
     if isinstance(auth, JSONResponse):
         return auth
 
+    tenant_wide = any(role.upper() in _TENANT_WIDE_ROLES for role in auth.roles)
     try:
         async with tenant_transaction(auth.tenant_id, role=DbRole.APP_RW) as session:
             classroom = await get_class(session, tenant_id=auth.tenant_id, class_id=class_id)
+            # Same tenant is not enough: a class is seen by who teaches it or sits in it. Anyone else gets the
+            # answer of a class that does not exist, so the ids of other classes are not confirmed.
+            if not tenant_wide and not await is_class_participant(
+                session, tenant_id=auth.tenant_id, class_id=class_id, membership_id=auth.membership_id
+            ):
+                raise ClassNotFoundError(f"class {class_id} not found in tenant")
             roster = await get_class_roster(
                 session, tenant_id=auth.tenant_id, class_id=class_id, include_inactive=include_inactive
             )

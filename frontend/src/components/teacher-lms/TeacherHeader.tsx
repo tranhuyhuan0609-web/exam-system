@@ -1,7 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { AuthStatusBadge } from "@/components/auth/AuthStatusBadge";
+import {
+  AUTH_CHANGED_EVENT,
+  canAccessAdminOps,
+  canAccessStudioBank,
+  getAuthSession,
+  type AuthSession,
+} from "@/lib/auth-client";
 import type { UserTier } from "@/lib/ui-state-machine";
 
 export interface TeacherHeaderProps {
@@ -19,12 +27,24 @@ export function TeacherHeader({
   onTierChange,
   showTierSwitcher = true,
 }: TeacherHeaderProps) {
+  const [session, setSession] = useState<AuthSession | null>(null);
+
+  useEffect(() => {
+    const sync = () => setSession(getAuthSession());
+    sync();
+    window.addEventListener(AUTH_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(AUTH_CHANGED_EVENT, sync);
+  }, []);
+
+  const showStudioLinks = canAccessStudioBank(session);
+  const showAdminLinks = canAccessAdminOps(session);
+
   const navItems: readonly {
     readonly key: TeacherHeaderProps["activeRoute"];
     readonly href: string;
     readonly label: string;
   }[] = [
-    { key: "exam-builder", href: "/teacher/exam-builder", label: "Matrix Exam Builder (C03/C04)" },
+    { key: "exam-builder", href: "/teacher/exam-builder", label: "Tạo đề & Ma trận (C03/C04)" },
     { key: "class-lms", href: `/teacher/classes/${classId}`, label: "Quản lý Lớp & Sổ điểm (F01–F03)" },
   ];
 
@@ -48,7 +68,7 @@ export function TeacherHeader({
               </div>
               <p className="text-[11px] text-slate-500">
                 {activeRoute === "exam-builder"
-                  ? "Thiết kế Ma trận Đề thi THPTQG 2025+ & Báo cáo thiếu câu"
+                  ? "Tạo đề theo Chủ đề · Upload đề PDF (AI tự giải) · Ma trận THPTQG 2025+"
                   : "Bảng điểm lớp, Phân tích phương án nhiễu & Teacher AI Copilot (E06)"}
               </p>
             </div>
@@ -73,18 +93,36 @@ export function TeacherHeader({
               </Link>
             );
           })}
-          <Link
-            href="/studio/imports/demo-run/review"
-            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-          >
-            Studio
-          </Link>
-          <Link
-            href="/admin/ops"
-            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-          >
-            Admin Ops
-          </Link>
+          {showStudioLinks && (
+            <>
+              <Link
+                href="/studio/questions"
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Ngân hàng câu hỏi
+              </Link>
+              <Link
+                href="/studio/imports"
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Nạp file đề
+              </Link>
+              <Link
+                href="/studio/imports/demo-run/review"
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Studio
+              </Link>
+            </>
+          )}
+          {showAdminLinks && (
+            <Link
+              href="/admin/ops"
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Admin Ops
+            </Link>
+          )}
         </nav>
 
         <div className="flex items-center gap-2">
@@ -106,6 +144,7 @@ export function TeacherHeader({
               {userTier === "FREE" ? "Chuyển TEACHER_PRO" : "Thử FREE"}
             </button>
           )}
+          <AuthStatusBadge />
         </div>
       </div>
     </header>

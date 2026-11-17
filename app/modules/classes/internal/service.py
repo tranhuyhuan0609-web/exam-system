@@ -6,7 +6,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import or_, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,6 +61,22 @@ class ClassView:
     invite_code: str | None
     status: str
     created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ClassSummaryView:
+    """A class plus its count of ACTIVE students, for list screens."""
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    group_id: uuid.UUID | None
+    teacher_membership_id: uuid.UUID
+    name: str
+    academic_year: str | None
+    invite_code: str | None
+    status: str
+    created_at: datetime
+    active_student_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -392,3 +408,122 @@ async def get_active_class_recipients(
     roster = await get_class_roster(session, tenant_id=tenant_id, class_id=class_id, include_inactive=True)
     states = tuple(to_class_member_state(m) for m in roster)
     return filter_active_assignment_recipients(states, tenant_id=str(tenant_id), class_id=str(class_id))
+
+
+async def list_classes(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    membership_id: uuid.UUID | None = None,
+    include_archived: bool = False,
+) -> tuple[ClassSummaryView, ...]:
+    """Classes of the tenant, newest first.
+
+    With `membership_id`, only the classes that membership teaches or is an ACTIVE member of (a learner sees their
+    own classes, a teacher theirs); without it, every class of the tenant (tenant administrators).
+    """
+    student_count = (
+        select(func.count())
+        .select_from(ClassMember)
+        .where(
+            ClassMember.tenant_id == SchoolClass.tenant_id,
+            ClassMember.class_id == SchoolClass.id,
+            ClassMember.status == ClassMemberStatus.ACTIVE.value,
+            ClassMember.role_in_class == ClassRole.STUDENT.value,
+        )
+        .correlate(SchoolClass)
+        .scalar_subquery()
+    )
+    stmt = select(SchoolClass, student_count.label("active_student_count")).where(SchoolClass.tenant_id == tenant_id)
+    if not include_archived:
+        stmt = stmt.where(SchoolClass.status == "ACTIVE")
+    if membership_id is not None:
+        member_of = (
+            select(ClassMember.id)
+            .where(
+                ClassMember.tenant_id == SchoolClass.tenant_id,
+                ClassMember.class_id == SchoolClass.id,
+                ClassMember.membership_id == membership_id,
+                ClassMember.status == ClassMemberStatus.ACTIVE.value,
+            )
+            .correlate(SchoolClass)
+            .exists()
+        )
+        stmt = stmt.where(or_(SchoolClass.teacher_membership_id == membership_id, member_of))
+    rows = (await session.execute(stmt.order_by(SchoolClass.created_at.desc(), SchoolClass.id.desc()))).all()
+    return tuple(
+        ClassSummaryView(
+            id=row.id,
+            tenant_id=row.tenant_id,
+            group_id=row.group_id,
+            teacher_membership_id=row.teacher_membership_id,
+            name=row.name,
+            academic_year=row.academic_year,
+            invite_code=row.invite_code,
+            status=row.status,
+            created_at=row.created_at,
+            active_student_count=int(count or 0),
+        )
+        for row, count in rows
+    )
+
+
+async def is_class_participant(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    class_id: uuid.UUID,
+    membership_id: uuid.UUID,
+) -> bool:
+    """True when the membership teaches the class or is an ACTIVE member of it (a left member is not a participant)."""
+    teaches = (
+        select(SchoolClass.id)
+        .where(
+            SchoolClass.tenant_id == tenant_id,
+            SchoolClass.id == class_id,
+            SchoolClass.teacher_membership_id == membership_id,
+        )
+        .exists()
+    )
+    member = (
+        select(ClassMember.id)
+        .where(
+            ClassMember.tenant_id == tenant_id,
+            ClassMember.class_id == class_id,
+            ClassMember.membership_id == membership_id,
+            ClassMember.status == ClassMemberStatus.ACTIVE.value,
+        )
+        .exists()
+    )
+    return bool(await session.scalar(select(or_(teaches, member))))
+
+
+async def can_manage_class(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    class_id: uuid.UUID,
+    membership_id: uuid.UUID,
+) -> bool:
+    """True when the membership teaches the class or is an ACTIVE teaching assistant of it (students never manage)."""
+    teaches = (
+        select(SchoolClass.id)
+        .where(
+            SchoolClass.tenant_id == tenant_id,
+            SchoolClass.id == class_id,
+            SchoolClass.teacher_membership_id == membership_id,
+        )
+        .exists()
+    )
+    assistant = (
+        select(ClassMember.id)
+        .where(
+            ClassMember.tenant_id == tenant_id,
+            ClassMember.class_id == class_id,
+            ClassMember.membership_id == membership_id,
+            ClassMember.status == ClassMemberStatus.ACTIVE.value,
+            ClassMember.role_in_class == ClassRole.TEACHING_ASSISTANT.value,
+        )
+        .exists()
+    )
+    return bool(await session.scalar(select(or_(teaches, assistant))))

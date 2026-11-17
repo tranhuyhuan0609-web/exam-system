@@ -69,6 +69,24 @@ export interface CopilotRemediationCluster {
   readonly assigned?: boolean;
 }
 
+/** One row of `GET /api/v1/assignments?class_id=`. */
+export interface ClassAssignmentOption {
+  readonly id: string;
+  readonly class_id: string | null;
+  readonly assessment_id: string | null;
+  readonly assessment_version_id: string;
+  readonly assessment_title: string | null;
+  readonly due_at: string | null;
+  readonly max_attempts: number;
+}
+
+/** One published paper of `GET /api/v1/assessments`. */
+export interface PublishedPaperOption {
+  readonly id: string;
+  readonly title: string;
+  readonly current_version_id: string | null;
+}
+
 export interface TeacherClassLmsData {
   readonly classId: string;
   readonly className: string;
@@ -76,6 +94,7 @@ export interface TeacherClassLmsData {
   readonly inviteCode: string;
   readonly activeAssessmentTitle: string;
   readonly assessmentVersionId: string;
+  readonly activeAssignmentId?: string;
   readonly requiresProAsset: boolean;
   readonly previewPdfUrl: string;
   readonly rawAssetUrl: string;
@@ -103,6 +122,41 @@ export const MATRIX_ITEM_TYPES: readonly {
   { key: "CLUSTER_TRUE_FALSE", shortLabel: "P.II (Đ/S)", fullLabel: "Phần II · Đúng/Sai 4 ý" },
   { key: "SHORT_NUMERIC", shortLabel: "P.III (TLN)", fullLabel: "Phần III · Trả lời ngắn" },
 ];
+
+/** A builder with nothing in it yet: what a real session starts from until the question bank has answered. */
+export function createEmptyMatrixBuilderData(subjectGroup: SubjectGroup2025 = "MATH"): MatrixBuilderSessionData {
+  return {
+    examId: "",
+    examTitle: subjectGroup === "MATH" ? "Đề thi mới · Toán" : "Đề thi mới · Lý / Hóa / Sinh",
+    subjectGroup,
+    durationMinutes: subjectGroup === "MATH" ? 90 : 50,
+    randomSeed: 20250626,
+    requiresProAsset: false,
+    previewPdfUrl: "",
+    rawAssetUrl: "",
+    topics: [],
+    availability: {},
+    initialDesired: {},
+  };
+}
+
+/** A class with nothing in it yet: what a real session starts from until the API has answered. */
+export function createEmptyTeacherClassData(classId: string): TeacherClassLmsData {
+  return {
+    classId,
+    className: "Lớp học",
+    subjectName: "",
+    inviteCode: "",
+    activeAssessmentTitle: "Chưa giao đề nào",
+    assessmentVersionId: "",
+    requiresProAsset: false,
+    previewPdfUrl: "",
+    rawAssetUrl: "",
+    students: [],
+    topMissedItems: [],
+    copilotClusters: [],
+  };
+}
 
 export function createDemoMatrixBuilderData(
   subjectGroup: SubjectGroup2025 = "MATH",

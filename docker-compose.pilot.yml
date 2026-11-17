@@ -1,0 +1,175 @@
+# Teacher pilot on ONE server (4 vCPU / 8 GB): the minimum that runs the four teacher flows end to end.
+#
+#   cp .env.pilot.example .env.pilot        # fill every value (see docs/pilot/README.md)
+#   docker compose --env-file .env.pilot -f docker-compose.pilot.yml up -d --build
+#   docker compose --env-file .env.pilot -f docker-compose.pilot.yml --profile tools run --rm seed
+#
+# Compared with docker-compose.yml it leaves out: the crawler (kafka, mongo, crawler-*), clamav, vault, s3.
+#  * files live on a shared volume (STORAGE_BACKEND=local), served by the API through signed URLs;
+#  * PII keys come from one fixed master key (KEY_SERVICE_BACKEND=env, PII_MASTER_KEY), so they survive restarts
+#    (the dev-mode Vault of docker-compose.yml forgets everything when it restarts). This is a pilot setting: it does not
+#    shred backups. Move to Vault (docker-compose.vault.yml) before real student data;
+#  * only Caddy publishes ports (80/443, automatic HTTPS). The database, pooler, Redis and the API stay on the private
+#    network. Every secret comes from .env.pilot; a missing one stops `docker compose` instead of using a default.
+
+x-app-env: &app-env
+  APP_ENV: production
+  DATABASE_URL: postgresql+asyncpg://ulp_api:${RUNTIME_DB_PASSWORD:?set RUNTIME_DB_PASSWORD}@pgbouncer:5432/exam
+  DB_PGBOUNCER: "true"
+  DATA_DIR: /app/data
+  STORAGE_BACKEND: local
+  REDIS_URL: redis://redis:6379/0
+  LOGIN_THROTTLE_BACKEND: redis
+  SESSION_HTTPS_ONLY: "true"
+  LEGACY_HTML_ENABLED: "false"
+  # the only client of the API is the frontend container (Docker's private networks live in 172.16.0.0/12)
+  TRUSTED_PROXIES: 172.16.0.0/12
+  SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY}
+  KEY_SERVICE_BACKEND: env
+  PII_MASTER_KEY: ${PII_MASTER_KEY:?set PII_MASTER_KEY}
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: exam
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: exam
+    # sized for 8 GB shared with the API, the worker and the frontend
+    command: >
+      postgres -c shared_buffers=1GB -c effective_cache_size=3GB -c work_mem=16MB -c maintenance_work_mem=256MB
+      -c max_connections=100 -c wal_compression=on -c log_min_duration_statement=500
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U exam"]
+      interval: 5s
+      retries: 10
+
+  # Transaction pooling: the API reaches PostgreSQL only through it, as the least-privilege login ulp_api.
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.24.1-p1
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: exam
+      DB_USER: ulp_api
+      DB_PASSWORD: ${RUNTIME_DB_PASSWORD:?set RUNTIME_DB_PASSWORD}
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      SERVER_RESET_QUERY: DISCARD ALL
+      SERVER_RESET_QUERY_ALWAYS: "1"
+      MAX_CLIENT_CONN: "500"
+      DEFAULT_POOL_SIZE: "25"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  # One-shot: Alembic as the schema owner, then the runtime login the services use.
+  migration:
+    build: .
+    command: sh -c "alembic upgrade head && python -m app.platform.runtime_login"
+    environment:
+      <<: *app-env
+      DATABASE_URL: postgresql+asyncpg://exam:${POSTGRES_PASSWORD}@db:5432/exam
+      RUNTIME_DB_PASSWORD: ${RUNTIME_DB_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env.pilot  # AI keys and models (GEMINI_API_KEY, GEMINI_MODELS ...)
+    environment: *app-env
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "3", "--proxy-headers"]
+    volumes:
+      - appdata:/app/data
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  # AI import jobs (PDF / Word / photos). Includes LibreOffice for .docx files.
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    env_file: .env.pilot
+    environment: *app-env
+    volumes:
+      - appdata:/app/data
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: frontend
+      args:
+        BACKEND_INTERNAL_URL: http://app:8000
+    restart: unless-stopped
+    environment:
+      BACKEND_INTERNAL_URL: http://app:8000
+      # Caddy overwrites X-Real-IP with the real client address; the API throttles sign-in per address
+      PROXY_CLIENT_IP_HEADER: x-real-ip
+    depends_on:
+      - app
+
+  # HTTPS in front of everything (Let's Encrypt, automatic). PILOT_DOMAIN must already point at this server.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      PILOT_DOMAIN: ${PILOT_DOMAIN:?set PILOT_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+
+  # Accounts and sample papers for the pilot (run once, as the schema owner):
+  #   docker compose --env-file .env.pilot -f docker-compose.pilot.yml --profile tools run --rm seed
+  # The logins land in ./pilot-out/pilot_accounts.csv (passwords in clear: hand them out, then delete the file).
+  seed:
+    build: .
+    profiles: ["tools"]
+    command: ["python", "-m", "app.ops.seed_pilot", "--out", "/out/pilot_accounts.csv", "--domain", "${PILOT_EMAIL_DOMAIN:-pilot.example.com}"]
+    environment:
+      <<: *app-env
+      DATABASE_URL: postgresql+asyncpg://exam:${POSTGRES_PASSWORD}@db:5432/exam
+    volumes:
+      - ./pilot-out:/out
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
+  appdata:
+  caddy_data:
+  caddy_config:

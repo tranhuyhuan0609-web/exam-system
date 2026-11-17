@@ -27,6 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.contracts.delivery import SanitizedExamPaperContract
 from app.contracts.events import EventEnvelopeContract
 from app.modules.assembly.public import AttemptPermutation, PermutationItemInput, generate_attempt_permutation
+from app.modules.assignments.public import AssignmentNotFoundError, check_can_start_assignment
+from app.modules.classes.public import ClassroomPolicyError
 from app.modules.delivery.internal.models import Attempt
 from app.modules.delivery.internal.sanitizer import sanitize_exam_paper
 from app.modules.outbox.public import enqueue
@@ -50,8 +52,8 @@ class DeliveryForbiddenError(PermissionError):
 
 
 class DeliveryConflictError(ValueError):
-    """A state conflict; `code` is ASSESSMENT_NOT_PUBLISHED, PAPER_UNAVAILABLE or
-    ATTEMPT_ALREADY_SUBMITTED_OR_CLOSED."""
+    """A state conflict; `code` is ASSESSMENT_NOT_PUBLISHED, PAPER_UNAVAILABLE, ATTEMPT_ALREADY_SUBMITTED_OR_CLOSED,
+    ASSIGNMENT_VERSION_MISMATCH or OPEN_ATTEMPT_OTHER_ASSIGNMENT (a sitting is resumed only by its own assignment)."""
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -64,6 +66,21 @@ class AttemptRecord:
     tenant_id: uuid.UUID
     assessment_version_id: uuid.UUID
     membership_id: uuid.UUID
+    status: str
+    started_at: datetime
+    deadline_at: datetime
+    submitted_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class AttemptSummary:
+    """One of the caller's attempts with the title of its paper, for list screens."""
+
+    id: uuid.UUID
+    assessment_id: uuid.UUID
+    assessment_title: str
+    assessment_version_id: uuid.UUID
+    assignment_id: uuid.UUID | None
     status: str
     started_at: datetime
     deadline_at: datetime
@@ -105,16 +122,52 @@ async def _own_attempt(
     return row
 
 
+async def _check_assignment_gate(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    membership_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    version_id: uuid.UUID,
+    now: datetime,
+) -> None:
+    """The assignment must exist, hand out this very version, and let this member start a new attempt."""
+    pinned = await session.scalar(
+        text("SELECT assessment_version_id FROM assessment_assignments WHERE tenant_id = :t AND id = :a"),
+        {"t": tenant_id, "a": assignment_id},
+    )
+    if pinned is None:
+        raise DeliveryNotFoundError("assignment not found")
+    if pinned != version_id:
+        raise DeliveryConflictError(
+            "ASSIGNMENT_VERSION_MISMATCH", "the assignment hands out another version of this paper"
+        )
+    try:
+        await check_can_start_assignment(
+            session, tenant_id=tenant_id, assignment_id=assignment_id, membership_id=membership_id, now=now
+        )
+    except AssignmentNotFoundError as exc:
+        raise DeliveryNotFoundError("assignment not found") from exc
+    except ClassroomPolicyError as exc:
+        raise DeliveryForbiddenError(exc.code, str(exc)) from exc
+
+
 async def start_exam_session(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
     membership_id: uuid.UUID,
     assessment_id: uuid.UUID,
+    assignment_id: uuid.UUID | None = None,
     now: datetime | None = None,
     correlation_id: str | None = None,
 ) -> StartResult:
-    """Start (or resume) the caller's attempt at a published paper."""
+    """Start (or resume) the caller's attempt at a published paper.
+
+    With `assignment_id` the attempt is stored against that assignment, which is what the class gradebook reads. A
+    new attempt then needs the assignment's window, roster and `max_attempts` gates to pass; resuming an attempt
+    already in progress does not (it is the same sitting, not a new one).
+    """
     moment = now or datetime.now(UTC)
     membership = (
         await session.execute(
@@ -172,8 +225,27 @@ async def start_exam_session(
     )
     if open_attempt is not None:
         if moment < open_attempt.deadline_at:
+            if open_attempt.assignment_id != assignment_id:
+                # A sitting belongs to one assignment (or to none, open practice) and is never resumed under
+                # another: the answers would count for a gradebook the learner did not ask for, or for none.
+                raise DeliveryConflictError(
+                    "OPEN_ATTEMPT_OTHER_ASSIGNMENT",
+                    "an attempt at this paper is already in progress for "
+                    + ("another assignment" if open_attempt.assignment_id else "open practice")
+                    + "; submit it or resume it from the attempts list first",
+                )
             return StartResult(_record(open_attempt), version.duration_seconds, resumed=True)
         await _close(session, open_attempt, moment, key=None, correlation_id=correlation_id)
+
+    if assignment_id is not None:
+        await _check_assignment_gate(
+            session,
+            tenant_id=tenant_id,
+            membership_id=membership_id,
+            assignment_id=assignment_id,
+            version_id=version.id,
+            now=moment,
+        )
 
     attempt_no = (
         await session.scalar(
@@ -219,6 +291,7 @@ async def start_exam_session(
             .values(
                 tenant_id=tenant_id,
                 assessment_version_id=version.id,
+                assignment_id=assignment_id,
                 membership_id=membership_id,
                 attempt_seed=seed,
                 question_order_ids=list(permutation.ordered_question_ids),
@@ -230,6 +303,27 @@ async def start_exam_session(
         )
     ).scalar_one()
     return StartResult(_record(row), version.duration_seconds, resumed=False)
+
+
+async def list_attempts(
+    session: AsyncSession, *, membership_id: uuid.UUID, status: str | None = None, limit: int = 50
+) -> tuple[AttemptSummary, ...]:
+    """The caller's own attempts, newest first (never anyone else's)."""
+    rows = (
+        await session.execute(
+            text(
+                "SELECT a.id, p.id AS assessment_id, p.title AS assessment_title, a.assessment_version_id, "
+                "       a.assignment_id, a.status, a.started_at, a.deadline_at, a.submitted_at "
+                "FROM attempts a "
+                "JOIN assessment_versions v ON v.id = a.assessment_version_id AND v.tenant_id = a.tenant_id "
+                "JOIN assessments p ON p.id = v.assessment_id AND p.tenant_id = v.tenant_id "
+                "WHERE a.membership_id = :m AND (CAST(:s AS varchar) IS NULL OR a.status = :s) "
+                "ORDER BY a.started_at DESC, a.id DESC LIMIT :n"
+            ),
+            {"m": membership_id, "s": status, "n": limit},
+        )
+    ).all()
+    return tuple(AttemptSummary(**row._asdict()) for row in rows)
 
 
 async def get_attempt_paper(

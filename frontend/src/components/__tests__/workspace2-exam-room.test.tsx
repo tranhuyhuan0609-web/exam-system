@@ -384,4 +384,21 @@ describe("Workspace 2 THPTQG 3-Part Exam Interactions, Autosave 409 & Submit", (
     expect(screen.getByText(/H2Edu/)).toBeTruthy();
     expect(screen.getByTestId("exam-question-palette")).toBeTruthy();
   });
+
+  it("demo-attempt submits locally with DEMO-RCPT without sending 422 requests to backend", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    try {
+      render(<ExamRoomShell attemptId="demo-attempt" isDemoMode={true} />);
+      fireEvent.click(screen.getByTestId("open-submit-modal-btn"));
+      expect(screen.getByTestId("exam-submit-modal")).toBeTruthy();
+      fireEvent.click(screen.getByTestId("confirm-submit-btn"));
+      await waitFor(() => {
+        const receipt = screen.getByTestId("exam-submitted-receipt");
+        expect(receipt.textContent).toContain("DEMO-RCPT-");
+      });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
 });

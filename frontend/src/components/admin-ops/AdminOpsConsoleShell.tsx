@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { WorkspaceApiAlert } from "@/components/workspace/WorkspaceApiAlert";
 import {
   EmptyState,
   ErrorBoundary,
@@ -10,6 +11,7 @@ import {
   SequenceConflictModal,
 } from "@/components/workspace/WorkspaceStateViews";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
+import { shouldHydrateLive, shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
 import { evaluateOutboxQueueHealth, type CriticalAdminAction } from "@/lib/workspace6-admin-ops";
 import { AdminHeader } from "./AdminHeader";
 import { AdminReasonModal } from "./AdminReasonModal";
@@ -38,7 +40,101 @@ export function AdminOpsConsoleShell({
     confirmLabel: string;
   } | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiErrorStatus, setApiErrorStatus] = useState<number | null>(null);
   const [conflictDismissed, setConflictDismissed] = useState(false);
+
+  useEffect(() => {
+    if (!shouldHydrateLive({ hasInitialData: Boolean(initialData), apiBase })) return;
+    let active = true;
+    void Promise.all([
+      workspaceCall<{
+        pending?: number;
+        dlq_count?: number;
+        oldest_pending_age_seconds?: number | null;
+      }>({ url: "/api/v1/admin/outbox/stats", method: "GET", fetchFn, apiBase, redirectOn401: false }),
+      workspaceCall<{
+        items?: Array<{
+          event_id?: string;
+          event_type?: string;
+          attempt_count?: number;
+          status?: string;
+          created_at?: string;
+        }>;
+      }>({ url: "/api/v1/admin/dlq", method: "GET", fetchFn, apiBase, redirectOn401: false }),
+      workspaceCall<{
+        items?: Array<{
+          key?: string;
+          is_enabled?: boolean;
+          rollout_percent?: number;
+        }>;
+      }>({ url: "/api/v1/admin/feature-flags", method: "GET", fetchFn, apiBase, redirectOn401: false }),
+      workspaceCall<{
+        items?: Array<{
+          id?: string;
+          action?: string;
+          actor_id?: string | null;
+          target_type?: string;
+          target_id?: string;
+          reason?: string | null;
+          occurred_at?: string;
+        }>;
+      }>({ url: "/api/v1/audit-logs", method: "GET", fetchFn, apiBase, redirectOn401: false }),
+    ]).then(([statsRes, dlqRes, flagsRes, auditRes]) => {
+      if (!active) return;
+      const firstErr = [statsRes, dlqRes, flagsRes, auditRes].find((r) => !r.ok);
+      if (firstErr && !firstErr.ok && firstErr.status !== 404) {
+        setApiError(firstErr.error);
+        setApiErrorStatus(firstErr.status);
+      }
+      setData((prev) => ({
+        ...prev,
+        ...(statsRes.ok && statsRes.data
+          ? {
+              oldestQueuedAgeSeconds:
+                statsRes.data.oldest_pending_age_seconds ?? prev.oldestQueuedAgeSeconds,
+            }
+          : {}),
+        ...(dlqRes.ok && dlqRes.data?.items
+          ? {
+              dlqItems: dlqRes.data.items.map((it, idx) => ({
+                id: String(it.event_id ?? `dlq-${idx + 1}`),
+                eventType: it.event_type ?? "UNKNOWN_EVENT",
+                errorCode: it.status ?? "DEAD_LETTER",
+                attempts: it.attempt_count ?? 0,
+                lastSeenAt: it.created_at ?? "—",
+                status: it.status === "REPLAYED" ? "REPLAYED" : "FAILED_DLQ",
+              })),
+            }
+          : {}),
+        ...(flagsRes.ok && flagsRes.data?.items && flagsRes.data.items.length > 0
+          ? {
+              featureFlags: flagsRes.data.items.map((f) => ({
+                key: String(f.key ?? ""),
+                description: `Live flag (${f.key}) · ${f.rollout_percent ?? 100}%`,
+                enabled: Boolean(f.is_enabled),
+                pinnedVersion: `${f.rollout_percent ?? 100}%`,
+              })),
+            }
+          : {}),
+        ...(auditRes.ok && auditRes.data?.items && auditRes.data.items.length > 0
+          ? {
+              auditEvents: auditRes.data.items.map((a, idx) => ({
+                id: String(a.id ?? `aud-${idx + 1}`),
+                action: a.action ?? "AUDIT_EVENT",
+                actorEmail: a.actor_id ? String(a.actor_id) : "system",
+                targetRef: `${a.target_type ?? "ENTITY"}:${a.target_id ?? ""}`,
+                reason: a.reason ?? "",
+                createdAt: a.occurred_at ?? "—",
+              })),
+            }
+          : {}),
+      }));
+    });
+    return () => {
+      active = false;
+    };
+  }, [apiBase, fetchFn, initialData]);
 
   const failedDlqCount = useMemo(
     () => data.dlqItems.filter((item) => item.status === "FAILED_DLQ").length,
@@ -65,21 +161,27 @@ export function AdminOpsConsoleShell({
     [data, initialUserTier, initialUiOverrides, conflictDismissed],
   );
 
-  const handleConfirmReason = async (normalizedReason: string) => {
+  const handleConfirmReason = async (normalizedReason: string, extras?: { totalScore?: string }) => {
     if (!pendingAction) return;
     const { action, targetId, targetLabel } = pendingAction;
-    const caller = fetchFn ?? (typeof fetch === "function" ? fetch : null);
+    setApiError(null);
+    setApiErrorStatus(null);
 
     if (action === "REPLAY_DLQ") {
-      if (caller) {
-        try {
-          await caller(`${apiBase}/api/v1/admin/dlq/${encodeURIComponent(targetId)}/replay`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ reason: normalizedReason }),
-          });
-        } catch {
-          // Offline demo state update still preserves audit entry.
+      const syncLive = shouldSyncLiveEntity({ fetchFn, apiBase, entityIds: [targetId] });
+      if (syncLive) {
+        const result = await workspaceCall({
+          url: `/api/v1/admin/dlq/${encodeURIComponent(targetId)}/replay`,
+          method: "POST",
+          json: { reason: normalizedReason },
+          fetchFn,
+          apiBase,
+        });
+        if (!result.ok) {
+          setApiError(result.error);
+          setApiErrorStatus(result.status);
+          setPendingAction(null);
+          return;
         }
       }
       setData((prev) => ({
@@ -97,17 +199,30 @@ export function AdminOpsConsoleShell({
           ...prev.auditEvents,
         ],
       }));
-      setFeedback(`Đã Replay DLQ "${targetLabel}" và ghi nhận audit_events.`);
+      setFeedback(
+        `Đã Replay DLQ "${targetLabel}" và ghi nhận audit_events${syncLive ? "" : " (mô phỏng demo cục bộ)"}.`,
+      );
     } else if (action === "OVERRIDE_GRADE") {
-      if (caller) {
-        try {
-          await caller(`${apiBase}/api/v1/grades/${encodeURIComponent(targetId)}/override`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ reason: normalizedReason }),
-          });
-        } catch {
-          // Fallback cleanly
+      if (!extras?.totalScore) {
+        setApiError("Thiếu total_score: backend (OverrideRequest) bắt buộc cả total_score lẫn reason.");
+        setApiErrorStatus(422);
+        setPendingAction(null);
+        return;
+      }
+      const syncLive = shouldSyncLiveEntity({ fetchFn, apiBase, entityIds: [targetId] });
+      if (syncLive) {
+        const result = await workspaceCall({
+          url: `/api/v1/grades/${encodeURIComponent(targetId)}/override`,
+          method: "POST",
+          json: { total_score: extras.totalScore, reason: normalizedReason },
+          fetchFn,
+          apiBase,
+        });
+        if (!result.ok) {
+          setApiError(result.error);
+          setApiErrorStatus(result.status);
+          setPendingAction(null);
+          return;
         }
       }
       setData((prev) => ({
@@ -124,7 +239,9 @@ export function AdminOpsConsoleShell({
           ...prev.auditEvents,
         ],
       }));
-      setFeedback(`Đã ghi nhận phiên phúc khảo Override Grade (${targetId}) vào audit_events.`);
+      setFeedback(
+        `Đã ghi nhận phiên phúc khảo Override Grade (${targetId}) vào audit_events${syncLive ? "" : " (mô phỏng demo cục bộ)"}.`,
+      );
     }
     setPendingAction(null);
   };
@@ -133,23 +250,30 @@ export function AdminOpsConsoleShell({
     const target = data.featureFlags.find((f) => f.key === key);
     if (!target) return;
     const nextEnabled = !target.enabled;
-    const caller = fetchFn ?? (typeof fetch === "function" ? fetch : null);
-    if (caller) {
-      try {
-        await caller(`${apiBase}/api/v1/admin/feature-flags/${encodeURIComponent(key)}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ enabled: nextEnabled }),
-        });
-      } catch {
-        // Optimistic update preserved
+    setApiError(null);
+    setApiErrorStatus(null);
+    const syncLive = shouldSyncLiveEntity({ fetchFn, apiBase });
+    if (syncLive) {
+      const result = await workspaceCall({
+        url: `/api/v1/admin/feature-flags/${encodeURIComponent(key)}`,
+        method: "PATCH",
+        json: { is_enabled: nextEnabled },
+        fetchFn,
+        apiBase,
+      });
+      if (!result.ok) {
+        setApiError(result.error);
+        setApiErrorStatus(result.status);
+        return;
       }
     }
     setData((prev) => ({
       ...prev,
       featureFlags: prev.featureFlags.map((f) => (f.key === key ? { ...f, enabled: nextEnabled } : f)),
     }));
-    setFeedback(`Feature flag "${key}" -> ${nextEnabled ? "ENABLED" : "DISABLED"} (< 5s propagation).`);
+    setFeedback(
+      `Feature flag "${key}" -> ${nextEnabled ? "ENABLED" : "DISABLED"} (< 5s propagation)${syncLive ? "" : " (mô phỏng demo cục bộ)"}.`,
+    );
   };
 
   const renderMainContent = () => {
@@ -166,6 +290,13 @@ export function AdminOpsConsoleShell({
 
     return (
       <div className="mx-auto max-w-[1600px] space-y-6 px-4 py-5">
+        {apiError && (
+          <WorkspaceApiAlert
+            message={apiError}
+            status={apiErrorStatus}
+            onDismiss={() => setApiError(null)}
+          />
+        )}
         {uiResolution.kind === "OfflineRetryBanner" && (
           <OfflineRetryBanner pendingCount={initialUiOverrides?.pendingAutosaveCount ?? 0} />
         )}
@@ -368,6 +499,7 @@ export function AdminOpsConsoleShell({
           targetLabel={pendingAction.targetLabel}
           confirmLabel={pendingAction.confirmLabel}
           danger={pendingAction.action === "REPLAY_DLQ" || pendingAction.action === "OVERRIDE_GRADE"}
+          requireTotalScore={pendingAction.action === "OVERRIDE_GRADE"}
           onConfirm={handleConfirmReason}
           onCancel={() => setPendingAction(null)}
         />

@@ -7,7 +7,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select, text
+from sqlalchemy import bindparam, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contracts.event_catalog import GradeReleasedPayload, build_catalog_envelope
@@ -23,9 +23,12 @@ from app.modules.classes.public import (
     ClassMemberStatus,
     ClassRole,
     ClassroomPolicyError,
+    can_manage_class,
     filter_active_assignment_recipients,
     get_active_class_recipients,
     get_class_member,
+    is_class_participant,
+    list_classes,
     to_class_member_state,
 )
 from app.modules.outbox.public import enqueue
@@ -58,6 +61,23 @@ class AssignmentView:
     manually_released: bool
     created_at: datetime
     active_recipient_membership_ids: tuple[uuid.UUID, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class AssignmentSummaryView:
+    """An assignment with the paper it hands out, for list screens."""
+
+    id: uuid.UUID
+    class_id: uuid.UUID | None
+    group_id: uuid.UUID | None
+    assessment_version_id: uuid.UUID
+    assessment_id: uuid.UUID | None
+    assessment_title: str | None
+    available_from: datetime
+    due_at: datetime | None
+    max_attempts: int
+    reveal_policy: str
+    created_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -338,6 +358,127 @@ async def get_assignment(
         session, tenant_id=tenant_id, class_id=row.class_id, group_id=row.group_id
     )
     return _to_view(row, manually_released=released, recipients=recipients)
+
+
+async def list_assignments(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    membership_id: uuid.UUID | None = None,
+    class_id: uuid.UUID | None = None,
+) -> tuple[AssignmentSummaryView, ...]:
+    """Assignments of the tenant, newest first, optionally of one class.
+
+    With `membership_id` only assignments of the classes that membership teaches or learns in are returned (a
+    class it does not belong to yields nothing, not an error); without it, everything in the tenant.
+    """
+    stmt = select(AssessmentAssignment).where(AssessmentAssignment.tenant_id == tenant_id)
+    if membership_id is not None:
+        visible = {
+            c.id for c in await list_classes(session, tenant_id=tenant_id, membership_id=membership_id)
+        }
+        if class_id is not None and class_id not in visible:
+            return ()
+        stmt = stmt.where(AssessmentAssignment.class_id.in_(visible))
+    if class_id is not None:
+        stmt = stmt.where(AssessmentAssignment.class_id == class_id)
+    rows = (
+        (await session.execute(stmt.order_by(AssessmentAssignment.created_at.desc(), AssessmentAssignment.id.desc())))
+        .scalars()
+        .all()
+    )
+    if not rows:
+        return ()
+
+    version_ids = list({r.assessment_version_id for r in rows})
+    papers = {
+        row.version_id: (row.assessment_id, row.title)
+        for row in (
+            await session.execute(
+                text(
+                    "SELECT v.id AS version_id, a.id AS assessment_id, a.title AS title "
+                    "FROM assessment_versions v "
+                    "JOIN assessments a ON a.id = v.assessment_id AND a.tenant_id = v.tenant_id "
+                    "WHERE v.tenant_id = :tid AND v.id IN :ids"
+                ).bindparams(bindparam("ids", expanding=True)),
+                {"tid": tenant_id, "ids": version_ids},
+            )
+        )
+    }
+    return tuple(
+        AssignmentSummaryView(
+            id=r.id,
+            class_id=r.class_id,
+            group_id=r.group_id,
+            assessment_version_id=r.assessment_version_id,
+            assessment_id=papers.get(r.assessment_version_id, (None, None))[0],
+            assessment_title=papers.get(r.assessment_version_id, (None, None))[1],
+            available_from=r.available_from,
+            due_at=r.due_at,
+            max_attempts=r.max_attempts,
+            reveal_policy=r.reveal_policy,
+            created_at=r.created_at,
+        )
+        for r in rows
+    )
+
+
+async def can_view_assignment(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    assignment: AssignmentView,
+    membership_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> bool:
+    """Who sees an assignment: its author, whoever teaches or sits in its class, or (group) in a class of its group."""
+    if assignment.assigned_by == user_id:
+        return True
+    if assignment.class_id is not None:
+        return await is_class_participant(
+            session, tenant_id=tenant_id, class_id=assignment.class_id, membership_id=membership_id
+        )
+    if assignment.group_id is not None:
+        found = await session.execute(
+            text(
+                "SELECT 1 FROM classes c "
+                "WHERE c.tenant_id = :tid AND c.group_id = :gid AND (c.teacher_membership_id = :mid OR EXISTS ("
+                "  SELECT 1 FROM class_members cm WHERE cm.tenant_id = c.tenant_id AND cm.class_id = c.id "
+                "  AND cm.membership_id = :mid AND cm.status = 'ACTIVE')) LIMIT 1"
+            ),
+            {"tid": tenant_id, "gid": assignment.group_id, "mid": membership_id},
+        )
+        return found.first() is not None
+    return False
+
+
+async def can_manage_assignment_target(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    class_id: uuid.UUID | None,
+    group_id: uuid.UUID | None,
+    membership_id: uuid.UUID,
+) -> bool:
+    """Who may hand out or change an assignment: whoever teaches (or assists) its class, or a class of its group.
+
+    Having written the assignment is not enough: a teacher moved off a class stops steering it.
+    """
+    if class_id is not None:
+        return await can_manage_class(session, tenant_id=tenant_id, class_id=class_id, membership_id=membership_id)
+    if group_id is not None:
+        found = await session.execute(
+            text(
+                "SELECT 1 FROM classes c "
+                "WHERE c.tenant_id = :tid AND c.group_id = :gid AND (c.teacher_membership_id = :mid OR EXISTS ("
+                "  SELECT 1 FROM class_members cm WHERE cm.tenant_id = c.tenant_id AND cm.class_id = c.id "
+                "  AND cm.membership_id = :mid AND cm.status = 'ACTIVE' "
+                "  AND cm.role_in_class = 'TEACHING_ASSISTANT')) LIMIT 1"
+            ),
+            {"tid": tenant_id, "gid": group_id, "mid": membership_id},
+        )
+        return found.first() is not None
+    return False
 
 
 async def update_assignment(

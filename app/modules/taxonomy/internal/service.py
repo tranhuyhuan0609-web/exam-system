@@ -412,3 +412,57 @@ async def add_taxonomy_alias(
     session.add(alias)
     await session.flush()
     return alias.id
+
+
+@dataclass(frozen=True, slots=True)
+class TaxonomyHintRecord:
+    """What a solver needs to choose a topic: id, code, current name and aliases (no paging, no cursor)."""
+
+    id: uuid.UUID
+    code: str
+    code_path: str
+    name: str
+    aliases: tuple[str, ...]
+
+
+async def list_taxonomy_hints(
+    session: AsyncSession, *, root_path: str | None = None, limit: int = 500
+) -> tuple[TaxonomyHintRecord, ...]:
+    """The active nodes visible to the tenant (its own and the system's, by RLS) with names and aliases."""
+    stmt = (
+        select(TaxonomyNode.id, TaxonomyNode.code, TaxonomyNode.code_path, TaxonomyNodeVersion.name)
+        .outerjoin(
+            TaxonomyNodeVersion,
+            and_(
+                TaxonomyNodeVersion.taxonomy_node_id == TaxonomyNode.id,
+                TaxonomyNodeVersion.version_no == TaxonomyNode.current_version_no,
+            ),
+        )
+        .where(TaxonomyNode.is_active.is_(True))
+        .order_by(TaxonomyNode.code_path)
+        .limit(max(1, min(limit, 2000)))
+    )
+    if root_path is not None:
+        stmt = stmt.where(TaxonomyNode.code_path.descendant_of(validate_ltree_path(root_path)))
+    rows = (await session.execute(stmt)).all()
+    ids = [r.id for r in rows]
+    aliases: dict[uuid.UUID, list[str]] = {}
+    if ids:
+        for node_id, alias in (
+            await session.execute(
+                select(TaxonomyAlias.taxonomy_node_id, TaxonomyAlias.alias_name).where(
+                    TaxonomyAlias.taxonomy_node_id.in_(ids)
+                )
+            )
+        ).all():
+            aliases.setdefault(node_id, []).append(alias)
+    return tuple(
+        TaxonomyHintRecord(
+            id=r.id,
+            code=r.code,
+            code_path=str(r.code_path),
+            name=r.name or r.code,
+            aliases=tuple(aliases.get(r.id, ())),
+        )
+        for r in rows
+    )

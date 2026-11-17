@@ -6,18 +6,16 @@ role with no grant on any answer table: the paper they serve cannot contain a ke
 
 from __future__ import annotations
 
-import time
 import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Header, Request, Security, status
+from fastapi import APIRouter, Header, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict
 
-from app.config import get_settings
 from app.contracts.delivery import SanitizedExamPaperContract
 from app.modules.delivery.internal.service import (
     AttemptRecord,
@@ -25,6 +23,7 @@ from app.modules.delivery.internal.service import (
     DeliveryForbiddenError,
     DeliveryNotFoundError,
     get_attempt_paper,
+    list_attempts,
     start_exam_session,
     submit_attempt,
 )
@@ -32,18 +31,14 @@ from app.platform.auth_context import (
     ActorContext,
     AuthTokenError,
     TenantSpoofingError,
-    decode_and_verify_actor_token,
-    extract_bearer_token,
-    guard_no_tenant_spoofing,
 )
-from app.platform.errors import PlatformErrorCode, build_problem_detail
+from app.platform.errors import PlatformErrorCode
+from app.platform.http_auth import OptionalBearer, problem_json, verify_actor
 from app.platform.pagination import resolve_correlation_id
 from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1", tags=["delivery"])
 
-_bearer_scheme = HTTPBearer(auto_error=False)
-OptionalBearer = Annotated[HTTPAuthorizationCredentials | None, Security(_bearer_scheme)]
 IdempotencyKey = Annotated[str | None, Header(alias="Idempotency-Key", min_length=1, max_length=64)]
 
 
@@ -51,6 +46,8 @@ class StartRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     assessment_id: uuid.UUID
+    # The class assignment this sitting belongs to (its gradebook reads it); omit for open practice.
+    assignment_id: uuid.UUID | None = None
 
 
 class AttemptResponse(BaseModel):
@@ -73,6 +70,20 @@ class SubmitResponse(AttemptResponse):
     replayed: bool
 
 
+class AttemptSummaryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    attempt_id: uuid.UUID
+    assessment_id: uuid.UUID
+    assessment_title: str
+    assessment_version_id: uuid.UUID
+    assignment_id: uuid.UUID | None
+    status: str
+    started_at: datetime
+    deadline_at: datetime
+    submitted_at: datetime | None
+
+
 def _attempt_values(record: AttemptRecord) -> dict[str, Any]:
     return {
         "attempt_id": record.id,
@@ -92,7 +103,7 @@ def _problem(
     status_override: int | None = None,
     extensions: dict[str, Any] | None = None,
 ) -> JSONResponse:
-    problem = build_problem_detail(
+    return problem_json(
         code=code,
         detail=detail,
         instance=request.url.path,
@@ -100,30 +111,14 @@ def _problem(
         status_override=status_override,
         extensions=extensions,
     )
-    return JSONResponse(
-        status_code=problem.status,
-        content=problem.to_dict(),
-        media_type="application/problem+json",
-        headers={"X-Correlation-Id": correlation_id},
-    )
 
 
 def _authenticate(
     request: Request, credentials: HTTPAuthorizationCredentials | None
 ) -> tuple[ActorContext | None, str, JSONResponse | None]:
     correlation_id = resolve_correlation_id(request.headers.get("x-correlation-id"))
-    raw_auth = request.headers.get("authorization")
-    if not raw_auth and credentials is not None:
-        raw_auth = f"{credentials.scheme} {credentials.credentials}"
     try:
-        actor = decode_and_verify_actor_token(
-            extract_bearer_token(raw_auth), secret=get_settings().secret_key, now_epoch=int(time.time())
-        )
-        guard_no_tenant_spoofing(
-            actor,
-            claimed_tenant_header=request.headers.get("x-tenant-id"),
-            claimed_membership_header=request.headers.get("x-membership-id"),
-        )
+        actor = verify_actor(request, credentials)
     except AuthTokenError as exc:
         return None, correlation_id, _problem(PlatformErrorCode.UNAUTHORIZED, str(exc), request, correlation_id)
     except TenantSpoofingError as exc:
@@ -162,6 +157,7 @@ async def post_start(body: StartRequest, request: Request, credentials: Optional
                 tenant_id=actor.tenant_id,
                 membership_id=actor.membership_id,
                 assessment_id=body.assessment_id,
+                assignment_id=body.assignment_id,
                 correlation_id=correlation_id,
             )
     except (DeliveryNotFoundError, DeliveryForbiddenError, DeliveryConflictError) as exc:
@@ -172,6 +168,41 @@ async def post_start(body: StartRequest, request: Request, credentials: Optional
     return JSONResponse(
         status_code=status.HTTP_200_OK if result.resumed else status.HTTP_201_CREATED,
         content=jsonable_encoder(payload),
+        headers={"X-Correlation-Id": correlation_id},
+    )
+
+
+@router.get("/attempts", response_model=list[AttemptSummaryResponse])
+async def get_attempts(
+    request: Request,
+    status_filter: Annotated[str | None, Query(alias="status")] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    credentials: OptionalBearer = None,
+) -> Any:
+    """The caller's own attempts, newest first (resume one from here)."""
+    actor, correlation_id, err = _authenticate(request, credentials)
+    if err is not None:
+        return err
+    assert actor is not None
+    async with tenant_transaction(actor.tenant_id, role=DbRole.EXAM_SESSION_RW) as session:
+        items = await list_attempts(session, membership_id=actor.membership_id, status=status_filter, limit=limit)
+    return JSONResponse(
+        content=jsonable_encoder(
+            [
+                AttemptSummaryResponse(
+                    attempt_id=i.id,
+                    assessment_id=i.assessment_id,
+                    assessment_title=i.assessment_title,
+                    assessment_version_id=i.assessment_version_id,
+                    assignment_id=i.assignment_id,
+                    status=i.status,
+                    started_at=i.started_at,
+                    deadline_at=i.deadline_at,
+                    submitted_at=i.submitted_at,
+                )
+                for i in items
+            ]
+        ),
         headers={"X-Correlation-Id": correlation_id},
     )
 

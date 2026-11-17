@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { StudioHeader } from "@/components/studio/StudioHeader";
 import { SafeKatexText } from "@/components/workspace/SafeKatexText";
+import { WorkspaceApiAlert } from "@/components/workspace/WorkspaceApiAlert";
 import {
   EmptyState,
   ErrorBoundary,
@@ -21,6 +22,7 @@ import {
 } from "@/lib/block-studio-linter";
 import { validateShortNumericInput } from "@/lib/exam-input-policy";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
+import { shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
 import { StudioBlockEditor } from "./StudioBlockEditor";
 import {
   BLOCK_TYPE_META,
@@ -38,6 +40,75 @@ export interface QuestionAuthoringShellProps {
   apiBase?: string;
 }
 
+export function buildCreateQuestionPayload(draft: StudioQuestionDraftData): {
+  stable_code: string;
+  item_type: StudioQuestionDraftData["questionType"];
+  difficulty_level: StudioQuestionDraftData["difficulty"];
+  stem_text: string;
+  options: Array<{ key: string; text: string }>;
+  answer_schema: Record<string, unknown>;
+  rationale: Record<string, unknown> | null;
+  exam_framework_tags: string[];
+  access_tier: "FREE" | "TEACHER_PRO";
+  rights_status: "OWNED";
+} {
+  const clusterKeys = ["a", "b", "c", "d"] as const;
+  let options: Array<{ key: string; text: string }> = draft.options.map((opt) => ({
+    key: opt.key.trim(),
+    text: opt.label.trim(),
+  }));
+  let answerSchema: Record<string, unknown>;
+
+  if (draft.questionType === "SINGLE_CHOICE") {
+    answerSchema = { correct_option: draft.correctChoice };
+  } else if (draft.questionType === "MULTIPLE_SELECT") {
+    answerSchema = { correct_options: [draft.correctChoice] };
+  } else if (draft.questionType === "CLUSTER_TRUE_FALSE") {
+    options = clusterKeys.map((key, idx) => ({
+      key,
+      text: draft.options[idx]?.label.trim() || `Mệnh đề ${key}`,
+    }));
+    answerSchema = {
+      statements: {
+        a: Boolean(draft.clusterTargets.a),
+        b: Boolean(draft.clusterTargets.b),
+        c: Boolean(draft.clusterTargets.c),
+        d: Boolean(draft.clusterTargets.d),
+      },
+    };
+  } else if (draft.questionType === "SHORT_NUMERIC") {
+    options = [];
+    answerSchema = { value: draft.shortNumericAnswer.trim() };
+  } else if (draft.questionType === "ESSAY") {
+    options = [];
+    answerSchema = {
+      rubric:
+        draft.solutionBlocks
+          .map((b) => (b.markdown ?? "").trim())
+          .filter(Boolean)
+          .join("\n\n") || "Đáp án tự luận chuẩn",
+      max_points: 1,
+    };
+  } else {
+    options = [];
+    answerSchema = { child_question_ids: [] };
+  }
+
+  const trimmedFramework = draft.frameworkTag.trim();
+  return {
+    stable_code: draft.stableCode.trim(),
+    item_type: draft.questionType,
+    difficulty_level: draft.difficulty,
+    stem_text: draft.stemMarkdown.trim(),
+    options,
+    answer_schema: answerSchema,
+    rationale: draft.solutionBlocks.length > 0 ? { blocks: draft.solutionBlocks } : null,
+    exam_framework_tags: [trimmedFramework || "SGK_KNTT"],
+    access_tier: draft.requiresProAsset ? "TEACHER_PRO" : "FREE",
+    rights_status: "OWNED",
+  };
+}
+
 export function QuestionAuthoringShell({
   initialDraft,
   assetCatalog,
@@ -52,6 +123,8 @@ export function QuestionAuthoringShell({
   );
   const [previewViewport, setPreviewViewport] = useState<"DESKTOP" | "MOBILE">("DESKTOP");
   const [submitFeedback, setSubmitFeedback] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiErrorStatus, setApiErrorStatus] = useState<number | null>(null);
   const [conflictDismissed, setConflictDismissed] = useState(false);
 
   const catalog = useMemo(() => assetCatalog ?? createDefaultStudioAssetCatalog(), [assetCatalog]);
@@ -119,17 +192,26 @@ export function QuestionAuthoringShell({
 
   const handleSubmitQuestion = async () => {
     if (!validatorIssues.valid) return;
-    const caller = fetchFn ?? (typeof fetch === "function" ? fetch : null);
-    if (caller && apiBase !== "__OFFLINE__") {
-      try {
-        await caller(`${apiBase}/api/v1/questions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(draft),
-        });
-      } catch {
-        // Offline-safe optimistic confirmation
-      }
+    setApiError(null);
+    setApiErrorStatus(null);
+    if (!shouldSyncLiveEntity({ fetchFn, apiBase })) {
+      setSubmitFeedback(
+        `Đã kiểm định Pre-Submit Validator và lưu bản nháp cục bộ '${draft.stableCode}' (đăng nhập để lưu lên hệ thống).`,
+      );
+      return;
+    }
+    const result = await workspaceCall({
+      url: "/api/v1/questions",
+      method: "POST",
+      json: buildCreateQuestionPayload(draft),
+      fetchFn,
+      apiBase,
+    });
+    if (!result.ok) {
+      setApiError(result.error);
+      setApiErrorStatus(result.status);
+      setSubmitFeedback(null);
+      return;
     }
     setSubmitFeedback(`Đã kiểm định Pre-Submit Validator và lưu câu hỏi '${draft.stableCode}'.`);
   };
@@ -185,6 +267,15 @@ export function QuestionAuthoringShell({
           <EmptyState title="Chưa khởi tạo biểu mẫu câu hỏi" />
         ) : (
           <main data-testid="ws4-question-studio-layout" className="mx-auto max-w-[1600px] px-4 py-5">
+            {apiError && (
+              <div className="mb-4">
+                <WorkspaceApiAlert
+                  message={apiError}
+                  status={apiErrorStatus}
+                  onDismiss={() => setApiError(null)}
+                />
+              </div>
+            )}
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-xs">
               <div>
                 <h1 className="text-lg font-extrabold text-slate-900">

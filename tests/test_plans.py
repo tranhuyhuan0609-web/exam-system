@@ -91,7 +91,7 @@ def test_the_day_is_vietnam_time():
     assert day_start(late) == datetime(2026, 11, 5, 17, 0, tzinfo=UTC)
 
 
-def test_students_can_request_pro_and_admin_grants_it(client, admin_client, make_user, db):
+def test_students_can_request_pro_and_admin_grants_it(client, admin_client, admin_csrf, make_user, db):
     from fastapi.testclient import TestClient
 
     from app.main import app
@@ -104,5 +104,21 @@ def test_students_can_request_pro_and_admin_grants_it(client, admin_client, make
     page = admin_client.get("/admin/users").text  # the requests tab includes students
     assert "hs@example.com" in page
     user_id = db(lambda s: s.scalar(select(User.id).where(User.email == "hs@example.com")))
-    admin_client.post(f"/admin/users/{user_id}/pro", data={"days": "30"})
+    admin_client.post(f"/admin/users/{user_id}/pro", data={"csrf_token": admin_csrf, "days": "30"})
     assert "còn hạn đến" in student.get("/plans").text
+
+
+def test_legacy_admin_forms_refuse_a_post_without_a_csrf_token(admin_client, admin_csrf, make_user, db):
+    """A missing csrf_token is refused like a wrong one (it used to be skipped): neither Pro nor the role changes."""
+    make_user("hs2@example.com")
+    uid = db(lambda s: s.scalar(select(User.id).where(User.email == "hs2@example.com")))
+    for token in (None, "wrong-token"):
+        data = {"days": "30"} if token is None else {"days": "30", "csrf_token": token}
+        admin_client.post(f"/admin/users/{uid}/pro", data=data)
+        admin_client.post(
+            f"/admin/users/{uid}/role", data={"role": "TEACHER", **({} if token is None else {"csrf_token": token})}
+        )
+    user = db(lambda s: s.scalar(select(User).where(User.id == uid)))
+    assert user.pro_until is None and user.role == UserRole.STUDENT
+    admin_client.post(f"/admin/users/{uid}/pro", data={"days": "30", "csrf_token": admin_csrf})
+    assert db(lambda s: s.scalar(select(User.pro_until).where(User.id == uid))) is not None

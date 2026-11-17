@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import io
+import tempfile
 import uuid
+import zipfile
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO
 
-from sqlalchemy import func, select
+from sqlalchemy import Uuid, and_, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.contracts.events import EventEnvelopeContract
@@ -18,6 +23,7 @@ from app.modules.assets.public import (
     UploadValidationError,
     register_bronze_asset_from_bytes,
 )
+from app.modules.drive_sync.public import ArchiveSecurityViolationError, SafeArchivePolicy, extract_zip_safely
 from app.modules.ingestion.internal.fingerprint import (
     DEFAULT_CHUNK_SIZE,
     StreamFingerprint,
@@ -52,6 +58,7 @@ from app.platform.file_magic import (
     FileSignatureError,
     inspect_uploaded_bytes,
 )
+from app.platform.pagination import CursorError, clamp_limit, decode_cursor, encode_cursor
 
 ALLOWED_JOB_TYPES = frozenset({"EXAM_IMPORT", "DRIVE_SYNC", "WEB_CRAWL", "REPROCESS_EXTRACTION"})
 DEFAULT_STAGE_INGEST = "INGEST"
@@ -124,6 +131,38 @@ class SubmitImportResult:
     idempotent_replay: bool
     job: ImportJobView
     document_version: DocumentVersionView
+
+
+@dataclass(frozen=True, slots=True)
+class ArchiveMemberResult:
+    """One file of an uploaded archive that became (or already was) an import job."""
+
+    archive_path: str
+    result: SubmitImportResult
+
+
+@dataclass(frozen=True, slots=True)
+class ArchiveSkippedMember:
+    """One file of an uploaded archive that was refused, with the reason the user can act on."""
+
+    archive_path: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class SubmitArchiveResult:
+    archive_sha256: str
+    members: tuple[ArchiveMemberResult, ...]
+    skipped: tuple[ArchiveSkippedMember, ...]
+    ignored_entries: int
+
+    @property
+    def is_duplicate(self) -> bool:
+        return all(m.result.is_duplicate for m in self.members)
+
+    @property
+    def idempotent_replay(self) -> bool:
+        return all(m.result.idempotent_replay for m in self.members)
 
 
 def _validate_safe_filename(filename: str) -> str:
@@ -431,6 +470,115 @@ async def _apply_state_transition(
     )
 
 
+# An exam package holds papers and keys only; deeper than the Drive default (4) because schools nest folders.
+ARCHIVE_POLICY = SafeArchivePolicy(allowed_extensions=(".pdf", ".docx"), max_directory_depth=8)
+MAX_ARCHIVE_MEMBERS = 50
+_ARCHIVE_JUNK_PREFIXES = (".", "~$")
+
+
+def _unpack_archive_members(raw_bytes: bytes) -> tuple[list[tuple[str, bytes]], int]:
+    """Unpack a ZIP in a throwaway directory with the central-directory checks of A03 (blocking: run in a thread).
+
+    Returns (archive_path, bytes) of every importable file and the number of entries that were not importable.
+    """
+    with tempfile.TemporaryDirectory(prefix="ulp-archive-") as tmp:
+        root = Path(tmp)
+        zip_path = root / "upload.zip"
+        zip_path.write_bytes(raw_bytes)
+        out_dir = root / "out"
+        try:
+            extracted = extract_zip_safely(zip_path, out_dir, ARCHIVE_POLICY)
+            with zipfile.ZipFile(zip_path) as zf:
+                total_files = sum(1 for info in zf.infolist() if not info.is_dir())
+        except ArchiveSecurityViolationError as exc:
+            raise IngestionValidationError(f"archive refused as unsafe: {exc}") from exc
+        except zipfile.BadZipFile as exc:
+            raise IngestionValidationError("archive is not a valid .zip file") from exc
+        members: list[tuple[str, bytes]] = []
+        for path in sorted(extracted):
+            name = PurePosixPath(path.relative_to(out_dir.resolve()).as_posix())
+            if any(part.startswith(_ARCHIVE_JUNK_PREFIXES) or part == "__MACOSX" for part in name.parts):
+                continue
+            members.append((name.as_posix(), path.read_bytes()))
+        return members, max(0, total_files - len(members))
+
+
+async def submit_archive_import(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    raw_bytes: bytes,
+    filename: str,
+    job_type: str = "EXAM_IMPORT",
+    source_id: uuid.UUID | None = None,
+    title: str | None = None,
+    idempotency_key: str | None = None,
+    max_attempts: int = 3,
+    requires_pro: bool = False,
+    start_immediately: bool = True,
+    correlation_id: str = "ingestion-import",
+) -> SubmitArchiveResult:
+    """Unpack a `.zip` of exam files safely and import every `.pdf` / `.docx` in it as its own job.
+
+    The archive itself is not stored: each file inside goes through `submit_import` (magic bytes, OOXML guards,
+    bronze asset, de-duplication), inside a savepoint, so one corrupt file is reported in `skipped` and does not
+    sink the others. An archive without a single importable file is refused.
+    """
+    safe_filename = _validate_safe_filename(filename)
+    if not raw_bytes:
+        raise IngestionValidationError("uploaded file is empty")
+    try:
+        inspect_uploaded_bytes(filename=safe_filename, raw_bytes=raw_bytes)
+    except FileSignatureError as exc:
+        raise IngestionValidationError(f"file validation failed: {exc}") from exc
+
+    archive_sha = hashlib.sha256(raw_bytes).hexdigest()
+    found, ignored = await asyncio.to_thread(_unpack_archive_members, raw_bytes)
+    if len(found) > MAX_ARCHIVE_MEMBERS:
+        raise IngestionValidationError(
+            f"archive holds {len(found)} importable files; the limit is {MAX_ARCHIVE_MEMBERS} per upload"
+        )
+
+    imported: list[ArchiveMemberResult] = []
+    skipped: list[ArchiveSkippedMember] = []
+    for archive_path, payload in found:
+        member_name = PurePosixPath(archive_path).name
+        member_sha = hashlib.sha256(payload).hexdigest()
+        member_key = f"{idempotency_key}:{member_sha[:16]}" if idempotency_key else None
+        try:
+            async with session.begin_nested():
+                result = await submit_import(
+                    session,
+                    tenant_id=tenant_id,
+                    raw_stream=payload,
+                    filename=member_name,
+                    job_type=job_type,
+                    source_id=source_id,
+                    title=f"{title} / {member_name}" if title else None,
+                    idempotency_key=member_key,
+                    max_attempts=max_attempts,
+                    requires_pro=requires_pro,
+                    start_immediately=start_immediately,
+                    correlation_id=correlation_id,
+                )
+        except IngestionValidationError as exc:
+            skipped.append(ArchiveSkippedMember(archive_path=archive_path, reason=str(exc)))
+            continue
+        imported.append(ArchiveMemberResult(archive_path=archive_path, result=result))
+
+    if not imported:
+        detail = "; ".join(f"{s.archive_path}: {s.reason}" for s in skipped[:3])
+        raise IngestionValidationError(
+            "archive holds no importable .pdf or .docx file" + (f" ({detail})" if detail else "")
+        )
+    return SubmitArchiveResult(
+        archive_sha256=archive_sha,
+        members=tuple(imported),
+        skipped=tuple(skipped),
+        ignored_entries=ignored,
+    )
+
+
 async def submit_import(
     session: AsyncSession,
     *,
@@ -564,7 +712,7 @@ async def submit_import(
         raise IngestionValidationError(str(exc)) from exc
 
     effective_external_id = (external_id or f"sha256:{fingerprint.sha256}")[:255]
-    src_doc = (
+    source_doc = (
         await session.execute(
             select(SourceDocument).where(
                 SourceDocument.source_id == source.id,
@@ -572,8 +720,8 @@ async def submit_import(
             )
         )
     ).scalar_one_or_none()
-    if src_doc is None:
-        src_doc = SourceDocument(
+    if source_doc is None:
+        source_doc = SourceDocument(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
             source_id=source.id,
@@ -588,7 +736,7 @@ async def submit_import(
                 "has_ooxml_mathtype_or_drawings": verified.has_ooxml_mathtype_or_drawings,
             },
         )
-        session.add(src_doc)
+        session.add(source_doc)
         await session.flush()
         next_version_no = 1
     else:
@@ -596,7 +744,7 @@ async def submit_import(
             (
                 await session.execute(
                     select(func.coalesce(func.max(DocumentVersion.version_no), 0)).where(
-                        DocumentVersion.source_document_id == src_doc.id
+                        DocumentVersion.source_document_id == source_doc.id
                     )
                 )
             ).scalar_one()
@@ -606,7 +754,7 @@ async def submit_import(
     doc_version = DocumentVersion(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
-        source_document_id=src_doc.id,
+        source_document_id=source_doc.id,
         version_no=next_version_no,
         raw_asset_id=asset_view.id,
         checksum_sha256=fingerprint.sha256,
@@ -741,7 +889,145 @@ async def cancel_import_job(
     )
 
 
+_LIST_IMPORTS_ROUTE = "GET /api/v1/imports"
+# The exam import (review session) opened for a job: through the extraction run of the job or of its document version.
+_EXAM_IMPORT_OF_JOB_SQL = (
+    "(SELECT es.id FROM exam_import_sessions es "
+    "JOIN extraction_runs er ON er.id = es.extraction_run_id AND er.tenant_id = es.tenant_id "
+    "WHERE er.tenant_id = acquisition_jobs.tenant_id "
+    "AND (er.acquisition_job_id = acquisition_jobs.id "
+    "OR er.document_version_id = acquisition_jobs.document_version_id) "
+    "ORDER BY es.created_at DESC LIMIT 1)"
+)
+JOB_STATUSES = ("QUEUED", "RUNNING", "COMPLETED", "FAILED", "DEAD_LETTER", "CANCELLED")
+
+
+@dataclass(frozen=True, slots=True)
+class ImportJobSummary:
+    """One import job of a list (no stage runs: `get_import_job` has them) with what the uploaded file is."""
+
+    id: uuid.UUID
+    source_id: uuid.UUID | None
+    document_version_id: uuid.UUID | None
+    job_type: str
+    job_status: str
+    current_stage: str | None
+    attempt_count: int
+    last_error_code: str | None
+    title: str | None
+    mime_type: str | None
+    page_count: int | None
+    rights_status: str | None
+    exam_import_id: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ImportJobPage:
+    items: tuple[ImportJobSummary, ...]
+    next_cursor: str | None
+    has_more: bool
+    limit: int
+
+
+async def list_import_jobs(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    cursor_secret: str,
+    job_status: str | None = None,
+    job_type: str | None = None,
+    limit: int | None = None,
+    cursor: str | None = None,
+) -> ImportJobPage:
+    """The tenant's import jobs, newest first (cursor on created_at, id); another tenant's jobs are never listed."""
+    safe_limit = clamp_limit(limit)
+    if job_status is not None and job_status not in JOB_STATUSES:
+        raise IngestionValidationError(f"unsupported job_status: {job_status!r}")
+    if job_type is not None and job_type not in ALLOWED_JOB_TYPES:
+        raise IngestionValidationError(f"unsupported job_type: {job_type!r}")
+    stmt = (
+        select(AcquisitionJob, DocumentVersion, SourceDocument, literal_column(_EXAM_IMPORT_OF_JOB_SQL, Uuid()))
+        .outerjoin(DocumentVersion, DocumentVersion.id == AcquisitionJob.document_version_id)
+        .outerjoin(SourceDocument, SourceDocument.id == DocumentVersion.source_document_id)
+        .where(AcquisitionJob.tenant_id == tenant_id)
+    )
+    if job_status is not None:
+        stmt = stmt.where(AcquisitionJob.job_status == job_status)
+    if job_type is not None:
+        stmt = stmt.where(AcquisitionJob.job_type == job_type)
+    if cursor is not None:
+        decoded = decode_cursor(
+            cursor,
+            secret=cursor_secret,
+            allowed_sort_fields=frozenset({"created_at"}),
+            expected_sort_field="created_at",
+            expected_direction="desc",
+            tenant_id=str(tenant_id),
+            route=_LIST_IMPORTS_ROUTE,
+        )
+        try:
+            after_at = datetime.fromisoformat(str(decoded.sort_value))
+            after_id = uuid.UUID(decoded.tie_id)
+        except ValueError as exc:
+            raise CursorError("malformed cursor payload") from exc
+        stmt = stmt.where(
+            or_(
+                AcquisitionJob.created_at < after_at,
+                and_(AcquisitionJob.created_at == after_at, AcquisitionJob.id < after_id),
+            )
+        )
+    rows = (
+        await session.execute(
+            stmt.order_by(AcquisitionJob.created_at.desc(), AcquisitionJob.id.desc()).limit(safe_limit + 1)
+        )
+    ).all()
+    has_more = len(rows) > safe_limit
+    items = tuple(
+        ImportJobSummary(
+            id=job.id,
+            source_id=job.source_id,
+            document_version_id=job.document_version_id,
+            job_type=job.job_type,
+            job_status=job.job_status,
+            current_stage=job.current_stage,
+            attempt_count=job.attempt_count,
+            last_error_code=job.last_error_code,
+            title=None if doc is None else doc.title,
+            mime_type=None if doc is None else doc.mime_type,
+            page_count=None if dv is None else dv.page_count,
+            rights_status=None if doc is None else doc.rights_status,
+            exam_import_id=exam_import_id,
+            created_at=job.created_at,
+            updated_at=job.updated_at,
+        )
+        for job, dv, doc, exam_import_id in rows[:safe_limit]
+    )
+    next_cursor: str | None = None
+    if has_more and items:
+        last = items[-1]
+        next_cursor = encode_cursor(
+            sort_field="created_at",
+            sort_value=last.created_at.isoformat(),
+            tie_id=str(last.id),
+            direction="desc",
+            secret=cursor_secret,
+            tenant_id=str(tenant_id),
+            route=_LIST_IMPORTS_ROUTE,
+        )
+    return ImportJobPage(items=items, next_cursor=next_cursor, has_more=has_more, limit=safe_limit)
+
+
 __all__ = [
+    "ArchiveMemberResult",
+    "ArchiveSkippedMember",
+    "SubmitArchiveResult",
+    "submit_archive_import",
+    "ImportJobPage",
+    "ImportJobSummary",
+    "JOB_STATUSES",
+    "list_import_jobs",
     "ALLOWED_JOB_TYPES",
     "DocumentVersionView",
     "DuplicateIdempotencyConflictError",

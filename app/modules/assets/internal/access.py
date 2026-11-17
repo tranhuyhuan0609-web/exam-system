@@ -16,10 +16,20 @@ MAX_ASSET_BYTES = 100 * 1024 * 1024
 ALLOWED_MIME_TYPES: frozenset[str] = frozenset(
     {
         "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/zip",
         "image/png",
         "image/jpeg",
         "image/webp",
         "audio/mpeg",
+    }
+)
+
+# Word files and ZIP archives of exam files: stored as they came (bronze), downloaded whole, never previewed.
+DOCUMENT_MIME_TYPES: frozenset[str] = frozenset(
+    {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/zip",
     }
 )
 
@@ -46,6 +56,7 @@ class AssetVariant(StrEnum):
     PREVIEW_PDF = "PREVIEW_PDF"
     IMAGE = "IMAGE"
     AUDIO = "AUDIO"
+    DOCUMENT = "DOCUMENT"
 
 
 class AssetEntitlementTier(StrEnum):
@@ -150,6 +161,8 @@ def _variant_for_mime(mime_type: str) -> AssetVariant:
         return AssetVariant.ORIGINAL_PDF
     if mime_type.startswith("image/"):
         return AssetVariant.IMAGE
+    if mime_type in DOCUMENT_MIME_TYPES:
+        return AssetVariant.DOCUMENT
     return AssetVariant.AUDIO
 
 

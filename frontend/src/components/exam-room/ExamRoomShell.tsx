@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AuthStatusBadge } from "@/components/auth/AuthStatusBadge";
 import {
   EmptyState,
   ErrorBoundary,
@@ -10,6 +12,13 @@ import {
   type SequenceConflictItem,
   SequenceConflictModal,
 } from "@/components/workspace/WorkspaceStateViews";
+import {
+  apiFetch,
+  formatProblemMessage,
+  getAccessToken,
+  hasDemoQueryFlag,
+  parseProblemDetail,
+} from "@/lib/auth-client";
 import {
   createExamAutosaveStore,
   type ExamAutosaveStore,
@@ -30,9 +39,14 @@ import {
   resolveWorkspaceUiState,
   type WorkspaceUiInput,
 } from "@/lib/ui-state-machine";
+import { isUuid } from "@/lib/workspace-api";
 import { ExamQuestionCard } from "./ExamQuestionCard";
 import { ExamQuestionPalette } from "./ExamQuestionPalette";
 import { ExamSubmitModal } from "./ExamSubmitModal";
+import {
+  hydrateAnswersFromSyncPayload,
+  mapPaperPayloadToExamAttempt,
+} from "./paper-adapter";
 import {
   type AnswerMap,
   type ChoiceLetter,
@@ -188,6 +202,7 @@ export function ExamRoomShell({
   const [isResolvingConflict, setIsResolvingConflict] = useState<boolean>(false);
   const [countdownTick, setCountdownTick] = useState<CountdownTick | null>(null);
   const [timeWarningBanner, setTimeWarningBanner] = useState<string | null>(null);
+  const [authWarningMsg, setAuthWarningMsg] = useState<string | null>(null);
   const [submitModalOpen, setSubmitModalOpen] = useState<boolean>(false);
 
   const [submissionState, setSubmissionState] = useState<SubmissionStateSnapshot>({
@@ -212,6 +227,10 @@ export function ExamRoomShell({
     injectedClock ?? new ServerClock({ fetchFn }),
   );
   const storeRef = useRef<ExamAutosaveStore | null>(injectedStore ?? null);
+  const isLocalDemoExam =
+    !fetchFn &&
+    !injectedStore &&
+    (Boolean(isDemoMode) || hasDemoQueryFlag() || !isUuid(attemptId));
   const answersRef = useRef<AnswerMap>(answers);
   answersRef.current = answers;
   const attemptRef = useRef<ExamAttemptData | null>(attempt);
@@ -220,18 +239,25 @@ export function ExamRoomShell({
   const conflictServerPayloadRef = useRef<Map<string, unknown>>(new Map());
 
   const ensureStore = useCallback((): ExamAutosaveStore | null => {
+    if (isLocalDemoExam) return null;
     if (storeRef.current) return storeRef.current;
     if (typeof indexedDB === "undefined") return null;
     storeRef.current = createExamAutosaveStore({
       apiBase,
       fetchFn,
+      getToken: () => getAccessToken() ?? "",
       autoAttachWindowListeners: true,
       onConflictModal: (questionVersionId, serverPayload) => {
         conflictServerPayloadRef.current.set(questionVersionId, serverPayload);
       },
+      onAuthRequired: (status, errorCode) => {
+        setAuthWarningMsg(
+          `Phiên đăng nhập (${status}${errorCode ? ` · ${errorCode}` : ""}) cần xác thực lại. Bài làm vẫn được giữ an toàn trong IndexedDB cục bộ.`,
+        );
+      },
     });
     return storeRef.current;
-  }, [apiBase, fetchFn]);
+  }, [apiBase, fetchFn, isLocalDemoExam]);
 
   const refreshQueueAndConflicts = useCallback(async () => {
     const store = ensureStore();
@@ -266,6 +292,9 @@ export function ExamRoomShell({
     return new ExamSubmissionCoordinator({
       attemptId,
       flushPendingAutosaves: async () => {
+        if (isLocalDemoExam) {
+          return { flushedCount: 0, remainingPendingCount: 0, status: "ok" };
+        }
         const store = ensureStore();
         if (!store) {
           return { flushedCount: 0, remainingPendingCount: 0, status: "ok" };
@@ -305,16 +334,25 @@ export function ExamRoomShell({
         return { flushedCount: 1, remainingPendingCount: 0, status: "ok" };
       },
       submitAttempt: async (req: SubmitAttemptRequest): Promise<SubmitAttemptResponse> => {
+        if (isLocalDemoExam) {
+          return {
+            status: "submitted",
+            receiptId: `DEMO-RCPT-${attemptId.slice(0, 8)}`,
+            submittedAtServerIso: new Date().toISOString(),
+          };
+        }
         try {
-          const res = await activeFetch(
+          const res = await apiFetch(
             `${apiBase}/api/v1/attempts/${attemptId}/submit`,
             {
               method: "POST",
+              fetchFn,
+              redirectOn401: false,
+              throwOnError: false,
               headers: {
-                "Content-Type": "application/json",
                 "Idempotency-Key": req.submitIdempotencyKey,
               },
-              body: JSON.stringify({
+              json: {
                 submit_idempotency_key: req.submitIdempotencyKey,
                 trigger: req.trigger,
                 forced_with_unsynced_answers: Boolean(req.forcedWithUnsyncedAnswers),
@@ -322,28 +360,40 @@ export function ExamRoomShell({
                 proctor_summary: proctorRef.current.getSummary(
                   typeof performance !== "undefined" ? performance.now() : 0,
                 ),
-              }),
+              },
             },
           );
+          if (res.status === 401) {
+            const problem = await parseProblemDetail(res);
+            setAuthWarningMsg(formatProblemMessage(problem));
+            return {
+              status: "rejected",
+              errorCode: problem.error_code ?? "AUTH_REQUIRED",
+              errorMessage: `${formatProblemMessage(problem)} — Vui lòng đăng nhập lại rồi thử nộp lại.`,
+            };
+          }
           if (res.status === 409) {
+            const problem = await parseProblemDetail(res);
             return {
               status: "sequence_conflict",
-              errorCode: "STALE_CLIENT_SEQUENCE",
-              errorMessage: "Phát hiện xung đột đồng bộ khi nộp bài.",
+              errorCode: problem.error_code ?? "STALE_CLIENT_SEQUENCE",
+              errorMessage: problem.detail ?? "Phát hiện xung đột đồng bộ khi nộp bài.",
             };
           }
           if (res.status === 400 || res.status === 422 || res.status === 403) {
+            const problem = await parseProblemDetail(res);
             return {
               status: "rejected",
-              errorCode: `HTTP_${res.status}`,
-              errorMessage: "Máy chủ từ chối yêu cầu nộp bài.",
+              errorCode: problem.error_code ?? `HTTP_${res.status}`,
+              errorMessage: formatProblemMessage(problem),
             };
           }
           if (!res.ok) {
+            const problem = await parseProblemDetail(res);
             return {
               status: "retryable_error",
-              errorCode: `HTTP_${res.status}`,
-              errorMessage: "Không thể kết nối máy chủ khi nộp bài. Vui lòng thử lại.",
+              errorCode: problem.error_code ?? `HTTP_${res.status}`,
+              errorMessage: formatProblemMessage(problem),
             };
           }
           const body = (await res.json()) as {
@@ -368,7 +418,7 @@ export function ExamRoomShell({
         setSubmissionState(snapshot);
       },
     });
-  }, [apiBase, attemptId, ensureStore, fetchFn, refreshQueueAndConflicts]);
+  }, [apiBase, attemptId, ensureStore, fetchFn, isLocalDemoExam, refreshQueueAndConflicts]);
 
   const loadAttempt = useCallback(async () => {
     if (initialAttempt !== undefined) {
@@ -376,7 +426,7 @@ export function ExamRoomShell({
       setLoading(false);
       return;
     }
-    if (isDemoMode) {
+    if (isDemoMode || hasDemoQueryFlag() || (!fetchFn && !isUuid(attemptId))) {
       setAttempt(createDemoExamAttempt(attemptId));
       setLoading(false);
       return;
@@ -385,11 +435,15 @@ export function ExamRoomShell({
     setLoading(true);
     setFatalErrorCode(null);
     setFatalErrorMsg(null);
-    const activeFetch = fetchFn ?? globalThis.fetch.bind(globalThis);
+    setAuthWarningMsg(null);
 
     try {
       void clockRef.current.sync(`${apiBase}/api/v1/time`).catch(() => undefined);
-      const res = await activeFetch(`${apiBase}/api/v1/attempts/${attemptId}`);
+      const res = await apiFetch(`${apiBase}/api/v1/attempts/${attemptId}/paper`, {
+        fetchFn,
+        redirectOn401: false,
+        throwOnError: false,
+      });
       if (res.status === 403) {
         let previewUrl: string | null = null;
         try {
@@ -414,16 +468,46 @@ export function ExamRoomShell({
       }
 
       if (!res.ok) {
-        setFatalErrorCode(`HTTP_${res.status}`);
-        setFatalErrorMsg("Không thể tải thông tin phòng thi từ máy chủ.");
+        const problem = await parseProblemDetail(res);
+        setFatalErrorCode(problem.error_code ?? `HTTP_${res.status}`);
+        setFatalErrorMsg(
+          res.status === 401
+            ? `${formatProblemMessage(problem)} — Vui lòng đăng nhập tại /dang-nhap rồi thử lại.`
+            : formatProblemMessage(problem),
+        );
         setLoading(false);
         return;
       }
 
-      const data = (await res.json()) as ExamAttemptData;
+      const rawPaper = (await res.json()) as unknown;
+      const data = mapPaperPayloadToExamAttempt(rawPaper, attemptId);
+
+      // Hydrate committed answers from /sync when available so reloads restore server state
+      let mergedAnswers: AnswerMap = data.initialAnswers ?? {};
+      try {
+        const syncRes = await apiFetch(`${apiBase}/api/v1/attempts/${attemptId}/sync`, {
+          fetchFn,
+          redirectOn401: false,
+          throwOnError: false,
+        });
+        if (syncRes.ok) {
+          const syncBody = (await syncRes.json()) as unknown;
+          mergedAnswers = {
+            ...mergedAnswers,
+            ...hydrateAnswersFromSyncPayload(
+              data.questions,
+              syncBody,
+              parseServerPayloadToAnswer,
+            ),
+          };
+        }
+      } catch {
+        // Non-fatal: continue with paper payload even if /sync hydration skips
+      }
+
       setAttempt(data);
-      if (data.initialAnswers) {
-        setAnswers(data.initialAnswers);
+      if (Object.keys(mergedAnswers).length > 0) {
+        setAnswers(mergedAnswers);
       }
       setLoading(false);
     } catch {
@@ -784,8 +868,25 @@ export function ExamRoomShell({
               >
                 Nộp bài
               </button>
+              <AuthStatusBadge />
             </div>
           </div>
+
+          {authWarningMsg && (
+            <div
+              role="alert"
+              data-testid="exam-auth-warning-banner"
+              className="flex flex-wrap items-center justify-center gap-3 border-t border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-900"
+            >
+              <span>{authWarningMsg}</span>
+              <Link
+                href={`/dang-nhap?next=${encodeURIComponent(`/phong-thi/${attemptId}`)}`}
+                className="rounded bg-rose-700 px-2.5 py-1 text-white hover:bg-rose-800"
+              >
+                Đăng nhập lại (Giữ bài làm)
+              </Link>
+            </div>
+          )}
 
           {/* Non-blocking 5m / 1m Warning */}
           {timeWarningBanner && (

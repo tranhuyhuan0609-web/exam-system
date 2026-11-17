@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
-import time
 import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query, Request, Security, status
+from fastapi import APIRouter, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, Response
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.modules.classes.public import can_manage_class
 from app.modules.gradebook.internal.service import (
     GradebookNotFoundError,
     GradebookProjectionView,
@@ -25,19 +26,16 @@ from app.platform.auth_context import (
     ActorContext,
     AuthTokenError,
     TenantSpoofingError,
-    decode_and_verify_actor_token,
-    extract_bearer_token,
-    guard_no_tenant_spoofing,
 )
-from app.platform.errors import PlatformErrorCode, build_problem_detail
+from app.platform.errors import PlatformErrorCode
+from app.platform.http_auth import OptionalBearer, problem_json, verify_actor
 from app.platform.pagination import resolve_correlation_id
 from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1/classes", tags=["gradebook"])
 
 _STAFF_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "TEACHER"})
-_bearer_scheme = HTTPBearer(auto_error=False)
-OptionalBearer = Annotated[HTTPAuthorizationCredentials | None, Security(_bearer_scheme)]
+_TENANT_WIDE_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN"})
 
 
 class GradebookStudentRowResponse(BaseModel):
@@ -82,19 +80,13 @@ def _problem_response(
     correlation_id: str,
     extensions: dict[str, Any] | None = None,
 ) -> JSONResponse:
-    problem = build_problem_detail(
+    return problem_json(
         code=code,
         detail=detail,
-        status_override=status_code,
         instance=instance,
         correlation_id=correlation_id,
+        status_override=status_code,
         extensions=extensions,
-    )
-    return JSONResponse(
-        status_code=problem.status,
-        content=problem.to_dict(),
-        media_type="application/problem+json",
-        headers={"X-Correlation-ID": correlation_id},
     )
 
 
@@ -105,20 +97,9 @@ def _authenticate(
     *,
     staff_only: bool = True,
 ) -> ActorContext | JSONResponse:
-    settings = get_settings()
-    raw_auth = request.headers.get("authorization")
-    if not raw_auth and credentials is not None:
-        raw_auth = f"{credentials.scheme} {credentials.credentials}"
-    if not raw_auth and request.cookies.get("ulp_access_token"):
-        raw_auth = f"Bearer {request.cookies['ulp_access_token']}"
+    get_settings()
     try:
-        token = extract_bearer_token(raw_auth)
-        actor = decode_and_verify_actor_token(token, secret=settings.secret_key, now_epoch=int(time.time()))
-        guard_no_tenant_spoofing(
-            actor,
-            claimed_tenant_header=request.headers.get("x-tenant-id"),
-            claimed_membership_header=request.headers.get("x-membership-id"),
-        )
+        actor = verify_actor(request, credentials, allow_cookie=True)
     except TenantSpoofingError as exc:
         return _problem_response(
             code=PlatformErrorCode.FORBIDDEN,
@@ -145,6 +126,20 @@ def _authenticate(
             correlation_id=correlation_id,
         )
     return actor
+
+
+async def _require_class_access(session: AsyncSession, auth: ActorContext, class_id: uuid.UUID) -> None:
+    """Same tenant and a staff role are not enough: grades of a class are read by who runs the class.
+
+    Tenant administrators see every class; a teacher only the classes they teach (or assist). Anyone else gets the
+    answer of a class that does not exist, so the ids of other classes are not confirmed.
+    """
+    if any(role.upper() in _TENANT_WIDE_ROLES for role in auth.roles):
+        return
+    if not await can_manage_class(
+        session, tenant_id=auth.tenant_id, class_id=class_id, membership_id=auth.membership_id
+    ):
+        raise GradebookNotFoundError(f"class {class_id} not found in tenant")
 
 
 def _serialize_projection(view: GradebookProjectionView) -> GradebookProjectionResponse:
@@ -184,6 +179,7 @@ async def get_gradebook_endpoint(
 
     try:
         async with tenant_transaction(auth.tenant_id, role=DbRole.APP_RW) as session:
+            await _require_class_access(session, auth, class_id)
             projection = await get_gradebook_projection(
                 session,
                 tenant_id=auth.tenant_id,
@@ -231,6 +227,7 @@ async def get_item_analysis_endpoint(
 
     try:
         async with tenant_transaction(auth.tenant_id, role=DbRole.APP_RW) as session:
+            await _require_class_access(session, auth, class_id)
             projection = await get_gradebook_projection(
                 session,
                 tenant_id=auth.tenant_id,
@@ -284,6 +281,7 @@ async def export_gradebook_csv_endpoint(
 
     try:
         async with tenant_transaction(auth.tenant_id, role=DbRole.APP_RW) as session:
+            await _require_class_access(session, auth, class_id)
             csv_body = await export_gradebook_csv(
                 session, tenant_id=auth.tenant_id, class_id=class_id, assignment_id=assignment_id
             )

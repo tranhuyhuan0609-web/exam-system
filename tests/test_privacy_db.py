@@ -188,6 +188,7 @@ def test_definer_functions_are_executable_by_the_api_role_only():
         "f04_store_user_key",
         "f04_load_user_key",
         "f04_shred_user_key",
+        "f04_login_memberships",
     )
     for name in functions:
         rows = run(

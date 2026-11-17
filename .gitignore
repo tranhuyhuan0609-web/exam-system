@@ -21,3 +21,5 @@ htmlcov/
 .claude/
 # Sample exams for the golden corpus stay out of Git (teacher names, phone numbers)
 tests/golden/files/
+.env.pilot
+pilot-out/

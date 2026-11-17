@@ -230,8 +230,12 @@ def validate_question_draft(draft: QuestionDraft) -> None:
         max_points = draft.answer_schema.get("max_points")
         if not rubric or not str(rubric).strip():
             raise QuestionAuthoringError("MISSING_ESSAY_RUBRIC", "ESSAY requires answer_schema['rubric']")
-        valid_type = isinstance(max_points, (int, float, Decimal)) and not isinstance(max_points, bool)
-        if not valid_type or not math.isfinite(max_points) or max_points <= 0:
+        if (
+            not isinstance(max_points, (int, float, Decimal))
+            or isinstance(max_points, bool)
+            or not math.isfinite(max_points)
+            or max_points <= 0
+        ):
             raise QuestionAuthoringError("INVALID_ESSAY_POINTS", "ESSAY requires finite positive max_points")
         return
 

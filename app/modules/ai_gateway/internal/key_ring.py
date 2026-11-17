@@ -9,6 +9,7 @@ from collections import deque
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
+from functools import partial
 
 
 class KeyStatus(StrEnum):
@@ -163,7 +164,7 @@ class ProviderKeyRing:
                     return KeyAcquisitionResult(
                         acquired=True,
                         key_id=key_id,
-                        secret_getter=lambda s=secret_value: s,
+                        secret_getter=partial(str, secret_value),
                     )
                 self._queued.discard(key_id)
 

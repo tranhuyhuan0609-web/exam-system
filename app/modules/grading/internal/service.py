@@ -20,7 +20,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Literal, cast
 
 from sqlalchemy import insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.contracts.enums import QuestionItemType
 from app.contracts.events import EventEnvelopeContract
 from app.contracts.scoring import NumericParsePolicy
+from app.modules.audit.public import append_audit_event
 from app.modules.grading.internal.models import Appeal, Grade, GradingDetail
 from app.modules.grading.internal.scoring import (
     ClusterTrueFalseAnswerKey,
@@ -44,6 +45,7 @@ from app.modules.outbox.public import enqueue
 
 ATTEMPT_GRADED_EVENT = "attempt.graded"
 GRADE_RELEASED_EVENT = "grade.released"
+OVERRIDE_GRADE_ACTION = "OVERRIDE_GRADE"
 REGRADE_REASONS = ("APPEAL_REGRADE", "ERRATA_REGRADE", "MANUAL_OVERRIDE")
 _TWO = Decimal("0.01")
 
@@ -109,7 +111,7 @@ def _appeal(row: Appeal) -> AppealRecord:
 
 def _policy(raw: Mapping[str, Any] | None) -> NumericParsePolicy:
     raw = dict(raw or {})
-    fields = {k: raw[k] for k in ("decimal_sep", "allow_thousand_sep", "max_chars") if k in raw}
+    fields: dict[str, Any] = {k: raw[k] for k in ("decimal_sep", "allow_thousand_sep", "max_chars") if k in raw}
     if "tolerance" in raw:
         fields["tolerance"] = Decimal(str(raw["tolerance"]))
     return NumericParsePolicy(**fields)
@@ -118,7 +120,8 @@ def _policy(raw: Mapping[str, Any] | None) -> NumericParsePolicy:
 def answer_key_for(item_type: str, answer_schema: Mapping[str, Any], numeric_policy: Mapping[str, Any] | None):
     """The typed key of one item from the C01 answer schema; None for types graded by rubric (ESSAY ...)."""
     if item_type == QuestionItemType.SINGLE_CHOICE:
-        return SingleChoiceAnswerKey(correct_key=str(answer_schema["correct_option"]))
+        correct = cast(Literal["A", "B", "C", "D"], str(answer_schema["correct_option"]))
+        return SingleChoiceAnswerKey(correct_key=correct)
     if item_type == QuestionItemType.CLUSTER_TRUE_FALSE:
         return ClusterTrueFalseAnswerKey(sub_items={k: bool(v) for k, v in answer_schema["statements"].items()})
     if item_type == QuestionItemType.SHORT_NUMERIC:
@@ -338,6 +341,108 @@ async def grade_attempt(
                 "revision_no": revision,
                 "total_score": str(total),
                 "wrong_question_version_ids": [r.item_id for r in results if not r.is_correct],
+            },
+        ),
+    )
+    return _grade(grade)
+
+
+async def override_grade(
+    session: AsyncSession,
+    grade_id: uuid.UUID,
+    *,
+    total_score: Decimal,
+    reason: str,
+    actor_id: uuid.UUID,
+    correlation_id: str,
+    now: datetime | None = None,
+) -> GradeRecord:
+    """A teacher sets the total of the current grade by hand: a MANUAL_OVERRIDE revision + 1, never an edit.
+
+    The per-item results of the overridden revision are copied (what the machine scored stays visible); only the
+    total differs. The reason is mandatory and the change is audited (`OVERRIDE_GRADE`, before and after) in the same
+    transaction. It runs as the grading worker, the only role that writes grades, and announces `attempt.graded`.
+    """
+    moment = now or datetime.now(UTC)
+    current = await session.scalar(
+        select(Grade).where(Grade.id == grade_id).with_for_update().execution_options(populate_existing=True)
+    )
+    if current is None:
+        raise GradingNotFoundError("grade not found")
+    if not current.is_current:
+        raise GradingConflictError("GRADE_NOT_CURRENT", f"revision {current.revision_no} was superseded by a regrade")
+    maximum = sum((Decimal(cell["max"]) for cell in current.section_breakdown_json.values()), Decimal("0"))
+    new_total = Decimal(total_score).quantize(_TWO)
+    if new_total < 0 or new_total > maximum:
+        raise GradingConflictError("SCORE_OUT_OF_RANGE", f"total_score must be between 0 and {maximum}")
+    before = {"grade_id": str(current.id), "revision_no": current.revision_no, "total_score": str(current.total_score)}
+
+    revision = (
+        await session.scalar(
+            text("SELECT max(revision_no) FROM grades WHERE attempt_id = :a"), {"a": current.attempt_id}
+        )
+    ) + 1
+    await session.execute(update(Grade).where(Grade.id == current.id).values(is_current=False))
+    grade = (
+        await session.execute(
+            insert(Grade)
+            .values(
+                tenant_id=current.tenant_id,
+                attempt_id=current.attempt_id,
+                revision_no=revision,
+                is_current=True,
+                grade_reason="MANUAL_OVERRIDE",
+                scoring_scheme_id=current.scoring_scheme_id,
+                total_score=new_total,
+                section_breakdown_json=current.section_breakdown_json,
+                item_details_json=current.item_details_json,
+                graded_by=actor_id,
+                graded_at=moment,
+            )
+            .returning(Grade)
+        )
+    ).scalar_one()
+    details = (await session.execute(select(GradingDetail).where(GradingDetail.grade_id == current.id))).scalars().all()
+    for d in details:
+        await session.execute(
+            insert(GradingDetail).values(
+                tenant_id=d.tenant_id,
+                grade_id=grade.id,
+                question_version_id=d.question_version_id,
+                earned_points=d.earned_points,
+                max_points=d.max_points,
+                is_correct=d.is_correct,
+                sub_item_breakdown_json=d.sub_item_breakdown_json,
+            )
+        )
+    await append_audit_event(
+        session,
+        tenant_id=current.tenant_id,
+        actor_id=actor_id,
+        action=OVERRIDE_GRADE_ACTION,
+        target_type="grades",
+        target_id=grade.id,
+        reason=reason,
+        before=before,
+        after={"grade_id": str(grade.id), "revision_no": revision, "total_score": str(new_total)},
+        correlation_id=correlation_id,
+        occurred_at=moment,
+    )
+    await enqueue(
+        session,
+        EventEnvelopeContract(
+            event_type=ATTEMPT_GRADED_EVENT,
+            tenant_id=current.tenant_id,
+            aggregate_type="attempt",
+            aggregate_id=current.attempt_id,
+            correlation_id=correlation_id,
+            payload={
+                "tenant_id": str(current.tenant_id),
+                "attempt_id": str(current.attempt_id),
+                "grade_id": str(grade.id),
+                "revision_no": revision,
+                "total_score": str(new_total),
+                "wrong_question_version_ids": [str(d.question_version_id) for d in details if not d.is_correct],
             },
         ),
     )

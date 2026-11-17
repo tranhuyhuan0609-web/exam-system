@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-import time
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
-from fastapi import APIRouter, Request, Security, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import get_settings
+from app.infrastructure.ai_solver import AiSolver
+from app.modules.drive_sync.internal.auto_ingest import fetch_and_ingest_folder
 from app.modules.drive_sync.internal.service import (
     DriveConnectionView,
     DriveFileChange,
@@ -30,23 +31,21 @@ from app.modules.drive_sync.internal.service import (
     revoke_drive_connection,
     sync_drive_connection,
 )
+from app.modules.questions.public import default_numeric_checker
 from app.platform.auth_context import (
     ActorContext,
     AuthTokenError,
     TenantSpoofingError,
-    decode_and_verify_actor_token,
-    extract_bearer_token,
-    guard_no_tenant_spoofing,
 )
-from app.platform.errors import PlatformErrorCode, build_problem_detail
+from app.platform.errors import PlatformErrorCode
+from app.platform.http_auth import OptionalBearer, problem_json, verify_actor
 from app.platform.pagination import resolve_correlation_id
 from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1", tags=["drive-sync"])
 
-_STAFF_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "TEACHER", "REVIEWER"})
-_bearer_scheme = HTTPBearer(auto_error=False)
-OptionalBearer = Annotated[HTTPAuthorizationCredentials | None, Security(_bearer_scheme)]
+# Drive sync fills the question bank and the library: authors, reviewers and administrators only.
+_STAFF_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "REVIEWER", "CONTENT_AUTHOR"})
 
 
 class ConnectGoogleDriveRequest(BaseModel):
@@ -147,19 +146,13 @@ def _problem_response(
     correlation_id: str,
     extensions: dict[str, Any] | None = None,
 ) -> JSONResponse:
-    problem = build_problem_detail(
+    return problem_json(
         code=code,
         detail=detail,
-        status_override=status_code,
         instance=instance,
         correlation_id=correlation_id,
+        status_override=status_code,
         extensions=extensions,
-    )
-    return JSONResponse(
-        status_code=problem.status,
-        content=problem.to_dict(),
-        media_type="application/problem+json",
-        headers={"X-Correlation-ID": correlation_id},
     )
 
 
@@ -168,20 +161,9 @@ def _authenticate(
     credentials: HTTPAuthorizationCredentials | None,
     correlation_id: str,
 ) -> ActorContext | JSONResponse:
-    settings = get_settings()
-    raw_auth = request.headers.get("authorization")
-    if not raw_auth and credentials is not None:
-        raw_auth = f"{credentials.scheme} {credentials.credentials}"
-    if not raw_auth and request.cookies.get("ulp_access_token"):
-        raw_auth = f"Bearer {request.cookies['ulp_access_token']}"
+    get_settings()
     try:
-        token = extract_bearer_token(raw_auth)
-        actor = decode_and_verify_actor_token(token, secret=settings.secret_key, now_epoch=int(time.time()))
-        guard_no_tenant_spoofing(
-            actor,
-            claimed_tenant_header=request.headers.get("x-tenant-id"),
-            claimed_membership_header=request.headers.get("x-membership-id"),
-        )
+        actor = verify_actor(request, credentials, allow_cookie=True)
     except TenantSpoofingError as exc:
         return _problem_response(
             code=PlatformErrorCode.FORBIDDEN,
@@ -506,4 +488,115 @@ async def confirm_drive_pairing_endpoint(
         status_code=status.HTTP_200_OK,
         content=jsonable_encoder(_serialize_pairing(view)),
         headers={"X-Correlation-ID": correlation_id},
+    )
+
+
+class FetchAndImportDriveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    folder_id: str = Field(min_length=10, max_length=200)
+    mode: Literal["AUTO", "QUESTIONS", "DOCUMENTS"] = "AUTO"
+    max_files: int = Field(default=20, ge=1, le=50)
+
+
+class DriveFileOutcomeResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    drive_file_id: str
+    name: str
+    kind: str
+    reason: str | None
+    document_version_id: uuid.UUID | None
+    question_ids: list[uuid.UUID]
+    duplicate_question_ids: list[uuid.UUID]
+    unresolved_questions: int
+    content_item_id: uuid.UUID | None
+
+
+class FetchAndImportDriveResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    connection_id: uuid.UUID
+    folder_id: str
+    listed: int
+    created_question_count: int
+    content_item_count: int
+    files: list[DriveFileOutcomeResponse]
+
+
+def get_drive_transport() -> Any:
+    """None: the real network. Tests override this dependency with an offline httpx transport."""
+    return None
+
+
+def get_drive_solver() -> AiSolver:
+    """The configured AI solver; tests override it."""
+    return AiSolver(numeric_checker=default_numeric_checker())
+
+
+@router.post("/drive/connections/{connection_id}/fetch-and-import", response_model=FetchAndImportDriveResponse)
+async def fetch_and_import_drive_endpoint(
+    connection_id: uuid.UUID,
+    payload: FetchAndImportDriveRequest,
+    request: Request,
+    credentials: OptionalBearer = None,
+    transport: Any = Depends(get_drive_transport),  # noqa: B008
+    solver: AiSolver = Depends(get_drive_solver),  # noqa: B008
+) -> JSONResponse:
+    """Pull the PDFs of a Drive folder: exams into the bank (solved, tagged DRAFTs), documents into the library."""
+    correlation_id = resolve_correlation_id(request.headers.get("x-correlation-id"))
+    actor = _authenticate(request, credentials, correlation_id)
+    if isinstance(actor, JSONResponse):
+        return actor
+    instance = str(request.url.path)
+    try:
+        # no transaction here: the function opens short ones around the database steps, never around Drive or AI
+        result = await fetch_and_ingest_folder(
+            tenant_id=actor.tenant_id,
+            connection_id=connection_id,
+            folder_id=payload.folder_id,
+            created_by=actor.user_id,
+            solver=solver,
+            mode=payload.mode,
+            max_files=payload.max_files,
+            transport=transport,
+        )
+    except DriveSyncNotFoundError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.NOT_FOUND, detail=str(exc), status_code=404, instance=instance,
+            correlation_id=correlation_id,
+        )  # fmt: skip
+    except DriveSyncPolicyError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.FORBIDDEN, detail=str(exc), status_code=403, instance=instance,
+            correlation_id=correlation_id, extensions={"policy_code": exc.code},
+        )  # fmt: skip
+    except DriveSyncValidationError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.VALIDATION_ERROR, detail=str(exc), status_code=422, instance=instance,
+            correlation_id=correlation_id, extensions={"validation_code": exc.code},
+        )  # fmt: skip
+    body = FetchAndImportDriveResponse(
+        connection_id=result.connection_id,
+        folder_id=result.folder_id,
+        listed=result.listed,
+        created_question_count=result.created_question_count,
+        content_item_count=result.content_item_count,
+        files=[
+            DriveFileOutcomeResponse(
+                drive_file_id=f.drive_file_id,
+                name=f.name,
+                kind=f.kind,
+                reason=f.reason,
+                document_version_id=f.document_version_id,
+                question_ids=list(f.question_ids),
+                duplicate_question_ids=list(f.duplicate_question_ids),
+                unresolved_questions=f.unresolved_questions,
+                content_item_id=f.content_item_id,
+            )
+            for f in result.files
+        ],
+    )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK, content=jsonable_encoder(body), headers={"X-Correlation-ID": correlation_id}
     )

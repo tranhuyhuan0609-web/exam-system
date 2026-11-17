@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import StudyDocumentPage from "@/app/hoc-lieu/[slug]/page";
 import LearningPathPage from "@/app/lo-trinh/page";
 import ErrorNotebookPage from "@/app/so-tay-cau-sai/page";
 import { ErrorNotebookShell } from "@/components/study-hub/ErrorNotebookShell";
 import { LearningPathShell } from "@/components/study-hub/LearningPathShell";
 import { StudyHubShell } from "@/components/study-hub/StudyHubShell";
-import { createDemoStudyDocument } from "@/components/study-hub/types";
+import { createDemoStudyDocument, DEFAULT_ERROR_NOTES } from "@/components/study-hub/types";
 
 afterEach(() => {
   cleanup();
@@ -237,5 +237,29 @@ describe("Workspace 1: Learner Study & Practice Hub (TASK-25)", () => {
       <StudyHubShell slug="cong-thuc-bayes" initialUiOverrides={{ isSequenceConflict409: true }} />,
     );
     expect(screen.getByTestId("workspace-sequence-conflict-modal")).toBeTruthy();
+  });
+
+  it("ErrorNotebookShell calls /resolve with { is_correct } instead of /remediate when submitting remediation", async () => {
+    const noteId = "11111111-1111-4111-8111-111111111111";
+    const baseNote = DEFAULT_ERROR_NOTES[0]!;
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ consecutive_correct_count: 1, status: "ACTIVE" }), { status: 200 }),
+    );
+
+    render(
+      <ErrorNotebookShell
+        initialNotes={[{ ...baseNote, id: noteId, consecutiveCorrectCount: 0, status: "ACTIVE" }]}
+        fetchFn={fetchMock as unknown as typeof fetch}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId(`drill-opt-${noteId}-${baseNote.variantCorrectOptionKey}`));
+    fireEvent.click(screen.getByTestId(`submit-drill-${noteId}`));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(firstCall[0]).toContain(`/api/v1/error-notes/${noteId}/resolve`);
+    expect(firstCall[0]).not.toContain("/remediate");
+    expect(JSON.parse(String(firstCall[1].body))).toEqual({ is_correct: true });
   });
 });

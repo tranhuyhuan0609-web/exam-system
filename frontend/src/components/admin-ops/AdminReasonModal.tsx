@@ -2,8 +2,10 @@
 
 import React, { useMemo, useState } from "react";
 import {
+  MAX_OVERRIDE_TOTAL_SCORE,
   MIN_ADMIN_AUDIT_REASON_CHARS,
   validateAdminMutationReason,
+  validateOverrideTotalScore,
   type CriticalAdminAction,
 } from "@/lib/workspace6-admin-ops";
 
@@ -12,7 +14,9 @@ export interface AdminReasonModalProps {
   targetLabel: string;
   confirmLabel: string;
   danger?: boolean;
-  onConfirm: (normalizedReason: string) => void;
+  /** Ask for the `total_score` of a manual grade override (0..1000, 2 decimals) next to the reason. */
+  requireTotalScore?: boolean;
+  onConfirm: (normalizedReason: string, extras?: { totalScore?: string }) => void;
   onCancel: () => void;
 }
 
@@ -28,11 +32,15 @@ export function AdminReasonModal({
   targetLabel,
   confirmLabel,
   danger = true,
+  requireTotalScore = false,
   onConfirm,
   onCancel,
 }: AdminReasonModalProps) {
   const [rawReason, setRawReason] = useState("");
   const validation = useMemo(() => validateAdminMutationReason(action, rawReason), [action, rawReason]);
+  const [rawScore, setRawScore] = useState("");
+  const scoreValidation = useMemo(() => validateOverrideTotalScore(rawScore), [rawScore]);
+  const canConfirm = validation.ok && (!requireTotalScore || scoreValidation.ok);
 
   return (
     <div
@@ -53,6 +61,38 @@ export function AdminReasonModal({
           Đối tượng tác động: <strong className="text-slate-900">{targetLabel}</strong>. Lý do bắt buộc được ghi vào{" "}
           <code>audit_events</code> (bảng append-only không thể xóa sửa).
         </p>
+
+        {requireTotalScore && (
+          <div className="mt-4">
+            <label htmlFor="admin-override-score-input" className="block text-xs font-bold text-slate-800">
+              Tổng điểm mới (0 – {MAX_OVERRIDE_TOTAL_SCORE}, tối đa 2 chữ số thập phân):
+            </label>
+            <input
+              id="admin-override-score-input"
+              data-testid="admin-override-score-input"
+              type="text"
+              inputMode="decimal"
+              value={rawScore}
+              onChange={(e) => setRawScore(e.target.value)}
+              placeholder="Ví dụ: 7.25"
+              className="mt-1.5 w-40 rounded-xl border border-slate-300 p-2 text-xs text-slate-900 outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-300"
+            />
+            <span
+              data-testid="admin-override-score-msg"
+              className={`ml-2 text-[11px] font-semibold ${scoreValidation.ok ? "text-emerald-700" : "text-rose-700"}`}
+            >
+              {scoreValidation.errorCode === "SCORE_REQUIRED"
+                ? "Bắt buộc nhập tổng điểm."
+                : scoreValidation.errorCode === "SCORE_NOT_A_NUMBER"
+                  ? "Tổng điểm phải là số."
+                  : scoreValidation.errorCode === "SCORE_TOO_MANY_DECIMALS"
+                    ? "Tối đa 2 chữ số thập phân."
+                    : scoreValidation.errorCode === "SCORE_OUT_OF_RANGE"
+                      ? `Tổng điểm phải trong khoảng 0 – ${MAX_OVERRIDE_TOTAL_SCORE}.`
+                      : "Tổng điểm hợp lệ."}
+            </span>
+          </div>
+        )}
 
         <div className="mt-4">
           <label htmlFor="admin-audit-reason-input" className="block text-xs font-bold text-slate-800">
@@ -96,8 +136,13 @@ export function AdminReasonModal({
           <button
             type="button"
             data-testid="admin-reason-confirm-btn"
-            disabled={!validation.ok}
-            onClick={() => onConfirm(validation.normalizedReason)}
+            disabled={!canConfirm}
+            onClick={() =>
+              onConfirm(
+                validation.normalizedReason,
+                requireTotalScore ? { totalScore: scoreValidation.normalized } : undefined,
+              )
+            }
             className={`rounded-lg px-4 py-2 text-xs font-bold text-white transition disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600 ${
               danger ? "bg-rose-700 hover:bg-rose-800" : "bg-slate-900 hover:bg-slate-800"
             }`}

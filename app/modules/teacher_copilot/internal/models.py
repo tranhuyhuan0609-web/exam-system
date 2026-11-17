@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, String, text
+from sqlalchemy import DateTime, ForeignKeyConstraint, String, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,9 +19,17 @@ class TeacherAssistJob(Base):
 
     __tablename__ = "teacher_assist_jobs"
 
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["class_id", "tenant_id"],
+            ["classes.id", "classes.tenant_id"],
+            ondelete="CASCADE",
+            name="fk_teacher_assist_jobs_class_tenant",
+        ),
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=UUID_V7)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    # FK -> (class_id, tenant_id) REFERENCES classes(id, tenant_id) enforced in PostgreSQL DDL/Alembic.
     class_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     assignment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     summary_report_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)

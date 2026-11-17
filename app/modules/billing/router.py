@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import os
-import time
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Request, Security, status
+from fastapi import APIRouter, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import get_settings
@@ -32,19 +31,15 @@ from app.platform.auth_context import (
     ActorContext,
     AuthTokenError,
     TenantSpoofingError,
-    decode_and_verify_actor_token,
-    extract_bearer_token,
-    guard_no_tenant_spoofing,
 )
-from app.platform.errors import PlatformErrorCode, build_problem_detail
+from app.platform.errors import PlatformErrorCode
+from app.platform.http_auth import OptionalBearer, problem_json, verify_actor
 from app.platform.pagination import resolve_correlation_id
 from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1", tags=["billing"])
 
 _ADMIN_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN"})
-_bearer_scheme = HTTPBearer(auto_error=False)
-OptionalBearer = Annotated[HTTPAuthorizationCredentials | None, Security(_bearer_scheme)]
 
 
 class ConsumeUsageRequest(BaseModel):
@@ -106,19 +101,13 @@ def _problem_response(
     correlation_id: str,
     extensions: dict[str, Any] | None = None,
 ) -> JSONResponse:
-    problem = build_problem_detail(
+    return problem_json(
         code=code,
         detail=detail,
-        status_override=status_code,
         instance=instance,
         correlation_id=correlation_id,
+        status_override=status_code,
         extensions=extensions,
-    )
-    return JSONResponse(
-        status_code=problem.status,
-        content=problem.to_dict(),
-        media_type="application/problem+json",
-        headers={"X-Correlation-ID": correlation_id},
     )
 
 
@@ -127,20 +116,9 @@ def _authenticate(
     credentials: HTTPAuthorizationCredentials | None,
     correlation_id: str,
 ) -> ActorContext | JSONResponse:
-    settings = get_settings()
-    raw_auth = request.headers.get("authorization")
-    if not raw_auth and credentials is not None:
-        raw_auth = f"{credentials.scheme} {credentials.credentials}"
-    if not raw_auth and request.cookies.get("ulp_access_token"):
-        raw_auth = f"Bearer {request.cookies['ulp_access_token']}"
+    get_settings()
     try:
-        token = extract_bearer_token(raw_auth)
-        actor = decode_and_verify_actor_token(token, secret=settings.secret_key, now_epoch=int(time.time()))
-        guard_no_tenant_spoofing(
-            actor,
-            claimed_tenant_header=request.headers.get("x-tenant-id"),
-            claimed_membership_header=request.headers.get("x-membership-id"),
-        )
+        actor = verify_actor(request, credentials, allow_cookie=True)
     except TenantSpoofingError as exc:
         return _problem_response(
             code=PlatformErrorCode.FORBIDDEN,
@@ -231,13 +209,15 @@ def _webhook_error_to_problem(exc: BillingError, *, instance: str, correlation_i
     )
 
 
-def _resolve_webhook_secret() -> str:
+def _resolve_webhook_secret() -> str | None:
+    """The webhook HMAC secret; outside dev/test only a dedicated secret counts (never `secret_key`)."""
     settings = get_settings()
-    return (
-        getattr(settings, "payment_webhook_secret", None)
-        or os.environ.get("PAYMENT_WEBHOOK_SECRET")
-        or settings.secret_key
-    )
+    dedicated = getattr(settings, "payment_webhook_secret", None) or os.environ.get("PAYMENT_WEBHOOK_SECRET")
+    if dedicated:
+        return dedicated
+    if settings.app_env.lower() in ("dev", "development", "test", "testing"):
+        return settings.secret_key
+    return None
 
 
 def _parse_webhook_timestamp(raw_ts: str | None) -> datetime:
@@ -357,6 +337,14 @@ async def payment_webhook_endpoint(request: Request) -> JSONResponse:
     provider = request.headers.get("x-webhook-provider", "")
     signature_hex = request.headers.get("x-webhook-signature", "")
     secret = _resolve_webhook_secret()
+    if secret is None:
+        return _problem_response(
+            code=PlatformErrorCode.INTERNAL_ERROR,
+            detail="PAYMENT_WEBHOOK_SECRET is not configured",
+            status_code=503,
+            instance=str(request.url.path),
+            correlation_id=correlation_id,
+        )
 
     try:
         event_ts = _parse_webhook_timestamp(request.headers.get("x-webhook-timestamp"))

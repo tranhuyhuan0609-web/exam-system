@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { StudioHeader } from "@/components/studio/StudioHeader";
 import { SafeKatexText } from "@/components/workspace/SafeKatexText";
+import { WorkspaceApiAlert } from "@/components/workspace/WorkspaceApiAlert";
 import {
   EmptyState,
   ErrorBoundary,
@@ -17,6 +18,7 @@ import {
   type StudioBlockInput,
 } from "@/lib/block-studio-linter";
 import { resolveWorkspaceUiState, type UserTier, type WorkspaceUiInput } from "@/lib/ui-state-machine";
+import { shouldSyncLiveEntity, workspaceCall } from "@/lib/workspace-api";
 import { StudioBlockEditor } from "./StudioBlockEditor";
 import {
   BLOCK_TYPE_META,
@@ -50,6 +52,8 @@ export function StudioContentEditorShell({
   );
   const [previewViewport, setPreviewViewport] = useState<"DESKTOP" | "MOBILE">("DESKTOP");
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiErrorStatus, setApiErrorStatus] = useState<number | null>(null);
   const [conflictDismissed, setConflictDismissed] = useState(false);
 
   const catalog = useMemo(() => assetCatalog ?? createDefaultStudioAssetCatalog(), [assetCatalog]);
@@ -85,17 +89,26 @@ export function StudioContentEditorShell({
 
   const handleSaveDraft = async () => {
     if (!lintReport.valid) return;
-    const caller = fetchFn ?? (typeof fetch === "function" ? fetch : null);
-    if (caller && apiBase !== "__OFFLINE__") {
-      try {
-        await caller(`${apiBase}/api/v1/content/${encodeURIComponent(doc.contentId)}/drafts`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: doc.title, blocks: doc.blocks }),
-        });
-      } catch {
-        // Offline-safe optimistic confirmation after passing Pre-Submit Validator
-      }
+    setApiError(null);
+    setApiErrorStatus(null);
+    if (!shouldSyncLiveEntity({ fetchFn, apiBase, entityIds: [doc.contentId] })) {
+      setSaveFeedback(
+        `Đã kiểm tra Pre-Submit Validator (0 lỗi) và lưu bản nháp demo '${doc.contentId}' (cục bộ).`,
+      );
+      return;
+    }
+    const result = await workspaceCall({
+      url: `/api/v1/content/${encodeURIComponent(doc.contentId)}/drafts`,
+      method: "POST",
+      json: { title: doc.title, blocks: doc.blocks },
+      fetchFn,
+      apiBase,
+    });
+    if (!result.ok) {
+      setApiError(result.error);
+      setApiErrorStatus(result.status);
+      setSaveFeedback(null);
+      return;
     }
     setSaveFeedback(`Đã kiểm tra Pre-Submit Validator (0 lỗi) và lưu bản nháp bài '${doc.contentId}'.`);
   };
@@ -155,6 +168,15 @@ export function StudioContentEditorShell({
           />
         ) : (
           <main data-testid="ws4-content-studio-layout" className="mx-auto max-w-[1600px] px-4 py-5">
+            {apiError && (
+              <div className="mb-4">
+                <WorkspaceApiAlert
+                  message={apiError}
+                  status={apiErrorStatus}
+                  onDismiss={() => setApiError(null)}
+                />
+              </div>
+            )}
             {/* Title & Validator Action Header */}
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-xs">
               <div className="flex-1">

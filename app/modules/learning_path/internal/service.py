@@ -80,20 +80,6 @@ def _plan_view(row: LearningPlan, tasks: Sequence[PlanTask]) -> LearningPlanView
     )
 
 
-async def _selectable_tables(session: AsyncSession, names: Sequence[str]) -> set[str]:
-    rows = (
-        await session.execute(
-            text(
-                "SELECT tablename FROM pg_tables "
-                "WHERE schemaname = 'public' AND tablename = ANY(:names) "
-                "AND has_table_privilege(current_user, 'public.' || quote_ident(tablename), 'SELECT')"
-            ),
-            {"names": list(names)},
-        )
-    ).scalars().all()
-    return set(rows)
-
-
 async def _load_node_codes(
     session: AsyncSession,
     node_ids: Sequence[uuid.UUID],
@@ -117,20 +103,18 @@ async def _load_mastery_map(
     overrides: Mapping[uuid.UUID, float] | None = None,
 ) -> dict[uuid.UUID, float]:
     mastery: dict[uuid.UUID, float] = {}
-    readable = await _selectable_tables(session, ("mastery_estimates",))
-    if "mastery_estimates" in readable:
-        rows = (
-            await session.execute(
-                text(
-                    "SELECT taxonomy_node_id, mastery_probability "
-                    "FROM mastery_estimates "
-                    "WHERE tenant_id = :tenant_id AND membership_id = :membership_id"
-                ),
-                {"tenant_id": tenant_id, "membership_id": membership_id},
-            )
-        ).all()
-        for row in rows:
-            mastery[uuid.UUID(str(row.taxonomy_node_id))] = float(row.mastery_probability)
+    rows = (
+        await session.execute(
+            text(
+                "SELECT taxonomy_node_id, mastery_probability "
+                "FROM mastery_estimates "
+                "WHERE tenant_id = :tenant_id AND membership_id = :membership_id"
+            ),
+            {"tenant_id": tenant_id, "membership_id": membership_id},
+        )
+    ).all()
+    for row in rows:
+        mastery[uuid.UUID(str(row.taxonomy_node_id))] = float(row.mastery_probability)
     if overrides:
         for node_id, prob in overrides.items():
             if not (0.0 <= float(prob) <= 1.0):
@@ -145,15 +129,12 @@ async def _load_open_error_nodes(
     tenant_id: uuid.UUID,
     membership_id: uuid.UUID,
 ) -> set[uuid.UUID]:
-    readable = await _selectable_tables(session, ("error_notes",))
-    if "error_notes" not in readable:
-        return set()
     rows = (
         await session.execute(
             text(
                 "SELECT DISTINCT primary_taxonomy_node_id FROM error_notes "
                 "WHERE tenant_id = :tenant_id AND membership_id = :membership_id "
-                "AND status IN ('OPEN', 'IN_REMEDIATION')"
+                "AND status IN ('OPEN', 'IN_REMEDIATION') AND primary_taxonomy_node_id IS NOT NULL"
             ),
             {"tenant_id": tenant_id, "membership_id": membership_id},
         )

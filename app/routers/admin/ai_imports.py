@@ -104,7 +104,7 @@ async def create_job(
     name = (file.filename or "") if file else ""
     suffix = PurePath(name).suffix.lower()
     if suffix not in SUPPORTED_EXTENSIONS:
-        flash(request, "Hãy chọn file PDF, Word (.docx, .doc), file nén (.zip, .rar) hoặc ảnh (PNG/JPG).", "error")
+        flash(request, "Hãy chọn file PDF, Word (.docx, .doc), file nén .zip hoặc ảnh (PNG/JPG).", "error")
         return redirect(back)
     data = await file.read(MAX_UPLOAD_BYTES + 1)
     if not data or len(data) > MAX_UPLOAD_BYTES:

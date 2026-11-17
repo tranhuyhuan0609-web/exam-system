@@ -25,7 +25,7 @@ TF4_SCORING_MAP: dict[int, Decimal] = {
 _THOUSAND_DOT_RE = re.compile(r"^-?\d{1,3}\.\d{3}$")
 _PLAIN_DECIMAL_RE = re.compile(r"^-?(?:\d+(?:\.\d*)?|\.\d+)$")
 _VALID_OPTION_KEYS = ("A", "B", "C", "D")
-_VALID_TF_KEYS = ("a", "b", "c", "d")
+_VALID_TF_KEYS: tuple[Literal["a", "b", "c", "d"], ...] = ("a", "b", "c", "d")
 
 
 @dataclass(frozen=True)

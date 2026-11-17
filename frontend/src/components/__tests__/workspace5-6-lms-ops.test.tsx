@@ -146,11 +146,26 @@ describe("Workspace 6: Admin Ops, Sources Pairing/Drift, & Takedowns Audit (TASK
     fireEvent.change(screen.getByTestId("admin-reason-input"), {
       target: { value: "Phúc khảo biên bản phòng thi 12A1 xác nhận đáp án đúng" },
     });
-    fireEvent.click(screen.getByTestId("admin-reason-confirm-btn"));
+    // The backend (OverrideRequest) needs total_score as well: no score, no confirm; 3 decimals / > 1000 refused.
+    const overrideConfirm = screen.getByTestId("admin-reason-confirm-btn") as HTMLButtonElement;
+    expect(overrideConfirm.disabled).toBe(true);
+    for (const bad of ["", "abc", "7.255", "1000.01", "-1"]) {
+      fireEvent.change(screen.getByTestId("admin-override-score-input"), { target: { value: bad } });
+      expect(overrideConfirm.disabled).toBe(true);
+    }
+    fireEvent.change(screen.getByTestId("admin-override-score-input"), { target: { value: "7,25" } });
+    expect(overrideConfirm.disabled).toBe(false);
+    fireEvent.click(overrideConfirm);
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         expect.stringMatching(/^\/api\/v1\/grades\/.+\/override$/),
-        expect.objectContaining({ method: "POST" }),
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            total_score: "7.25",
+            reason: "Phúc khảo biên bản phòng thi 12A1 xác nhận đáp án đúng",
+          }),
+        }),
       );
     });
   });
@@ -249,6 +264,8 @@ describe("Workspace 5 & 6 Routes, Home Navigation, & Mandatory 6 UI States", () 
     expect(screen.getByTestId("h2edu-teacher-header")).toBeTruthy();
     cleanup();
 
+    // sample data is only for `?demo=1`
+    window.history.pushState({}, "", "/?demo=1");
     const classEl = await TeacherClassPage({
       params: Promise.resolve({ id: "class-12a1" }),
       searchParams: Promise.resolve({}),
@@ -256,6 +273,7 @@ describe("Workspace 5 & 6 Routes, Home Navigation, & Mandatory 6 UI States", () 
     render(classEl);
     expect(screen.getByTestId("gradebook-table-panel")).toBeTruthy();
     cleanup();
+    window.history.pushState({}, "", "/");
 
     render(<AdminOpsPage />);
     expect(screen.getByTestId("outbox-slo-panel")).toBeTruthy();
@@ -311,5 +329,110 @@ describe("Workspace 5 & 6 Routes, Home Navigation, & Mandatory 6 UI States", () 
       expect(screen.getByTestId(s.testId)).toBeTruthy();
       view.unmount();
     }
+  });
+});
+
+describe("Teacher PDF-to-Exam Room & Admin Live Ingest (Toán 12)", () => {
+  it("submits Teacher PDF upload via POST /api/v1/teacher/assessments/from-pdf in MatrixExamBuilderShell Tab 2", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/v1/teacher/assessments/from-pdf" && init?.method === "POST") {
+        expect(init.body instanceof FormData).toBe(true);
+        return new Response(
+          JSON.stringify({
+            assessment_id: "11111111-1111-4111-8111-111111111111",
+            assessment_version_id: "22222222-2222-4222-8222-222222222222",
+            assignment_id: "33333333-3333-4333-8333-333333333333",
+            title: "Đề Toán 12 Chương Bayes",
+            question_count: 10,
+            skipped_question_count: 1,
+            duration_minutes: 45,
+            exam_room_url: "/teacher/classes/class-12a1",
+            assignment_url: "/teacher/classes/class-12a1?assignment_id=33333333-3333-4333-8333-333333333333",
+          }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+
+    render(<MatrixExamBuilderShell fetchFn={fetchMock as unknown as typeof fetch} />);
+    fireEvent.click(screen.getByTestId("tab-from-pdf"));
+
+    const pdf = new File(["%PDF-1.4\n"], "de-toan-12.pdf", { type: "application/pdf" });
+    fireEvent.change(screen.getByTestId("teacher-pdf-file-input"), { target: { files: [pdf] } });
+    fireEvent.click(screen.getByTestId("teacher-pdf-submit-btn"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("teacher-pdf-result-panel")).toBeTruthy();
+      expect(screen.getByTestId("teacher-pdf-result-panel").textContent).toContain("10 câu");
+      expect(screen.getByTestId("teacher-pdf-open-class-link").getAttribute("href")).toContain(
+        "/teacher/classes/class-12a1",
+      );
+    });
+  });
+
+  it("submits live Crawler and Drive fetch-and-import actions in AdminSourcesShell", async () => {
+    const srcId = "44444444-4444-4444-8444-444444444444";
+    const connId = "55555555-5555-4555-8555-555555555555";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === `/api/v1/crawler/sources/${srcId}/fetch-and-import`) {
+        return new Response(
+          JSON.stringify({
+            source_id: srcId,
+            url: "https://de.example.edu.vn/toan-12.html",
+            http_status: 200,
+            fetched_bytes: 1200,
+            extracted_count: 5,
+            created_count: 4,
+            duplicate_count: 1,
+            created_question_ids: [],
+            duplicate_question_ids: [],
+            skipped: [],
+            drift_detected: false,
+            source_policy_status: "ACTIVE",
+            fetch_id: "66666666-6666-4666-8666-666666666666",
+            warnings: [],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url === `/api/v1/drive/connections/${connId}/fetch-and-import`) {
+        return new Response(
+          JSON.stringify({
+            connection_id: connId,
+            folder_id: "1AbCdEfGhIjKlMnOpQrStUv",
+            listed: 2,
+            created_question_count: 8,
+            content_item_count: 1,
+            files: [],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 404 });
+    });
+
+    render(<AdminSourcesShell fetchFn={fetchMock as unknown as typeof fetch} />);
+    fireEvent.change(screen.getByTestId("crawler-source-id-input"), { target: { value: srcId } });
+    fireEvent.change(screen.getByTestId("crawler-fetch-url-input"), {
+      target: { value: "https://de.example.edu.vn/toan-12.html" },
+    });
+    fireEvent.click(screen.getByTestId("crawler-fetch-import-btn"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("crawler-fetch-result").textContent).toContain("Tạo mới: 4");
+    });
+
+    fireEvent.change(screen.getByTestId("drive-conn-id-input"), { target: { value: connId } });
+    fireEvent.change(screen.getByTestId("drive-folder-id-input"), {
+      target: { value: "1AbCdEfGhIjKlMnOpQrStUv" },
+    });
+    fireEvent.click(screen.getByTestId("drive-fetch-import-btn"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("drive-fetch-result").textContent).toContain("Câu hỏi tạo mới: 8");
+    });
   });
 });

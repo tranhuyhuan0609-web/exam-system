@@ -60,7 +60,7 @@ async def set_pro(request: Request, user: AdminUser, session: SessionDep, user_i
     form = await request.form()
     back = _back(form)
     submitted_token = str(form.get("csrf_token") or "")
-    if submitted_token and not verify_csrf_token(request, submitted_token):
+    if not verify_csrf_token(request, submitted_token):  # a missing token is as bad as a wrong one
         flash(request, "Lỗi bảo mật: CSRF token không khớp.", "error")
         return redirect(back)
     days = int(str(form.get("days") or "0")) if str(form.get("days") or "0").isdigit() else 0
@@ -86,7 +86,7 @@ async def set_role(request: Request, user: AdminUser, session: SessionDep, user_
     form = await request.form()
     back = _back(form)
     submitted_token = str(form.get("csrf_token") or "")
-    if submitted_token and not verify_csrf_token(request, submitted_token):
+    if not verify_csrf_token(request, submitted_token):  # a missing token is as bad as a wrong one
         flash(request, "Lỗi bảo mật: CSRF token không khớp.", "error")
         return redirect(back)
     role = str(form.get("role") or "")

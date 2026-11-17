@@ -110,6 +110,15 @@ async def create_review_task(
         found = await session.scalar(text("SELECT 1 FROM question_candidates WHERE id = :i"), {"i": entity_id})
         if found is None:
             raise ReviewNotFoundError("question candidate not found")
+    if kind is ReviewEntityType.QUESTION_VERSION:
+        frozen = await session.scalar(
+            text("SELECT is_immutable FROM question_versions WHERE id = :i AND tenant_id = :t"),
+            {"i": entity_id, "t": tenant_id},
+        )
+        if frozen is None:
+            raise ReviewNotFoundError("question version not found")
+        if frozen:
+            raise ReviewConflictError("VERSION_ALREADY_PUBLISHED", "a published version has nothing left to review")
     open_task = await session.scalar(
         select(ReviewTask.id).where(
             ReviewTask.entity_type == kind.value,
@@ -199,6 +208,17 @@ async def decide_review_task(
             text(_UPDATE_CANDIDATE),
             {"i": row.entity_id, "verification_status": resulting.value, "cs": _CANDIDATE_STATUS.get(kind)},
         )
+    if state.entity_type is ReviewEntityType.QUESTION_VERSION and resulting is not None:
+        moved = await session.scalar(
+            text(_UPDATE_QUESTION_OF_VERSION),
+            {"vid": row.entity_id, "tid": tenant_id, "verification_status": resulting.value},
+        )
+        if moved is None:
+            # Not applied: the whole decision rolls back with it, so a task never resolves without effect.
+            raise ReviewConflictError(
+                "QUESTION_NOT_REVIEWABLE",
+                "the question is taken down, or this version is frozen or no longer the newest",
+            )
     return _task(saved_task), ReviewDecisionRecord(
         id=saved.id,
         review_task_id=saved.review_task_id,
@@ -209,6 +229,19 @@ async def decide_review_task(
         resulting_verification_status=None if resulting is None else resulting.value,
     )
 
+
+# A human verdict on a question version (A09) is the only thing that makes a C01 question VERIFIED. It applies to
+# the newest, still unfrozen version of a question that is not taken down. A published question keeps VERIFIED
+# whatever the verdict on its next draft (the database requires it); the verdict is still recorded and the publish
+# route reads it back for that draft.
+_UPDATE_QUESTION_OF_VERSION = (
+    "UPDATE questions q SET verification_status = CASE WHEN q.publication_status = 'PUBLISHED' "
+    "THEN q.verification_status ELSE :verification_status END FROM question_versions v "
+    "WHERE v.id = :vid AND q.id = v.question_id AND q.tenant_id = :tid AND v.tenant_id = :tid "
+    "AND q.publication_status <> 'TAKEN_DOWN' AND v.is_immutable IS FALSE "
+    "AND v.version_no = (SELECT max(version_no) FROM question_versions WHERE question_id = q.id) "
+    "RETURNING q.id"
+)
 
 _UPDATE_CANDIDATE = (
     "UPDATE question_candidates SET verification_status = :verification_status, "

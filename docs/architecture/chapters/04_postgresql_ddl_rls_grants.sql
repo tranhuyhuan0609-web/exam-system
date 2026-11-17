@@ -29,7 +29,7 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ulp_analytics_ro') THEN
         CREATE ROLE ulp_analytics_ro NOLOGIN NOBYPASSRLS;
     END IF;
-    -- Role chuyên trách các tác vụ nền xuyên Tenant (outbox_relay, attempt_expiry, metric_rollup) dùng policy hẹp theo app.system_job (Khắc phục P0-2)
+    -- Role chuyên trách các tác vụ nền xuyên Tenant (outbox_relay, attempt_expiry, metric_rollup, idempotency_cleanup) dùng policy hẹp theo app.system_job (Khắc phục P0-2)
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ulp_system_scheduler') THEN
         CREATE ROLE ulp_system_scheduler NOLOGIN NOBYPASSRLS;
     END IF;
@@ -2147,12 +2147,52 @@ CREATE POLICY sys_outbox_relay ON outbox_events FOR ALL TO ulp_system_scheduler
 CREATE POLICY sys_attempt_expiry_scan ON attempts FOR SELECT TO ulp_system_scheduler
     USING ((SELECT app_system_job()) = 'attempt_expiry' AND status = 'IN_PROGRESS');
 
+-- WAVE-8 B5: job attempt_expiry chuyển phiên IN_PROGRESS quá hạn sang AUTO_SUBMITTED (chỉ cột status, submitted_at) và phát sự kiện attempt.expired.
+-- UPDATE đọc dòng (WHERE) nên PostgreSQL kiểm tra cả dòng mới theo policy SELECT: job được thấy đúng các dòng nó vừa đóng.
+CREATE POLICY sys_attempt_expiry_close ON attempts FOR UPDATE TO ulp_system_scheduler
+    USING ((SELECT app_system_job()) = 'attempt_expiry' AND status = 'IN_PROGRESS' AND deadline_at < NOW())
+    WITH CHECK ((SELECT app_system_job()) = 'attempt_expiry' AND status = 'AUTO_SUBMITTED');
+
+CREATE POLICY sys_attempt_expiry_closed ON attempts FOR SELECT TO ulp_system_scheduler
+    USING ((SELECT app_system_job()) = 'attempt_expiry' AND status = 'AUTO_SUBMITTED');
+
+CREATE POLICY sys_attempt_expiry_event ON outbox_events FOR INSERT TO ulp_system_scheduler
+    WITH CHECK ((SELECT app_system_job()) = 'attempt_expiry' AND event_type = 'attempt.expired');
+
+-- sys_outbox_relay là FOR ALL: có quyền INSERT thì job relay cũng ghi được sự kiện. Policy RESTRICTIVE thu hẹp MỌI lệnh INSERT của scheduler
+-- về đúng một sự kiện của đúng một job.
+CREATE POLICY sys_outbox_insert_guard ON outbox_events AS RESTRICTIVE FOR INSERT TO ulp_system_scheduler
+    WITH CHECK ((SELECT app_system_job()) = 'attempt_expiry' AND event_type = 'attempt.expired');
+
+-- WAVE-8 B2: dọn autosave_idempotency_registry (FORCE RLS) không cần superuser: job idempotency_cleanup, chỉ khóa quá 30 ngày.
+CREATE POLICY sys_registry_cleanup_scan ON autosave_idempotency_registry FOR SELECT TO ulp_system_scheduler
+    USING ((SELECT app_system_job()) = 'idempotency_cleanup' AND recorded_at < NOW() - INTERVAL '30 days');
+
+CREATE POLICY sys_registry_cleanup ON autosave_idempotency_registry FOR DELETE TO ulp_system_scheduler
+    USING ((SELECT app_system_job()) = 'idempotency_cleanup' AND recorded_at < NOW() - INTERVAL '30 days');
+
 CREATE POLICY sys_rollup_read ON analytics_events FOR SELECT TO ulp_system_scheduler
     USING ((SELECT app_system_job()) = 'metric_rollup');
 
 CREATE POLICY sys_rollup_write ON daily_metric_rollups FOR ALL TO ulp_system_scheduler
     USING ((SELECT app_system_job()) = 'metric_rollup')
     WITH CHECK ((SELECT app_system_job()) = 'metric_rollup');
+
+-- 2d. Đăng nhập (F04): một truy vấn tìm membership ACTIVE của người dùng, thay vòng lặp từng tenant (memberships là strict RLS).
+-- SECURITY DEFINER, chủ sở hữu ulp_migrator (policy f04_owner_policy), search_path ghim cứng, chỉ ulp_app_rw được EXECUTE (Decision #7).
+CREATE OR REPLACE FUNCTION f04_login_memberships(p_user_id uuid, p_tenant_slug varchar DEFAULT NULL)
+RETURNS TABLE (r_tenant_id uuid, r_tenant_slug varchar, r_membership_id uuid, r_roles varchar[], r_entitlement_tier varchar)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$
+    SELECT t.id, t.slug, m.id, m.roles, m.entitlement_tier
+    FROM memberships m JOIN tenants t ON t.id = m.tenant_id
+    WHERE m.user_id = p_user_id AND m.status = 'ACTIVE' AND m.left_at IS NULL AND t.status = 'ACTIVE'
+      AND (p_tenant_slug IS NULL OR t.slug = p_tenant_slug)
+    ORDER BY t.created_at, t.id
+    LIMIT 1;
+$$;
+GRANT SELECT ON tenants TO ulp_migrator;  -- chủ sở hữu hàm đọc slug và status của tenant
+REVOKE ALL ON FUNCTION f04_login_memberships(uuid, varchar) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION f04_login_memberships(uuid, varchar) TO ulp_app_rw;
 
 -- 3. Trigger kiểm tra tham chiếu học liệu chéo: Cho phép đề thi của Tenant tham chiếu câu hỏi của chính Tenant đó HOẶC SYSTEM_PUBLIC đã PUBLISHED
 CREATE OR REPLACE FUNCTION enforce_tenant_or_system_public_question_ref() RETURNS trigger AS $$
@@ -2286,7 +2326,13 @@ GRANT SELECT ON
     v_public_question_versions, questions, question_versions, question_options, question_stimuli, question_assets,
     assets, assessments, assessment_versions, assessment_items, assessment_assignments, memberships
 TO ulp_exam_session_rw;
-GRANT SELECT, INSERT, UPDATE ON attempts, responses TO ulp_exam_session_rw;
+-- C05/F02: bắt đầu bài theo assignment kiểm tra học sinh là thành viên ACTIVE của lớp (chỉ danh sách lớp, không có đáp án).
+GRANT SELECT ON classes, class_members TO ulp_exam_session_rw;
+GRANT SELECT, INSERT ON attempts TO ulp_exam_session_rw;
+-- WAVE-8 B3: phòng thi chỉ đóng bài (status, submitted_at, submit_idempotency_key), không đổi được deadline_at.
+GRANT UPDATE (status, submitted_at, submit_idempotency_key) ON attempts TO ulp_exam_session_rw;
+GRANT SELECT, INSERT, UPDATE ON responses TO ulp_exam_session_rw;
+-- grants_manifest.csv sau migration Alembic e6f7a8b9c0d1: 55 đối tượng, 163 quyền (thêm classes, class_members cho ulp_exam_session_rw).
 GRANT SELECT, INSERT ON autosave_idempotency_registry, response_revisions, activity_events, outbox_events, audit_events TO ulp_exam_session_rw;
 
 -- 5c. Role Worker Chấm Điểm (ulp_worker_grading): Chỉ có quyền trên các bảng liên quan đến chấm điểm & đáp án
@@ -2317,6 +2363,9 @@ GRANT SELECT, INSERT ON inbox_events TO ulp_worker_ingestion;
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM ulp_system_scheduler;
 GRANT SELECT, UPDATE (status, published_at, attempt_count, next_attempt_at) ON outbox_events TO ulp_system_scheduler;
 GRANT SELECT (id, tenant_id, status, deadline_at) ON attempts TO ulp_system_scheduler;
+GRANT UPDATE (status, submitted_at) ON attempts TO ulp_system_scheduler;          -- WAVE-8 B5: job attempt_expiry
+GRANT INSERT ON outbox_events TO ulp_system_scheduler;                            -- WAVE-8 B5: chỉ attempt.expired (sys_outbox_insert_guard)
+GRANT SELECT (recorded_at), DELETE ON autosave_idempotency_registry TO ulp_system_scheduler;  -- WAVE-8 B2: job idempotency_cleanup
 GRANT SELECT ON analytics_events TO ulp_system_scheduler;
 GRANT SELECT, INSERT, UPDATE ON daily_metric_rollups TO ulp_system_scheduler;
 

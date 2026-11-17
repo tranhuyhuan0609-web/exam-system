@@ -381,9 +381,19 @@ def test_frameworks_seeding_thptqg_2025_blueprint_validate_and_shortage_report()
     assert scoring_code == THPTQG_2025_SCORING_CODE
 
     # 2. Custom assessment framework via POST /api/v1/assessment-frameworks
+    # The catalogue has no tenant: a teacher or a tenant administrator is refused, a platform administrator is not.
+    teacher_try = {"code": "DGTD_TSA", "name": "Danh gia tu duy BKHN", "version_code": "2026.1", "versions": []}
+    for blocked_roles in (["TEACHER", "EDITOR"], ["TENANT_ADMIN"], ["ADMIN"]):
+        refused = client.post(
+            "/api/v1/assessment-frameworks",
+            headers=_auth_headers(tenant_id=tenant_id, membership_id=member_id, roles=blocked_roles),
+            json=teacher_try,
+        )
+        assert refused.status_code == 403, blocked_roles
+    platform_headers = _auth_headers(tenant_id=tenant_id, membership_id=member_id, roles=["PLATFORM_ADMIN"])
     fw_res = client.post(
         "/api/v1/assessment-frameworks",
-        headers=headers,
+        headers=platform_headers,
         json={
             "code": "DGTD_TSA",
             "name": "Danh gia tu duy BKHN",

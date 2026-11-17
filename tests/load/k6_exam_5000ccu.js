@@ -10,6 +10,15 @@ if (!BASE_URL) {
   throw new Error("API_BASE_URL is required, e.g. k6 run -e API_BASE_URL=https://<target> k6_exam_5000ccu.js");
 }
 
+// The gate runs the defaults (5,000 VUs, 3,000 submitting). A smaller server (the 4 vCPU pilot) is stepped up with
+//   -e PEAK_VUS=200 -e SUBMIT_VUS=150 -e RAMP=1m -e STEADY=3m
+// and the thresholds below stay the same: a size that passes them is the size the server holds.
+const PEAK_VUS = Number(__ENV.PEAK_VUS || 5000);
+const SUBMIT_VUS = Number(__ENV.SUBMIT_VUS || 3000);
+const RAMP = __ENV.RAMP || "1m";
+const STEADY = __ENV.STEADY || "10m";
+const SUBMIT_AT = __ENV.SUBMIT_AT || "11m"; // after RAMP + STEADY + the 30 s ramp-down
+
 export const options = {
   scenarios: {
     exam_5000_ccu_autosave: {
@@ -17,17 +26,17 @@ export const options = {
       exec: "runAutosaveLoop",
       startVUs: 0,
       stages: [
-        { duration: "1m", target: 5000 },  // Pha 1: Synchronized Start Ramp-up
-        { duration: "10m", target: 5000 }, // Pha 2: Steady-State Autosave (~333 - 500 RPS)
+        { duration: RAMP, target: PEAK_VUS },   // Pha 1: Synchronized Start Ramp-up
+        { duration: STEADY, target: PEAK_VUS }, // Pha 2: Steady-State Autosave (~333 - 500 RPS at 5,000)
         { duration: "30s", target: 0 },
       ],
     },
     end_of_exam_submit_burst: {
       executor: "per-vu-iterations",
       exec: "runSubmitBurst",
-      vus: 3000,
+      vus: SUBMIT_VUS,
       iterations: 1,
-      startTime: "11m",                    // Pha 3: 3.000 thí sinh bấm Nộp bài đồng loạt ở phút cuối
+      startTime: SUBMIT_AT,                // Pha 3: thí sinh bấm Nộp bài đồng loạt ở phút cuối
       maxDuration: "1m",
     },
   },
@@ -91,8 +100,9 @@ export function runAutosaveLoop() {
 export function runSubmitBurst() {
   const s = sessions[(__VU - 1) % sessions.length];
   const submitUrl = `${BASE_URL}/api/v1/attempts/${s.attempt_id}/submit`;
-  const res = http.post(submitUrl, JSON.stringify({ submit_idempotency_key: `sub:${s.attempt_id}` }), {
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${s.jwt}` },
+  // The API reads the key from the Idempotency-Key header (POST /attempts/{id}/submit takes no body).
+  const res = http.post(submitUrl, null, {
+    headers: { Authorization: `Bearer ${s.jwt}`, "Idempotency-Key": `sub:${s.attempt_id}` },
     tags: { operation: "submit" },
   });
   check(res, { "submit 200": (r) => r.status === 200 });

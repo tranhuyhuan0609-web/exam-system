@@ -23,9 +23,9 @@ from app.platform.tenancy import DbRole, tenant_transaction
 from tests.test_assembly_delivery_db import (  # the TASK-20 world: tenants, authors, students, MATH taxonomy
     _all,
     _assemble,
-    _author,
     _create_assessment,
     _execute,
+    _headers,
     _published_paper,
     _scalar,
     _seed,
@@ -36,8 +36,16 @@ from tests.test_assembly_delivery_db import (  # the TASK-20 world: tenants, aut
     run,
     world,  # noqa: F401  (fixture)
 )
+from tests.test_assembly_delivery_db import (
+    _author as _bank_author,
+)
 
 TF_KEY = {"a": True, "b": False, "c": True, "d": False}
+
+
+def _author(world, who="a"):  # noqa: F811
+    """The teacher of the paper: grades, releases, overrides (an author of the bank writes the questions)."""
+    return _headers(world[who], world[f"author_{who}"])
 
 
 # --- Track 1 helpers -----------------------------------------------------------------------------------------------
@@ -55,7 +63,7 @@ def _author_question(client, world, item_type: str, n: int) -> dict:  # noqa: F8
         body["answer_schema"] = {"statements": TF_KEY}
     else:
         body["answer_schema"] = {"value": "2,5"}
-    response = client.post("/api/v1/questions", headers=_author(world), json=body)
+    response = client.post("/api/v1/questions", headers=_bank_author(world), json=body)
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -364,3 +372,75 @@ def test_the_api_role_releases_but_never_changes_a_score(client, world):  # noqa
     with pytest.raises(DBAPIError) as caught:
         run(as_role(DbRole.WORKER_GRADING, "SELECT * FROM appeals WHERE grade_id = :g"))
     assert _sqlstate(caught.value) == "42501"
+
+
+# --- WAVE-8: manual override of a grade ---------------------------------------------------------------------------
+
+
+def _override(client, world, grade_id, headers=None, **body):  # noqa: F811
+    return client.post(f"/api/v1/grades/{grade_id}/override", headers=headers or _author(world), json=body)
+
+
+def test_a_teacher_overrides_the_total_with_a_reason_and_the_change_is_audited(client, world):  # noqa: F811
+    attempt, first = _graded_attempt(client, world)
+    done = _override(client, world, first["id"], total_score="7.25", reason="Verified the working on paper, +1 mark")
+    assert done.status_code == 201, done.text
+    body = done.json()
+    assert (body["revision_no"], body["is_current"], body["grade_reason"]) == (2, True, "MANUAL_OVERRIDE")
+    assert Decimal(body["total_score"]) == Decimal("7.25") and body["graded_by"] == str(world["author_a"])
+
+    history = run(_all("SELECT revision_no, is_current, total_score FROM grades ORDER BY revision_no"))
+    assert [(h.revision_no, h.is_current) for h in history] == [(1, False), (2, True)]
+    assert run(_scalar("SELECT count(*) FROM grading_details")) == 2 * run(
+        _scalar("SELECT count(*) FROM grading_details WHERE grade_id = :g", g=uuid.UUID(first["id"]))
+    ), "the machine's per-item results are copied, not lost"
+
+    audit = run(_all("SELECT action, target_type, reason, before_json, after_json FROM audit_events"))
+    assert len(audit) == 1 and audit[0].action == "OVERRIDE_GRADE" and audit[0].target_type == "grades"
+    assert audit[0].reason == "Verified the working on paper, +1 mark"
+    assert audit[0].before_json["total_score"] == first["total_score"]
+    assert audit[0].after_json["total_score"] == "7.25"
+    events = run(_all("SELECT payload_json FROM outbox_events WHERE event_type = 'attempt.graded' ORDER BY created_at"))
+    assert events[-1].payload_json["total_score"] == "7.25" and events[-1].payload_json["revision_no"] == 2
+
+
+def test_an_override_needs_a_real_reason_a_possible_score_and_a_current_grade(client, world):  # noqa: F811
+    attempt, first = _graded_attempt(client, world)
+    assert _override(client, world, first["id"], total_score="7").status_code == 422, "the reason is mandatory"
+    assert _override(client, world, first["id"], total_score="7", reason="too short").status_code == 422
+    assert _override(client, world, first["id"], total_score="7", reason="   " + "x" * 5 + "   ").status_code == 422
+    above = _override(client, world, first["id"], total_score="10.01", reason="more than the paper is worth")
+    assert above.status_code == 409 and above.json()["reason"] == "SCORE_OUT_OF_RANGE"
+    negative = _override(client, world, first["id"], total_score="-1", reason="a negative score is not possible")
+    assert negative.status_code == 422
+    unknown = _override(client, world, uuid.uuid4(), total_score="5", reason="there is no such grade here")
+    assert unknown.status_code == 404
+    assert run(_scalar("SELECT count(*) FROM audit_events")) == 0, "a refused override leaves no trace"
+
+    first_override = _override(client, world, first["id"], total_score="8", reason="first override of the grade")
+    assert first_override.status_code == 201
+    stale = _override(client, world, first["id"], total_score="9", reason="the first revision is not current")
+    assert stale.status_code == 409 and stale.json()["reason"] == "GRADE_NOT_CURRENT"
+
+
+def test_only_graders_override_and_never_across_tenants(client, world):  # noqa: F811
+    attempt, first = _graded_attempt(client, world)
+    refused = _override(
+        client, world, first["id"], headers=_student(world), total_score="9", reason="a student may not do this"
+    )
+    assert refused.status_code == 403
+    other = _author(world, who="b")
+    cross = _override(client, world, first["id"], headers=other, total_score="9", reason="another tenant's teacher")
+    assert cross.status_code == 404
+    anonymous = client.post(
+        f"/api/v1/grades/{first['id']}/override", json={"total_score": "9", "reason": "nobody is signed in here"}
+    )
+    assert anonymous.status_code == 401
+    assert run(_scalar("SELECT count(*) FROM grades")) == 1
+
+
+def test_override_reason_counts_characters_not_padding(client, world):  # noqa: F811
+    attempt, first = _graded_attempt(client, world)
+    padded = _override(client, world, first["id"], total_score="7", reason="   " + "x" * 8 + "          ")
+    assert padded.status_code == 422, "8 real characters wrapped in blanks are not a reason"
+    assert run(_scalar("SELECT count(*) FROM grades")) == 1

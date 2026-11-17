@@ -2630,7 +2630,13 @@ GRANT SELECT ON
     v_public_question_versions, questions, question_versions, question_options, question_stimuli, question_assets,
     assets, assessments, assessment_versions, assessment_items, assessment_assignments, memberships
 TO ulp_exam_session_rw;
-GRANT SELECT, INSERT, UPDATE ON attempts, responses TO ulp_exam_session_rw;
+-- C05/F02: bắt đầu bài theo assignment kiểm tra học sinh là thành viên ACTIVE của lớp (chỉ danh sách lớp, không có đáp án).
+GRANT SELECT ON classes, class_members TO ulp_exam_session_rw;
+GRANT SELECT, INSERT ON attempts TO ulp_exam_session_rw;
+-- WAVE-8 B3: phòng thi chỉ đóng bài (status, submitted_at, submit_idempotency_key), không đổi được deadline_at.
+GRANT UPDATE (status, submitted_at, submit_idempotency_key) ON attempts TO ulp_exam_session_rw;
+GRANT SELECT, INSERT, UPDATE ON responses TO ulp_exam_session_rw;
+-- grants_manifest.csv sau migration Alembic e6f7a8b9c0d1: 55 đối tượng, 163 quyền (thêm classes, class_members cho ulp_exam_session_rw).
 GRANT SELECT, INSERT ON autosave_idempotency_registry, response_revisions, activity_events, outbox_events, audit_events TO ulp_exam_session_rw;
 
 -- 5c. Role Worker Chấm Điểm (ulp_worker_grading): Chỉ có quyền trên các bảng liên quan đến chấm điểm & đáp án
@@ -4969,7 +4975,7 @@ Tuân thủ nghiêm ngặt quy tắc không gắn nhãn `"VERIFIED"` khi chưa c
 #### C. Mô Hình Hóa Toán Học Workload 5.000 CCU & Kịch Bản `k6` Mỗi VU Một Attempt Riêng + Submit Burst (`tests/load/k6_exam_5000ccu.js` — Khắc phục P0-7)
 
 - **Dẫn xuất theo định luật Little ($L = \lambda \cdot W$):** Với $N = 5.000\text{ CCU}$, chu kỳ chọn đáp án trung bình $T_{\text{cycle}} = 15.0\text{s}$ $\Rightarrow$ $\lambda_{\text{steady}} = 333.3\text{ RPS}$, $\lambda_{\text{peak}} = 500.0\text{ RPS}$. Với $W_{\text{db}} = 12\text{ms}$, số kết nối DB thực sự bận đồng thời là $L_{\text{db}} = 6\text{ active connections}$ (cấu hình PgBouncer `default_pool_size = 60`, `max_client_conn = 10000`).
-- **Khắc phục lỗi dùng chung 1 attempt trong `k6`:** Trước khi chạy `k6`, chạy script `python tests/load/seed_attempts.py --count 5000 --out tests/load/data/sessions.json` để tạo 5.000 phiên thi độc lập; mỗi VU lấy đúng phiên thi của mình từ `SharedArray("sessions")`, tự tính `crypto.sha256` thật và có thêm kịch bản `submit_burst` riêng cho pha nộp bài đồng loạt cuối giờ:
+- **Khắc phục lỗi dùng chung 1 attempt trong `k6`:** Trước khi chạy `k6`, chạy script `python tests/load/seed_attempts.py --count 5000 --out tests/load/data/sessions.json` để tạo 5.000 phiên thi độc lập (thêm `--materialize` để tạo thật các tenant `ulp-load-NN`, lớp, đề đã xuất bản, bài giao và attempt `IN_PROGRESS` trong `DATABASE_URL`, idempotent và chỉ trong các tenant có tiền tố đó; thiếu bước này mọi lệnh gọi của `k6` là 404); mỗi VU lấy đúng phiên thi của mình từ `SharedArray("sessions")`, tự tính `crypto.sha256` thật và có thêm kịch bản `submit_burst` riêng cho pha nộp bài đồng loạt cuối giờ:
 
 ```javascript
 // tests/load/k6_exam_5000ccu.js — Mỗi VU có attempt_id riêng, tính SHA-256 thật & có kịch bản Submit Burst (Sửa P0-7)

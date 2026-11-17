@@ -53,7 +53,7 @@ KEEP = {  # what the library stores (preview: PDF; the rest is download-only)
     "application/x-rar-compressed": ".rar",
     "application/vnd.rar": ".rar",
 }
-IMPORTABLE = {".pdf", ".docx", ".doc", ".png", ".jpg", ".zip", ".rar"}  # what the AI exam import reads
+IMPORTABLE = {".pdf", ".docx", ".doc", ".png", ".jpg", ".zip"}  # what the AI exam import reads
 INDEX_ONLY_NOTE = "Chỉ lập chỉ mục: sách có bản quyền, chưa sao chép về hệ thống"
 
 Event = dict[str, Any]

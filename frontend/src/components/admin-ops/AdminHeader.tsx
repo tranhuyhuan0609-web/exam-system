@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import React from "react";
+import { AuthStatusBadge } from "@/components/auth/AuthStatusBadge";
 import type { UserTier } from "@/lib/ui-state-machine";
 
 export interface AdminHeaderProps {
@@ -71,9 +72,12 @@ export function AdminHeader({ activeRoute, userTier }: AdminHeaderProps) {
           </Link>
         </nav>
 
-        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-800">
-          Vai trò: OPS_ADMIN ({userTier})
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-800">
+            Vai trò: OPS_ADMIN ({userTier})
+          </span>
+          <AuthStatusBadge />
+        </div>
       </div>
     </header>
   );

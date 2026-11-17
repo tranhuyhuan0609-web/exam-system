@@ -136,6 +136,7 @@ services:
       S3_ENDPOINT: s3:9000
       S3_PUBLIC_URL: http://localhost:9000
       REDIS_URL: redis://redis:6379/0
+      LOGIN_THROTTLE_BACKEND: redis  # API workers share the sign-in failure counters
       VAULT_ADDR: http://vault:8200
       VAULT_TOKEN: ${VAULT_TOKEN:-dev-root-token}
       CLAMAV_HOST: clamav

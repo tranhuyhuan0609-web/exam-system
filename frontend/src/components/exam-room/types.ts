@@ -4,6 +4,12 @@ import type { UserTier } from "@/lib/ui-state-machine";
 export type ChoiceLetter = "A" | "B" | "C" | "D";
 export type ClusterSubKey = "a" | "b" | "c" | "d";
 
+/** An image of a question (cut out of the source paper by the backend, kept as an asset). */
+export interface ExamFigure {
+  readonly assetId: string;
+  readonly alt: string;
+}
+
 export interface ExamOptionItem {
   readonly key: ChoiceLetter;
   readonly text: string;
@@ -19,6 +25,7 @@ export interface ExamQuestionPart1 {
   readonly number: number;
   readonly part: "PART_1";
   readonly stem: string;
+  readonly figures?: readonly ExamFigure[];
   readonly options: readonly ExamOptionItem[];
 }
 
@@ -27,6 +34,7 @@ export interface ExamQuestionPart2 {
   readonly number: number;
   readonly part: "PART_2";
   readonly stem: string;
+  readonly figures?: readonly ExamFigure[];
   readonly statements: readonly ClusterStatementItem[];
 }
 
@@ -35,6 +43,7 @@ export interface ExamQuestionPart3 {
   readonly number: number;
   readonly part: "PART_3";
   readonly stem: string;
+  readonly figures?: readonly ExamFigure[];
 }
 
 export type ExamQuestion = ExamQuestionPart1 | ExamQuestionPart2 | ExamQuestionPart3;

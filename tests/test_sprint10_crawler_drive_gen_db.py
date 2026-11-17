@@ -24,7 +24,7 @@ from sqlalchemy import select, text
 
 from app.config import get_settings
 from app.contracts.enums import PublicationStatus, QuestionItemType, RightsStatus
-from app.db import SessionLocal, engine
+from app.db import SessionLocal
 from app.modules.crawler.internal.models import CrawlFetch, CrawlUrl  # noqa: F401
 from app.modules.crawler.public import record_crawl_fetch_and_evaluate_drift
 from app.modules.crawler.router import router as crawler_router
@@ -91,144 +91,6 @@ def _auth_headers(
     if extra:
         headers.update(extra)
     return headers
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _ensure_task32_schema(_database: None):
-    """Create TASK-32 tables, RLS policies and grants locally; DROP CASCADE on teardown."""
-    ddl_statements = (
-        """
-        CREATE TABLE IF NOT EXISTS crawl_urls (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            source_id UUID NOT NULL,
-            url VARCHAR(1024) NOT NULL,
-            url_hash CHAR(64) NOT NULL,
-            etag VARCHAR(255),
-            last_modified_header VARCHAR(120),
-            status VARCHAR(30) NOT NULL DEFAULT 'PENDING'
-                CHECK (status IN ('PENDING', 'FETCHED', 'SKIPPED_304', 'FAILED', 'BLOCKED_ROBOTS')),
-            last_fetched_at TIMESTAMPTZ,
-            UNIQUE (source_id, url_hash),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (source_id, tenant_id) REFERENCES sources(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS crawl_fetches (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            crawl_url_id UUID NOT NULL,
-            http_status INT NOT NULL,
-            raw_asset_id UUID,
-            resolved_ip VARCHAR(64) NOT NULL,
-            parse_yield_count INT NOT NULL DEFAULT 0,
-            fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            FOREIGN KEY (crawl_url_id, tenant_id) REFERENCES crawl_urls(id, tenant_id) ON DELETE CASCADE,
-            FOREIGN KEY (raw_asset_id, tenant_id) REFERENCES assets(id, tenant_id)
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS source_connections (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            source_id UUID NOT NULL,
-            provider VARCHAR(40) NOT NULL DEFAULT 'GOOGLE_DRIVE',
-            secret_vault_ref VARCHAR(255) NOT NULL,
-            granted_scopes VARCHAR(120)[] NOT NULL DEFAULT '{https://www.googleapis.com/auth/drive.file}',
-            status VARCHAR(30) NOT NULL DEFAULT 'CONNECTED'
-                CHECK (status IN ('CONNECTED', 'REAUTH_REQUIRED', 'REVOKED')),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (id, tenant_id),
-            FOREIGN KEY (source_id, tenant_id) REFERENCES sources(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS source_sync_cursors (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            source_connection_id UUID UNIQUE NOT NULL,
-            cursor_token VARCHAR(512) NOT NULL,
-            last_synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            FOREIGN KEY (source_connection_id, tenant_id)
-                REFERENCES source_connections(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS file_pairing_candidates (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL,
-            exam_doc_id UUID NOT NULL,
-            solution_doc_id UUID NOT NULL,
-            similarity_score NUMERIC(4,3) NOT NULL,
-            signals_json JSONB NOT NULL DEFAULT '{}',
-            status VARCHAR(30) NOT NULL DEFAULT 'PROPOSED'
-                CHECK (status IN ('PROPOSED', 'CONFIRMED', 'REJECTED')),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            FOREIGN KEY (exam_doc_id, tenant_id) REFERENCES source_documents(id, tenant_id) ON DELETE CASCADE,
-            FOREIGN KEY (solution_doc_id, tenant_id) REFERENCES source_documents(id, tenant_id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS generation_requests (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-            tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-            requested_by UUID NOT NULL REFERENCES users(id),
-            taxonomy_node_id UUID NOT NULL REFERENCES taxonomy_nodes(id),
-            target_difficulty VARCHAR(20) NOT NULL,
-            source_anchors_json JSONB NOT NULL,
-            generated_candidate_id UUID,
-            status VARCHAR(30) NOT NULL DEFAULT 'DRAFT_CREATED',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-        """,
-    )
-    all_tables = (
-        "crawl_urls",
-        "crawl_fetches",
-        "source_connections",
-        "source_sync_cursors",
-        "file_pairing_candidates",
-        "generation_requests",
-    )
-    ingestion_rw_tables = (
-        "crawl_urls",
-        "crawl_fetches",
-        "source_sync_cursors",
-        "file_pairing_candidates",
-    )
-
-    async def create() -> None:
-        async with engine.begin() as conn:
-            for stmt in ddl_statements:
-                await conn.execute(text(stmt))
-            for table in all_tables:
-                await conn.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
-                await conn.execute(text(f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table}"))
-                await conn.execute(
-                    text(
-                        f"CREATE POLICY tenant_isolation_policy ON {table} "
-                        "USING (tenant_id = (SELECT current_app_tenant_id())) "
-                        "WITH CHECK (tenant_id = (SELECT current_app_tenant_id()))"
-                    )
-                )
-                await conn.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO ulp_app_rw"))
-            for table in ingestion_rw_tables:
-                await conn.execute(text(f"GRANT SELECT, INSERT, UPDATE ON {table} TO ulp_worker_ingestion"))
-
-    async def drop() -> None:
-        async with engine.begin() as conn:
-            await conn.execute(
-                text(
-                    "DROP TABLE IF EXISTS generation_requests, file_pairing_candidates, "
-                    "source_sync_cursors, source_connections, crawl_fetches, crawl_urls CASCADE"
-                )
-            )
-
-    run(create())
-    yield
-    run(drop())
 
 
 @pytest.fixture
@@ -394,14 +256,15 @@ def test_crawler_ssrf_robots_drift_and_rls_end_to_end(world: dict[str, uuid.UUID
 
         async with tenant_transaction(ta, role=DbRole.APP_RW) as session_a:
             drift_events = (
-                await session_a.execute(
-                    text(
-                        "SELECT event_type FROM outbox_events "
-                        "WHERE tenant_id = :tid AND aggregate_id = :sid"
-                    ),
-                    {"tid": ta, "sid": source_id},
+                (
+                    await session_a.execute(
+                        text("SELECT event_type FROM outbox_events WHERE tenant_id = :tid AND aggregate_id = :sid"),
+                        {"tid": ta, "sid": source_id},
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert "crawl.parser.drift_detected" in drift_events
 
         async with tenant_transaction(tb, role=DbRole.APP_RW) as session_b:

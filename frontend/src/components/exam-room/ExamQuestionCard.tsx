@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { SafeKatexText } from "@/components/workspace/SafeKatexText";
+import { QuestionFigures } from "./QuestionFigures";
 import {
   evaluateClusterTrueFalseState,
   MAX_SHORT_NUMERIC_CHARS,
@@ -131,6 +132,7 @@ export function ExamQuestionCard({
       <div className="mt-5 text-base leading-relaxed text-slate-900">
         <SafeKatexText text={question.stem} />
       </div>
+      {question.figures && question.figures.length > 0 && <QuestionFigures figures={question.figures} />}
 
       {/* Part I: Multiple Choice with Strike-through Elimination & Keyboard Shortcuts */}
       {question.part === "PART_1" && (

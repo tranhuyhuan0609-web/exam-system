@@ -6,13 +6,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import StudioContentPage from "@/app/studio/content/[id]/page";
 import ImportReviewPage from "@/app/studio/imports/[run_id]/review/page";
 import NewQuestionStudioPage from "@/app/studio/questions/new/page";
-import { QuestionAuthoringShell } from "@/components/studio-authoring/QuestionAuthoringShell";
+import { buildCreateQuestionPayload, QuestionAuthoringShell } from "@/components/studio-authoring/QuestionAuthoringShell";
+import { createDemoQuestionAuthoringDraft } from "@/components/studio-authoring/types";
 import { StudioContentEditorShell } from "@/components/studio-authoring/StudioContentEditorShell";
 import { BboxReviewerShell } from "@/components/studio-review/BboxReviewerShell";
 import { createDemoImportReviewSession } from "@/components/studio-review/types";
+import { buildSessionFromRawToken, clearAuthSession, setAuthSession } from "@/lib/auth-client";
 
 afterEach(() => {
   cleanup();
+  clearAuthSession();
 });
 
 describe("Workspace 3: Side-by-Side Bounding-Box Reviewer (TASK-26)", () => {
@@ -97,6 +100,124 @@ describe("Workspace 3: Side-by-Side Bounding-Box Reviewer (TASK-26)", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("hydrates remote BBox structure, renders authenticated PNG page, edits answer via quick A/B/C/D, saves & promotes to question bank", async () => {
+    const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+    const payload = Buffer.from(
+      JSON.stringify({
+        sub: "11111111-1111-4111-8111-111111111111",
+        tenant_id: "22222222-2222-4222-8222-222222222222",
+        roles: ["TEACHER", "EDITOR"],
+        entitlement_tier: "TEACHER_PRO",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      }),
+      "utf-8",
+    ).toString("base64url");
+    setAuthSession(buildSessionFromRawToken(`${header}.${payload}.sig`)!);
+
+    const runId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa99";
+    const originalCreateObjectUrl = URL.createObjectURL;
+    const originalRevokeObjectUrl = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn(() => "blob:mock-page-1-png");
+    URL.revokeObjectURL = vi.fn();
+
+    let patchBody: Record<string, unknown> | null = null;
+    let approveBody: Record<string, unknown> | null = null;
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url === `/api/v1/exam-imports/${runId}/structure` && method === "GET") {
+        return new Response(
+          JSON.stringify({
+            id: runId,
+            document_version_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb99",
+            status: "PENDING_REVIEW",
+            proposed_structure_json: {
+              document_title: "Đề Toán Real Flow",
+              pages: [{ page_no: 1, width_pt: 595, height_pt: 842, heading: "Trang 1 / 1" }],
+              sections: [
+                {
+                  section_code: "PART_I_MCQ",
+                  title: "PHẦN I",
+                  questions: [
+                    {
+                      question_no: 1,
+                      points: 0.25,
+                      page_number: 1,
+                      item_type: "SINGLE_CHOICE",
+                      stem_md: "Câu 1: Giá trị 2 + 2 bằng?",
+                      options_md: ["3", "4", "5", "6"],
+                      paired_answer: "A",
+                      bbox_json: { x0: 40, y0: 90, x1: 520, y1: 180 },
+                      original_question_label: "Câu 1",
+                    },
+                  ],
+                },
+              ],
+            },
+            created_question_ids: [],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url === `/api/v1/exam-imports/${runId}/pages/1.png?dpi=150` && method === "GET") {
+        // bytes, not a jsdom Blob: Node 22's Response cannot read a jsdom Blob body ("object.stream is not a function")
+        return new Response(new TextEncoder().encode("png-bytes"), {
+          status: 200,
+          headers: { "Content-Type": "image/png" },
+        });
+      }
+      if (url === `/api/v1/exam-imports/${runId}/structure` && method === "PATCH") {
+        patchBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(JSON.stringify({ id: runId, status: "PENDING_REVIEW" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url === `/api/v1/exam-imports/${runId}/approve` && method === "POST") {
+        approveBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(
+          JSON.stringify({
+            id: runId,
+            status: "APPROVED",
+            created_question_ids: ["cccccccc-cccc-4ccc-8ccc-ccccccccccc1"],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("{}", { status: 404 });
+    });
+
+    try {
+      render(<BboxReviewerShell runId={runId} fetchFn={fetchMock as unknown as typeof fetch} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("ws3-pdf-page-image").getAttribute("href")).toBe("blob:mock-page-1-png");
+      });
+
+      fireEvent.click(screen.getByTestId("ws3-quick-ans-B"));
+      fireEvent.change(screen.getByTestId("ws3-rights-select"), { target: { value: "OWNED" } });
+      fireEvent.click(screen.getByTestId("ws3-mark-verified-btn"));
+      fireEvent.click(screen.getByTestId("ws3-approve-btn"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("ws3-open-question-bank-link").getAttribute("href")).toBe("/studio/questions");
+      });
+
+      expect(patchBody).toMatchObject({ expected_total_points: 0.25 });
+      const patchSections = (patchBody as unknown as { sections: Array<{ questions: Array<{ paired_answer: string }> }> }).sections;
+      expect(patchSections[0]?.questions[0]?.paired_answer).toBe("B");
+      expect(approveBody).toEqual({
+        require_answer_keys: true,
+        generate_branded_pdf: false,
+        promote_to_question_bank: true,
+      });
+    } finally {
+      URL.createObjectURL = originalCreateObjectUrl;
+      URL.revokeObjectURL = originalRevokeObjectUrl;
+    }
   });
 });
 
@@ -252,5 +373,35 @@ describe("Workspace 3 & 4 Next.js Routes & Mandatory 6 UI States", () => {
       expect(screen.getByTestId(s.testId)).toBeTruthy();
       view.unmount();
     }
+  });
+
+  it("QuestionAuthoringShell sends FastAPI CreateQuestionRequest snake_case payload without camelCase extra keys", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ question: { id: "q-1" } }), { status: 201 }));
+    render(<QuestionAuthoringShell fetchFn={fetchMock as unknown as typeof fetch} />);
+    fireEvent.click(screen.getByTestId("ws4-submit-question-btn"));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(firstCall[0]).toContain("/api/v1/questions");
+    const sent = JSON.parse(String(firstCall[1].body)) as Record<string, unknown>;
+    expect(sent.stable_code).toBe("MATH12-BAYES-NEW-01");
+    expect(sent.item_type).toBe("SINGLE_CHOICE");
+    expect(sent.difficulty_level).toBe("VD");
+    expect(typeof sent.stem_text).toBe("string");
+    expect(sent.answer_schema).toEqual({ correct_option: "A" });
+    expect(sent.rights_status).toBe("OWNED");
+    expect(sent).not.toHaveProperty("stemMarkdown");
+    expect(sent).not.toHaveProperty("authorTenantId");
+    expect(sent).not.toHaveProperty("questionType");
+
+    const demoDraft = createDemoQuestionAuthoringDraft();
+    const clusterPayload = buildCreateQuestionPayload({
+      ...demoDraft,
+      questionType: "CLUSTER_TRUE_FALSE",
+    });
+    expect(clusterPayload.options.map((o) => o.key)).toEqual(["a", "b", "c", "d"]);
+    expect(clusterPayload.answer_schema).toEqual({
+      statements: { a: true, b: false, c: true, d: false },
+    });
   });
 });

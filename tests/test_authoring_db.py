@@ -75,7 +75,7 @@ def client() -> TestClient:
     return TestClient(app)
 
 
-def _headers(tenant: uuid.UUID, user: uuid.UUID, roles: tuple[str, ...] = ("TEACHER",)) -> dict[str, str]:
+def _headers(tenant: uuid.UUID, user: uuid.UUID, roles: tuple[str, ...] = ("CONTENT_AUTHOR",)) -> dict[str, str]:
     token = mint_hs256_token(
         secret=get_settings().secret_key,
         user_id=user,

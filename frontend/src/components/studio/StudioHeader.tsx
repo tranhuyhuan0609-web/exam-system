@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import React from "react";
+import { AuthStatusBadge } from "@/components/auth/AuthStatusBadge";
 import type { UserTier } from "@/lib/ui-state-machine";
 
 export interface StudioHeaderProps {
-  activeRoute: "ws3-review" | "ws4-content" | "ws4-question";
+  activeRoute: "ws3-review" | "ws4-question-bank" | "ws4-imports" | "ws4-content" | "ws4-question";
   userTier: UserTier;
   onTierChange?: (tier: UserTier) => void;
   showTierSwitcher?: boolean;
@@ -22,8 +23,10 @@ export function StudioHeader({
     readonly href: string;
     readonly label: string;
   }[] = [
-    { key: "ws3-review", href: "/studio/imports/demo-run/review", label: "Workspace 3 · Duyệt BBox" },
-    { key: "ws4-content", href: "/studio/content/cong-thuc-bayes", label: "Workspace 4 · Block Studio" },
+    { key: "ws4-question-bank", href: "/studio/questions", label: "Ngân hàng câu hỏi" },
+    { key: "ws4-imports", href: "/studio/imports", label: "Nạp file đề" },
+    { key: "ws3-review", href: "/studio/imports/demo-run/review", label: "Duyệt BBox" },
+    { key: "ws4-content", href: "/studio/content/cong-thuc-bayes", label: "Block Studio" },
     { key: "ws4-question", href: "/studio/questions/new", label: "Soạn câu hỏi C01" },
   ];
 
@@ -48,7 +51,11 @@ export function StudioHeader({
               <p className="text-[11px] text-slate-500">
                 {activeRoute === "ws3-review"
                   ? "Workspace 3 · Side-by-Side Bounding-Box & SymPy Reviewer"
-                  : "Workspace 4 · VietJack Block Studio & Question Authoring"}
+                  : activeRoute === "ws4-imports"
+                    ? "Nạp đề PDF, Theo dõi Hàng đợi & Mở Phiên Duyệt BBox"
+                    : activeRoute === "ws4-question-bank"
+                      ? "Ngân hàng Câu hỏi C01 · Tra cứu & Quản lý Phiên bản"
+                      : "Workspace 4 · VietJack Block Studio & Question Authoring"}
               </p>
             </div>
           </Link>
@@ -99,6 +106,7 @@ export function StudioHeader({
               {userTier === "FREE" ? "Mở góc nhìn TEACHER_PRO" : "Thử góc nhìn FREE"}
             </button>
           )}
+          <AuthStatusBadge />
         </div>
       </div>
     </header>

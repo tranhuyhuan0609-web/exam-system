@@ -11,6 +11,8 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     Numeric,
     String,
@@ -42,8 +44,9 @@ class QuestionIrtParameter(Base):
         CheckConstraint("se_difficulty < 0.3000", name="ck_question_irt_parameters_se_b"),
     )
 
-    # FK -> question_versions(id) and users(id) enforced in PostgreSQL DDL/Alembic.
-    question_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    question_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("question_versions.id", ondelete="CASCADE"), primary_key=True
+    )
     calibration_run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, server_default=UUID_V7)
     model_type: Mapped[str] = mapped_column(String(30), nullable=False)
     sample_size: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -63,7 +66,7 @@ class QuestionIrtParameter(Base):
     diagnostics_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
-    approved_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     calibrated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=NOW)
 
 
@@ -84,13 +87,20 @@ class MasteryEstimate(Base):
             "model_code",
             name="uq_mastery_estimates_member_node_model",
         ),
+        ForeignKeyConstraint(
+            ["membership_id", "tenant_id"],
+            ["memberships.id", "memberships.tenant_id"],
+            ondelete="CASCADE",
+            name="fk_mastery_estimates_membership_tenant",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=UUID_V7)
-    # FKs -> memberships(id, tenant_id), taxonomy_nodes(id) enforced in PostgreSQL DDL/Alembic.
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     membership_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    taxonomy_node_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    taxonomy_node_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("taxonomy_nodes.id", ondelete="CASCADE"), nullable=False
+    )
     model_code: Mapped[str] = mapped_column(String(40), nullable=False, server_default=text("'RULE_WEIGHTED_L1'"))
     theta_estimate: Mapped[Decimal] = mapped_column(Numeric(6, 3), nullable=False, server_default=text("0.000"))
     mastery_probability: Mapped[Decimal] = mapped_column(Numeric(5, 3), nullable=False)

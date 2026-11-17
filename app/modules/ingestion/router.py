@@ -5,15 +5,15 @@ from __future__ import annotations
 import base64
 import binascii
 import json
-import time
 import uuid
+from dataclasses import replace
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Request, Security, status
+from fastapi import APIRouter, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, ValidationError
 from starlette.datastructures import UploadFile
 
@@ -22,30 +22,34 @@ from app.modules.ingestion.internal.service import (
     DocumentVersionView,
     DuplicateIdempotencyConflictError,
     ImportJobNotFoundError,
+    ImportJobSummary,
     ImportJobView,
     IngestionTransitionError,
     IngestionValidationError,
     cancel_import_job,
     get_import_job,
+    list_import_jobs,
     retry_import_job,
+    submit_archive_import,
     submit_import,
 )
 from app.platform.auth_context import (
     ActorContext,
     AuthTokenError,
     TenantSpoofingError,
-    decode_and_verify_actor_token,
-    extract_bearer_token,
-    guard_no_tenant_spoofing,
 )
-from app.platform.errors import PlatformErrorCode, build_problem_detail
-from app.platform.pagination import resolve_correlation_id
+from app.platform.errors import PlatformErrorCode
+from app.platform.http_auth import OptionalBearer, problem_json, verify_actor
+from app.platform.pagination import CursorError, resolve_correlation_id
 from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1/imports", tags=["ingestion"])
 
-_bearer_scheme = HTTPBearer(auto_error=False)
-OptionalBearer = Annotated[HTTPAuthorizationCredentials | None, Security(_bearer_scheme)]
+# Who may put a file into the import pipeline and see its jobs: the same roles as the exam-import review.
+_IMPORT_ROLES = frozenset(
+    {"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN", "TENANT_ADMIN", "REVIEWER", "CONTENT_AUTHOR"}
+)
+
 
 
 class SubmitImportJsonRequest(BaseModel):
@@ -128,6 +132,64 @@ class ImportJobResponse(BaseModel):
     dead_letter_count: int
 
 
+class ImportJobSummaryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    source_id: uuid.UUID | None
+    document_version_id: uuid.UUID | None
+    job_type: str
+    job_status: str
+    current_stage: str | None
+    attempt_count: int
+    last_error_code: str | None
+    title: str | None
+    mime_type: str | None
+    page_count: int | None
+    rights_status: str | None
+    exam_import_id: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ImportJobListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ImportJobSummaryResponse]
+    next_cursor: str | None
+    has_more: bool
+    limit: int
+
+
+class ArchiveMemberResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    archive_path: str
+    job_id: uuid.UUID
+    job_status: str
+    document_version_id: uuid.UUID
+    mime_type: str
+    is_duplicate: bool
+
+
+class ArchiveSkippedResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    archive_path: str
+    reason: str
+
+
+class ArchiveSummaryResponse(BaseModel):
+    """What became of a `.zip` upload: one job per file inside (`job` of the response is the first of them)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    archive_sha256: str
+    members: list[ArchiveMemberResponse]
+    skipped: list[ArchiveSkippedResponse]
+    ignored_entries: int
+
+
 class SubmitImportResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -135,6 +197,7 @@ class SubmitImportResponse(BaseModel):
     idempotent_replay: bool
     job: ImportJobResponse
     document_version: DocumentVersionResponse
+    archive: ArchiveSummaryResponse | None = None
 
 
 def _problem_response(
@@ -146,19 +209,13 @@ def _problem_response(
     status_override: int | None = None,
     extensions: dict[str, Any] | None = None,
 ) -> JSONResponse:
-    problem = build_problem_detail(
+    return problem_json(
         code=code,
         detail=detail,
         instance=request.url.path,
         correlation_id=correlation_id,
         status_override=status_override,
         extensions=extensions,
-    )
-    return JSONResponse(
-        status_code=problem.status,
-        content=problem.to_dict(),
-        media_type="application/problem+json",
-        headers={"X-Correlation-Id": correlation_id},
     )
 
 
@@ -167,23 +224,8 @@ def _authenticate_actor(
     credentials: HTTPAuthorizationCredentials | None,
 ) -> tuple[ActorContext | None, str, JSONResponse | None]:
     correlation_id = resolve_correlation_id(request.headers.get("x-correlation-id"))
-    raw_auth = request.headers.get("authorization")
-    if not raw_auth and credentials is not None:
-        raw_auth = f"{credentials.scheme} {credentials.credentials}"
-
-    settings = get_settings()
     try:
-        token = extract_bearer_token(raw_auth)
-        actor = decode_and_verify_actor_token(
-            token,
-            secret=settings.secret_key,
-            now_epoch=int(time.time()),
-        )
-        guard_no_tenant_spoofing(
-            actor,
-            claimed_tenant_header=request.headers.get("x-tenant-id"),
-            claimed_membership_header=request.headers.get("x-membership-id"),
-        )
+        actor = verify_actor(request, credentials)
     except AuthTokenError as exc:
         return None, correlation_id, _problem_response(
             code=PlatformErrorCode.UNAUTHORIZED,
@@ -199,6 +241,13 @@ def _authenticate_actor(
             correlation_id=correlation_id,
         )
 
+    if not ({r.upper() for r in actor.roles} & _IMPORT_ROLES):
+        return None, correlation_id, _problem_response(
+            code=PlatformErrorCode.FORBIDDEN,
+            detail="an author, reviewer or administrator role is required for imports",
+            request=request,
+            correlation_id=correlation_id,
+        )
     return actor, correlation_id, None
 
 
@@ -324,24 +373,65 @@ async def post_submit_import(
     idem_header = request.headers.get("idempotency-key")
     eff_idem_key = params["idempotency_key"] or (idem_header.strip() if idem_header else None)
 
+    archive_summary: ArchiveSummaryResponse | None = None
     try:
         async with tenant_transaction(actor.tenant_id, role=DbRole.APP_RW) as session:
-            result = await submit_import(
-                session,
-                tenant_id=actor.tenant_id,
-                raw_stream=raw_bytes,
-                filename=params["filename"],
-                mime_type=params["mime_type"],
-                job_type=params["job_type"],
-                source_id=params["source_id"],
-                external_id=params["external_id"],
-                title=params["title"],
-                idempotency_key=eff_idem_key,
-                max_attempts=params["max_attempts"],
-                requires_pro=params["requires_pro"],
-                start_immediately=params["start_immediately"],
-                correlation_id=correlation_id,
-            )
+            if str(params["filename"]).strip().lower().endswith(".zip"):
+                if params["mime_type"] is not None and params["mime_type"].strip().lower() != "application/zip":
+                    raise IngestionValidationError(
+                        f"declared mime_type {params['mime_type']!r} does not match detected 'application/zip'"
+                    )
+                archive = await submit_archive_import(
+                    session,
+                    tenant_id=actor.tenant_id,
+                    raw_bytes=raw_bytes,
+                    filename=params["filename"],
+                    job_type=params["job_type"],
+                    source_id=params["source_id"],
+                    title=params["title"],
+                    idempotency_key=eff_idem_key,
+                    max_attempts=params["max_attempts"],
+                    requires_pro=params["requires_pro"],
+                    start_immediately=params["start_immediately"],
+                    correlation_id=correlation_id,
+                )
+                result = archive.members[0].result
+                archive_summary = ArchiveSummaryResponse(
+                    archive_sha256=archive.archive_sha256,
+                    members=[
+                        ArchiveMemberResponse(
+                            archive_path=m.archive_path,
+                            job_id=m.result.job.id,
+                            job_status=m.result.job.job_status,
+                            document_version_id=m.result.document_version.id,
+                            mime_type=m.result.document_version.mime_type,
+                            is_duplicate=m.result.is_duplicate,
+                        )
+                        for m in archive.members
+                    ],
+                    skipped=[
+                        ArchiveSkippedResponse(archive_path=k.archive_path, reason=k.reason) for k in archive.skipped
+                    ],
+                    ignored_entries=archive.ignored_entries,
+                )
+                result = replace(result, is_duplicate=archive.is_duplicate, idempotent_replay=archive.idempotent_replay)
+            else:
+                result = await submit_import(
+                    session,
+                    tenant_id=actor.tenant_id,
+                    raw_stream=raw_bytes,
+                    filename=params["filename"],
+                    mime_type=params["mime_type"],
+                    job_type=params["job_type"],
+                    source_id=params["source_id"],
+                    external_id=params["external_id"],
+                    title=params["title"],
+                    idempotency_key=eff_idem_key,
+                    max_attempts=params["max_attempts"],
+                    requires_pro=params["requires_pro"],
+                    start_immediately=params["start_immediately"],
+                    correlation_id=correlation_id,
+                )
     except DuplicateIdempotencyConflictError as exc:
         return _problem_response(
             code=PlatformErrorCode.PAYLOAD_HASH_MISMATCH,
@@ -362,9 +452,60 @@ async def post_submit_import(
         idempotent_replay=result.idempotent_replay,
         job=_serialize_job(result.job),
         document_version=_serialize_doc_version(result.document_version),
+        archive=archive_summary,
     )
     return JSONResponse(
         status_code=status.HTTP_200_OK if result.is_duplicate else status.HTTP_201_CREATED,
+        content=jsonable_encoder(payload),
+        headers={"X-Correlation-Id": correlation_id},
+    )
+
+
+def _serialize_summary(item: ImportJobSummary) -> ImportJobSummaryResponse:
+    return ImportJobSummaryResponse(**{f: getattr(item, f) for f in ImportJobSummaryResponse.model_fields})
+
+
+JobStatusName = Literal["QUEUED", "RUNNING", "COMPLETED", "FAILED", "DEAD_LETTER", "CANCELLED"]
+JobTypeName = Literal["EXAM_IMPORT", "DRIVE_SYNC", "WEB_CRAWL", "REPROCESS_EXTRACTION"]
+
+
+@router.get("", response_model=ImportJobListResponse)
+async def get_import_list(
+    request: Request,
+    job_status: Annotated[JobStatusName | None, Query()] = None,
+    job_type: Annotated[JobTypeName | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    cursor: Annotated[str | None, Query(max_length=2048)] = None,
+    credentials: OptionalBearer = None,
+) -> JSONResponse:
+    """The tenant's latest import jobs with their status, stage and file; open one with `GET /imports/{id}`."""
+    actor, correlation_id, err = _authenticate_actor(request, credentials)
+    if err is not None:
+        return err
+    assert actor is not None
+    try:
+        async with tenant_transaction(actor.tenant_id, role=DbRole.APP_RW) as session:
+            page = await list_import_jobs(
+                session,
+                tenant_id=actor.tenant_id,
+                cursor_secret=get_settings().secret_key,
+                job_status=job_status,
+                job_type=job_type,
+                limit=limit,
+                cursor=cursor,
+            )
+    except (CursorError, IngestionValidationError, ValueError) as exc:
+        return _problem_response(
+            code=PlatformErrorCode.VALIDATION_ERROR, detail=str(exc), request=request, correlation_id=correlation_id
+        )
+    payload = ImportJobListResponse(
+        items=[_serialize_summary(i) for i in page.items],
+        next_cursor=page.next_cursor,
+        has_more=page.has_more,
+        limit=page.limit,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
         content=jsonable_encoder(payload),
         headers={"X-Correlation-Id": correlation_id},
     )

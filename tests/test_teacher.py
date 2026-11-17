@@ -131,7 +131,7 @@ def teacher(make_user, db):
 # ---------------------------------------------------------------- accounts & Pro
 
 
-def test_register_as_teacher_and_get_pro(client, admin_client, db):
+def test_register_as_teacher_and_get_pro(client, admin_client, admin_csrf, db):
     c = TestClient(app)
     r = c.post(
         "/register",
@@ -154,13 +154,13 @@ def test_register_as_teacher_and_get_pro(client, admin_client, db):
     requests = admin_client.get("/admin/users").text  # default filter: pending requests
     assert "minh@example.com" in requests
     teacher_id = db(lambda s: s.scalar(select(User.id).where(User.email == "minh@example.com")))
-    admin_client.post(f"/admin/users/{teacher_id}/pro", data={"days": "30", "back": "https://evil.example"})
+    admin_client.post(f"/admin/users/{teacher_id}/pro", data={"csrf_token": admin_csrf, "days": "30", "back": "https://evil.example"})
     t = db(lambda s: s.get(User, teacher_id))
     assert t.pro_until is not None and t.pro_requested_at is None
     assert "minh@example.com" not in admin_client.get("/admin/users").text
     assert c.get("/teacher/tests/new").status_code == 200
     # Revoking closes the form again.
-    admin_client.post(f"/admin/users/{teacher_id}/pro", data={"days": "0"})
+    admin_client.post(f"/admin/users/{teacher_id}/pro", data={"csrf_token": admin_csrf, "days": "0"})
     assert c.get("/teacher/tests/new").status_code == 403
 
 
@@ -170,13 +170,13 @@ def test_students_cannot_use_teacher_pages(make_user):
     assert c.post("/teacher/tests", data={}).status_code == 403
 
 
-def test_admin_switches_roles(admin_client, make_user, db):
+def test_admin_switches_roles(admin_client, admin_csrf, make_user, db):
     make_user("a@example.com")
     uid = db(lambda s: s.scalar(select(User.id).where(User.email == "a@example.com")))
-    admin_client.post(f"/admin/users/{uid}/role", data={"role": "TEACHER"})
+    admin_client.post(f"/admin/users/{uid}/role", data={"csrf_token": admin_csrf, "role": "TEACHER"})
     assert db(lambda s: s.get(User, uid)).role == UserRole.TEACHER
     admin_id = db(lambda s: s.scalar(select(User.id).where(User.role == UserRole.ADMIN)))
-    admin_client.post(f"/admin/users/{admin_id}/role", data={"role": "STUDENT"})
+    admin_client.post(f"/admin/users/{admin_id}/role", data={"csrf_token": admin_csrf, "role": "STUDENT"})
     assert db(lambda s: s.get(User, admin_id)).role == UserRole.ADMIN  # admins are never demoted here
 
 

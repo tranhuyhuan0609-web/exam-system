@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 
 from app.ops.ddl_rls_audit import (
     ANSWER_TABLES,
@@ -47,11 +47,12 @@ DECISION7_RLS_TENANTLESS_TABLES: frozenset[str] = frozenset({"users", "user_pii_
 # Decision #7 allows `notification_deliveries` to add `tenant_id` in Alembic even though Chapter 4 DDL omitted it.
 TENANT_ENABLED_DECISION7_TABLES: frozenset[str] = frozenset({"notification_deliveries"})
 
-SCHEDULER_POLICIES: dict[str, str] = {
-    "outbox_events": "sys_outbox_relay",
-    "attempts": "sys_attempt_expiry_scan",
-    "analytics_events": "sys_rollup_read",
-    "daily_metric_rollups": "sys_rollup_write",
+SCHEDULER_POLICIES: dict[str, tuple[str, ...]] = {
+    "outbox_events": ("sys_outbox_relay", "sys_attempt_expiry_event", "sys_outbox_insert_guard"),
+    "attempts": ("sys_attempt_expiry_scan", "sys_attempt_expiry_close", "sys_attempt_expiry_closed"),
+    "analytics_events": ("sys_rollup_read",),
+    "daily_metric_rollups": ("sys_rollup_write",),
+    "autosave_idempotency_registry": ("sys_registry_cleanup_scan", "sys_registry_cleanup"),
 }
 
 ANSWER_DENIED_ROLES: tuple[str, ...] = (
@@ -700,11 +701,11 @@ def _audit_rls_and_policies(
                     )
 
         if name in SCHEDULER_POLICIES:
-            sched_policy = SCHEDULER_POLICIES[name]
-            if sched_policy not in by_name:
-                shape_violations.append(f"{name}: missing scheduler policy {sched_policy}")
-            elif "ulp_system_scheduler" not in by_name[sched_policy].roles:
-                shape_violations.append(f"{name}.{sched_policy}: must target ulp_system_scheduler")
+            for sched_policy in SCHEDULER_POLICIES[name]:
+                if sched_policy not in by_name:
+                    shape_violations.append(f"{name}: missing scheduler policy {sched_policy}")
+                elif "ulp_system_scheduler" not in by_name[sched_policy].roles:
+                    shape_violations.append(f"{name}.{sched_policy}: must target ulp_system_scheduler")
 
         if name in GRADING_POLICIES:
             grading_policy = GRADING_POLICIES[name]

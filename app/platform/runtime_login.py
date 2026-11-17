@@ -13,7 +13,7 @@ The password comes from RUNTIME_DB_PASSWORD, so it never lands in a migration.
 import asyncio
 import sys
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 from sqlalchemy.engine import make_url
 
 from app.config import get_settings
@@ -40,7 +40,7 @@ async def ensure_runtime_login(database_url: str, password: str, login: str = RU
                 password,
             )
             await conn.execute(statement)
-            await conn.execute(f"GRANT CONNECT ON DATABASE {_quote(url.database)} TO {_quote(login)}")
+            await conn.execute(f"GRANT CONNECT ON DATABASE {_quote(url.database or '')} TO {_quote(login)}")
             await conn.execute(f"GRANT {DbRole.APP_RW.value} TO {_quote(login)} WITH INHERIT TRUE, SET TRUE")
             for role in DbRole:
                 if role is not DbRole.APP_RW:

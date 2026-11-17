@@ -4,18 +4,16 @@ from __future__ import annotations
 
 import base64
 import binascii
-import time
 import uuid
-from typing import Annotated, Literal
+from typing import Literal
 
-from fastapi import APIRouter, Query, Request, Security, status
+from fastapi import APIRouter, Query, Request, status
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.responses import JSONResponse, Response
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import IntegrityError
 
-from app.config import get_settings
 from app.modules.assets.internal.access import (
     MAX_SIGNED_URL_TTL_SECONDS,
     AssetEntitlementTier,
@@ -30,24 +28,21 @@ from app.modules.assets.internal.service import (
     finalize_asset_upload,
     get_asset_signed_url,
     initiate_asset_upload_session,
+    read_signed_download,
 )
 from app.platform.auth_context import (
     ActorContext,
     AuthTokenError,
     TenantSpoofingError,
-    decode_and_verify_actor_token,
-    extract_bearer_token,
-    guard_no_tenant_spoofing,
 )
-from app.platform.errors import PlatformErrorCode, build_problem_detail
+from app.platform.errors import PlatformErrorCode
+from app.platform.http_auth import OptionalBearer, problem_json, verify_actor
 from app.platform.models import SYSTEM_PUBLIC_TENANT_ID
 from app.platform.pagination import resolve_correlation_id
 from app.platform.tenancy import DbRole, tenant_transaction
 
 router = APIRouter(prefix="/api/v1/assets", tags=["assets"])
 
-_bearer_scheme = HTTPBearer(auto_error=False)
-OptionalBearer = Annotated[HTTPAuthorizationCredentials | None, Security(_bearer_scheme)]
 _PUBLIC_PUBLISHER_ROLES = frozenset({"ADMIN", "PLATFORM_ADMIN", "SUPER_ADMIN"})
 
 
@@ -157,18 +152,12 @@ def _problem_response(
     correlation_id: str,
     status_override: int | None = None,
 ) -> JSONResponse:
-    problem = build_problem_detail(
+    return problem_json(
         code=code,
         detail=detail,
         instance=request.url.path,
         correlation_id=correlation_id,
         status_override=status_override,
-    )
-    return JSONResponse(
-        status_code=problem.status,
-        content=problem.to_dict(),
-        media_type="application/problem+json",
-        headers={"X-Correlation-Id": correlation_id},
     )
 
 
@@ -177,23 +166,8 @@ def _authenticate_actor(
     credentials: HTTPAuthorizationCredentials | None,
 ) -> tuple[ActorContext | None, str, JSONResponse | None]:
     correlation_id = resolve_correlation_id(request.headers.get("x-correlation-id"))
-    raw_auth = request.headers.get("authorization")
-    if not raw_auth and credentials is not None:
-        raw_auth = f"{credentials.scheme} {credentials.credentials}"
-
-    settings = get_settings()
     try:
-        token = extract_bearer_token(raw_auth)
-        actor = decode_and_verify_actor_token(
-            token,
-            secret=settings.secret_key,
-            now_epoch=int(time.time()),
-        )
-        guard_no_tenant_spoofing(
-            actor,
-            claimed_tenant_header=request.headers.get("x-tenant-id"),
-            claimed_membership_header=request.headers.get("x-membership-id"),
-        )
+        actor = verify_actor(request, credentials)
     except AuthTokenError as exc:
         return None, correlation_id, _problem_response(
             code=PlatformErrorCode.UNAUTHORIZED,
@@ -440,4 +414,36 @@ async def get_signed_asset_url(
         status_code=status.HTTP_200_OK,
         content=jsonable_encoder(payload),
         headers={"X-Correlation-Id": correlation_id},
+    )
+
+
+@router.get("/{asset_id}/download")
+async def download_signed_asset(
+    asset_id: uuid.UUID,
+    request: Request,
+    tenant_id: uuid.UUID,
+    exp: int,
+    sig: str = Query(min_length=16, max_length=128),
+    variant: str | None = None,
+) -> Response:
+    """The file behind a signed URL of local storage. The signature is the credential: no token, no cookie."""
+    correlation_id = resolve_correlation_id(request.headers.get("x-correlation-id"))
+    try:
+        async with tenant_transaction(tenant_id, role=DbRole.APP_RW) as session:
+            download = await read_signed_download(
+                session, asset_id=asset_id, tenant_id=tenant_id, exp=exp, sig=sig, variant=variant
+            )
+    except AssetNotFoundError as exc:
+        return _problem_response(
+            code=PlatformErrorCode.NOT_FOUND, detail=str(exc), request=request, correlation_id=correlation_id
+        )
+    # `nosniff` and an attachment-free inline type: images render, nothing else is executed by the browser
+    return Response(
+        content=download.content,
+        media_type=download.mime_type,
+        headers={
+            "Cache-Control": "private, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; img-src 'self'; sandbox",
+        },
     )
