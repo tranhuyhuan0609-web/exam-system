@@ -63,7 +63,6 @@ from app.modules.teacher_copilot.router import router as teacher_copilot_router
 from app.modules.tutor.router import router as tutor_router
 from app.modules.vertical_packs.router import router as vertical_packs_router
 from app.platform.branding import BRAND_NAME, BRAND_SEO_DESCRIPTION
-from app.routers import admin, auth, library, maker, plans, student, teacher
 from app.templating import templates
 
 settings = get_settings()
@@ -157,6 +156,9 @@ if settings.storage_backend == "local":
     app.mount("/media/previews", StaticFiles(directory=_previews), name="previews")
 
 if settings.legacy_html_enabled:
+    # imported only here: a pilot with LEGACY_HTML_ENABLED=false never loads the V1 router tree
+    from app.routers import admin, auth, library, maker, plans, student, teacher
+
     for _legacy_router in (
         student.router,
         teacher.router,
